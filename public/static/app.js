@@ -715,4 +715,140 @@ document.addEventListener('DOMContentLoaded', () => {
   
   addLog('[SYSTEM] Interface ARC AI Agents carregada', 'system');
   addLog('[NETWORK] Arc Testnet - Chain ID: 5042002 - USDC Gas', 'info');
+
+  // ============================================================
+  // INTEGRAÇÃO COM WALLET
+  // ============================================================
+
+  // Ouvir evento de wallet conectada
+  window.addEventListener('walletConnected', (e) => {
+    const { address, shortAddress, onArcNetwork, usdcBalance } = e.detail;
+
+    // Atualizar avatar no header
+    const avatar = document.getElementById('wallet-avatar');
+    if (avatar) avatar.textContent = address.slice(2, 4).toUpperCase();
+
+    // Mostrar wallet info, esconder botão conectar
+    const connectBtn = document.getElementById('wallet-connect-btn');
+    const walletInfo = document.getElementById('wallet-info');
+    if (connectBtn) connectBtn.classList.add('hidden');
+    if (walletInfo) walletInfo.classList.remove('hidden');
+
+    // Atualizar botão de conectar na aba agentes
+    const agentConnectBtn = document.getElementById('wallet-connect-agents-btn');
+    if (agentConnectBtn) agentConnectBtn.classList.add('hidden');
+
+    // Atualizar status na aba agentes
+    updateWalletAgentsStatus(e.detail);
+
+    // Atualizar dashboard
+    if (currentTab === 'dashboard') loadDashboard();
+
+    addLog(`[WALLET] ✅ ${shortAddress} conectada${onArcNetwork ? ' na Arc Testnet' : ' (rede incorreta)'}`, 'success');
+  });
+
+  // Ouvir evento de wallet desconectada
+  window.addEventListener('walletDisconnected', () => {
+    const connectBtn = document.getElementById('wallet-connect-btn');
+    const walletInfo = document.getElementById('wallet-info');
+    if (connectBtn) connectBtn.classList.remove('hidden');
+    if (walletInfo) walletInfo.classList.add('hidden');
+
+    // Mostrar botão de conectar na aba agentes
+    const agentConnectBtn = document.getElementById('wallet-connect-agents-btn');
+    if (agentConnectBtn) agentConnectBtn.classList.remove('hidden');
+
+    // Resetar status na aba agentes
+    const agentsStatus = document.getElementById('wallet-agents-status');
+    if (agentsStatus) {
+      agentsStatus.textContent = 'Nenhuma wallet conectada. Conecte para ver saldo e endereço.';
+      agentsStatus.className = 'text-gray-500 text-sm';
+    }
+
+    // Limpar campos autopreenchidos
+    const payFrom = document.getElementById('pay-from');
+    if (payFrom && payFrom.dataset.autoFilled === 'true') {
+      payFrom.value = '';
+      payFrom.dataset.autoFilled = 'false';
+      payFrom.classList.remove('border-purple-500/60');
+    }
+    const ctClient = document.getElementById('ct-client');
+    if (ctClient && ctClient.dataset.autoFilled === 'true') {
+      ctClient.value = '';
+      ctClient.dataset.autoFilled = 'false';
+      ctClient.classList.remove('border-green-500/60');
+    }
+
+    addLog('[WALLET] Wallet desconectada', 'warning');
+  });
 });
+
+// ============================================================
+// ATUALIZAR STATUS DA WALLET NA ABA AGENTES
+// ============================================================
+function updateWalletAgentsStatus(walletData) {
+  const el = document.getElementById('wallet-agents-status');
+  if (!el) return;
+
+  const { address, shortAddress, onArcNetwork, usdcBalance, chainId } = walletData;
+
+  if (!address) {
+    el.textContent = 'Nenhuma wallet conectada.';
+    el.className = 'text-gray-500 text-sm';
+    return;
+  }
+
+  el.className = '';
+  el.innerHTML = `
+    <div class="flex flex-wrap gap-3 items-center">
+      <!-- Endereço -->
+      <div class="flex items-center gap-2 bg-gray-800/60 rounded-lg px-3 py-2">
+        <div class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-xs font-bold">
+          ${address.slice(2, 4).toUpperCase()}
+        </div>
+        <div>
+          <div class="text-xs text-gray-400">Endereço</div>
+          <div class="text-sm text-white font-mono font-medium">${shortAddress}</div>
+        </div>
+        <button onclick="copyAddress()" class="text-gray-500 hover:text-white ml-1 transition-colors">
+          <i class="fas fa-copy text-xs"></i>
+        </button>
+      </div>
+
+      <!-- Saldo USDC -->
+      <div class="flex items-center gap-2 bg-blue-900/30 border border-blue-700/30 rounded-lg px-3 py-2">
+        <i class="fas fa-coins text-blue-400 text-sm"></i>
+        <div>
+          <div class="text-xs text-gray-400">Saldo USDC</div>
+          <div class="text-sm text-white font-semibold">${usdcBalance !== null ? '$' + usdcBalance : '...'} <span class="text-blue-400 text-xs">USDC</span></div>
+        </div>
+        <button onclick="refreshBalance()" class="text-blue-500 hover:text-blue-300 ml-1 transition-colors">
+          <i class="fas fa-sync-alt text-xs"></i>
+        </button>
+      </div>
+
+      <!-- Rede -->
+      <div class="flex items-center gap-2 bg-gray-800/60 rounded-lg px-3 py-2">
+        <div class="w-2 h-2 rounded-full ${onArcNetwork ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}"></div>
+        <div>
+          <div class="text-xs text-gray-400">Rede</div>
+          <div class="text-sm ${onArcNetwork ? 'text-green-400' : 'text-yellow-400'} font-medium">
+            ${onArcNetwork ? 'Arc Testnet ✓' : 'Incorreta - Chain ' + chainId}
+          </div>
+        </div>
+        ${!onArcNetwork ? `
+          <button onclick="switchNetworkFromUI()" class="text-xs bg-yellow-600 hover:bg-yellow-700 text-white rounded px-2 py-1 transition-colors ml-1">
+            Trocar
+          </button>
+        ` : ''}
+      </div>
+
+      <!-- Explorer link -->
+      <a href="https://testnet.arcscan.app/address/${address}" target="_blank"
+         class="flex items-center gap-1.5 bg-gray-800/60 hover:bg-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-400 hover:text-purple-400 transition-colors">
+        <i class="fas fa-external-link-alt"></i>Ver no Explorer
+      </a>
+    </div>
+  `;
+}
+

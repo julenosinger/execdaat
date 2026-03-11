@@ -87,17 +87,39 @@ app.get('/', (c) => {
           <p class="text-xs text-purple-400">Pagamentos & Contratos Autônomos</p>
         </div>
       </div>
-      <div class="flex items-center gap-3">
-        <div id="network-badge" class="hidden sm:flex items-center gap-2 bg-green-900/40 border border-green-700/50 rounded-full px-3 py-1.5">
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Arc Network badge -->
+        <div class="hidden sm:flex items-center gap-2 bg-green-900/40 border border-green-700/50 rounded-full px-3 py-1.5">
           <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
-          <span class="text-xs text-green-400 font-medium">Arc Testnet • Chain 5042002</span>
+          <span class="text-xs text-green-400 font-medium">Arc Testnet</span>
         </div>
-        <a href="https://testnet.arcscan.app" target="_blank" class="text-xs text-gray-400 hover:text-purple-400 transition-colors">
+        <!-- Links rápidos -->
+        <a href="https://testnet.arcscan.app" target="_blank" class="hidden md:block text-xs text-gray-400 hover:text-purple-400 transition-colors">
           <i class="fas fa-external-link-alt mr-1"></i>Explorer
         </a>
-        <a href="https://faucet.circle.com" target="_blank" class="text-xs text-gray-400 hover:text-blue-400 transition-colors">
+        <a href="https://faucet.circle.com" target="_blank" class="hidden md:block text-xs text-gray-400 hover:text-blue-400 transition-colors">
           <i class="fas fa-faucet mr-1"></i>Faucet
         </a>
+
+        <!-- Wallet info (quando conectada) -->
+        <div id="wallet-info" class="hidden items-center gap-2 bg-gray-800/80 border border-gray-700/50 rounded-xl px-3 py-2 cursor-pointer hover:border-purple-600/50 transition-all" onclick="openWalletModal()">
+          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" id="wallet-avatar">??</div>
+          <div class="hidden sm:block">
+            <div class="text-xs text-white font-mono font-medium leading-none" id="wallet-address-display">0x...</div>
+            <div id="wallet-network-display" class="text-xs text-green-400 leading-none mt-0.5"></div>
+          </div>
+          <div id="wallet-balance-display" class="hidden text-xs text-blue-400 font-medium bg-blue-900/30 px-2 py-0.5 rounded-full"></div>
+        </div>
+
+        <!-- Botão conectar wallet -->
+        <button id="wallet-connect-btn" onclick="openWalletModal()"
+          class="wallet-connect-pulse flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-lg shadow-purple-900/30">
+          <i class="fas fa-wallet"></i>
+          <span class="hidden sm:inline">Conectar</span>
+        </button>
+
+        <!-- Badge de wallet conectada (mobile) -->
+        <div id="wallet-badge" class="hidden sm:hidden w-2 h-2 rounded-full bg-green-400"></div>
       </div>
     </div>
   </header>
@@ -166,7 +188,27 @@ app.get('/', (c) => {
       </div>
 
       <!-- Network Info -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <!-- Wallet Panel -->
+        <div class="bg-gray-900/60 border border-purple-700/40 rounded-xl p-5">
+          <h3 class="text-white font-semibold mb-4 flex items-center gap-2">
+            <i class="fas fa-wallet text-purple-400"></i>
+            Minha Wallet
+          </h3>
+          <div id="wallet-panel">
+            <!-- Preenchido pelo wallet.js -->
+            <div class="flex flex-col items-center justify-center py-4 gap-3">
+              <div class="w-12 h-12 rounded-full bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center">
+                <i class="fas fa-wallet text-gray-500 text-lg"></i>
+              </div>
+              <p class="text-gray-400 text-xs text-center">Conecte sua wallet EVM para interagir com a Arc Testnet</p>
+              <button onclick="openWalletModal()" class="wallet-connect-pulse bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 py-2 text-sm font-semibold transition-all flex items-center gap-2">
+                <i class="fas fa-plug"></i>Conectar Wallet
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-6">
           <h3 class="text-white font-semibold mb-4 flex items-center gap-2">
             <i class="fas fa-network-wired text-purple-400"></i>
@@ -359,6 +401,25 @@ app.get('/', (c) => {
 
     <!-- AGENTS TAB -->
     <div id="tab-content-agents" class="tab-content hidden">
+
+      <!-- Wallet Panel (topo) -->
+      <div class="bg-gray-900/60 border border-purple-700/40 rounded-xl p-5 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-white font-semibold flex items-center gap-2">
+            <i class="fas fa-wallet text-purple-400"></i>
+            Wallet EVM Conectada
+          </h3>
+          <button id="wallet-connect-agents-btn" onclick="openWalletModal()"
+            class="wallet-connect-pulse flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 py-2 text-sm font-semibold transition-all">
+            <i class="fas fa-plug"></i>Conectar Wallet
+          </button>
+        </div>
+        <!-- Status compacto da wallet -->
+        <div id="wallet-agents-status" class="text-gray-500 text-sm">
+          Nenhuma wallet conectada. Conecte para ver saldo e endereço.
+        </div>
+      </div>
+
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Agente de Pagamentos -->
         <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-6">
@@ -623,6 +684,7 @@ forge create src/ContractManager.sol:ContractManager \\
     </div>
   </div>
 
+  <script src="/static/wallet.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>`)

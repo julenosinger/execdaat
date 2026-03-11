@@ -26,6 +26,233 @@
   to { transform: rotate(360deg); }
 }
 
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Tab content transitions */
+.tab-content {
+  animation: fadeIn 0.3s ease;
+}
+
+/* Tab buttons */
+.tab-btn.active {
+  color: #a78bfa;
+  border-color: #7c3aed;
+}
+
+/* Cards de estatística */
+.stat-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+/* Step cards */
+.step-card {
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.8), rgba(31, 41, 55, 0.6));
+  transition: border-color 0.2s ease;
+}
+
+.step-card:hover {
+  border-color: rgba(139, 92, 246, 0.5);
+}
+
+/* Status badges */
+.status-draft { background: rgba(75, 85, 99, 0.4); color: #9ca3af; border: 1px solid rgba(75, 85, 99, 0.5); }
+.status-active { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+.status-completed { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+.status-disputed { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+.status-cancelled { background: rgba(107, 114, 128, 0.15); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.4); }
+
+/* Payment status */
+.pay-pending { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); }
+.pay-executed { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+.pay-rejected { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+.pay-analyzing { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4); }
+
+/* Agent status */
+.agent-idle { color: #34d399; }
+.agent-thinking { color: #a78bfa; animation: thinking 1s ease infinite; }
+.agent-executing { color: #60a5fa; }
+.agent-error { color: #f87171; }
+
+/* Milestone progress bar */
+.milestone-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(75, 85, 99, 0.5);
+  overflow: hidden;
+}
+
+.milestone-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #7c3aed, #3b82f6);
+  transition: width 0.5s ease;
+}
+
+/* Risk level indicators */
+.risk-low { color: #34d399; }
+.risk-medium { color: #fbbf24; }
+.risk-high { color: #f97316; }
+.risk-critical { color: #f87171; }
+
+/* Code blocks */
+pre code {
+  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+/* Scrollbar customizado */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.5);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.5);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.8);
+}
+
+/* Toast notification */
+#toast {
+  transition: all 0.3s ease;
+}
+
+/* Glow effect para agentes ativos */
+.agent-glow {
+  animation: pulse-glow 2s ease infinite;
+}
+
+/* Contract card hover */
+.contract-card {
+  transition: all 0.2s ease;
+}
+
+.contract-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================================
+   WALLET STYLES
+   ============================================================ */
+
+/* Botão conectar com pulso */
+.wallet-connect-pulse {
+  position: relative;
+  overflow: hidden;
+}
+
+.wallet-connect-pulse::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(139, 92, 246, 0.4);
+  animation: wallet-ring 2s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes wallet-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Modal de wallet */
+.animate-modal-in {
+  animation: modal-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Botão de provedor com hover */
+.wallet-provider-btn {
+  transition: all 0.2s ease;
+}
+
+.wallet-provider-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2);
+}
+
+/* Wallet info no header */
+#wallet-info {
+  transition: all 0.2s ease;
+}
+
+#wallet-info:hover {
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.4);
+}
+
+/* Avatar da wallet */
+#wallet-avatar {
+  font-size: 10px;
+  letter-spacing: -0.5px;
+}
+
+/* Indicador de rede no header */
+#wallet-network-display {
+  cursor: default;
+}
+
+/* Painel de wallet */
+#wallet-panel {
+  min-height: 80px;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .tab-btn {
+    padding: 12px 12px;
+    font-size: 12px;
+  }
+
+  .tab-btn span {
+    display: none;
+  }
+}
+
+
+/* Animações */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(139, 92, 246, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.7); }
+}
+
+@keyframes thinking {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Tab content transitions */
 .tab-content {
   animation: fadeIn 0.3s ease;
