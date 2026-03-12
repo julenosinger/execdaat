@@ -1,9 +1,11 @@
 // ============================================================
 // ARC AI Agents - EVM Wallet Connection
-// Suporta MetaMask, Coinbase Wallet, Rabby, e qualquer
-// injetor EIP-1193 (window.ethereum)
+// Suporta MetaMask, Coinbase Wallet, Rabby, Brave Wallet,
+// e qualquer injetor EIP-1193 (window.ethereum)
+// Compatível com EIP-6963 (múltiplos provedores)
 // ============================================================
 
+// Configuração da Arc Testnet
 const ARC_TESTNET_PARAMS = {
   chainId: '0x4CFC12',          // 5042002 em hex
   chainName: 'Arc Testnet',
@@ -16,32 +18,17 @@ const ARC_TESTNET_PARAMS = {
   blockExplorerUrls: ['https://testnet.arcscan.app'],
 };
 
-const USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
-
-// ABI mínimo ERC-20 para leitura de saldo
-const ERC20_ABI = [
-  {
-    "inputs": [{"name": "owner", "type": "address"}],
-    "name": "balanceOf",
-    "outputs": [{"name": "", "type": "uint256"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "decimals",
-    "outputs": [{"name": "", "type": "uint8"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "symbol",
-    "outputs": [{"name": "", "type": "string"}],
-    "stateMutability": "view",
-    "type": "function"
-  }
-];
+// Endereços dos contratos — definidos no window para compartilhar entre módulos
+// evm-tx.js e outros módulos usam window.USDC_ADDRESS / window.EURC_ADDRESS
+if (typeof window.USDC_ADDRESS === 'undefined') {
+  window.USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
+}
+if (typeof window.EURC_ADDRESS === 'undefined') {
+  window.EURC_ADDRESS = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
+}
+// Aliases para uso local neste arquivo
+var USDC_ADDRESS = window.USDC_ADDRESS;
+var EURC_ADDRESS = window.EURC_ADDRESS;
 
 // ============================================================
 // ESTADO GLOBAL DA WALLET
@@ -53,36 +40,82 @@ window.walletState = {
   chainId: null,
   onArcNetwork: false,
   usdcBalance: null,
+  eurcBalance: null,
   provider: null,
 };
 
+// Armazena provedores EIP-6963 descobertos
+window._eip6963Providers = [];
+window._detectedProviders = [];
+
 // ============================================================
-// DETECTAR PROVEDORES EIP-1193
+// EIP-6963: Escutar anúncios de provedores
+// ============================================================
+window.addEventListener('eip6963:announceProvider', (event) => {
+  const { info, provider } = event.detail;
+  // Evitar duplicatas pelo rdns
+  const exists = window._eip6963Providers.find(p => p.info.rdns === info.rdns);
+  if (!exists) {
+    window._eip6963Providers.push({ info, provider });
+    console.log('[WALLET] EIP-6963 provider announced:', info.name);
+  }
+});
+
+// Solicitar anúncios de provedores EIP-6963
+window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+// ============================================================
+// DETECTAR PROVEDORES EIP-1193 + EIP-6963
 // ============================================================
 function detectProviders() {
   const providers = [];
+  const seen = new Set();
 
+  // 1. Provedores EIP-6963 (descoberta moderna)
+  window._eip6963Providers.forEach(({ info, provider }) => {
+    const key = info.rdns || info.uuid;
+    if (!seen.has(key)) {
+      seen.add(key);
+      let icon = 'fas fa-wallet';
+      if (info.rdns === 'io.metamask') icon = 'fab fa-ethereum';
+      else if (info.rdns === 'com.coinbase.wallet') icon = 'fas fa-wallet';
+      else if (info.rdns === 'io.rabby') icon = 'fas fa-shield-alt';
+      else if (info.rdns === 'com.brave.wallet') icon = 'fas fa-shield-alt';
+      providers.push({ name: info.name, icon, provider, rdns: info.rdns });
+    }
+  });
+
+  // 2. Fallback: window.ethereum (EIP-1193 clássico)
   if (window.ethereum) {
-    // MetaMask
-    if (window.ethereum.isMetaMask) {
-      providers.push({ name: 'MetaMask', icon: 'fab fa-ethereum', provider: window.ethereum });
-    }
-    // Coinbase Wallet
-    if (window.ethereum.isCoinbaseWallet) {
-      providers.push({ name: 'Coinbase Wallet', icon: 'fas fa-wallet', provider: window.ethereum });
-    }
-    // Rabby / outros
-    if (!window.ethereum.isMetaMask && !window.ethereum.isCoinbaseWallet) {
-      providers.push({ name: 'Browser Wallet', icon: 'fas fa-wallet', provider: window.ethereum });
-    }
-
-    // EIP-6963 múltiplos provedores
+    // Múltiplos provedores via window.ethereum.providers
     if (window.ethereum.providers && Array.isArray(window.ethereum.providers)) {
       window.ethereum.providers.forEach(p => {
-        if (p.isMetaMask) providers.push({ name: 'MetaMask', icon: 'fab fa-ethereum', provider: p });
-        else if (p.isCoinbaseWallet) providers.push({ name: 'Coinbase Wallet', icon: 'fas fa-wallet', provider: p });
-        else providers.push({ name: 'Wallet', icon: 'fas fa-wallet', provider: p });
+        let name = 'Browser Wallet';
+        let icon = 'fas fa-wallet';
+        if (p.isMetaMask) { name = 'MetaMask'; icon = 'fab fa-ethereum'; }
+        else if (p.isCoinbaseWallet) { name = 'Coinbase Wallet'; icon = 'fas fa-wallet'; }
+        else if (p.isRabby) { name = 'Rabby'; icon = 'fas fa-shield-alt'; }
+        else if (p.isBraveWallet) { name = 'Brave Wallet'; icon = 'fas fa-shield-alt'; }
+        // Usar rdns como chave única se disponível
+        const key = p.isMetaMask ? 'metamask' : (p.isCoinbaseWallet ? 'coinbase' : name.toLowerCase().replace(/\s/g,''));
+        if (!seen.has(key)) {
+          seen.add(key);
+          providers.push({ name, icon, provider: p });
+        }
       });
+    } else {
+      // Provedor único window.ethereum
+      let name = 'Browser Wallet';
+      let icon = 'fas fa-wallet';
+      if (window.ethereum.isMetaMask) { name = 'MetaMask'; icon = 'fab fa-ethereum'; }
+      else if (window.ethereum.isCoinbaseWallet) { name = 'Coinbase Wallet'; icon = 'fas fa-wallet'; }
+      else if (window.ethereum.isRabby) { name = 'Rabby'; icon = 'fas fa-shield-alt'; }
+      else if (window.ethereum.isBraveWallet) { name = 'Brave Wallet'; icon = 'fas fa-shield-alt'; }
+      const key = name.toLowerCase().replace(/\s/g,'');
+      if (!seen.has(key)) {
+        seen.add(key);
+        providers.push({ name, icon, provider: window.ethereum });
+      }
     }
   }
 
@@ -109,25 +142,23 @@ function hexToDecimal(hex) {
 // ============================================================
 async function fetchUSDCBalance(address, provider) {
   try {
-    // Codificar chamada balanceOf(address)
     const balanceOfSelector = '0x70a08231';
     const paddedAddress = address.slice(2).padStart(64, '0');
     const data = balanceOfSelector + paddedAddress;
 
     const result = await provider.request({
       method: 'eth_call',
-      params: [{ to: USDC_ADDRESS, data }, 'latest'],
+      params: [{ to: window.USDC_ADDRESS, data }, 'latest'],
     });
 
     if (result && result !== '0x') {
       const balance = BigInt(result);
-      // USDC tem 6 decimais
       const formatted = Number(balance) / 1e6;
       return formatted.toFixed(4);
     }
     return '0.0000';
   } catch (err) {
-    console.warn('Erro ao buscar saldo USDC:', err);
+    console.warn('[WALLET] Erro ao buscar saldo USDC:', err);
     return null;
   }
 }
@@ -137,15 +168,15 @@ async function fetchUSDCBalance(address, provider) {
 // ============================================================
 async function switchToArcTestnet(provider) {
   try {
-    // Tentar trocar para a rede Arc
     await provider.request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: ARC_TESTNET_PARAMS.chainId }],
     });
     return true;
   } catch (switchError) {
-    // Código 4902 = rede não adicionada ainda
-    if (switchError.code === 4902 || switchError.code === -32603) {
+    // 4902 = rede não adicionada ainda
+    if (switchError.code === 4902 || switchError.code === -32603 ||
+        (switchError.data && switchError.data.originalError && switchError.data.originalError.code === 4902)) {
       try {
         await provider.request({
           method: 'wallet_addEthereumChain',
@@ -153,12 +184,17 @@ async function switchToArcTestnet(provider) {
         });
         return true;
       } catch (addError) {
-        console.error('Erro ao adicionar rede Arc:', addError);
-        showWalletToast('Erro ao adicionar Arc Testnet: ' + addError.message, 'error');
+        console.error('[WALLET] Erro ao adicionar rede Arc:', addError);
+        showWalletToast('Erro ao adicionar Arc Testnet: ' + (addError.message || addError), 'error');
         return false;
       }
     }
-    console.error('Erro ao trocar rede:', switchError);
+    // 4001 = usuário rejeitou
+    if (switchError.code === 4001) {
+      showWalletToast('Troca de rede cancelada pelo usuário', 'warning');
+      return false;
+    }
+    console.error('[WALLET] Erro ao trocar rede:', switchError);
     return false;
   }
 }
@@ -169,7 +205,6 @@ async function switchToArcTestnet(provider) {
 function updateWalletUI() {
   const state = window.walletState;
 
-  // Botão de conectar no header
   const connectBtn = document.getElementById('wallet-connect-btn');
   const walletInfo = document.getElementById('wallet-info');
   const walletBadge = document.getElementById('wallet-badge');
@@ -186,8 +221,15 @@ function updateWalletUI() {
   if (connectBtn) connectBtn.classList.add('hidden');
   if (walletInfo) {
     walletInfo.classList.remove('hidden');
+    walletInfo.style.display = 'flex';
+
     const addrEl = document.getElementById('wallet-address-display');
     if (addrEl) addrEl.textContent = state.shortAddress;
+
+    const avatarEl = document.getElementById('wallet-avatar');
+    if (avatarEl && state.address) {
+      avatarEl.textContent = state.address.slice(2, 4).toUpperCase();
+    }
 
     const balEl = document.getElementById('wallet-balance-display');
     if (balEl) {
@@ -212,10 +254,7 @@ function updateWalletUI() {
 
   if (walletBadge) walletBadge.classList.remove('hidden');
 
-  // Preencher endereços nos forms
   autofillWalletAddress(state.address);
-
-  // Atualizar painel lateral
   updateWalletPanel(true);
 
   // Dispatch evento para outros módulos
@@ -226,7 +265,6 @@ function updateWalletUI() {
 // PREENCHER ENDEREÇO DA WALLET NOS FORMULÁRIOS
 // ============================================================
 function autofillWalletAddress(address) {
-  // Form de pagamento - campo "from"
   const payFrom = document.getElementById('pay-from');
   if (payFrom && (!payFrom.value || payFrom.dataset.autoFilled === 'true')) {
     payFrom.value = address;
@@ -234,7 +272,6 @@ function autofillWalletAddress(address) {
     payFrom.classList.add('border-purple-500/60');
   }
 
-  // Form de contrato - campo "client"
   const ctClient = document.getElementById('ct-client');
   if (ctClient && (!ctClient.value || ctClient.dataset.autoFilled === 'true')) {
     ctClient.value = address;
@@ -244,7 +281,7 @@ function autofillWalletAddress(address) {
 }
 
 // ============================================================
-// PAINEL DA WALLET (aba Agents / Dashboard)
+// PAINEL DA WALLET
 // ============================================================
 function updateWalletPanel(connected) {
   const panel = document.getElementById('wallet-panel');
@@ -260,7 +297,7 @@ function updateWalletPanel(connected) {
         </div>
         <p class="text-gray-400 text-sm text-center">Conecte sua wallet EVM para interagir com a rede Arc Testnet</p>
         <button onclick="openWalletModal()" class="wallet-connect-pulse bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-all flex items-center gap-2">
-          <i class="fas fa-plug"></i>Conectar Wallet
+          <i class="fas fa-plug mr-1"></i>Conectar Wallet
         </button>
         <p class="text-xs text-gray-600">MetaMask, Coinbase, Rabby e outros</p>
       </div>
@@ -320,11 +357,11 @@ function updateWalletPanel(connected) {
       <div class="grid grid-cols-2 gap-2">
         <a href="https://testnet.arcscan.app/address/${state.address}" target="_blank"
            class="flex items-center justify-center gap-1.5 bg-gray-800/60 hover:bg-gray-700/60 rounded-lg p-2.5 text-xs text-gray-300 transition-colors">
-          <i class="fas fa-search text-purple-400"></i>Ver no Explorer
+          <i class="fas fa-search text-purple-400"></i>Explorer
         </a>
         <a href="https://faucet.circle.com" target="_blank"
            class="flex items-center justify-center gap-1.5 bg-gray-800/60 hover:bg-gray-700/60 rounded-lg p-2.5 text-xs text-gray-300 transition-colors">
-          <i class="fas fa-faucet text-blue-400"></i>Faucet USDC
+          <i class="fas fa-faucet text-blue-400"></i>Faucet
         </a>
       </div>
 
@@ -342,6 +379,15 @@ function updateWalletPanel(connected) {
 function copyAddress() {
   if (window.walletState.address) {
     navigator.clipboard.writeText(window.walletState.address).then(() => {
+      showWalletToast('Endereço copiado!', 'success');
+    }).catch(() => {
+      // Fallback para browsers sem clipboard API
+      const el = document.createElement('textarea');
+      el.value = window.walletState.address;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
       showWalletToast('Endereço copiado!', 'success');
     });
   }
@@ -376,7 +422,14 @@ async function switchNetworkFromUI() {
   showWalletToast('Trocando para Arc Testnet...', 'info');
   const ok = await switchToArcTestnet(state.provider);
   if (ok) {
+    state.chainId = 5042002;
+    state.onArcNetwork = true;
     showWalletToast('✅ Arc Testnet conectada!', 'success');
+    updateWalletUI();
+    // Buscar saldo após trocar rede
+    const bal = await fetchUSDCBalance(state.address, state.provider);
+    state.usdcBalance = bal;
+    updateWalletUI();
   }
 }
 
@@ -384,96 +437,152 @@ async function switchNetworkFromUI() {
 // MODAL DE SELEÇÃO DE WALLET
 // ============================================================
 function openWalletModal() {
+  // Remover modal existente se houver
   const existing = document.getElementById('wallet-modal');
   if (existing) existing.remove();
 
+  // Se já conectado, mostrar painel de gerenciamento
+  if (window.walletState.connected) {
+    openConnectedWalletModal();
+    return;
+  }
+
+  // Redesolicitar providers EIP-6963 para garantir lista atualizada
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+  // Pequeno delay para aguardar EIP-6963
+  setTimeout(() => {
+    _renderWalletModal();
+  }, 100);
+}
+
+function _renderWalletModal() {
   const providers = detectProviders();
 
   const modal = document.createElement('div');
   modal.id = 'wallet-modal';
-  modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4';
+  modal.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
   modal.innerHTML = `
-    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeWalletModal()"></div>
-    <div class="relative bg-gray-900 border border-gray-700/60 rounded-2xl p-6 w-full max-w-sm shadow-2xl z-10 animate-modal-in">
-      <!-- Header do modal -->
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeWalletModal()"></div>
+    <div class="relative bg-gray-900 border border-gray-700/60 rounded-2xl p-6 w-full max-w-sm shadow-2xl z-10" style="position:relative;z-index:10;background:#111827;border:1px solid rgba(55,65,81,0.6);border-radius:1rem;padding:1.5rem;width:100%;max-width:400px;box-shadow:0 25px 50px rgba(0,0,0,0.8);">
+      <!-- Header -->
       <div class="flex items-center justify-between mb-5">
         <div>
-          <h3 class="text-white font-bold text-lg">Conectar Wallet</h3>
-          <p class="text-gray-400 text-xs mt-0.5">Selecione seu provedor EVM</p>
+          <h3 class="text-white font-bold text-lg" style="color:white;font-weight:700;font-size:1.125rem;">Conectar Wallet</h3>
+          <p class="text-gray-400 text-xs mt-0.5" style="color:#9ca3af;font-size:0.75rem;">Selecione seu provedor EVM</p>
         </div>
-        <button onclick="closeWalletModal()" class="text-gray-500 hover:text-white transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-800">
+        <button onclick="closeWalletModal()" style="background:none;border:none;cursor:pointer;color:#9ca3af;padding:4px;" class="text-gray-500 hover:text-white transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-800">
           <i class="fas fa-times"></i>
         </button>
       </div>
 
       <!-- Arc Network Info -->
-      <div class="bg-gradient-to-r from-purple-900/40 to-blue-900/40 border border-purple-700/30 rounded-xl p-3 mb-5">
-        <div class="flex items-center gap-2 mb-1.5">
-          <div class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></div>
-          <span class="text-purple-300 text-xs font-semibold">Arc Testnet</span>
+      <div style="background:linear-gradient(to right,rgba(88,28,135,0.4),rgba(30,58,138,0.4));border:1px solid rgba(126,34,206,0.3);border-radius:0.75rem;padding:0.75rem;margin-bottom:1.25rem;">
+        <div class="flex items-center gap-2 mb-2">
+          <div style="width:8px;height:8px;border-radius:50%;background:#a855f7;animation:pulse 2s infinite;"></div>
+          <span style="color:#d8b4fe;font-size:0.75rem;font-weight:600;">Arc Testnet</span>
         </div>
-        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <div class="text-gray-500">Chain ID</div><div class="text-gray-300 font-mono">5042002</div>
-          <div class="text-gray-500">Gas Token</div><div class="text-green-400 font-semibold">USDC</div>
-          <div class="text-gray-500">Gas por TX</div><div class="text-gray-300">~$0.009</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:0.75rem;">
+          <span style="color:#6b7280;">Chain ID</span><span style="color:#d1d5db;font-family:monospace;">5042002</span>
+          <span style="color:#6b7280;">RPC</span><span style="color:#d1d5db;font-family:monospace;font-size:10px;">rpc.testnet.arc.network</span>
+          <span style="color:#6b7280;">Gas Token</span><span style="color:#34d399;font-weight:600;">USDC</span>
+          <span style="color:#6b7280;">Gas/TX</span><span style="color:#d1d5db;">~$0.009</span>
         </div>
       </div>
 
       <!-- Lista de provedores -->
-      <div class="space-y-2 mb-4" id="wallet-providers-list">
+      <div id="wallet-providers-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
         ${providers.length > 0 ? providers.map((p, i) => `
-          <button onclick="connectWithProvider(${i})" class="wallet-provider-btn w-full flex items-center gap-3 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700/40 hover:border-purple-600/50 rounded-xl p-3.5 transition-all group">
-            <div class="w-10 h-10 rounded-xl bg-gray-700 group-hover:bg-purple-900/50 flex items-center justify-center transition-colors flex-shrink-0">
-              <i class="${p.icon} text-xl text-purple-400"></i>
+          <button onclick="connectWithProvider(${i})" 
+            style="display:flex;align-items:center;gap:12px;background:rgba(31,41,55,0.6);border:1px solid rgba(55,65,81,0.4);border-radius:0.75rem;padding:14px;cursor:pointer;width:100%;text-align:left;transition:all 0.2s;"
+            onmouseover="this.style.borderColor='rgba(147,51,234,0.5)';this.style.background='rgba(31,41,55,0.9)'"
+            onmouseout="this.style.borderColor='rgba(55,65,81,0.4)';this.style.background='rgba(31,41,55,0.6)'">
+            <div style="width:40px;height:40px;border-radius:10px;background:rgba(55,65,81,0.8);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="${p.icon}" style="font-size:1.25rem;color:#a855f7;"></i>
             </div>
-            <div class="text-left flex-1">
-              <div class="text-white font-medium text-sm">${p.name}</div>
-              <div class="text-gray-500 text-xs">Detectado • Pronto para conectar</div>
+            <div style="flex:1;text-align:left;">
+              <div style="color:white;font-weight:600;font-size:0.875rem;">${p.name}</div>
+              <div style="color:#6b7280;font-size:0.75rem;">Detectado • Clique para conectar</div>
             </div>
-            <i class="fas fa-chevron-right text-gray-600 group-hover:text-purple-400 transition-colors"></i>
+            <i class="fas fa-chevron-right" style="color:#4b5563;"></i>
           </button>
         `).join('') : `
-          <div class="text-center py-6">
-            <div class="w-14 h-14 rounded-full bg-gray-800 flex items-center justify-center mx-auto mb-3">
-              <i class="fas fa-exclamation-triangle text-yellow-400 text-xl"></i>
+          <div style="text-align:center;padding:24px 0;">
+            <div style="width:56px;height:56px;border-radius:50%;background:rgba(31,41,55,0.8);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+              <i class="fas fa-exclamation-triangle" style="color:#fbbf24;font-size:1.25rem;"></i>
             </div>
-            <p class="text-gray-300 text-sm font-medium mb-1">Nenhuma wallet detectada</p>
-            <p class="text-gray-500 text-xs mb-4">Instale uma extensão de wallet EVM</p>
-            <div class="flex flex-col gap-2">
-              <a href="https://metamask.io/download/" target="_blank" class="flex items-center justify-center gap-2 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-600/40 text-orange-400 rounded-lg p-3 text-sm transition-colors">
+            <p style="color:#d1d5db;font-size:0.875rem;font-weight:500;margin-bottom:4px;">Nenhuma wallet detectada</p>
+            <p style="color:#6b7280;font-size:0.75rem;margin-bottom:16px;">Instale uma extensão de wallet EVM para continuar</p>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <a href="https://metamask.io/download/" target="_blank" 
+                style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(234,88,12,0.2);border:1px solid rgba(234,88,12,0.4);color:#fb923c;border-radius:8px;padding:12px;font-size:0.875rem;text-decoration:none;transition:all 0.2s;">
                 <i class="fab fa-ethereum"></i>Instalar MetaMask
               </a>
-              <a href="https://www.coinbase.com/wallet/downloads" target="_blank" class="flex items-center justify-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-400 rounded-lg p-3 text-sm transition-colors">
+              <a href="https://www.coinbase.com/wallet/downloads" target="_blank"
+                style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(37,99,235,0.2);border:1px solid rgba(37,99,235,0.4);color:#60a5fa;border-radius:8px;padding:12px;font-size:0.875rem;text-decoration:none;transition:all 0.2s;">
                 <i class="fas fa-wallet"></i>Instalar Coinbase Wallet
+              </a>
+              <a href="https://rabby.io" target="_blank"
+                style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(5,150,105,0.2);border:1px solid rgba(5,150,105,0.4);color:#34d399;border-radius:8px;padding:12px;font-size:0.875rem;text-decoration:none;transition:all 0.2s;">
+                <i class="fas fa-shield-alt"></i>Instalar Rabby
               </a>
             </div>
           </div>
         `}
       </div>
 
-      <!-- WalletConnect placeholder -->
-      <button class="w-full flex items-center gap-3 bg-blue-900/20 hover:bg-blue-900/30 border border-blue-700/30 hover:border-blue-600/50 rounded-xl p-3.5 transition-all group opacity-70" 
-              onclick="showWalletToast('WalletConnect em breve!', 'info'); closeWalletModal()">
-        <div class="w-10 h-10 rounded-xl bg-blue-900/40 flex items-center justify-center flex-shrink-0">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M4.91 7.47C8.82 3.56 15.18 3.56 19.09 7.47L19.57 7.95C19.76 8.14 19.76 8.45 19.57 8.64L17.99 10.22C17.9 10.31 17.74 10.31 17.65 10.22L16.98 9.55C14.24 6.81 9.76 6.81 7.02 9.55L6.3 10.27C6.21 10.36 6.05 10.36 5.96 10.27L4.38 8.69C4.19 8.5 4.19 8.19 4.38 8L4.91 7.47ZM21.92 10.3L23.32 11.7C23.51 11.89 23.51 12.2 23.32 12.39L16.78 18.93C16.59 19.12 16.28 19.12 16.09 18.93L11.5 14.34C11.45 14.29 11.37 14.29 11.32 14.34L6.73 18.93C6.54 19.12 6.23 19.12 6.04 18.93L-0.5 12.4C-0.69 12.21 -0.69 11.9 -0.5 11.71L0.9 10.31C1.09 10.12 1.4 10.12 1.59 10.31L6.18 14.9C6.23 14.95 6.31 14.95 6.36 14.9L10.95 10.31C11.14 10.12 11.45 10.12 11.64 10.31L16.23 14.9C16.28 14.95 16.36 14.95 16.41 14.9L21 10.31C21.19 10.12 21.5 10.12 21.69 10.31L21.92 10.3Z" fill="#3B99FC"/>
-          </svg>
-        </div>
-        <div class="text-left flex-1">
-          <div class="text-white font-medium text-sm">WalletConnect</div>
-          <div class="text-gray-500 text-xs">Mobile wallets • Em breve</div>
-        </div>
-        <span class="text-xs bg-blue-900/50 text-blue-400 px-2 py-0.5 rounded-full">Soon</span>
-      </button>
-
-      <p class="text-center text-xs text-gray-600 mt-4">
-        Ao conectar, você aceita interagir com a Arc Testnet
+      <p style="text-align:center;font-size:0.75rem;color:#4b5563;margin-top:8px;">
+        Ao conectar você aceita interagir com a Arc Testnet (Chain 5042002)
       </p>
     </div>
   `;
 
   // Guardar providers para callback
   window._detectedProviders = providers;
+  document.body.appendChild(modal);
+}
+
+// ============================================================
+// MODAL QUANDO WALLET JÁ ESTÁ CONECTADA
+// ============================================================
+function openConnectedWalletModal() {
+  const state = window.walletState;
+  const modal = document.createElement('div');
+  modal.id = 'wallet-modal';
+  modal.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML = `
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeWalletModal()"></div>
+    <div style="position:relative;z-index:10;background:#111827;border:1px solid rgba(55,65,81,0.6);border-radius:1rem;padding:1.5rem;width:100%;max-width:360px;box-shadow:0 25px 50px rgba(0,0,0,0.8);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3 style="color:white;font-weight:700;">Wallet Conectada</h3>
+        <button onclick="closeWalletModal()" style="background:none;border:none;cursor:pointer;color:#9ca3af;">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div style="background:rgba(31,41,55,0.6);border-radius:12px;padding:16px;margin-bottom:12px;">
+        <div style="color:white;font-family:monospace;font-size:0.875rem;word-break:break-all;">${state.address}</div>
+        <div style="color:${state.onArcNetwork ? '#34d399' : '#fbbf24'};font-size:0.75rem;margin-top:4px;">
+          ${state.onArcNetwork ? '✅ Arc Testnet (5042002)' : '⚠️ Rede incorreta'}
+        </div>
+      </div>
+      ${!state.onArcNetwork ? `
+      <button onclick="switchNetworkFromUI();closeWalletModal();" 
+        style="width:100%;background:rgba(217,119,6,0.8);border:none;border-radius:8px;padding:10px;color:white;cursor:pointer;margin-bottom:8px;font-weight:600;">
+        <i class="fas fa-exchange-alt mr-1"></i>Trocar para Arc Testnet
+      </button>
+      ` : ''}
+      <a href="https://testnet.arcscan.app/address/${state.address}" target="_blank"
+        style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(31,41,55,0.8);border:1px solid rgba(55,65,81,0.4);border-radius:8px;padding:10px;color:#d1d5db;font-size:0.875rem;text-decoration:none;margin-bottom:8px;">
+        <i class="fas fa-external-link-alt" style="color:#a855f7;"></i>Ver no Explorer
+      </a>
+      <button onclick="disconnectWallet();closeWalletModal();" 
+        style="width:100%;background:none;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px;color:#f87171;cursor:pointer;font-size:0.875rem;">
+        <i class="fas fa-sign-out-alt mr-1"></i>Desconectar
+      </button>
+    </div>
+  `;
   document.body.appendChild(modal);
 }
 
@@ -488,16 +597,21 @@ function closeWalletModal() {
 async function connectWithProvider(index) {
   const providers = window._detectedProviders || [];
   const selected = providers[index];
-  if (!selected) return;
+  if (!selected) {
+    console.error('[WALLET] Provider não encontrado no índice:', index);
+    return;
+  }
 
+  // Mostrar spinner no modal
   const modalList = document.getElementById('wallet-providers-list');
   if (modalList) {
     modalList.innerHTML = `
-      <div class="flex flex-col items-center justify-center py-8 gap-3">
-        <div class="w-12 h-12 rounded-full border-4 border-purple-500 border-t-transparent animate-spin"></div>
-        <p class="text-gray-300 text-sm">Conectando com ${selected.name}...</p>
-        <p class="text-gray-500 text-xs">Aprove a conexão na sua wallet</p>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 0;gap:12px;">
+        <div style="width:48px;height:48px;border-radius:50%;border:4px solid #7c3aed;border-top-color:transparent;animation:spin 1s linear infinite;"></div>
+        <p style="color:#d1d5db;font-size:0.875rem;">Conectando com ${selected.name}...</p>
+        <p style="color:#6b7280;font-size:0.75rem;">Aprove a conexão na sua wallet</p>
       </div>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
     `;
   }
 
@@ -518,7 +632,7 @@ async function connectWithProvider(index) {
     const chainId = hexToDecimal(chainIdHex);
     const onArc = chainId === 5042002;
 
-    // Atualizar estado
+    // Atualizar estado global
     window.walletState = {
       connected: true,
       address,
@@ -526,16 +640,17 @@ async function connectWithProvider(index) {
       chainId,
       onArcNetwork: onArc,
       usdcBalance: null,
+      eurcBalance: null,
       provider,
     };
 
     // Fechar modal
     closeWalletModal();
 
-    // Se não estiver na rede Arc, perguntar para trocar
+    // Se não estiver na rede Arc, pedir para trocar
     if (!onArc) {
-      showWalletToast('Wallet conectada! Trocando para Arc Testnet...', 'info');
-      await new Promise(r => setTimeout(r, 500));
+      showWalletToast('Wallet conectada! Adicionando Arc Testnet...', 'info');
+      await new Promise(r => setTimeout(r, 800));
       const switched = await switchToArcTestnet(provider);
       if (switched) {
         window.walletState.chainId = 5042002;
@@ -554,20 +669,23 @@ async function connectWithProvider(index) {
     showWalletToast(`✅ ${selected.name} conectada! ${shortenAddress(address)}`, 'success');
     addWalletLog(`[WALLET] ${selected.name} conectada: ${address}`, 'success');
 
-    // Salvar preferência
+    // Salvar preferência no localStorage
     localStorage.setItem('arc_wallet_last', JSON.stringify({ name: selected.name, address }));
 
-    // Ouvir mudanças de conta
+    // Ouvir mudanças de conta/rede
     provider.on('accountsChanged', handleAccountsChanged);
     provider.on('chainChanged', handleChainChanged);
     provider.on('disconnect', handleDisconnect);
 
   } catch (err) {
     closeWalletModal();
+    console.error('[WALLET] Erro ao conectar:', err);
     if (err.code === 4001) {
-      showWalletToast('Conexão rejeitada pelo usuário', 'warning');
+      showWalletToast('❌ Conexão recusada pelo usuário', 'warning');
+    } else if (err.code === -32002) {
+      showWalletToast('⏳ Requisição já pendente na wallet. Verifique sua extensão.', 'warning');
     } else {
-      showWalletToast('Erro ao conectar: ' + (err.message || err), 'error');
+      showWalletToast('Erro ao conectar: ' + (err.message || String(err)), 'error');
     }
     addWalletLog(`[WALLET] Erro ao conectar: ${err.message}`, 'error');
   }
@@ -629,9 +747,11 @@ function disconnectWallet() {
   const provider = window.walletState.provider;
   if (provider) {
     try {
-      provider.removeListener('accountsChanged', handleAccountsChanged);
-      provider.removeListener('chainChanged', handleChainChanged);
-      provider.removeListener('disconnect', handleDisconnect);
+      if (typeof provider.removeListener === 'function') {
+        provider.removeListener('accountsChanged', handleAccountsChanged);
+        provider.removeListener('chainChanged', handleChainChanged);
+        provider.removeListener('disconnect', handleDisconnect);
+      }
     } catch (_) {}
   }
 
@@ -642,6 +762,7 @@ function disconnectWallet() {
     chainId: null,
     onArcNetwork: false,
     usdcBalance: null,
+    eurcBalance: null,
     provider: null,
   };
 
@@ -657,11 +778,21 @@ function disconnectWallet() {
 // TOAST ESPECÍFICO DA WALLET
 // ============================================================
 function showWalletToast(message, type = 'info') {
-  // Reutiliza a função principal de toast se disponível
   if (typeof showToast === 'function') {
     showToast(message, type);
   } else {
-    console.log(`[WALLET TOAST ${type}] ${message}`);
+    // Fallback nativo
+    console.log(`[WALLET ${type.toUpperCase()}] ${message}`);
+    // Criar toast simples se showToast não estiver disponível ainda
+    const existing = document.getElementById('wallet-toast-fallback');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.id = 'wallet-toast-fallback';
+    const colors = { success: '#059669', error: '#dc2626', warning: '#d97706', info: '#2563eb' };
+    toast.style.cssText = `position:fixed;top:80px;right:20px;z-index:99999;background:${colors[type] || colors.info};color:white;padding:12px 20px;border-radius:10px;font-size:14px;max-width:320px;box-shadow:0 4px 20px rgba(0,0,0,0.4);`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
   }
 }
 
@@ -677,14 +808,14 @@ function addWalletLog(message, type = 'info') {
 async function tryAutoReconnect() {
   const last = localStorage.getItem('arc_wallet_last');
   if (!last) return;
-
   if (!window.ethereum) return;
 
   try {
-    // Checar se ainda tem permissão (sem mostrar popup)
     const accounts = await window.ethereum.request({ method: 'eth_accounts' });
     if (accounts && accounts.length > 0) {
-      const savedData = JSON.parse(last);
+      let savedData;
+      try { savedData = JSON.parse(last); } catch (_) { return; }
+
       if (accounts[0].toLowerCase() === savedData.address.toLowerCase()) {
         const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
         const chainId = hexToDecimal(chainIdHex);
@@ -696,12 +827,15 @@ async function tryAutoReconnect() {
           chainId,
           onArcNetwork: chainId === 5042002,
           usdcBalance: null,
+          eurcBalance: null,
           provider: window.ethereum,
         };
 
-        window.ethereum.on('accountsChanged', handleAccountsChanged);
-        window.ethereum.on('chainChanged', handleChainChanged);
-        window.ethereum.on('disconnect', handleDisconnect);
+        if (typeof window.ethereum.on === 'function') {
+          window.ethereum.on('accountsChanged', handleAccountsChanged);
+          window.ethereum.on('chainChanged', handleChainChanged);
+          window.ethereum.on('disconnect', handleDisconnect);
+        }
 
         updateWalletUI();
         addWalletLog(`[WALLET] Reconectado automaticamente: ${accounts[0]}`, 'success');
@@ -713,8 +847,9 @@ async function tryAutoReconnect() {
         }
       }
     }
-  } catch (_) {
-    // Silencioso
+  } catch (e) {
+    // Silencioso — auto-reconexão não é crítica
+    console.warn('[WALLET] Auto-reconnect failed:', e.message);
   }
 }
 
@@ -722,6 +857,23 @@ async function tryAutoReconnect() {
 // INICIALIZAÇÃO
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
-  // Tentar auto-reconectar
-  setTimeout(tryAutoReconnect, 500);
+  console.log('[WALLET] Módulo de wallet inicializado');
+  console.log('[WALLET] USDC:', window.USDC_ADDRESS);
+  console.log('[WALLET] EURC:', window.EURC_ADDRESS);
+  console.log('[WALLET] Arc Testnet Chain ID: 5042002');
+
+  // Tentar auto-reconectar após carregamento
+  setTimeout(tryAutoReconnect, 800);
+
+  // Verificar se openWalletModal está acessível globalmente
+  window.openWalletModal = openWalletModal;
+  window.closeWalletModal = closeWalletModal;
+  window.connectWithProvider = connectWithProvider;
+  window.disconnectWallet = disconnectWallet;
+  window.switchNetworkFromUI = switchNetworkFromUI;
+  window.refreshBalance = refreshBalance;
+  window.copyAddress = copyAddress;
+  window.updateWalletUI = updateWalletUI;
+  window.switchToArcTestnet = switchToArcTestnet;
+  window.fetchUSDCBalance = fetchUSDCBalance;
 });

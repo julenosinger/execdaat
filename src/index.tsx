@@ -1786,8 +1786,8 @@ forge create src/ContractManager.sol:ContractManager \\
     </div>
   </div>
 
-  <script src="/static/evm-tx.js"></script>
   <script src="/static/wallet.js"></script>
+  <script src="/static/evm-tx.js"></script>
   <script src="/static/csv-upload.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/settings.js"></script>

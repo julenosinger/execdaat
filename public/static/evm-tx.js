@@ -5,12 +5,23 @@
 // ============================================================
 
 // ─── Arc Testnet Config ───────────────────────────────────────────────────────
-const ARC_CHAIN_ID = 5042002;
-const ARC_CHAIN_HEX = '0x4CFC12';
-const USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
-const EURC_ADDRESS = '0x4700000000000000000000000000000000000000'; // EURC on Arc Testnet
-const ARC_RPC = 'https://rpc.testnet.arc.network';
-const ARC_EXPLORER = 'https://testnet.arcscan.app';
+// NOTA: Constantes definidas como window.* para evitar conflito entre arquivos JS
+window.ARC_CHAIN_ID = 5042002;
+window.ARC_CHAIN_HEX = '0x4CFC12';
+// USDC nativo da Arc Testnet (endereço especial)
+window.USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
+// EURC na Arc Testnet (endereço correto conforme informado)
+window.EURC_ADDRESS = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
+window.ARC_RPC = 'https://rpc.testnet.arc.network';
+window.ARC_EXPLORER = 'https://testnet.arcscan.app';
+
+// Aliases locais (sem const para evitar redeclaração)
+var ARC_CHAIN_ID = window.ARC_CHAIN_ID;
+var ARC_CHAIN_HEX = window.ARC_CHAIN_HEX;
+var USDC_ADDRESS = window.USDC_ADDRESS;
+var EURC_ADDRESS = window.EURC_ADDRESS;
+var ARC_RPC = window.ARC_RPC;
+var ARC_EXPLORER = window.ARC_EXPLORER;
 
 // ─── ERC-20 ABI (Function Selectors) ─────────────────────────────────────────
 const ERC20_SELECTORS = {
