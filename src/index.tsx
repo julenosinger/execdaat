@@ -72,6 +72,7 @@ app.get('/', (c) => {
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+  <!-- csv-upload.js handles all CSV parsing natively -->
   <link href="/static/styles.css" rel="stylesheet">
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
@@ -325,17 +326,65 @@ app.get('/', (c) => {
               </button>
             </div>
           </div>
+
+          <!-- ─────────────────────────────────────────────
+               CSV BATCH UPLOAD CARD
+               ───────────────────────────────────────────── -->
+          <div class="bg-gray-900/60 border border-green-700/30 rounded-xl p-5 mt-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-white font-semibold flex items-center gap-2 text-sm">
+                <i class="fas fa-file-csv text-green-400"></i>
+                Batch Upload (CSV)
+              </h3>
+              <button onclick="downloadCSVTemplate()"
+                class="flex items-center gap-1.5 text-xs text-green-400 hover:text-green-300 bg-green-900/20 hover:bg-green-900/40 border border-green-700/30 rounded-lg px-2.5 py-1.5 transition-colors">
+                <i class="fas fa-download"></i>Template
+              </button>
+            </div>
+
+            <!-- Drop zone -->
+            <div id="csv-drop-zone"
+              class="relative border-2 border-dashed border-gray-600 hover:border-green-600 rounded-xl p-6 text-center transition-all cursor-pointer group"
+              onclick="document.getElementById('csv-file-input').click()"
+              ondragover="event.preventDefault(); this.classList.add('border-green-500','bg-green-900/10')"
+              ondragleave="this.classList.remove('border-green-500','bg-green-900/10')"
+              ondrop="event.preventDefault(); this.classList.remove('border-green-500','bg-green-900/10'); handleCSVFile(event.dataTransfer.files[0])">
+              <i class="fas fa-file-csv text-3xl text-gray-600 group-hover:text-green-500 transition-colors mb-2 block"></i>
+              <p class="text-gray-400 text-sm">Arraste &amp; solte seu arquivo <span class="text-green-400 font-medium">.csv</span> aqui</p>
+              <p class="text-gray-600 text-xs mt-1">ou clique para selecionar</p>
+              <input id="csv-file-input" type="file" accept=".csv,.txt" class="hidden"
+                onchange="handleCSVFile(this.files[0])">
+            </div>
+
+            <!-- Preview container (hidden until file loaded) -->
+            <div id="csv-preview-container" class="mt-3 hidden"></div>
+
+            <!-- Required columns hint -->
+            <div class="mt-3 p-2.5 bg-gray-800/50 rounded-lg">
+              <p class="text-xs text-gray-500 mb-1.5 font-medium uppercase tracking-wider">Colunas obrigatórias</p>
+              <div class="flex flex-wrap gap-1.5">
+                <span class="text-xs bg-red-900/30 text-red-400 border border-red-700/30 rounded px-2 py-0.5">address *</span>
+                <span class="text-xs bg-red-900/30 text-red-400 border border-red-700/30 rounded px-2 py-0.5">amount *</span>
+                <span class="text-xs bg-gray-700/50 text-gray-400 border border-gray-600/30 rounded px-2 py-0.5">note</span>
+                <span class="text-xs bg-gray-700/50 text-gray-400 border border-gray-600/30 rounded px-2 py-0.5">priority</span>
+              </div>
+              <p class="text-xs text-gray-600 mt-1.5">Máx 500 linhas · Máx $10.000 por linha · sep: vírgula ou ponto-e-vírgula</p>
+            </div>
+          </div>
         </div>
 
         <!-- Lista de pagamentos -->
         <div class="lg:col-span-2 space-y-4">
           <div class="flex items-center justify-between">
-            <h3 class="text-white font-semibold">Fila de Pagamentos</h3>
+            <h3 class="text-white font-semibold">Payment Queue</h3>
             <button onclick="processPayments()" class="bg-green-700 hover:bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors">
-              <i class="fas fa-play mr-2"></i>Processar Fila
+              <i class="fas fa-play mr-2"></i>Process Queue
             </button>
           </div>
           <div id="payment-analysis-result" class="hidden"></div>
+
+          <!-- CSV batch result rendered by csv-upload.js -->
+
           <div id="payments-list" class="space-y-3">
             <div class="text-gray-500 text-sm text-center py-8 bg-gray-900/40 rounded-xl border border-gray-700/30">
               <i class="fas fa-inbox text-4xl mb-3 block text-gray-700"></i>
@@ -685,6 +734,7 @@ forge create src/ContractManager.sol:ContractManager \\
   </div>
 
   <script src="/static/wallet.js"></script>
+  <script src="/static/csv-upload.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>`)
