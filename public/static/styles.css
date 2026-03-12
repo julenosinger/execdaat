@@ -382,3 +382,22 @@ pre code {
     display: none;
   }
 }
+
+/* ── Settings & Profile modals ── */
+.settings-tab {
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+/* Toggle switch (peer-checked requires Tailwind JIT — force via CSS) */
+input[type="checkbox"].sr-only:checked + div {
+  background-color: #7c3aed;
+}
+input[type="checkbox"].sr-only:checked + div + div,
+input[type="checkbox"].sr-only:checked ~ div > div {
+  transform: translateX(1.25rem);
+}
+
+/* Peer checkbox workaround for CDN Tailwind */
+.peer:checked ~ .peer-checked\:bg-purple-600 { background-color: #7c3aed !important; }
+.peer:checked ~ .peer-checked\:translate-x-5 { transform: translateX(1.25rem) !important; }

@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
 import paymentsRouter from './routes/payments'
 import contractsRouter from './routes/contracts'
+import settingsRouter from './routes/settings'
 import { ARC_TESTNET } from './types/arc'
 
 const app = new Hono()
@@ -20,6 +21,7 @@ app.use('/static/*', serveStatic({ root: './public' }))
 // Rotas da API
 app.route('/api/payments', paymentsRouter)
 app.route('/api/contracts', contractsRouter)
+app.route('/api/settings', settingsRouter)
 
 // GET /api/status - Status geral do sistema
 app.get('/api/status', (c) => {
@@ -138,6 +140,23 @@ app.get('/', (c) => {
           </div>
           <div id="wallet-balance-display" class="hidden text-xs text-blue-400 font-medium bg-blue-900/30 px-2 py-0.5 rounded-full"></div>
         </div>
+
+        <!-- Settings button -->
+        <button onclick="openSettingsModal()"
+          id="settings-btn"
+          class="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-500 rounded-xl text-gray-400 hover:text-white transition-all relative"
+          title="Settings">
+          <i class="fas fa-cog text-sm"></i>
+          <span id="settings-dot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full border-2 border-gray-900"></span>
+        </button>
+
+        <!-- Profile button -->
+        <button onclick="openProfileModal()"
+          id="profile-btn"
+          class="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-purple-700 to-blue-700 hover:from-purple-600 hover:to-blue-600 border border-purple-600/40 rounded-xl text-white font-bold text-xs transition-all"
+          title="Profile">
+          <span id="profile-avatar-btn">👤</span>
+        </button>
 
         <!-- Botão conectar wallet -->
         <button id="wallet-connect-btn" onclick="openWalletModal()"
@@ -799,9 +818,394 @@ forge create src/ContractManager.sol:ContractManager \\
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════════════════════════
+       PIN GATE — aparece antes de abrir Settings
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="pin-modal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl">
+      <div class="text-center mb-6">
+        <div class="w-14 h-14 rounded-full bg-purple-700/30 border border-purple-600/40 flex items-center justify-center mx-auto mb-3">
+          <i class="fas fa-lock text-purple-400 text-xl"></i>
+        </div>
+        <h2 class="text-white font-bold text-lg">Settings Access</h2>
+        <p class="text-gray-400 text-sm mt-1">Enter your PIN to continue</p>
+      </div>
+      <div class="space-y-4">
+        <input id="pin-input" type="password" maxlength="8" placeholder="••••"
+          class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-center text-xl tracking-widest font-mono placeholder-gray-600 focus:border-purple-500 focus:outline-none"
+          onkeydown="if(event.key==='Enter') verifyPIN()">
+        <div id="pin-error" class="hidden text-red-400 text-xs text-center">Wrong PIN. Try again.</div>
+        <button onclick="verifyPIN()"
+          class="w-full bg-purple-600 hover:bg-purple-700 text-white rounded-xl py-3 font-semibold transition-all">
+          Unlock
+        </button>
+        <button onclick="closePINModal()"
+          class="w-full bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-xl py-2 text-sm transition-all">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       SETTINGS MODAL
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="settings-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl mx-4">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700/60">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-purple-700/30 border border-purple-600/40 flex items-center justify-center">
+            <i class="fas fa-cog text-purple-400"></i>
+          </div>
+          <div>
+            <h2 class="text-white font-bold">Settings</h2>
+            <p class="text-xs text-gray-500">App configuration &amp; integrations</p>
+          </div>
+        </div>
+        <button onclick="closeSettingsModal()" class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-white rounded-lg hover:bg-gray-800 transition-all">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <!-- Tab bar -->
+      <div class="flex border-b border-gray-700/60 px-6">
+        <button onclick="switchSettingsTab('circle')" id="stab-circle"
+          class="settings-tab active-stab px-4 py-3 text-sm font-medium border-b-2 border-purple-500 text-purple-400 -mb-px transition-all">
+          <i class="fas fa-circle-notch mr-2"></i>Circle API
+        </button>
+        <button onclick="switchSettingsTab('appconfig')" id="stab-appconfig"
+          class="settings-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 -mb-px transition-all">
+          <i class="fas fa-sliders-h mr-2"></i>App Config
+        </button>
+        <button onclick="switchSettingsTab('security')" id="stab-security"
+          class="settings-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 -mb-px transition-all">
+          <i class="fas fa-shield-alt mr-2"></i>Security
+        </button>
+      </div>
+
+      <!-- Content (scrollable) -->
+      <div class="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+        <!-- ── CIRCLE API TAB ── -->
+        <div id="stab-content-circle" class="settings-tab-content space-y-5">
+
+          <!-- Status banner -->
+          <div id="circle-status-banner" class="hidden rounded-xl px-4 py-3 flex items-center gap-3 text-sm"></div>
+
+          <!-- Documentação rápida -->
+          <div class="bg-blue-900/20 border border-blue-700/30 rounded-xl p-4">
+            <div class="flex items-start gap-3">
+              <i class="fas fa-info-circle text-blue-400 mt-0.5 flex-shrink-0"></i>
+              <div class="text-xs text-blue-300 space-y-1">
+                <p class="font-semibold text-blue-200">Circle API Integration</p>
+                <p>Connect to Circle's Web3 Services to enable programmable wallets, USDC transfers, and cross-chain operations.</p>
+                <a href="https://console.circle.com" target="_blank" class="inline-flex items-center gap-1 text-blue-400 hover:underline font-medium mt-1">
+                  <i class="fas fa-external-link-alt text-xs"></i> Get your API key at console.circle.com
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Formulário Circle -->
+          <div class="space-y-4">
+            <div>
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Environment</label>
+              <div class="flex gap-3">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="circle-env" value="sandbox" id="circle-env-sandbox" checked
+                    class="w-4 h-4 text-purple-500 bg-gray-800 border-gray-600">
+                  <span class="text-sm text-gray-300">Sandbox <span class="text-xs text-yellow-400">(testing)</span></span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="circle-env" value="production" id="circle-env-prod"
+                    class="w-4 h-4 text-purple-500 bg-gray-800 border-gray-600">
+                  <span class="text-sm text-gray-300">Production <span class="text-xs text-green-400">(live)</span></span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">API Key</label>
+              <div class="relative">
+                <input type="password" id="circle-api-key"
+                  placeholder="TEST_API_KEY:xxxxxxxxxxxx or LIVE_API_KEY:xxxxxxxxxxxx"
+                  autocomplete="off"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none pr-12 font-mono">
+                <button type="button" onclick="toggleFieldVisibility('circle-api-key', this)"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+                  <i class="fas fa-eye text-xs"></i>
+                </button>
+              </div>
+              <p class="text-xs text-gray-600 mt-1">Leave blank to keep current key</p>
+            </div>
+
+            <div>
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Webhook Secret <span class="text-gray-600">(optional)</span></label>
+              <div class="relative">
+                <input type="password" id="circle-webhook-secret"
+                  placeholder="whsec_xxxxxxxxxxxx"
+                  autocomplete="off"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none pr-12 font-mono">
+                <button type="button" onclick="toggleFieldVisibility('circle-webhook-secret', this)"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+                  <i class="fas fa-eye text-xs"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Ações Circle -->
+            <div class="flex gap-3 pt-1">
+              <button onclick="saveCircleConfig()"
+                class="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-all">
+                <i class="fas fa-save"></i> Save
+              </button>
+              <button onclick="testCircleConnection()"
+                id="circle-test-btn"
+                class="flex items-center gap-2 bg-blue-700 hover:bg-blue-600 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-all">
+                <i class="fas fa-plug"></i> Test Connection
+              </button>
+              <button onclick="removeCircleConfig()"
+                class="flex items-center gap-2 bg-gray-800 hover:bg-red-900/40 text-gray-400 hover:text-red-400 border border-gray-700 hover:border-red-700/40 rounded-xl px-4 py-2.5 text-sm transition-all ml-auto">
+                <i class="fas fa-trash text-xs"></i> Remove
+              </button>
+            </div>
+
+            <!-- Resultado do teste -->
+            <div id="circle-test-result" class="hidden rounded-xl p-3 text-sm"></div>
+          </div>
+
+          <!-- Balances (quando conectado) -->
+          <div id="circle-balances" class="hidden">
+            <div class="flex items-center justify-between mb-3">
+              <h4 class="text-sm text-white font-semibold flex items-center gap-2">
+                <i class="fas fa-wallet text-blue-400"></i> Circle Account Balance
+              </h4>
+              <button onclick="loadCircleBalance()"
+                class="text-xs text-blue-400 hover:text-blue-300">
+                <i class="fas fa-sync mr-1"></i>Refresh
+              </button>
+            </div>
+            <div id="circle-balance-data" class="bg-gray-800/60 rounded-xl p-4 text-sm text-gray-300"></div>
+          </div>
+        </div>
+
+        <!-- ── APP CONFIG TAB ── -->
+        <div id="stab-content-appconfig" class="settings-tab-content hidden space-y-5">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+            <div>
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Theme</label>
+              <select id="cfg-theme"
+                class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-purple-500 focus:outline-none">
+                <option value="dark">🌙 Dark</option>
+                <option value="light">☀️ Light (coming soon)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Default Language</label>
+              <select id="cfg-language"
+                class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-purple-500 focus:outline-none">
+                <option value="en">🇺🇸 English</option>
+                <option value="pt">🇧🇷 Português</option>
+                <option value="es">🇪🇸 Español</option>
+                <option value="zh">🇨🇳 中文</option>
+                <option value="ko">🇰🇷 한국어</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Auto-refresh interval</label>
+              <select id="cfg-refresh"
+                class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-purple-500 focus:outline-none">
+                <option value="15">15 seconds</option>
+                <option value="30" selected>30 seconds</option>
+                <option value="60">1 minute</option>
+                <option value="300">5 minutes</option>
+                <option value="0">Disabled</option>
+              </select>
+            </div>
+
+            <div class="flex flex-col gap-3 pt-1">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <div class="relative">
+                  <input type="checkbox" id="cfg-autorefresh" checked class="sr-only peer">
+                  <div class="w-10 h-5 bg-gray-700 peer-checked:bg-purple-600 rounded-full transition-colors"></div>
+                  <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                </div>
+                <span class="text-sm text-gray-300">Auto-refresh Dashboard</span>
+              </label>
+              <label class="flex items-center gap-3 cursor-pointer">
+                <div class="relative">
+                  <input type="checkbox" id="cfg-notifications" checked class="sr-only peer">
+                  <div class="w-10 h-5 bg-gray-700 peer-checked:bg-purple-600 rounded-full transition-colors"></div>
+                  <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                </div>
+                <span class="text-sm text-gray-300">Toast notifications</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="flex gap-3 pt-1">
+            <button onclick="saveAppConfig()"
+              class="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-all">
+              <i class="fas fa-save"></i> Save App Config
+            </button>
+          </div>
+        </div>
+
+        <!-- ── SECURITY TAB ── -->
+        <div id="stab-content-security" class="settings-tab-content hidden space-y-5">
+          <div class="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-4 flex items-start gap-3">
+            <i class="fas fa-exclamation-triangle text-yellow-400 mt-0.5 flex-shrink-0"></i>
+            <div class="text-xs text-yellow-300">
+              <p class="font-semibold text-yellow-200 mb-1">Access PIN</p>
+              <p>Set a PIN to protect Settings from unauthorized access. Only visible to you. Leave empty to disable PIN protection.</p>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div id="current-pin-field" class="hidden">
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Current PIN</label>
+              <input type="password" id="sec-current-pin" maxlength="8" placeholder="Enter current PIN"
+                class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none text-center tracking-widest font-mono">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">New PIN <span class="text-gray-600">(4–8 digits, leave empty to disable)</span></label>
+              <input type="password" id="sec-new-pin" maxlength="8" placeholder="••••"
+                class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none text-center tracking-widest font-mono">
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Confirm New PIN</label>
+              <input type="password" id="sec-confirm-pin" maxlength="8" placeholder="••••"
+                class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none text-center tracking-widest font-mono">
+            </div>
+            <div id="pin-save-msg" class="hidden rounded-lg p-2 text-xs text-center"></div>
+            <button onclick="savePIN()"
+              class="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-all">
+              <i class="fas fa-lock"></i> Save PIN
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       PROFILE MODAL
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="profile-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl mx-4">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700/60">
+        <div class="flex items-center gap-3">
+          <!-- Avatar grande -->
+          <div id="profile-avatar-large"
+            class="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-bold text-lg border-2 border-purple-500/40">
+            👤
+          </div>
+          <div>
+            <h2 class="text-white font-bold" id="profile-header-name">My Profile</h2>
+            <p class="text-xs text-gray-500" id="profile-header-email">Set up your profile</p>
+          </div>
+        </div>
+        <button onclick="closeProfileModal()" class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-white rounded-lg hover:bg-gray-800 transition-all">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <!-- Form -->
+      <div class="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+
+        <!-- Avatar display -->
+        <div class="flex items-center justify-center py-2">
+          <div class="relative">
+            <div id="profile-avatar-display"
+              class="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-bold text-3xl border-2 border-purple-500/40 shadow-xl">
+              👤
+            </div>
+            <div class="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-gray-900 flex items-center justify-center">
+              <i class="fas fa-check text-white" style="font-size:8px"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Full Name <span class="text-purple-400">*</span></label>
+            <input type="text" id="prof-name" placeholder="John Doe"
+              class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none"
+              oninput="updateProfilePreview()">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Email <span class="text-purple-400">*</span></label>
+            <input type="email" id="prof-email" placeholder="john@example.com"
+              class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Role / Title</label>
+            <input type="text" id="prof-role" placeholder="CEO, Developer, Analyst..."
+              class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Company / Organization</label>
+            <input type="text" id="prof-company" placeholder="Acme Inc."
+              class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">EVM Wallet Address</label>
+          <input type="text" id="prof-wallet" placeholder="0x..."
+            class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none font-mono"
+            readonly>
+          <p class="text-xs text-gray-600 mt-1">Auto-filled from connected wallet</p>
+        </div>
+
+        <!-- Badges de integrações -->
+        <div class="border-t border-gray-700/50 pt-4">
+          <p class="text-xs text-gray-500 uppercase tracking-wider mb-3">Integrations Status</p>
+          <div class="flex flex-wrap gap-2" id="profile-integrations">
+            <span class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-800 border border-gray-700 text-xs text-gray-400">
+              <i class="fas fa-circle text-gray-600" style="font-size:6px"></i> Circle API: Not connected
+            </span>
+            <span class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-800 border border-gray-700 text-xs text-gray-400" id="prof-wallet-badge">
+              <i class="fas fa-circle text-gray-600" style="font-size:6px"></i> Wallet: Not connected
+            </span>
+          </div>
+        </div>
+
+        <!-- Timestamps -->
+        <div class="text-xs text-gray-600 flex gap-4 pt-1">
+          <span>Member since: <span id="prof-created" class="text-gray-500">—</span></span>
+          <span>Updated: <span id="prof-updated" class="text-gray-500">—</span></span>
+        </div>
+
+        <div id="profile-save-msg" class="hidden rounded-lg p-2 text-xs text-center"></div>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 border-t border-gray-700/60 flex gap-3">
+        <button onclick="saveProfile()"
+          class="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl py-2.5 text-sm font-semibold transition-all">
+          <i class="fas fa-save"></i> Save Profile
+        </button>
+        <button onclick="closeProfileModal()"
+          class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-xl px-4 py-2.5 text-sm transition-all">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/wallet.js"></script>
   <script src="/static/csv-upload.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/settings.js"></script>
 </body>
 </html>`)
 })
