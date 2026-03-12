@@ -140,31 +140,29 @@ function appendChatMessage(role, content, module, scroll = true) {
   const container = document.getElementById('chat-messages');
   if (!container) return;
 
-  const isUser = role === 'user';
+  const isUser     = role === 'user';
   const moduleColor = getModuleColor(module);
-  const moduleIcon = getModuleIcon(module);
-
-  // Parse simple markdown
-  const rendered = renderMarkdown(content);
+  const moduleIcon  = getModuleIcon(module);
+  const rendered    = renderMarkdown(content);
 
   const div = document.createElement('div');
-  div.className = `flex ${isUser ? 'justify-end' : 'justify-start'} gap-2`;
+  div.className = `flex ${isUser ? 'justify-end' : 'justify-start'} gap-1.5`;
 
   if (!isUser) {
     div.innerHTML = `
-      <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-700 to-blue-700 flex items-center justify-center flex-shrink-0 mt-1">
-        <i class="fas ${moduleIcon} text-white text-xs"></i>
+      <div class="w-5 h-5 rounded-md bg-gradient-to-br from-purple-700 to-blue-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <i class="fas ${moduleIcon} text-white" style="font-size:9px"></i>
       </div>
-      <div class="max-w-[85%] rounded-2xl rounded-tl-sm px-4 py-3 bg-gray-800 border border-gray-700/50">
-        ${module && module !== 'general' ? `<div class="flex items-center gap-1.5 mb-2"><span class="text-xs ${moduleColor} font-medium">${module.toUpperCase()}</span></div>` : ''}
-        <div class="text-sm text-gray-100 chat-content">${rendered}</div>
-        <div class="text-xs text-gray-600 mt-1.5">${new Date().toLocaleTimeString()}</div>
+      <div class="max-w-[88%] rounded-xl rounded-tl-sm px-2.5 py-2 bg-gray-800 border border-gray-700/50">
+        ${module && module !== 'general' ? `<div class="flex items-center gap-1 mb-1"><span class="text-[10px] ${moduleColor} font-medium">${module.toUpperCase()}</span></div>` : ''}
+        <div class="text-xs text-gray-100 chat-content leading-relaxed">${rendered}</div>
+        <div class="text-[10px] text-gray-600 mt-1">${new Date().toLocaleTimeString()}</div>
       </div>`;
   } else {
     div.innerHTML = `
-      <div class="max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-3 bg-purple-700 border border-purple-600/50">
-        <div class="text-sm text-white">${escapeHtml(content)}</div>
-        <div class="text-xs text-purple-300 mt-1.5">${new Date().toLocaleTimeString()}</div>
+      <div class="max-w-[80%] rounded-xl rounded-tr-sm px-2.5 py-2 bg-purple-700 border border-purple-600/50">
+        <div class="text-xs text-white">${escapeHtml(content)}</div>
+        <div class="text-[10px] text-purple-300 mt-1">${new Date().toLocaleTimeString()}</div>
       </div>`;
   }
 
@@ -178,16 +176,16 @@ function showTypingIndicator() {
   if (!container) return;
   const div = document.createElement('div');
   div.id = 'chat-typing';
-  div.className = 'flex items-start gap-2';
+  div.className = 'flex items-start gap-1.5';
   div.innerHTML = `
-    <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-700 to-blue-700 flex items-center justify-center flex-shrink-0">
-      <i class="fas fa-robot text-white text-xs"></i>
+    <div class="w-5 h-5 rounded-md bg-gradient-to-br from-purple-700 to-blue-700 flex items-center justify-center flex-shrink-0">
+      <i class="fas fa-robot text-white" style="font-size:9px"></i>
     </div>
-    <div class="bg-gray-800 border border-gray-700/50 rounded-2xl rounded-tl-sm px-4 py-3">
-      <div class="flex gap-1.5 items-center h-4">
-        <div class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay:0ms"></div>
-        <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay:150ms"></div>
-        <div class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay:300ms"></div>
+    <div class="bg-gray-800 border border-gray-700/50 rounded-xl rounded-tl-sm px-2.5 py-2">
+      <div class="flex gap-1 items-center h-3">
+        <div class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style="animation-delay:0ms"></div>
+        <div class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style="animation-delay:150ms"></div>
+        <div class="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style="animation-delay:300ms"></div>
       </div>
     </div>`;
   container.appendChild(div);

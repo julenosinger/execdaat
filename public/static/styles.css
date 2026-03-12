@@ -401,3 +401,48 @@ input[type="checkbox"].sr-only:checked ~ div > div {
 /* Peer checkbox workaround for CDN Tailwind */
 .peer:checked ~ .peer-checked\:bg-purple-600 { background-color: #7c3aed !important; }
 .peer:checked ~ .peer-checked\:translate-x-5 { transform: translateX(1.25rem) !important; }
+
+/* ── Swap Steps Panel ── */
+.swap-step { transition: all 0.2s ease; }
+
+.swap-step-active .swap-step-icon {
+  border-color: #a855f7;
+  background: rgba(168,85,247,0.15);
+  animation: swapStepPulse 1.2s ease-in-out infinite;
+}
+.swap-step-active .swap-step-icon i { color: #a855f7; }
+.swap-step-active { color: #e2e8f0 !important; }
+
+.swap-step-done .swap-step-icon {
+  border-color: #22c55e;
+  background: rgba(34,197,94,0.12);
+}
+.swap-step-done .swap-step-icon i { color: #22c55e; }
+.swap-step-done .swap-step-icon i::before { content: "\f00c"; } /* fa-check */
+.swap-step-done { color: #86efac !important; }
+
+.swap-step-error .swap-step-icon {
+  border-color: #ef4444;
+  background: rgba(239,68,68,0.12);
+}
+.swap-step-error .swap-step-icon i { color: #ef4444; }
+.swap-step-error .swap-step-icon i::before { content: "\f00d"; } /* fa-times */
+.swap-step-error { color: #fca5a5 !important; }
+
+@keyframes swapStepPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(168,85,247,0.4); }
+  50%       { box-shadow: 0 0 0 5px rgba(168,85,247,0); }
+}
+
+/* ── Chatbot compacto ── */
+#chat-widget {
+  width: 300px !important;
+  max-width: calc(100vw - 20px) !important;
+}
+#chat-messages {
+  scrollbar-width: thin;
+  scrollbar-color: #4c1d95 #111827;
+}
+#chat-messages::-webkit-scrollbar { width: 3px; }
+#chat-messages::-webkit-scrollbar-track { background: #111827; }
+#chat-messages::-webkit-scrollbar-thumb { background: #4c1d95; border-radius: 4px; }

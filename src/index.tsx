@@ -218,15 +218,6 @@ app.get('/', (c) => {
     </div>
   </div>
 
-  <!-- Floating Chat Button -->
-  <button id="chat-fab"
-    onclick="toggleChat()"
-    class="fixed bottom-6 right-6 z-[80] w-14 h-14 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-2xl shadow-purple-900/50 flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-    title="ARC AI Assistant">
-    <i class="fas fa-robot text-white text-xl" id="chat-fab-icon"></i>
-    <span id="chat-unread" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center"></span>
-  </button>
-
   <!-- Main Content -->
   <main class="max-w-7xl mx-auto px-6 py-8">
 
@@ -1109,106 +1100,209 @@ forge create src/ContractManager.sol:ContractManager \\
 
     <!-- SWAP TAB -->
     <div id="tab-content-swap" class="tab-content hidden">
-      <div class="max-w-2xl mx-auto space-y-6">
+      <div class="max-w-2xl mx-auto space-y-5">
+
         <!-- Header -->
-        <div class="text-center mb-2">
-          <h2 class="text-2xl font-bold text-white mb-1"><i class="fas fa-exchange-alt text-purple-400 mr-2"></i><span data-i18n="swap_title">Token Swap</span></h2>
-          <p class="text-gray-400 text-sm" data-i18n="swap_subtitle">Exchange USDC ↔ EURC on Arc Testnet</p>
+        <div class="text-center mb-1">
+          <h2 class="text-2xl font-bold text-white mb-1">
+            <i class="fas fa-exchange-alt text-purple-400 mr-2"></i>Token Swap
+          </h2>
+          <p class="text-gray-400 text-sm">USDC ↔ EURC · Arc Testnet · Real EVM wallet</p>
         </div>
 
-        <!-- Live Rates Banner -->
-        <div class="bg-gradient-to-r from-purple-900/40 to-blue-900/40 border border-purple-700/40 rounded-xl p-4 flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded-full bg-purple-800/60 flex items-center justify-center"><i class="fas fa-chart-line text-purple-400 text-sm"></i></div>
-            <div>
-              <p class="text-xs text-gray-400" data-i18n="swap_live_rate">Live Rate</p>
-              <p class="text-white font-mono text-sm" id="swap-rate-display">1 USDC = ... EURC</p>
+        <!-- Wallet Info Banner -->
+        <div class="bg-gray-900/70 border border-gray-700/50 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-8 h-8 rounded-full bg-purple-800/50 flex-shrink-0 flex items-center justify-center">
+              <i class="fas fa-wallet text-purple-300 text-xs"></i>
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs text-gray-500 truncate" id="swap-wallet-info">Wallet not connected</p>
+              <p class="text-xs font-medium" id="swap-network-info">—</p>
             </div>
           </div>
-          <button onclick="loadSwapRates()" class="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
-            <i class="fas fa-sync-alt" id="swap-rate-spinner"></i> <span data-i18n="btn_refresh">Refresh</span>
-          </button>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <button onclick="refreshSwapBalances()" title="Refresh balances"
+              class="text-xs text-gray-500 hover:text-purple-400 transition-colors p-1.5 hover:bg-gray-800 rounded-lg">
+              <i class="fas fa-sync-alt" id="swap-rate-spinner"></i>
+            </button>
+            <div class="h-4 w-px bg-gray-700"></div>
+            <div class="text-right">
+              <p class="text-xs text-gray-500">Rate</p>
+              <p class="text-white font-mono text-xs" id="swap-rate-display">1 USDC = … EURC</p>
+            </div>
+          </div>
         </div>
 
         <!-- Swap Card -->
         <div class="bg-gray-900/80 border border-gray-700/60 rounded-2xl p-6 shadow-2xl">
-          <!-- From -->
+
+          <!-- FROM -->
           <div class="mb-3">
             <div class="flex items-center justify-between mb-2">
-              <label class="text-xs text-gray-400 uppercase tracking-wider" data-i18n="swap_from">From</label>
-              <span class="text-xs text-gray-500" data-i18n="swap_balance">Balance: —</span>
+              <label class="text-xs text-gray-400 uppercase tracking-wider font-semibold">From</label>
+              <span class="text-xs text-emerald-400 font-medium" id="swap-balance-from">Balance: —</span>
             </div>
-            <div class="flex gap-3">
-              <select id="swap-from-token" onchange="onSwapInputChange()" class="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-semibold focus:border-purple-500 focus:outline-none">
+            <div class="flex gap-2">
+              <select id="swap-from-token" onchange="onSwapInputChange(); refreshSwapBalances();"
+                class="bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-white text-sm font-semibold focus:border-purple-500 focus:outline-none cursor-pointer">
                 <option value="USDC">💵 USDC</option>
                 <option value="EURC">💶 EURC</option>
               </select>
-              <input type="number" id="swap-amount-in" placeholder="0.00" min="0" step="0.01"
-                oninput="onSwapInputChange()"
-                class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-mono focus:border-purple-500 focus:outline-none">
+              <div class="flex-1 relative">
+                <input type="number" id="swap-amount-in" placeholder="0.00" min="0" step="0.000001"
+                  oninput="onSwapInputChange()"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 pr-16 text-white text-sm font-mono focus:border-purple-500 focus:outline-none">
+                <button id="swap-max-btn" onclick="setSwapMax()" disabled
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-xs px-2 py-1 bg-purple-800/60 hover:bg-purple-700/70 text-purple-300 rounded-lg border border-purple-700/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                  MAX
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- Swap Arrow -->
-          <div class="flex items-center justify-center my-4">
-            <button onclick="swapTokenSides()" class="w-10 h-10 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-full flex items-center justify-center text-purple-400 hover:text-purple-300 transition-all hover:rotate-180 duration-300">
-              <i class="fas fa-arrow-down"></i>
+          <!-- SWAP ARROW -->
+          <div class="flex items-center justify-center my-3">
+            <button onclick="swapTokenSides()"
+              class="w-10 h-10 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-full flex items-center justify-center text-purple-400 hover:text-purple-300 transition-all hover:rotate-180 duration-300 group">
+              <i class="fas fa-arrow-down group-hover:hidden"></i>
+              <i class="fas fa-exchange-alt hidden group-hover:block text-xs"></i>
             </button>
           </div>
 
-          <!-- To -->
-          <div class="mb-5">
+          <!-- TO -->
+          <div class="mb-4">
             <div class="flex items-center justify-between mb-2">
-              <label class="text-xs text-gray-400 uppercase tracking-wider" data-i18n="swap_to">To (estimated)</label>
-              <span class="text-xs text-purple-400 font-medium" id="swap-fee-display"></span>
+              <label class="text-xs text-gray-400 uppercase tracking-wider font-semibold">To (estimated)</label>
+              <span class="text-xs text-gray-500 font-medium" id="swap-balance-to">Balance: —</span>
             </div>
-            <div class="flex gap-3">
-              <div id="swap-to-token-display" class="bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-semibold min-w-[100px] flex items-center gap-2">
-                <span id="swap-to-token-icon">💶</span> <span id="swap-to-token-name">EURC</span>
-              </div>
-              <div class="flex-1 bg-gray-800/40 border border-gray-700/40 rounded-xl px-4 py-3 font-mono text-sm">
-                <span id="swap-amount-out" class="text-green-400 font-semibold">—</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Quote Details -->
-          <div id="swap-quote-details" class="hidden bg-gray-800/40 rounded-xl p-4 mb-5 space-y-2 text-xs">
-            <div class="flex justify-between"><span class="text-gray-400" data-i18n="swap_rate">Rate</span><span class="text-white" id="sq-rate">—</span></div>
-            <div class="flex justify-between"><span class="text-gray-400" data-i18n="swap_fee">Fee (0.3%)</span><span class="text-yellow-400" id="sq-fee">—</span></div>
-            <div class="flex justify-between"><span class="text-gray-400" data-i18n="swap_price_impact">Price Impact</span><span id="sq-impact" class="text-green-400">—</span></div>
-            <div class="flex justify-between"><span class="text-gray-400" data-i18n="swap_min_received">Min. Received</span><span class="text-white font-mono" id="sq-min">—</span></div>
-          </div>
-
-          <!-- Slippage -->
-          <div class="flex items-center gap-3 mb-5">
-            <span class="text-xs text-gray-400" data-i18n="swap_slippage">Slippage Tolerance:</span>
             <div class="flex gap-2">
-              <button onclick="setSlippage(0.5)" class="slippage-btn active text-xs px-3 py-1 rounded-lg bg-purple-800 text-purple-200 border border-purple-600">0.5%</button>
-              <button onclick="setSlippage(1)" class="slippage-btn text-xs px-3 py-1 rounded-lg bg-gray-800 text-gray-400 border border-gray-700">1%</button>
-              <button onclick="setSlippage(2)" class="slippage-btn text-xs px-3 py-1 rounded-lg bg-gray-800 text-gray-400 border border-gray-700">2%</button>
+              <div class="bg-gray-800/50 border border-gray-700 rounded-xl px-3 py-3 text-white text-sm font-semibold min-w-[90px] flex items-center gap-2">
+                <span id="swap-to-token-icon">💶</span>
+                <span id="swap-to-token-name">EURC</span>
+              </div>
+              <div class="flex-1 bg-gray-800/40 border border-gray-700/40 rounded-xl px-4 py-3 font-mono text-sm flex items-center justify-between">
+                <span id="swap-amount-out" class="text-green-400 font-semibold">—</span>
+                <span class="text-xs text-yellow-500" id="swap-fee-display"></span>
+              </div>
             </div>
-            <input type="number" id="swap-slippage-custom" placeholder="custom" min="0.1" max="50" step="0.1"
-              class="w-20 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none"
+          </div>
+
+          <!-- QUOTE DETAILS -->
+          <div id="swap-quote-details" class="hidden bg-gray-800/40 border border-gray-700/30 rounded-xl p-3.5 mb-4 space-y-1.5 text-xs">
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400">Rate</span>
+              <span class="text-white font-mono" id="sq-rate">—</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400">Fee (0.3%)</span>
+              <span class="text-yellow-400 font-mono" id="sq-fee">—</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400">Price Impact</span>
+              <span id="sq-impact" class="font-mono text-green-400">—</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400">Min. Received</span>
+              <span class="text-white font-mono" id="sq-min">—</span>
+            </div>
+            <div class="pt-1 border-t border-gray-700/30 flex justify-between items-center">
+              <span class="text-gray-500">Gas</span>
+              <span class="text-gray-400">Estimado pela rede Arc ✓</span>
+            </div>
+          </div>
+
+          <!-- SLIPPAGE -->
+          <div class="flex items-center gap-2 mb-4 flex-wrap">
+            <span class="text-xs text-gray-500">Slippage:</span>
+            <div class="flex gap-1.5">
+              <button onclick="setSlippage(0.5)" class="slippage-btn active text-xs px-2.5 py-1 rounded-lg bg-purple-800 text-purple-200 border border-purple-600">0.5%</button>
+              <button onclick="setSlippage(1)"   class="slippage-btn text-xs px-2.5 py-1 rounded-lg bg-gray-800 text-gray-400 border border-gray-700">1%</button>
+              <button onclick="setSlippage(2)"   class="slippage-btn text-xs px-2.5 py-1 rounded-lg bg-gray-800 text-gray-400 border border-gray-700">2%</button>
+            </div>
+            <input type="number" id="swap-slippage-custom" placeholder="%" min="0.1" max="50" step="0.1"
+              class="w-16 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none"
               oninput="setSlippage(parseFloat(this.value))">
           </div>
 
-          <!-- Submit -->
-          <button onclick="executeSwap()" id="swap-submit-btn"
-            class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-            <i class="fas fa-exchange-alt"></i> <span data-i18n="swap_execute">Swap Tokens</span>
+          <!-- TX HASH DISPLAY -->
+          <div id="swap-tx-hash" class="hidden mb-3 px-3 py-2 bg-blue-900/20 border border-blue-700/30 rounded-xl flex items-center gap-2">
+            <i class="fas fa-external-link-alt text-blue-400 text-xs"></i>
+            <span class="text-xs text-gray-400">TX:</span>
+            <!-- filled by JS -->
+          </div>
+
+          <!-- APPROVE HASH -->
+          <div id="swap-approve-hash" class="hidden mb-3 text-xs text-gray-500 text-center"></div>
+
+          <!-- TX STEPS PANEL -->
+          <div id="swap-steps-panel" class="hidden mb-4 bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 space-y-1.5">
+            <p class="text-xs text-gray-400 font-semibold mb-2 flex items-center gap-1.5">
+              <i class="fas fa-list-check text-purple-400"></i>Transaction Progress
+            </p>
+            <div class="swap-step flex items-center gap-2.5 text-xs text-gray-500 py-1" data-step="0">
+              <div class="swap-step-icon w-5 h-5 rounded-full border border-gray-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-circle text-[8px]"></i>
+              </div>
+              <span>Verify Arc Network (Chain 5042002)</span>
+            </div>
+            <div class="swap-step flex items-center gap-2.5 text-xs text-gray-500 py-1" data-step="1">
+              <div class="swap-step-icon w-5 h-5 rounded-full border border-gray-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-circle text-[8px]"></i>
+              </div>
+              <span>Check on-chain balance</span>
+            </div>
+            <div class="swap-step flex items-center gap-2.5 text-xs text-gray-500 py-1" data-step="2">
+              <div class="swap-step-icon w-5 h-5 rounded-full border border-gray-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-circle text-[8px]"></i>
+              </div>
+              <span>Guardian compliance</span>
+            </div>
+            <div class="swap-step flex items-center gap-2.5 text-xs text-gray-500 py-1" data-step="3">
+              <div class="swap-step-icon w-5 h-5 rounded-full border border-gray-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-circle text-[8px]"></i>
+              </div>
+              <span>Token approve (ERC-20)</span>
+            </div>
+            <div class="swap-step flex items-center gap-2.5 text-xs text-gray-500 py-1" data-step="4">
+              <div class="swap-step-icon w-5 h-5 rounded-full border border-gray-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-circle text-[8px]"></i>
+              </div>
+              <span>Sign &amp; send swap transaction</span>
+            </div>
+            <div class="swap-step flex items-center gap-2.5 text-xs text-gray-500 py-1" data-step="5">
+              <div class="swap-step-icon w-5 h-5 rounded-full border border-gray-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-circle text-[8px]"></i>
+              </div>
+              <span>On-chain confirmation</span>
+            </div>
+          </div>
+
+          <!-- SUBMIT BUTTON -->
+          <button onclick="executeSwap()" id="swap-submit-btn" disabled
+            class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:from-gray-700 disabled:to-gray-700 text-white disabled:text-gray-500 rounded-xl py-3.5 font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:cursor-not-allowed">
+            <i class="fas fa-wallet mr-1"></i>Connect Wallet
           </button>
-          <p class="text-center text-xs text-gray-600 mt-2" data-i18n="swap_testnet_note">Simulated on Arc Testnet — no real funds</p>
+          <p class="text-center text-xs text-gray-600 mt-2" id="swap-btn-hint"></p>
+          <p class="text-center text-xs text-gray-700 mt-1">
+            <i class="fas fa-lock text-gray-700 mr-1"></i>All transactions require wallet signature · Arc Testnet
+          </p>
         </div>
 
         <!-- Recent Swaps -->
         <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-white font-semibold flex items-center gap-2"><i class="fas fa-history text-blue-400"></i> <span data-i18n="swap_history">Recent Swaps</span></h3>
-            <button onclick="loadSwapHistory()" class="text-xs text-gray-500 hover:text-gray-300"><i class="fas fa-sync-alt mr-1"></i><span data-i18n="btn_refresh">Refresh</span></button>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-white font-semibold flex items-center gap-2 text-sm">
+              <i class="fas fa-history text-blue-400"></i>Recent Swaps
+            </h3>
+            <button onclick="loadSwapHistory()" class="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1">
+              <i class="fas fa-sync-alt"></i>Refresh
+            </button>
           </div>
           <div id="swap-history-list">
-            <div class="text-center py-6 text-gray-600 text-sm"><i class="fas fa-exchange-alt mr-2"></i><span data-i18n="swap_no_history">No swaps yet</span></div>
+            <div class="text-center py-6 text-gray-600 text-sm">
+              <i class="fas fa-exchange-alt mr-2"></i>No swaps yet
+            </div>
           </div>
         </div>
       </div>
@@ -1548,58 +1642,70 @@ forge create src/ContractManager.sol:ContractManager \\
 
   </main>
 
-  <!-- ===== CHATBOT WIDGET ===== -->
-  <div id="chat-widget" class="hidden fixed bottom-24 right-6 z-[85] w-96 max-w-[calc(100vw-24px)] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60" style="height:520px">
+  <!-- ===== CHATBOT WIDGET (compact 300×400) ===== -->
+  <!-- Floating Action Button -->
+  <button id="chat-fab"
+    onclick="toggleChat()"
+    class="fixed bottom-5 right-5 z-[90] w-12 h-12 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 flex items-center justify-center transition-all hover:scale-110 active:scale-95">
+    <i class="fas fa-robot text-white text-lg" id="chat-fab-icon"></i>
+    <span id="chat-unread" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center leading-none"></span>
+  </button>
 
-    <!-- Chat Header -->
-    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 rounded-t-2xl">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-          <i class="fas fa-robot text-white text-sm"></i>
+  <!-- Compact Chat Panel: 300px wide × 400px tall -->
+  <div id="chat-widget"
+    class="hidden fixed z-[85] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60"
+    style="width:300px;height:400px;bottom:70px;right:20px;max-width:calc(100vw - 20px);">
+
+    <!-- Header (compact) -->
+    <div class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 rounded-t-2xl flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
+          <i class="fas fa-robot text-white text-xs"></i>
         </div>
         <div>
-          <p class="text-white font-semibold text-sm">ARC AI Assistant</p>
-          <div class="flex items-center gap-1.5">
+          <p class="text-white font-semibold text-xs leading-tight">ARC AI Assistant</p>
+          <div class="flex items-center gap-1">
             <div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
-            <p class="text-xs text-green-400">Online</p>
+            <p class="text-xs text-green-400 leading-tight">Online · Arc Testnet</p>
           </div>
         </div>
       </div>
-      <div class="flex items-center gap-2">
-        <button onclick="clearChatHistory()" class="text-gray-500 hover:text-gray-300 text-xs p-1.5 rounded-lg hover:bg-gray-800 transition-all" title="Clear chat">
-          <i class="fas fa-trash"></i>
+      <div class="flex items-center gap-1">
+        <button onclick="clearChatHistory()" title="Clear" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
+          <i class="fas fa-trash text-xs"></i>
         </button>
-        <button onclick="toggleChat()" class="text-gray-500 hover:text-gray-300 p-1.5 rounded-lg hover:bg-gray-800 transition-all">
-          <i class="fas fa-times"></i>
+        <button onclick="toggleChat()" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
+          <i class="fas fa-times text-xs"></i>
         </button>
       </div>
     </div>
 
-    <!-- Messages -->
-    <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-3 scroll-smooth">
-      <!-- Welcome message inserted by JS -->
+    <!-- Messages (scrollable) -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto px-3 py-2 space-y-2 scroll-smooth">
+      <!-- Messages inserted by JS -->
     </div>
 
-    <!-- Quick actions -->
-    <div id="chat-quick-actions" class="px-3 pb-2 flex gap-2 overflow-x-auto">
-      <button onclick="sendQuickMessage('Show vault APY')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">🏦 Vault APY</button>
-      <button onclick="sendQuickMessage('Current swap rates')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">🔄 Swap Rates</button>
-      <button onclick="sendQuickMessage('Payment queue')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">💳 Payments</button>
-      <button onclick="sendQuickMessage('Active contracts')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">📋 Contracts</button>
-      <button onclick="sendQuickMessage('Agent status')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">🧠 Agents</button>
+    <!-- Quick actions (compact, single scroll row) -->
+    <div id="chat-quick-actions" class="px-2 pb-1.5 flex gap-1.5 overflow-x-auto flex-shrink-0" style="scrollbar-width:none">
+      <button onclick="sendQuickMessage('Vault APY')"       class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🏦 APY</button>
+      <button onclick="sendQuickMessage('Swap rates')"      class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🔄 Rates</button>
+      <button onclick="sendQuickMessage('Payment queue')"   class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">💳 Queue</button>
+      <button onclick="sendQuickMessage('Agent status')"    class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🧠 Agent</button>
+      <button onclick="sendQuickMessage('Network status')"  class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">⛓️ Net</button>
     </div>
 
-    <!-- Input -->
-    <div class="px-3 pb-3">
-      <div class="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 focus-within:border-purple-500 transition-all">
-        <input id="chat-input" type="text" placeholder="Ask about payments, vaults, swaps..."
-          class="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
+    <!-- Input (compact) -->
+    <div class="px-2 pb-2.5 flex-shrink-0">
+      <div class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500 transition-all">
+        <input id="chat-input" type="text" placeholder="Ask anything…"
+          class="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none min-w-0"
           onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendChatMessage();}">
         <button onclick="sendChatMessage()" id="chat-send-btn"
-          class="w-8 h-8 bg-purple-600 hover:bg-purple-500 rounded-lg flex items-center justify-center text-white transition-all flex-shrink-0">
+          class="w-7 h-7 bg-purple-600 hover:bg-purple-500 rounded-lg flex items-center justify-center text-white transition-all flex-shrink-0">
           <i class="fas fa-paper-plane text-xs"></i>
         </button>
       </div>
+      <p class="text-center text-gray-700 text-xs mt-1">Ctrl+/ to open</p>
     </div>
   </div>
 
