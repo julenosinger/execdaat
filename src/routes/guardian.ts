@@ -23,7 +23,7 @@ guardianRouter.get('/status', (c) => {
       status: 'active',
     },
     stats: a.getStats(),
-    network: { name: 'Arc Testnet', chainId: 5042002, usdcAddress: '0x3600000000000000000000000000000000000000' },
+    network: { name: 'Arc Testnet', chainId: 5042002, rpcUrl: 'https://rpc.testnet.arc.network', usdcAddress: '0x3600000000000000000000000000000000000000', eurcAddress: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a' },
   });
 });
 

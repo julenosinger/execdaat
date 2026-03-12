@@ -2,16 +2,27 @@
 
 export interface ArcNetworkConfig {
   rpcUrl: string;
+  rpcUrlAlternatives: string[];
+  rpcUrlWebSocket: string;
   chainId: number;
   usdcAddress: string;
+  eurcAddress: string;
   explorerUrl: string;
   faucetUrl: string;
 }
 
 export const ARC_TESTNET: ArcNetworkConfig = {
+  // RPC endpoints — primário + alternativas
   rpcUrl: 'https://rpc.testnet.arc.network',
+  rpcUrlAlternatives: [
+    'https://rpc.blockdaemon.testnet.arc.network',
+    'https://rpc.drpc.testnet.arc.network',
+    'https://rpc.quicknode.testnet.arc.network',
+  ],
+  rpcUrlWebSocket: 'wss://rpc.testnet.arc.network',
   chainId: 5042002,
   usdcAddress: '0x3600000000000000000000000000000000000000',
+  eurcAddress: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
   explorerUrl: 'https://testnet.arcscan.app',
   faucetUrl: 'https://faucet.circle.com'
 };

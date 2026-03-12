@@ -337,7 +337,7 @@ async function generateResponse(
 
     case 'network_info': {
       return {
-        content: `## 🌐 Arc Testnet\n\n| Property | Value |\n|----------|-------|\n| **Chain ID** | 5042002 |\n| **RPC URL** | rpc.testnet.arc.network |\n| **Explorer** | testnet.arcscan.app |\n| **Faucet** | faucet.circle.com |\n| **Gas Token** | USDC |\n| **Gas Cost** | ~$0.009 per tx |\n| **Finality** | Sub-second |\n| **USDC Address** | 0x3600...0000 |\n\nNative gas token is **USDC** — no need for ETH!`,
+        content: `## 🌐 Arc Testnet\n\n| Property | Value |\n|----------|-------|\n| **Chain ID** | 5042002 |\n| **RPC Primário** | https://rpc.testnet.arc.network |\n| **RPC Blockdaemon** | https://rpc.blockdaemon.testnet.arc.network |\n| **RPC dRPC** | https://rpc.drpc.testnet.arc.network |\n| **RPC QuickNode** | https://rpc.quicknode.testnet.arc.network |\n| **WebSocket** | wss://rpc.testnet.arc.network |\n| **Explorer** | testnet.arcscan.app |\n| **Faucet** | faucet.circle.com |\n| **Gas Token** | USDC |\n| **Gas Cost** | ~$0.009 per tx |\n| **Finality** | Sub-second |\n| **USDC Address** | 0x3600000000000000000000000000000000000000 |\n| **EURC Address** | 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a |\n\nNative gas token is **USDC** — no need for ETH! Use any RPC endpoint above.`,
         module: 'network',
       };
     }

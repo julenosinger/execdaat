@@ -14,7 +14,13 @@ const ARC_TESTNET_PARAMS = {
     symbol: 'USDC',
     decimals: 6,
   },
-  rpcUrls: ['https://rpc.testnet.arc.network'],
+  // RPC primário + alternativos (a wallet usa o primeiro da lista)
+  rpcUrls: [
+    'https://rpc.testnet.arc.network',
+    'https://rpc.blockdaemon.testnet.arc.network',
+    'https://rpc.drpc.testnet.arc.network',
+    'https://rpc.quicknode.testnet.arc.network',
+  ],
   blockExplorerUrls: ['https://testnet.arcscan.app'],
 };
 
@@ -486,6 +492,7 @@ function _renderWalletModal() {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:0.75rem;">
           <span style="color:#6b7280;">Chain ID</span><span style="color:#d1d5db;font-family:monospace;">5042002</span>
           <span style="color:#6b7280;">RPC</span><span style="color:#d1d5db;font-family:monospace;font-size:10px;">rpc.testnet.arc.network</span>
+          <span style="color:#6b7280;">WebSocket</span><span style="color:#d1d5db;font-family:monospace;font-size:10px;">wss://rpc.testnet.arc.network</span>
           <span style="color:#6b7280;">Gas Token</span><span style="color:#34d399;font-weight:600;">USDC</span>
           <span style="color:#6b7280;">Gas/TX</span><span style="color:#d1d5db;">~$0.009</span>
         </div>

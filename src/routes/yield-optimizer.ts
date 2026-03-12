@@ -32,7 +32,7 @@ yieldRouter.get('/status', (c) => {
       bestApy: rawStats.bestApy,
     },
     strategies: a.getStrategies(),
-    network: { name: 'Arc Testnet', chainId: 5042002 },
+    network: { name: 'Arc Testnet', chainId: 5042002, rpcUrl: 'https://rpc.testnet.arc.network' },
   });
 });
 

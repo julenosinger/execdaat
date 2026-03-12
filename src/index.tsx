@@ -44,7 +44,10 @@ app.get('/api/status', (c) => {
       name: 'Arc Testnet',
       chainId: ARC_TESTNET.chainId,
       rpcUrl: ARC_TESTNET.rpcUrl,
+      rpcAlternatives: ARC_TESTNET.rpcUrlAlternatives,
+      rpcWebSocket: ARC_TESTNET.rpcUrlWebSocket,
       usdcAddress: ARC_TESTNET.usdcAddress,
+      eurcAddress: ARC_TESTNET.eurcAddress,
       explorerUrl: ARC_TESTNET.explorerUrl,
       faucetUrl: ARC_TESTNET.faucetUrl,
       nativeGas: 'USDC',
@@ -288,8 +291,24 @@ app.get('/', (c) => {
           </h3>
           <div class="space-y-3">
             <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
-              <span class="text-gray-400 text-sm">RPC URL</span>
+              <span class="text-gray-400 text-sm">RPC Primário</span>
               <a href="https://rpc.testnet.arc.network" target="_blank" class="text-purple-400 text-sm hover:underline font-mono text-xs">rpc.testnet.arc.network</a>
+            </div>
+            <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
+              <span class="text-gray-400 text-sm">RPC Blockdaemon</span>
+              <a href="https://rpc.blockdaemon.testnet.arc.network" target="_blank" class="text-gray-400 text-xs hover:underline font-mono">rpc.blockdaemon.testnet.arc.network</a>
+            </div>
+            <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
+              <span class="text-gray-400 text-sm">RPC dRPC</span>
+              <a href="https://rpc.drpc.testnet.arc.network" target="_blank" class="text-gray-400 text-xs hover:underline font-mono">rpc.drpc.testnet.arc.network</a>
+            </div>
+            <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
+              <span class="text-gray-400 text-sm">RPC QuickNode</span>
+              <a href="https://rpc.quicknode.testnet.arc.network" target="_blank" class="text-gray-400 text-xs hover:underline font-mono">rpc.quicknode.testnet.arc.network</a>
+            </div>
+            <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
+              <span class="text-gray-400 text-sm">WebSocket</span>
+              <span class="text-cyan-400 text-xs font-mono">wss://rpc.testnet.arc.network</span>
             </div>
             <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
               <span class="text-gray-400 text-sm">Chain ID</span>
@@ -302,6 +321,10 @@ app.get('/', (c) => {
             <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
               <span class="text-gray-400 text-sm">USDC Address</span>
               <span class="text-blue-400 text-xs font-mono">0x3600...0000</span>
+            </div>
+            <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
+              <span class="text-gray-400 text-sm">EURC Address</span>
+              <span class="text-blue-400 text-xs font-mono">0x89B5...D72a</span>
             </div>
             <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
               <span class="text-gray-400 text-sm" data-i18n="network_gas_cost">Gas per Tx</span>
@@ -982,6 +1005,7 @@ foundryup</code></pre>
 
 # Criar .env na pasta contracts/
 cat > contracts/.env << EOF
+# RPC primário (alternativas: rpc.blockdaemon / rpc.drpc / rpc.quicknode .testnet.arc.network)
 ARC_TESTNET_RPC_URL="https://rpc.testnet.arc.network"
 PRIVATE_KEY="0xSUA_CHAVE_PRIVADA"
 EOF</code></pre>

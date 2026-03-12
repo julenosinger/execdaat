@@ -10,9 +10,17 @@ window.ARC_CHAIN_ID = 5042002;
 window.ARC_CHAIN_HEX = '0x4CFC12';
 // USDC nativo da Arc Testnet (endereço especial)
 window.USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
-// EURC na Arc Testnet (endereço correto conforme informado)
+// EURC na Arc Testnet
 window.EURC_ADDRESS = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
+// RPC endpoints — primário + alternativas para fallback automático
 window.ARC_RPC = 'https://rpc.testnet.arc.network';
+window.ARC_RPC_ALTERNATIVES = [
+  'https://rpc.testnet.arc.network',
+  'https://rpc.blockdaemon.testnet.arc.network',
+  'https://rpc.drpc.testnet.arc.network',
+  'https://rpc.quicknode.testnet.arc.network',
+];
+window.ARC_RPC_WS = 'wss://rpc.testnet.arc.network';
 window.ARC_EXPLORER = 'https://testnet.arcscan.app';
 
 // Aliases locais (sem const para evitar redeclaração)
@@ -21,6 +29,8 @@ var ARC_CHAIN_HEX = window.ARC_CHAIN_HEX;
 var USDC_ADDRESS = window.USDC_ADDRESS;
 var EURC_ADDRESS = window.EURC_ADDRESS;
 var ARC_RPC = window.ARC_RPC;
+var ARC_RPC_ALTERNATIVES = window.ARC_RPC_ALTERNATIVES;
+var ARC_RPC_WS = window.ARC_RPC_WS;
 var ARC_EXPLORER = window.ARC_EXPLORER;
 
 // ─── ERC-20 ABI (Function Selectors) ─────────────────────────────────────────
@@ -356,4 +366,6 @@ window.ARC_EXPLORER = ARC_EXPLORER;
 window.USDC_ADDRESS = USDC_ADDRESS;
 window.EURC_ADDRESS = EURC_ADDRESS;
 
-console.log('[EVM Engine] Loaded — Arc Testnet ChainID:', ARC_CHAIN_ID, '| USDC:', USDC_ADDRESS);
+console.log('[EVM Engine] Loaded — Arc Testnet ChainID:', ARC_CHAIN_ID, '| USDC:', USDC_ADDRESS, '| EURC:', EURC_ADDRESS);
+console.log('[EVM Engine] RPC primário:', ARC_RPC);
+console.log('[EVM Engine] RPCs alternativos:', ARC_RPC_ALTERNATIVES.slice(1).join(', '));
