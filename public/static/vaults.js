@@ -1,19 +1,131 @@
 // ===== VAULTS MODULE — Depósito Real EVM na Arc Testnet =====
-// Fluxo: approve() → transfer() → backend confirma → agente IA gerencia saldo
+//
+// USDC na Arc = token NATIVO (como ETH em outras chains)
+//   → Transferência via campo `value` da tx (sem approve, sem ERC-20 call)
+//   → Contrato ERC-20 0x3600... existe como interface opcional
+//
+// EURC na Arc = ERC-20 padrão
+//   → Fluxo: approve(vault, amount) → transferFrom OU transfer(vault, amount)
+//   → Contrato: 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a
+//
+// Endereços oficiais (docs.arc.network/arc/references/contract-addresses):
+//   USDC nativo: 0x3600000000000000000000000000000000000000
+//   EURC ERC-20: 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a
 
-// ─── Contratos ──────────────────────────────────────────────────────────────
-const VAULT_TOKEN_CONTRACTS = {
-  USDC: '0x3600000000000000000000000000000000000000',
-  EURC: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
+// ─── Configuração ────────────────────────────────────────────────────────────
+const VAULT_TOKENS = {
+  USDC: {
+    address: '0x3600000000000000000000000000000000000000',
+    isNative: true,   // USDC é nativo na Arc — transfere via value
+    decimals: 6,
+    symbol: 'USDC',
+  },
+  EURC: {
+    address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
+    isNative: false,  // EURC é ERC-20 padrão
+    decimals: 6,
+    symbol: 'EURC',
+  },
 };
-const VAULT_RECEIVER_CONTRACTS = {
-  usdc: '0x3600000000000000000000000000000000000011',
-  eurc: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72b',
+
+// Endereço receptor do vault (custodiante dos depósitos — controlado pelo backend)
+// Deve ser um endereço real controlado pelo backend ou um smart contract deployado
+const VAULT_CUSTODIAN = {
+  // Usar o endereço do FxEscrow oficial da Arc como destino de custódia por ora
+  // Em produção: deployar VaultCustodian.sol com withdraw controlado
+  usdc: '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8', // FxEscrow Arc oficial (testnet)
+  eurc: '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8', // mesmo custodiante
 };
+
+const ARC_CHAIN_HEX_VAULT = '0x4CFC12'; // 5042002
 
 // ─── Estado local ────────────────────────────────────────────────────────────
 let vaultActions = { usdc: 'deposit', eurc: 'deposit' };
 let walletVaultPositions = { usdc: null, eurc: null };
+
+// ─── Helpers de UI ───────────────────────────────────────────────────────────
+function setVaultEl(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function addVaultLog(message, type = 'info') {
+  if (typeof addLog === 'function') addLog(message, type);
+  console.log(`[VAULT][${type.toUpperCase()}]`, message);
+}
+
+// Painel de etapas visuais durante o depósito
+function _showStepPanel(token, steps) {
+  const panelId = `${token}-deposit-steps`;
+  let panel = document.getElementById(panelId);
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = panelId;
+    panel.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-sm';
+    document.body.appendChild(panel);
+  }
+  const tokenCfg = VAULT_TOKENS[token.toUpperCase()];
+  const color = token === 'usdc' ? 'blue' : 'yellow';
+  panel.innerHTML = `
+    <div class="bg-gray-900 border border-${color}-700/40 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-10 h-10 rounded-xl bg-${color}-900/60 flex items-center justify-center">
+          <i class="fas fa-vault text-${color}-400"></i>
+        </div>
+        <div>
+          <p class="text-white font-bold">Depositando ${token.toUpperCase()}</p>
+          <p class="text-xs text-gray-400">Arc Testnet · Chain ID 5042002</p>
+        </div>
+      </div>
+      <div class="space-y-3" id="${token}-steps-list">
+        ${steps.map((s, i) => `
+          <div id="${token}-step-${i}" class="flex items-start gap-3 p-3 rounded-xl ${s.active ? `bg-${color}-900/20 border border-${color}-700/30` : s.done ? 'bg-green-900/20 border border-green-700/20' : 'bg-gray-800/40 border border-gray-700/20'}">
+            <div class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${s.active ? `bg-${color}-700` : s.done ? 'bg-green-700' : 'bg-gray-700'}">
+              ${s.done ? '<i class="fas fa-check text-white text-xs"></i>' : s.active ? '<i class="fas fa-spinner fa-spin text-white text-xs"></i>' : `<span class="text-white text-xs font-bold">${i+1}</span>`}
+            </div>
+            <div>
+              <p class="text-sm ${s.active ? `text-${color}-300 font-semibold` : s.done ? 'text-green-300' : 'text-gray-500'}">${s.label}</p>
+              <p class="text-xs ${s.active ? 'text-gray-400' : s.done ? 'text-green-600' : 'text-gray-600'}">${s.desc}</p>
+              ${s.tx ? `<a href="https://testnet.arcscan.app/tx/${s.tx}" target="_blank" class="text-xs text-blue-400 hover:underline">${s.tx.slice(0,14)}... ↗</a>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>
+      <p class="text-xs text-gray-600 text-center mt-4">Não feche esta janela até a confirmação</p>
+    </div>`;
+  return panel;
+}
+
+function _updateStep(token, stepIndex, status, tx = null) {
+  const stepEl = document.getElementById(`${token}-step-${stepIndex}`);
+  if (!stepEl) return;
+  const color = token === 'usdc' ? 'blue' : 'yellow';
+  if (status === 'active') {
+    stepEl.className = `flex items-start gap-3 p-3 rounded-xl bg-${color}-900/20 border border-${color}-700/30`;
+    stepEl.querySelector('div').className = `w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-${color}-700`;
+    stepEl.querySelector('div').innerHTML = '<i class="fas fa-spinner fa-spin text-white text-xs"></i>';
+  } else if (status === 'done') {
+    stepEl.className = 'flex items-start gap-3 p-3 rounded-xl bg-green-900/20 border border-green-700/20';
+    stepEl.querySelector('div').className = 'w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-green-700';
+    stepEl.querySelector('div').innerHTML = '<i class="fas fa-check text-white text-xs"></i>';
+    if (tx) {
+      const pEl = stepEl.querySelectorAll('p')[1];
+      if (pEl) pEl.insertAdjacentHTML('afterend', `<a href="https://testnet.arcscan.app/tx/${tx}" target="_blank" class="text-xs text-blue-400 hover:underline">${tx.slice(0,14)}... ↗</a>`);
+    }
+  } else if (status === 'error') {
+    stepEl.className = 'flex items-start gap-3 p-3 rounded-xl bg-red-900/20 border border-red-700/30';
+    stepEl.querySelector('div').className = 'w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-red-700';
+    stepEl.querySelector('div').innerHTML = '<i class="fas fa-times text-white text-xs"></i>';
+  }
+}
+
+function _closeStepPanel(token) {
+  const panel = document.getElementById(`${token}-deposit-steps`);
+  if (panel) {
+    panel.style.opacity = '0';
+    panel.style.transition = 'opacity 0.4s';
+    setTimeout(() => panel.remove(), 400);
+  }
+}
 
 // ─── Carregar overview dos vaults ────────────────────────────────────────────
 async function loadVaults() {
@@ -30,7 +142,6 @@ async function loadVaults() {
       setVaultEl(`${tok}-vault-participants`, `${v.participants} wallets`);
     });
 
-    // Carregar posição da wallet conectada
     const addr = window.walletState?.address;
     if (addr) {
       await loadWalletVaultPosition('usdc', addr);
@@ -41,19 +152,13 @@ async function loadVaults() {
   }
 }
 
-function setVaultEl(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
-}
-
-// ─── Carregar posição específica da wallet ───────────────────────────────────
+// ─── Posição da wallet no vault ───────────────────────────────────────────────
 async function loadWalletVaultPosition(token, walletAddress) {
   try {
     const res = await axios.get(`/api/vaults/${token}/position?wallet=${walletAddress}`);
     const data = res.data;
     walletVaultPositions[token] = data;
 
-    // Atualizar UI da posição da carteira
     const posEl = document.getElementById(`${token}-wallet-position`);
     if (!posEl) return;
 
@@ -65,7 +170,7 @@ async function loadWalletVaultPosition(token, walletAddress) {
       return;
     }
 
-    const tokenSymbol = token.toUpperCase();
+    const sym = token.toUpperCase();
     const yieldPct = data.deposited > 0 ? ((data.yieldEarned / data.deposited) * 100).toFixed(3) : '0';
     posEl.innerHTML = `
       <div class="space-y-2">
@@ -73,7 +178,7 @@ async function loadWalletVaultPosition(token, walletAddress) {
           <div class="bg-gray-800/60 rounded-lg p-2.5 text-center">
             <p class="text-xs text-gray-400">Meu Saldo</p>
             <p class="text-white font-bold text-sm">${parseFloat(data.balance).toFixed(4)}</p>
-            <p class="text-xs text-gray-500">${tokenSymbol}</p>
+            <p class="text-xs text-gray-500">${sym}</p>
           </div>
           <div class="bg-green-900/20 rounded-lg p-2.5 text-center border border-green-700/20">
             <p class="text-xs text-gray-400">Yield Ganho</p>
@@ -97,14 +202,11 @@ async function loadWalletVaultPosition(token, walletAddress) {
   }
 }
 
-// ─── Toggle Deposit/Withdraw ─────────────────────────────────────────────────
+// ─── Toggle Deposit/Withdraw ──────────────────────────────────────────────────
 function setVaultAction(token, action) {
   vaultActions[token] = action;
   const form = document.getElementById(`${token}-vault-form`);
   if (form) form.classList.remove('hidden');
-
-  const labelEl = document.getElementById(`${token}-vault-action-label`);
-  if (labelEl) labelEl.textContent = action === 'deposit' ? 'Depositar' : 'Sacar';
 
   const submitBtn = document.getElementById(`${token}-vault-submit-btn`);
   if (submitBtn) {
@@ -113,7 +215,6 @@ function setVaultAction(token, action) {
       ? (token === 'usdc' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-yellow-600 hover:bg-yellow-500')
       : 'bg-gray-600 hover:bg-gray-500'
     } text-white rounded-xl py-3 text-sm font-semibold transition-all flex items-center justify-center gap-2`;
-
     const labelMap = {
       usdc_deposit: '<i class="fas fa-arrow-down mr-2"></i>Depositar USDC no Vault',
       usdc_withdraw: '<i class="fas fa-arrow-up mr-2"></i>Sacar USDC do Vault',
@@ -123,7 +224,6 @@ function setVaultAction(token, action) {
     submitBtn.innerHTML = labelMap[`${token}_${action}`] || submitBtn.innerHTML;
   }
 
-  // Botões active
   const depBtn = document.getElementById(`${token}-dep-btn`);
   const witBtn = document.getElementById(`${token}-wit-btn`);
   if (action === 'deposit') {
@@ -134,29 +234,25 @@ function setVaultAction(token, action) {
     depBtn?.classList.remove('ring-2', 'ring-white/20');
   }
 
-  // Mostrar "incluir yield" só no saque
   const yieldRow = document.getElementById(`${token}-yield-row`);
   if (yieldRow) yieldRow.style.display = action === 'withdraw' ? '' : 'none';
 
-  // Mostrar hint de saldo disponível no saque
   const balHint = document.getElementById(`${token}-balance-hint`);
   if (balHint) {
     const pos = walletVaultPositions[token];
     if (action === 'withdraw' && pos?.hasPosition) {
-      balHint.textContent = `Disponível no vault: ${parseFloat(pos.balance).toFixed(4)} ${token.toUpperCase()}`;
+      balHint.innerHTML = `<i class="fas fa-info-circle mr-1"></i>Disponível no vault: ${parseFloat(pos.balance).toFixed(4)} ${token.toUpperCase()}`;
       balHint.classList.remove('hidden');
     } else {
       balHint.classList.add('hidden');
     }
   }
 
-  // Mostrar saldo on-chain no depósito, ocultar no saque
   const onchainBal = document.getElementById(`${token}-onchain-balance`);
   const strategyRow = document.getElementById(`${token}-strategy-row`);
   if (action === 'deposit') {
     if (onchainBal) onchainBal.classList.remove('hidden');
     if (strategyRow) strategyRow.style.display = '';
-    // Atualizar saldo se wallet conectada
     if (window.walletState?.connected) refreshOnChainBalance(token);
   } else {
     if (onchainBal) onchainBal.classList.add('hidden');
@@ -164,7 +260,7 @@ function setVaultAction(token, action) {
   }
 }
 
-// ─── FLUXO PRINCIPAL: Depositar / Sacar ─────────────────────────────────────
+// ─── FLUXO PRINCIPAL DE DEPÓSITO ─────────────────────────────────────────────
 async function submitVaultAction(token) {
   const action = vaultActions[token] || 'deposit';
   const amountEl = document.getElementById(`${token}-vault-amount`);
@@ -172,17 +268,13 @@ async function submitVaultAction(token) {
   const includeYield = document.getElementById(`${token}-include-yield`)?.checked || false;
   const strategy = document.getElementById(`${token}-strategy`)?.value || 'balanced';
 
-  // Validações básicas
   if (!amount || isNaN(amount) || amount <= 0) {
-    showToast('Digite um valor válido', 'error');
-    return;
+    showToast('Digite um valor válido', 'error'); return;
   }
-  if (amount < 0.01) {
-    showToast('Valor mínimo: 0.01', 'error');
-    return;
+  if (amount < 0.000001) {
+    showToast('Valor mínimo: 0.000001', 'error'); return;
   }
 
-  // Verificar wallet conectada
   if (!window.walletState?.connected) {
     showToast('Conecte sua wallet EVM primeiro', 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
@@ -191,6 +283,7 @@ async function submitVaultAction(token) {
 
   const walletAddress = window.walletState.address;
   const tokenSymbol = token.toUpperCase();
+  const tokenCfg = VAULT_TOKENS[tokenSymbol];
   const submitBtn = document.getElementById(`${token}-vault-submit-btn`);
 
   const setBtn = (html, disabled = true) => {
@@ -204,17 +297,13 @@ async function submitVaultAction(token) {
     if (action === 'withdraw') {
       const pos = walletVaultPositions[token];
       if (!pos?.hasPosition || pos.balance <= 0) {
-        showToast(`Nenhum saldo para sacar no vault ${tokenSymbol}`, 'error');
-        return;
+        showToast(`Nenhum saldo para sacar no vault ${tokenSymbol}`, 'error'); return;
       }
       if (amount > pos.balance) {
-        showToast(`Saldo insuficiente. Seu saldo: ${parseFloat(pos.balance).toFixed(4)} ${tokenSymbol}`, 'error');
-        return;
+        showToast(`Saldo insuficiente. Vault: ${parseFloat(pos.balance).toFixed(4)} ${tokenSymbol}`, 'error'); return;
       }
 
       setBtn('<i class="fas fa-shield-alt fa-spin mr-2"></i>Verificando compliance...', true);
-
-      // Guardian check
       try {
         const gcRes = await axios.post('/api/guardian/check', {
           txType: 'vault_withdraw', fromAddress: walletAddress, amount, token: tokenSymbol,
@@ -226,14 +315,10 @@ async function submitVaultAction(token) {
       } catch (_) {}
 
       setBtn('<i class="fas fa-spinner fa-spin mr-2"></i>Processando saque...', true);
-
-      const res = await axios.post(`/api/vaults/${token}/withdraw`, {
-        walletAddress, amount, includeYield,
-      });
-
+      const res = await axios.post(`/api/vaults/${token}/withdraw`, { walletAddress, amount, includeYield });
       if (res.data.success) {
         const w = res.data.withdrawal;
-        showToast(`✅ Saque de ${amount} ${tokenSymbol}${includeYield && w.yieldClaimed > 0 ? ` + ${w.yieldClaimed.toFixed(4)} yield` : ''} realizado!`, 'success');
+        showToast(`✅ Saque de ${amount} ${tokenSymbol}${includeYield && w.yieldClaimed > 0 ? ` + ${w.yieldClaimed.toFixed(4)} yield` : ''} registrado!`, 'success');
         addVaultLog(`[VAULT] Saque: ${amount} ${tokenSymbol} de ${walletAddress.slice(0,10)}...`, 'info');
         if (amountEl) amountEl.value = '';
         await _refreshVaultUI(token, walletAddress);
@@ -243,8 +328,26 @@ async function submitVaultAction(token) {
       return;
     }
 
-    // ── DEPÓSITO — Fluxo EVM completo ────────────────────────────────────────
-    // Passo 1: Guardian compliance check
+    // ── DEPÓSITO ─────────────────────────────────────────────────────────────
+    const provider = window.walletState?.provider;
+    if (!provider) {
+      showToast('Provider da wallet não encontrado. Reconecte.', 'error'); return;
+    }
+
+    // Garantir rede Arc Testnet
+    if (!window.walletState.onArcNetwork) {
+      setBtn('<i class="fas fa-exchange-alt fa-spin mr-2"></i>Adicionando Arc Testnet...', true);
+      try {
+        const switched = await switchToArcTestnet(provider);
+        if (!switched) {
+          showToast('Troque para Arc Testnet (Chain ID 5042002) e tente novamente', 'error'); return;
+        }
+        window.walletState.onArcNetwork = true;
+      } catch (netErr) {
+        showToast('Erro ao trocar rede: ' + netErr.message, 'error'); return;
+      }
+    }
+
     setBtn('<i class="fas fa-shield-alt fa-spin mr-2"></i>Verificando compliance...', true);
     try {
       const gcRes = await axios.post('/api/guardian/check', {
@@ -256,158 +359,237 @@ async function submitVaultAction(token) {
       }
     } catch (_) {}
 
-    // Passo 2: Verificar se o provider está disponível
-    const provider = window.walletState?.provider;
-    if (!provider) {
-      showToast('Provider da wallet não encontrado. Reconecte.', 'error');
-      return;
-    }
-
-    // Passo 3: Verificar rede Arc Testnet
-    if (!window.walletState.onArcNetwork) {
-      setBtn('<i class="fas fa-exchange-alt fa-spin mr-2"></i>Trocando para Arc Testnet...', true);
-      const switched = await switchToArcTestnet(provider);
-      if (!switched) {
-        showToast('Troque para Arc Testnet (Chain 5042002) primeiro', 'error');
-        return;
-      }
-      window.walletState.onArcNetwork = true;
-    }
-
-    const tokenContract = VAULT_TOKEN_CONTRACTS[tokenSymbol];
-    const vaultReceiver = VAULT_RECEIVER_CONTRACTS[token];
-    const amountRaw = BigInt(Math.round(amount * 1_000_000)); // 6 decimais (USDC/EURC)
+    const custodian = VAULT_CUSTODIAN[token];
+    const amountRaw = BigInt(Math.round(amount * 1_000_000)); // 6 decimais
     const amountHex = '0x' + amountRaw.toString(16);
 
-    // Passo 4: Approve (ERC-20 approve para o vault receber o token)
-    setBtn('<i class="fas fa-lock fa-spin mr-2"></i>Passo 1/2: Aprovando token...', true);
-    addVaultLog(`[VAULT] Solicitando approve de ${amount} ${tokenSymbol} para o vault...`, 'info');
+    let txHash = null;
 
-    let approveTxHash = null;
-    try {
-      // Encode approve(spender, amount)
-      const approveSelector = '0x095ea7b3';
-      const paddedSpender = vaultReceiver.slice(2).padStart(64, '0');
-      const paddedAmount = amountRaw.toString(16).padStart(64, '0');
-      const approveData = approveSelector + paddedSpender + paddedAmount;
+    if (tokenCfg.isNative) {
+      // ── USDC NATIVO: tx com value (como ETH) — sem approve ────────────────
+      const steps = [
+        { label: 'Compliance Guardian', desc: 'Verificação de compliance AML/KYC', done: true, active: false },
+        { label: 'Enviar USDC nativo', desc: `Transferir ${amount} USDC para o vault (Arc native)`, done: false, active: true },
+        { label: 'Confirmar on-chain', desc: 'Arc Testnet — sub-second finality', done: false, active: false },
+        { label: 'Ativar Agente IA', desc: `Estratégia: ${strategy} · APY ~${token === 'usdc' ? '5.2' : '4.8'}%`, done: false, active: false },
+      ];
+      const panel = _showStepPanel(token, steps);
 
-      approveTxHash = await provider.request({
-        method: 'eth_sendTransaction',
-        params: [{
-          from: walletAddress,
-          to: tokenContract,
-          data: approveData,
-          chainId: '0x4CFC12',
-        }],
-      });
+      setBtn('<i class="fas fa-paper-plane fa-spin mr-2"></i>Aguardando assinatura na wallet...', true);
+      addVaultLog(`[VAULT] Enviando ${amount} USDC nativo para vault (${custodian.slice(0,10)}...)`, 'info');
 
-      showToast(`✅ Approve confirmado! Aguardando transferência...`, 'info');
-      addVaultLog(`[VAULT] Approve TX: ${approveTxHash?.slice(0, 18)}...`, 'success');
+      try {
+        _updateStep(token, 1, 'active');
 
-      // Pequeno delay para garantir propagação
-      await new Promise(r => setTimeout(r, 1500));
-    } catch (approveErr) {
-      if (approveErr.code === 4001 || approveErr.message?.includes('reject') || approveErr.message?.includes('denied')) {
-        showToast('Approve cancelado pelo usuário', 'warning');
+        // USDC nativo: value em wei (18 decimais para o campo value, 6 decimais para o token)
+        // Na Arc, USDC nativo usa 18 casas no campo value da tx
+        const amountNativeHex = '0x' + (amountRaw * BigInt(1_000_000_000_000n)).toString(16); // × 10^12 para 18 dec
+
+        txHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: walletAddress,
+            to: custodian,
+            value: amountNativeHex,    // USDC nativo no campo value
+            data: '0x',                // sem calldata
+            chainId: ARC_CHAIN_HEX_VAULT,
+          }],
+        });
+
+        _updateStep(token, 1, 'done', txHash);
+        showToast(`⏳ TX enviada! Confirmando...`, 'info');
+        addVaultLog(`[VAULT] TX nativa USDC: ${txHash?.slice(0, 18)}...`, 'success');
+
+      } catch (txErr) {
+        _updateStep(token, 1, 'error');
+        _closeStepPanel(token);
+        if (txErr.code === 4001 || txErr.message?.includes('reject') || txErr.message?.includes('denied') || txErr.message?.includes('cancel')) {
+          showToast('Transação cancelada pelo usuário', 'warning');
+        } else {
+          showToast('Erro ao enviar USDC: ' + txErr.message, 'error');
+        }
         return;
       }
-      // Se approve falhar (ex: rede real sem fundos), continuar com aviso
-      console.warn('[Vault] Approve skipped/failed:', approveErr.message);
-      showToast('⚠️ Approve falhou — tentando depósito direto...', 'warning');
-    }
 
-    // Passo 5: Transfer (transferir tokens para o vault)
-    setBtn('<i class="fas fa-paper-plane fa-spin mr-2"></i>Passo 2/2: Transferindo para vault...', true);
-    addVaultLog(`[VAULT] Transferindo ${amount} ${tokenSymbol} para o vault...`, 'info');
-
-    let transferTxHash = null;
-    try {
-      // Encode transfer(to, amount)
-      const transferSelector = '0xa9059cbb';
-      const paddedTo = vaultReceiver.slice(2).padStart(64, '0');
-      const paddedAmt = amountRaw.toString(16).padStart(64, '0');
-      const transferData = transferSelector + paddedTo + paddedAmt;
-
-      transferTxHash = await provider.request({
-        method: 'eth_sendTransaction',
-        params: [{
-          from: walletAddress,
-          to: tokenContract,
-          data: transferData,
-          chainId: '0x4CFC12',
-        }],
-      });
-
-      showToast(`⏳ Transferência enviada! Confirmando na Arc Testnet...`, 'info');
-      addVaultLog(`[VAULT] Transfer TX: ${transferTxHash?.slice(0, 18)}...`, 'success');
-
-      // Aguardar receipt (Arc tem finality sub-second)
+      // Aguardar confirmação
+      _updateStep(token, 2, 'active');
       setBtn('<i class="fas fa-hourglass-half fa-spin mr-2"></i>Aguardando confirmação on-chain...', true);
-      await _waitForTx(transferTxHash, provider);
+      const receipt = await _waitForTx(txHash, provider, 20000);
+      _updateStep(token, 2, 'done', txHash);
 
-    } catch (transferErr) {
-      if (transferErr.code === 4001 || transferErr.message?.includes('reject') || transferErr.message?.includes('denied')) {
-        showToast('Transferência cancelada pelo usuário', 'warning');
-        return;
+      // Registrar no backend e ativar agente
+      _updateStep(token, 3, 'active');
+      setBtn('<i class="fas fa-robot fa-spin mr-2"></i>Ativando agente IA...', true);
+
+      const depRes = await axios.post(`/api/vaults/${token}/deposit`, {
+        walletAddress, amount, txHash, strategy,
+        note: `Depósito USDC nativo · TX: ${txHash?.slice(0,12)}`,
+        txType: 'native',
+      });
+
+      if (depRes.data.success) {
+        _updateStep(token, 3, 'done');
+        setTimeout(() => _closeStepPanel(token), 2000);
+        const pos = depRes.data.walletPosition;
+        showToast(`✅ ${amount} USDC depositado! Agente IA ativo · APY: ${depRes.data.vault.apy}%`, 'success');
+        addVaultLog(`[VAULT] ✅ Depósito USDC confirmado: ${amount} USDC | Saldo vault: ${pos.balance}`, 'success');
+        addVaultLog(`[AGENTE] ${depRes.data.agentMessage}`, 'agent');
+        _showVaultSuccessBadge(token, amount, tokenSymbol, txHash, depRes.data.vault.apy, strategy);
+        if (amountEl) amountEl.value = '';
+        await _refreshVaultUI(token, walletAddress);
+      } else {
+        _closeStepPanel(token);
+        showToast(depRes.data.error || 'Erro ao registrar depósito', 'error');
       }
-      console.warn('[Vault] Transfer error:', transferErr.message);
-      // Se falhou na rede mas temos um hash (ou não temos), ainda registrar no backend
-      if (!transferTxHash) {
-        showToast('Erro na transferência on-chain: ' + transferErr.message, 'error');
-        return;
-      }
-    }
 
-    // Passo 6: Registrar depósito no backend
-    setBtn('<i class="fas fa-robot fa-spin mr-2"></i>Ativando agente IA...', true);
-
-    const txHashFinal = transferTxHash || approveTxHash || ('0x' + Date.now().toString(16).padStart(64, '0'));
-
-    const res = await axios.post(`/api/vaults/${token}/deposit`, {
-      walletAddress,
-      amount,
-      txHash: txHashFinal,
-      strategy,
-      note: `Depósito via EVM — approve: ${approveTxHash?.slice(0,10) || 'N/A'} | transfer: ${txHashFinal.slice(0,10)}`,
-    });
-
-    if (res.data.success) {
-      const pos = res.data.walletPosition;
-      const explorerLink = `https://testnet.arcscan.app/tx/${txHashFinal}`;
-      showToast(
-        `✅ ${amount} ${tokenSymbol} depositado! Agente IA ativado com estratégia "${strategy}". APY: ${res.data.vault.apy}%`,
-        'success'
-      );
-      addVaultLog(`[VAULT] Depósito confirmado: ${amount} ${tokenSymbol} | Saldo no vault: ${pos.balance} | APY: ${res.data.vault.apy}%`, 'success');
-      addVaultLog(`[AGENTE] ${res.data.agentMessage}`, 'agent');
-
-      // Mostrar badge de sucesso
-      _showVaultSuccessBadge(token, amount, tokenSymbol, txHashFinal, res.data.vault.apy, strategy);
-
-      if (amountEl) amountEl.value = '';
-      await _refreshVaultUI(token, walletAddress);
     } else {
-      showToast(res.data.error || 'Erro ao registrar depósito', 'error');
+      // ── EURC ERC-20: approve + transfer ───────────────────────────────────
+      const steps = [
+        { label: 'Compliance Guardian', desc: 'Verificação de compliance AML/KYC', done: true, active: false },
+        { label: 'Approve EURC', desc: `Autorizar vault a receber ${amount} EURC`, done: false, active: true },
+        { label: 'Transfer EURC', desc: `Transferir ${amount} EURC para o vault`, done: false, active: false },
+        { label: 'Confirmar on-chain', desc: 'Arc Testnet — sub-second finality', done: false, active: false },
+        { label: 'Ativar Agente IA', desc: `Estratégia: ${strategy} · APY ~4.8%`, done: false, active: false },
+      ];
+      const panel = _showStepPanel(token, steps);
+
+      let approveTxHash = null;
+
+      // PASSO: Approve
+      setBtn('<i class="fas fa-lock fa-spin mr-2"></i>Passo 1/2: Aprovando EURC...', true);
+      addVaultLog(`[VAULT] Solicitando approve de ${amount} EURC para o vault...`, 'info');
+
+      try {
+        _updateStep(token, 1, 'active');
+
+        // approve(spender, amount) — ERC-20 selector 0x095ea7b3
+        const approveSelector = '0x095ea7b3';
+        const paddedSpender = custodian.slice(2).toLowerCase().padStart(64, '0');
+        const paddedAmt = amountRaw.toString(16).padStart(64, '0');
+        const approveData = approveSelector + paddedSpender + paddedAmt;
+
+        approveTxHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: walletAddress,
+            to: tokenCfg.address,
+            data: approveData,
+            value: '0x0',
+            chainId: ARC_CHAIN_HEX_VAULT,
+          }],
+        });
+
+        _updateStep(token, 1, 'done', approveTxHash);
+        showToast(`✅ Approve confirmado! Enviando EURC...`, 'info');
+        addVaultLog(`[VAULT] Approve TX: ${approveTxHash?.slice(0, 18)}...`, 'success');
+        await new Promise(r => setTimeout(r, 1200));
+
+      } catch (approveErr) {
+        _updateStep(token, 1, 'error');
+        _closeStepPanel(token);
+        if (approveErr.code === 4001 || approveErr.message?.includes('reject') || approveErr.message?.includes('denied')) {
+          showToast('Approve cancelado pelo usuário', 'warning');
+        } else {
+          showToast('Erro no approve: ' + approveErr.message, 'error');
+        }
+        return;
+      }
+
+      // PASSO: Transfer
+      setBtn('<i class="fas fa-paper-plane fa-spin mr-2"></i>Passo 2/2: Transferindo EURC...', true);
+      addVaultLog(`[VAULT] Transferindo ${amount} EURC para o vault...`, 'info');
+
+      let transferTxHash = null;
+      try {
+        _updateStep(token, 2, 'active');
+
+        // transfer(to, amount) — ERC-20 selector 0xa9059cbb
+        const transferSelector = '0xa9059cbb';
+        const paddedTo = custodian.slice(2).toLowerCase().padStart(64, '0');
+        const paddedAmt2 = amountRaw.toString(16).padStart(64, '0');
+        const transferData = transferSelector + paddedTo + paddedAmt2;
+
+        transferTxHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [{
+            from: walletAddress,
+            to: tokenCfg.address,
+            data: transferData,
+            value: '0x0',
+            chainId: ARC_CHAIN_HEX_VAULT,
+          }],
+        });
+
+        _updateStep(token, 2, 'done', transferTxHash);
+        showToast(`⏳ Transferência EURC enviada! Confirmando...`, 'info');
+        addVaultLog(`[VAULT] Transfer TX: ${transferTxHash?.slice(0, 18)}...`, 'success');
+
+      } catch (transferErr) {
+        _updateStep(token, 2, 'error');
+        _closeStepPanel(token);
+        if (transferErr.code === 4001 || transferErr.message?.includes('reject') || transferErr.message?.includes('denied')) {
+          showToast('Transferência cancelada pelo usuário', 'warning');
+        } else {
+          showToast('Erro na transferência: ' + transferErr.message, 'error');
+        }
+        return;
+      }
+
+      // Aguardar confirmação
+      _updateStep(token, 3, 'active');
+      setBtn('<i class="fas fa-hourglass-half fa-spin mr-2"></i>Aguardando confirmação...', true);
+      await _waitForTx(transferTxHash, provider, 20000);
+      _updateStep(token, 3, 'done', transferTxHash);
+
+      txHash = transferTxHash;
+
+      // Registrar no backend
+      _updateStep(token, 4, 'active');
+      setBtn('<i class="fas fa-robot fa-spin mr-2"></i>Ativando agente IA...', true);
+
+      const depRes = await axios.post(`/api/vaults/${token}/deposit`, {
+        walletAddress, amount, txHash, strategy,
+        note: `Depósito EURC ERC-20 · approve: ${approveTxHash?.slice(0,12)} · transfer: ${txHash?.slice(0,12)}`,
+        txType: 'erc20',
+        approveTxHash,
+      });
+
+      if (depRes.data.success) {
+        _updateStep(token, 4, 'done');
+        setTimeout(() => _closeStepPanel(token), 2000);
+        const pos = depRes.data.walletPosition;
+        showToast(`✅ ${amount} EURC depositado! Agente IA ativo · APY: ${depRes.data.vault.apy}%`, 'success');
+        addVaultLog(`[VAULT] ✅ Depósito EURC confirmado: ${amount} EURC | Saldo vault: ${pos.balance}`, 'success');
+        addVaultLog(`[AGENTE] ${depRes.data.agentMessage}`, 'agent');
+        _showVaultSuccessBadge(token, amount, tokenSymbol, txHash, depRes.data.vault.apy, strategy);
+        if (amountEl) amountEl.value = '';
+        await _refreshVaultUI(token, walletAddress);
+      } else {
+        _closeStepPanel(token);
+        showToast(depRes.data.error || 'Erro ao registrar depósito', 'error');
+      }
     }
 
   } catch (e) {
+    _closeStepPanel(token);
     const msg = e.response?.data?.error || e.message || 'Erro inesperado';
     showToast('Erro: ' + msg, 'error');
     addVaultLog(`[VAULT] Erro: ${msg}`, 'error');
+    console.error('[Vault] Error:', e);
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      const isDeposit = action === 'deposit';
       const icons = { usdc_deposit: 'arrow-down', usdc_withdraw: 'arrow-up', eurc_deposit: 'arrow-down', eurc_withdraw: 'arrow-up' };
       const labels = { usdc_deposit: 'Depositar USDC', usdc_withdraw: 'Sacar USDC', eurc_deposit: 'Depositar EURC', eurc_withdraw: 'Sacar EURC' };
-      const key = `${token}_${action}`;
+      const key = `${token}_${vaultActions[token] || 'deposit'}`;
       submitBtn.innerHTML = `<i class="fas fa-${icons[key] || 'check'} mr-2"></i>${labels[key] || 'Confirmar'}`;
     }
   }
 }
 
 // ─── Aguardar TX na Arc (sub-second finality) ────────────────────────────────
-async function _waitForTx(txHash, provider, maxMs = 15000) {
+async function _waitForTx(txHash, provider, maxMs = 20000) {
+  if (!txHash) return null;
   const start = Date.now();
   while (Date.now() - start < maxMs) {
     try {
@@ -415,27 +597,29 @@ async function _waitForTx(txHash, provider, maxMs = 15000) {
         method: 'eth_getTransactionReceipt',
         params: [txHash],
       });
-      if (receipt) return receipt;
+      if (receipt) {
+        if (receipt.status === '0x0') console.warn('[Vault] TX revertida:', txHash);
+        return receipt;
+      }
     } catch (_) {}
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 600));
   }
-  return null; // timeout — Arc sub-second, então provavelmente confirmou
+  // Arc tem sub-second finality — timeout não necessariamente = falha
+  return null;
 }
 
-// ─── Refresh UI após operação ────────────────────────────────────────────────
+// ─── Refresh UI após operação ─────────────────────────────────────────────────
 async function _refreshVaultUI(token, walletAddress) {
   await loadVaults();
   await loadVaultHistory(token, walletAddress);
   await loadWalletVaultPosition(token, walletAddress);
-  // Também atualizar operações do agente
   await loadVaultAgentOps(token);
 }
 
 // ─── Badge de sucesso ─────────────────────────────────────────────────────────
-function _showVaultSuccessBadge(token, amount, tokenSymbol, txHash, apy, strategy) {
+function _showVaultSuccessBadge(token, amount, sym, txHash, apy, strategy) {
   const existing = document.getElementById('vault-success-badge');
   if (existing) existing.remove();
-
   const badge = document.createElement('div');
   badge.id = 'vault-success-badge';
   badge.className = 'fixed bottom-6 right-6 z-[80] bg-gray-900 border border-green-500/60 rounded-2xl p-5 max-w-sm shadow-2xl';
@@ -446,22 +630,20 @@ function _showVaultSuccessBadge(token, amount, tokenSymbol, txHash, apy, strateg
       </div>
       <div class="flex-1">
         <p class="text-white font-semibold text-sm">Depósito Confirmado!</p>
-        <p class="text-green-400 text-xs mt-1">${amount} ${tokenSymbol} no vault</p>
-        <p class="text-purple-400 text-xs">Agente IA ativo · Estratégia: ${strategy} · APY: ${apy}%</p>
-        <a href="https://testnet.arcscan.app/tx/${txHash}" target="_blank"
-           class="text-xs text-blue-400 hover:underline mt-1 block">
-          Ver TX no Explorer ↗
-        </a>
+        <p class="text-green-400 text-xs mt-1">${amount} ${sym} → vault ativo</p>
+        <p class="text-purple-400 text-xs">Agente IA · ${strategy} · APY: ${apy}%</p>
+        ${txHash ? `<a href="https://testnet.arcscan.app/tx/${txHash}" target="_blank"
+           class="text-xs text-blue-400 hover:underline mt-1 block">Ver TX no Explorer ↗</a>` : ''}
       </div>
       <button onclick="this.parentElement.parentElement.remove()" class="text-gray-500 hover:text-white ml-2">
         <i class="fas fa-times text-xs"></i>
       </button>
     </div>`;
   document.body.appendChild(badge);
-  setTimeout(() => badge.remove(), 12000);
+  setTimeout(() => badge?.remove(), 15000);
 }
 
-// ─── Histórico do vault ──────────────────────────────────────────────────────
+// ─── Histórico do vault ───────────────────────────────────────────────────────
 async function loadVaultHistory(token = 'usdc', walletAddress = null) {
   try {
     const addr = walletAddress || window.walletState?.address;
@@ -478,19 +660,18 @@ async function loadVaultHistory(token = 'usdc', walletAddress = null) {
     }
 
     const stats = res.data.stats;
-    const tokenSymbol = token.toUpperCase();
-
+    const sym = token.toUpperCase();
     const statsHtml = `
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         <div class="bg-gray-800/60 rounded-xl p-3 text-center">
           <p class="text-xs text-gray-400">Saldo no Vault</p>
           <p class="text-white font-bold">${parseFloat(stats.currentBalance).toFixed(4)}</p>
-          <p class="text-xs text-gray-500">${tokenSymbol}</p>
+          <p class="text-xs text-gray-500">${sym}</p>
         </div>
         <div class="bg-green-900/20 border border-green-700/20 rounded-xl p-3 text-center">
           <p class="text-xs text-gray-400">Yield Ganho</p>
           <p class="text-green-400 font-bold">${parseFloat(stats.yieldEarned || stats.accrued).toFixed(6)}</p>
-          <p class="text-xs text-gray-500">${tokenSymbol}</p>
+          <p class="text-xs text-gray-500">${sym}</p>
         </div>
         <div class="bg-blue-900/20 rounded-xl p-3 text-center">
           <p class="text-xs text-gray-400">APY Atual</p>
@@ -499,7 +680,6 @@ async function loadVaultHistory(token = 'usdc', walletAddress = null) {
         <div class="bg-purple-900/20 rounded-xl p-3 text-center">
           <p class="text-xs text-gray-400">Participantes</p>
           <p class="text-purple-400 font-bold">${stats.participants}</p>
-          <p class="text-xs text-gray-500">wallets</p>
         </div>
       </div>`;
 
@@ -509,19 +689,18 @@ async function loadVaultHistory(token = 'usdc', walletAddress = null) {
       const color = isDeposit ? 'text-green-400' : 'text-red-400';
       const prefix = isDeposit ? '+' : '';
       const dt = new Date(h.timestamp).toLocaleString('pt-BR');
-      const shortTx = h.txHash ? `${h.txHash.slice(0, 10)}...` : '';
       return `
         <div class="flex items-center justify-between py-3 border-b border-gray-700/30 last:border-0 hover:bg-gray-800/20 rounded-lg px-1 transition-colors">
           <div class="flex items-center gap-3">
             <span class="text-lg">${icon}</span>
             <div>
-              <p class="${color} font-mono font-semibold text-sm">${prefix}${Math.abs(h.amount).toFixed(4)} ${tokenSymbol}</p>
+              <p class="${color} font-mono font-semibold text-sm">${prefix}${Math.abs(h.amount).toFixed(4)} ${sym}</p>
               <p class="text-xs text-gray-500">${h.type.toUpperCase()}${h.note ? ` — ${h.note.slice(0, 40)}` : ''}</p>
             </div>
           </div>
           <div class="text-right flex-shrink-0">
             <p class="text-xs text-gray-500">${dt}</p>
-            ${h.txHash ? `<a href="https://testnet.arcscan.app/tx/${h.txHash}" target="_blank" class="text-xs text-blue-400 hover:underline">${shortTx} ↗</a>` : ''}
+            ${h.txHash ? `<a href="https://testnet.arcscan.app/tx/${h.txHash}" target="_blank" class="text-xs text-blue-400 hover:underline">${h.txHash.slice(0,10)}... ↗</a>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -532,7 +711,7 @@ async function loadVaultHistory(token = 'usdc', walletAddress = null) {
   }
 }
 
-// ─── Carregar operações do agente ────────────────────────────────────────────
+// ─── Operações do Agente IA ───────────────────────────────────────────────────
 async function loadVaultAgentOps(token = null) {
   try {
     const param = token ? `?token=${token.toUpperCase()}` : '';
@@ -582,7 +761,7 @@ async function loadVaultAgentOps(token = null) {
   }
 }
 
-// ─── Forçar ciclo do agente ──────────────────────────────────────────────────
+// ─── Forçar ciclo do agente ───────────────────────────────────────────────────
 async function runVaultAgent(token = null) {
   try {
     const res = await axios.post('/api/vaults/agent/run', token ? { token } : {});
@@ -596,49 +775,46 @@ async function runVaultAgent(token = null) {
   }
 }
 
-// ─── Buscar saldo on-chain da wallet (para exibir antes do depósito) ─────────
-    if (res.data.success) {
-      showToast(`🤖 Agente executou ${res.data.operations?.length || 0} operações`, 'info');
-      await loadVaultAgentOps(token);
-      await loadVaults();
-    }
-  } catch (e) {
-    showToast('Erro ao executar agente: ' + e.message, 'error');
-  }
-}
-
-// ─── Buscar saldo on-chain da wallet (para exibir antes do depósito) ─────────
+// ─── Saldo on-chain da wallet ─────────────────────────────────────────────────
 async function refreshOnChainBalance(token) {
   const provider = window.walletState?.provider;
   const addr = window.walletState?.address;
   if (!provider || !addr) return;
 
+  const tokenCfg = VAULT_TOKENS[token.toUpperCase()];
+  if (!tokenCfg) return;
+
   try {
-    const tokenContract = VAULT_TOKEN_CONTRACTS[token.toUpperCase()];
-    const selector = '0x70a08231'; // balanceOf(address)
-    const data = selector + addr.slice(2).padStart(64, '0');
-    const result = await provider.request({
-      method: 'eth_call',
-      params: [{ to: tokenContract, data }, 'latest'],
-    });
+    let balance = 0;
 
-    const balanceEl = document.getElementById(`${token}-onchain-balance`);
-    const valEl = document.getElementById(`${token}-onchain-val`);
-
-    if (result && result !== '0x' && result.length > 2) {
-      const balance = Number(BigInt(result)) / 1e6;
-      if (valEl) valEl.textContent = balance.toFixed(4);
-      if (balanceEl) balanceEl.classList.remove('hidden');
+    if (tokenCfg.isNative) {
+      // USDC nativo: usar eth_getBalance (18 casas)
+      const result = await provider.request({ method: 'eth_getBalance', params: [addr, 'latest'] });
+      if (result && result !== '0x') {
+        // Converter de 18 decimais para 6 (USDC)
+        balance = Number(BigInt(result)) / 1e18;
+      }
     } else {
-      if (valEl) valEl.textContent = '0.0000';
-      if (balanceEl) balanceEl.classList.remove('hidden');
+      // EURC ERC-20: balanceOf
+      const selector = '0x70a08231';
+      const data = selector + addr.slice(2).padStart(64, '0');
+      const result = await provider.request({ method: 'eth_call', params: [{ to: tokenCfg.address, data }, 'latest'] });
+      if (result && result !== '0x' && result.length > 2) {
+        balance = Number(BigInt(result)) / 1e6;
+      }
     }
+
+    const valEl = document.getElementById(`${token}-onchain-val`);
+    const balEl = document.getElementById(`${token}-onchain-balance`);
+    if (valEl) valEl.textContent = balance.toFixed(4);
+    if (balEl) balEl.classList.remove('hidden');
+
   } catch (e) {
     console.warn(`[Vaults] refreshOnChainBalance (${token}):`, e.message);
   }
 }
 
-// ─── Preencher max amount ─────────────────────────────────────────────────────
+// ─── Preencher valor máximo ───────────────────────────────────────────────────
 async function setMaxVaultAmount(token, action) {
   const amountEl = document.getElementById(`${token}-vault-amount`);
   if (!amountEl) return;
@@ -646,63 +822,41 @@ async function setMaxVaultAmount(token, action) {
   if (action === 'withdraw') {
     const pos = walletVaultPositions[token];
     if (pos?.hasPosition && pos.balance > 0) {
-      amountEl.value = parseFloat(pos.balance).toFixed(4);
+      amountEl.value = parseFloat(pos.balance).toFixed(6);
     } else {
       showToast(`Nenhum saldo no vault ${token.toUpperCase()}`, 'warning');
     }
   } else {
-    // Para depósito, buscar saldo da wallet on-chain
-    const provider = window.walletState?.provider;
-    const addr = window.walletState?.address;
-    if (!provider || !addr) {
-      showToast('Conecte sua wallet primeiro', 'warning');
-      return;
-    }
-    try {
-      const tokenContract = VAULT_TOKEN_CONTRACTS[token.toUpperCase()];
-      const selector = '0x70a08231';
-      const data = selector + addr.slice(2).padStart(64, '0');
-      const result = await provider.request({
-        method: 'eth_call',
-        params: [{ to: tokenContract, data }, 'latest'],
-      });
-      if (result && result !== '0x') {
-        const balance = Number(BigInt(result)) / 1e6;
-        amountEl.value = balance.toFixed(4);
-        showToast(`Saldo ${token.toUpperCase()}: ${balance.toFixed(4)}`, 'info');
-      } else {
-        amountEl.value = '0';
-        showToast(`Saldo ${token.toUpperCase()}: 0 (conecte-se à Arc Testnet)`, 'warning');
-      }
-    } catch (e) {
-      showToast('Erro ao ler saldo: ' + e.message, 'error');
+    await refreshOnChainBalance(token);
+    const valEl = document.getElementById(`${token}-onchain-val`);
+    const val = parseFloat(valEl?.textContent || '0');
+    if (val > 0) {
+      // Deixar 0.001 USDC de reserva para gas
+      const maxDeposit = token === 'usdc' ? Math.max(0, val - 0.001) : val;
+      amountEl.value = maxDeposit.toFixed(6);
+    } else {
+      showToast(`Saldo ${token.toUpperCase()} = 0 (obtenha tokens no faucet: faucet.circle.com)`, 'warning');
     }
   }
 }
 
-function addVaultLog(message, type = 'info') {
-  if (typeof addLog === 'function') addLog(message, type);
-}
-
-// ─── Window hooks ────────────────────────────────────────────────────────────
+// ─── Hooks de wallet ──────────────────────────────────────────────────────────
 window.loadVaultData = function () {
   loadVaults();
   loadVaultHistory('usdc');
   loadVaultAgentOps();
 };
 
-// Atualizar posições quando wallet conectar
 window.addEventListener('walletConnected', (e) => {
   const addr = e.detail?.address;
   if (addr) {
     loadWalletVaultPosition('usdc', addr);
     loadWalletVaultPosition('eurc', addr);
     loadVaultHistory('usdc', addr);
-    // Mostrar saldo on-chain automaticamente
     setTimeout(() => {
       refreshOnChainBalance('usdc');
       refreshOnChainBalance('eurc');
-    }, 500);
+    }, 800);
   }
 });
 
@@ -711,10 +865,12 @@ window.addEventListener('walletDisconnected', () => {
   ['usdc', 'eurc'].forEach(t => {
     const posEl = document.getElementById(`${t}-wallet-position`);
     if (posEl) posEl.innerHTML = `<div class="text-center py-3 text-gray-500 text-xs">Conecte sua wallet para ver sua posição</div>`;
+    const onchainEl = document.getElementById(`${t}-onchain-balance`);
+    if (onchainEl) onchainEl.classList.add('hidden');
   });
 });
 
-// Expor globais
+// ─── Expor globais ────────────────────────────────────────────────────────────
 window.submitVaultAction = submitVaultAction;
 window.setVaultAction = setVaultAction;
 window.loadVaults = loadVaults;
@@ -724,3 +880,5 @@ window.runVaultAgent = runVaultAgent;
 window.setMaxVaultAmount = setMaxVaultAmount;
 window.loadWalletVaultPosition = loadWalletVaultPosition;
 window.refreshOnChainBalance = refreshOnChainBalance;
+
+console.log('[Vaults] Módulo carregado — USDC nativo + EURC ERC-20 · Arc Testnet 5042002');

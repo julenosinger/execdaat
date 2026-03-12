@@ -1288,8 +1288,16 @@ forge create src/ContractManager.sol:ContractManager \\
 
             <!-- Contrato do vault -->
             <div class="bg-black/20 rounded-lg px-3 py-2 mb-4 flex items-center justify-between">
-              <span class="text-xs text-gray-500">Vault Contract</span>
-              <span class="text-xs text-blue-400 font-mono">0x3600...0011</span>
+              <span class="text-xs text-gray-500">Vault Custodian</span>
+              <a href="https://testnet.arcscan.app/address/0x867650F5eAe8df91445971f14d89fd84F0C9a9f8" target="_blank"
+                 class="text-xs text-blue-400 font-mono hover:underline">0x8676...a9f8 ↗</a>
+            </div>
+            <!-- Tipo de depósito -->
+            <div class="bg-blue-900/10 border border-blue-700/20 rounded-lg px-3 py-2 mb-4">
+              <p class="text-xs text-blue-400">
+                <i class="fas fa-info-circle mr-1"></i>
+                <strong>USDC é nativo na Arc</strong> — transferido via <code class="bg-gray-800 px-1 rounded">value</code> (sem approve necessário)
+              </p>
             </div>
 
             <!-- Formulário Deposit/Withdraw -->
@@ -1347,7 +1355,8 @@ forge create src/ContractManager.sol:ContractManager \\
                 <!-- Fluxo EVM info -->
                 <div class="bg-gray-800/40 rounded-lg p-2.5 text-xs text-gray-500">
                   <i class="fas fa-info-circle text-blue-400 mr-1"></i>
-                  Depósito: <span class="text-gray-400">approve() + transfer() on-chain na Arc Testnet</span>
+                  <span class="text-blue-300 font-medium">USDC nativo:</span>
+                  <span class="text-gray-400"> 1 tx com value (sem approve) — Arc Testnet</span>
                 </div>
 
                 <!-- Botão Submit -->
@@ -1413,8 +1422,16 @@ forge create src/ContractManager.sol:ContractManager \\
 
             <!-- Contrato -->
             <div class="bg-black/20 rounded-lg px-3 py-2 mb-4 flex items-center justify-between">
-              <span class="text-xs text-gray-500">Token Contract</span>
-              <span class="text-xs text-yellow-400 font-mono">0x89B5...D72a</span>
+              <span class="text-xs text-gray-500">Vault Custodian</span>
+              <a href="https://testnet.arcscan.app/address/0x867650F5eAe8df91445971f14d89fd84F0C9a9f8" target="_blank"
+                 class="text-xs text-yellow-400 font-mono hover:underline">0x8676...a9f8 ↗</a>
+            </div>
+            <!-- Tipo de depósito ERC-20 -->
+            <div class="bg-yellow-900/10 border border-yellow-700/20 rounded-lg px-3 py-2 mb-4">
+              <p class="text-xs text-yellow-400">
+                <i class="fas fa-info-circle mr-1"></i>
+                <strong>EURC ERC-20</strong> — fluxo: <code class="bg-gray-800 px-1 rounded">approve()</code> + <code class="bg-gray-800 px-1 rounded">transfer()</code>
+              </p>
             </div>
 
             <!-- Formulário Deposit/Withdraw -->
@@ -1467,7 +1484,8 @@ forge create src/ContractManager.sol:ContractManager \\
 
                 <div class="bg-gray-800/40 rounded-lg p-2.5 text-xs text-gray-500">
                   <i class="fas fa-info-circle text-yellow-400 mr-1"></i>
-                  Depósito: <span class="text-gray-400">approve() + transfer() on-chain na Arc Testnet</span>
+                  <span class="text-yellow-300 font-medium">EURC ERC-20:</span>
+                  <span class="text-gray-400"> approve() + transfer() — 2 txs necessárias</span>
                 </div>
 
                 <button onclick="submitVaultAction('eurc')" id="eurc-vault-submit-btn"

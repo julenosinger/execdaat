@@ -11,10 +11,14 @@ const TOKEN_CONTRACTS: Record<string, string> = {
   EURC: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
 };
 
-// Endereços dos contratos dos vaults (receptores dos depósitos)
+// Endereço custodiante do vault (receptor dos depósitos na Arc Testnet)
+// Usando FxEscrow oficial da Arc como receptor público verificável
+// Em produção: deployar VaultCustodian.sol com função withdraw controlada
+const VAULT_CUSTODIAN = '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8'; // FxEscrow Arc Testnet oficial
+
 const VAULT_CONTRACTS: Record<string, string> = {
-  usdc: '0x3600000000000000000000000000000000000011',
-  eurc: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72b',
+  usdc: VAULT_CUSTODIAN,
+  eurc: VAULT_CUSTODIAN,
 };
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -93,7 +97,7 @@ const vaults: Record<string, Vault> = {
     history: [],
     positions: new Map(),
     participants: 0,
-    description: 'Vault USDC gerenciado por IA. Os agentes otimizam APY, fazem harvest de yield e rebalanceiam automaticamente.',
+    description: 'Vault USDC gerenciado por IA. Depósito via token nativo Arc (value tx). Agentes otimizam APY, harvest yield e rebalanceiam.',
   },
   eurc: {
     id: 'vault-eurc-01',
@@ -111,7 +115,7 @@ const vaults: Record<string, Vault> = {
     history: [],
     positions: new Map(),
     participants: 0,
-    description: 'Vault EURC gerenciado por IA. Hedge cambial EUR/USD com rendimento automático.',
+    description: 'Vault EURC gerenciado por IA. Depósito via ERC-20 (approve + transfer). Hedge cambial EUR/USD com rendimento automático.',
   },
 };
 
