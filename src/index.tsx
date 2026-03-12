@@ -4,6 +4,9 @@ import { serveStatic } from 'hono/cloudflare-workers'
 import paymentsRouter from './routes/payments'
 import contractsRouter from './routes/contracts'
 import settingsRouter from './routes/settings'
+import swapRouter from './routes/swap'
+import vaultsRouter from './routes/vaults'
+import chatRouter from './routes/chat'
 import { ARC_TESTNET } from './types/arc'
 
 const app = new Hono()
@@ -22,6 +25,9 @@ app.use('/static/*', serveStatic({ root: './public' }))
 app.route('/api/payments', paymentsRouter)
 app.route('/api/contracts', contractsRouter)
 app.route('/api/settings', settingsRouter)
+app.route('/api/swap', swapRouter)
+app.route('/api/vaults', vaultsRouter)
+app.route('/api/chat', chatRouter)
 
 // GET /api/status - Status geral do sistema
 app.get('/api/status', (c) => {
@@ -187,12 +193,27 @@ app.get('/', (c) => {
         <button onclick="switchTab('agents')" id="tab-agents" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-brain mr-2"></i><span data-i18n="tab_agents">AI Agents</span>
         </button>
+        <button onclick="switchTab('swap')" id="tab-swap" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
+          <i class="fas fa-exchange-alt mr-2"></i><span data-i18n="tab_swap">Swap</span>
+        </button>
+        <button onclick="switchTab('vaults')" id="tab-vaults" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
+          <i class="fas fa-vault mr-2"></i><span data-i18n="tab_vaults">Vaults</span>
+        </button>
         <button onclick="switchTab('deploy')" id="tab-deploy" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-rocket mr-2"></i><span data-i18n="tab_deploy">Deploy</span>
         </button>
       </div>
     </div>
   </div>
+
+  <!-- Floating Chat Button -->
+  <button id="chat-fab"
+    onclick="toggleChat()"
+    class="fixed bottom-6 right-6 z-[80] w-14 h-14 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-2xl shadow-purple-900/50 flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+    title="ARC AI Assistant">
+    <i class="fas fa-robot text-white text-xl" id="chat-fab-icon"></i>
+    <span id="chat-unread" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center"></span>
+  </button>
 
   <!-- Main Content -->
   <main class="max-w-7xl mx-auto px-6 py-8">
@@ -809,7 +830,322 @@ forge create src/ContractManager.sol:ContractManager \\
       </div>
     </div>
 
+    <!-- SWAP TAB -->
+    <div id="tab-content-swap" class="tab-content hidden">
+      <div class="max-w-2xl mx-auto space-y-6">
+        <!-- Header -->
+        <div class="text-center mb-2">
+          <h2 class="text-2xl font-bold text-white mb-1"><i class="fas fa-exchange-alt text-purple-400 mr-2"></i><span data-i18n="swap_title">Token Swap</span></h2>
+          <p class="text-gray-400 text-sm" data-i18n="swap_subtitle">Exchange USDC ↔ EURC on Arc Testnet</p>
+        </div>
+
+        <!-- Live Rates Banner -->
+        <div class="bg-gradient-to-r from-purple-900/40 to-blue-900/40 border border-purple-700/40 rounded-xl p-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-purple-800/60 flex items-center justify-center"><i class="fas fa-chart-line text-purple-400 text-sm"></i></div>
+            <div>
+              <p class="text-xs text-gray-400" data-i18n="swap_live_rate">Live Rate</p>
+              <p class="text-white font-mono text-sm" id="swap-rate-display">1 USDC = ... EURC</p>
+            </div>
+          </div>
+          <button onclick="loadSwapRates()" class="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
+            <i class="fas fa-sync-alt" id="swap-rate-spinner"></i> <span data-i18n="btn_refresh">Refresh</span>
+          </button>
+        </div>
+
+        <!-- Swap Card -->
+        <div class="bg-gray-900/80 border border-gray-700/60 rounded-2xl p-6 shadow-2xl">
+          <!-- From -->
+          <div class="mb-3">
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-xs text-gray-400 uppercase tracking-wider" data-i18n="swap_from">From</label>
+              <span class="text-xs text-gray-500" data-i18n="swap_balance">Balance: —</span>
+            </div>
+            <div class="flex gap-3">
+              <select id="swap-from-token" onchange="onSwapInputChange()" class="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-semibold focus:border-purple-500 focus:outline-none">
+                <option value="USDC">💵 USDC</option>
+                <option value="EURC">💶 EURC</option>
+              </select>
+              <input type="number" id="swap-amount-in" placeholder="0.00" min="0" step="0.01"
+                oninput="onSwapInputChange()"
+                class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-mono focus:border-purple-500 focus:outline-none">
+            </div>
+          </div>
+
+          <!-- Swap Arrow -->
+          <div class="flex items-center justify-center my-4">
+            <button onclick="swapTokenSides()" class="w-10 h-10 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-full flex items-center justify-center text-purple-400 hover:text-purple-300 transition-all hover:rotate-180 duration-300">
+              <i class="fas fa-arrow-down"></i>
+            </button>
+          </div>
+
+          <!-- To -->
+          <div class="mb-5">
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-xs text-gray-400 uppercase tracking-wider" data-i18n="swap_to">To (estimated)</label>
+              <span class="text-xs text-purple-400 font-medium" id="swap-fee-display"></span>
+            </div>
+            <div class="flex gap-3">
+              <div id="swap-to-token-display" class="bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm font-semibold min-w-[100px] flex items-center gap-2">
+                <span id="swap-to-token-icon">💶</span> <span id="swap-to-token-name">EURC</span>
+              </div>
+              <div class="flex-1 bg-gray-800/40 border border-gray-700/40 rounded-xl px-4 py-3 font-mono text-sm">
+                <span id="swap-amount-out" class="text-green-400 font-semibold">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quote Details -->
+          <div id="swap-quote-details" class="hidden bg-gray-800/40 rounded-xl p-4 mb-5 space-y-2 text-xs">
+            <div class="flex justify-between"><span class="text-gray-400" data-i18n="swap_rate">Rate</span><span class="text-white" id="sq-rate">—</span></div>
+            <div class="flex justify-between"><span class="text-gray-400" data-i18n="swap_fee">Fee (0.3%)</span><span class="text-yellow-400" id="sq-fee">—</span></div>
+            <div class="flex justify-between"><span class="text-gray-400" data-i18n="swap_price_impact">Price Impact</span><span id="sq-impact" class="text-green-400">—</span></div>
+            <div class="flex justify-between"><span class="text-gray-400" data-i18n="swap_min_received">Min. Received</span><span class="text-white font-mono" id="sq-min">—</span></div>
+          </div>
+
+          <!-- Slippage -->
+          <div class="flex items-center gap-3 mb-5">
+            <span class="text-xs text-gray-400" data-i18n="swap_slippage">Slippage Tolerance:</span>
+            <div class="flex gap-2">
+              <button onclick="setSlippage(0.5)" class="slippage-btn active text-xs px-3 py-1 rounded-lg bg-purple-800 text-purple-200 border border-purple-600">0.5%</button>
+              <button onclick="setSlippage(1)" class="slippage-btn text-xs px-3 py-1 rounded-lg bg-gray-800 text-gray-400 border border-gray-700">1%</button>
+              <button onclick="setSlippage(2)" class="slippage-btn text-xs px-3 py-1 rounded-lg bg-gray-800 text-gray-400 border border-gray-700">2%</button>
+            </div>
+            <input type="number" id="swap-slippage-custom" placeholder="custom" min="0.1" max="50" step="0.1"
+              class="w-20 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none"
+              oninput="setSlippage(parseFloat(this.value))">
+          </div>
+
+          <!-- Submit -->
+          <button onclick="executeSwap()" id="swap-submit-btn"
+            class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fas fa-exchange-alt"></i> <span data-i18n="swap_execute">Swap Tokens</span>
+          </button>
+          <p class="text-center text-xs text-gray-600 mt-2" data-i18n="swap_testnet_note">Simulated on Arc Testnet — no real funds</p>
+        </div>
+
+        <!-- Recent Swaps -->
+        <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-white font-semibold flex items-center gap-2"><i class="fas fa-history text-blue-400"></i> <span data-i18n="swap_history">Recent Swaps</span></h3>
+            <button onclick="loadSwapHistory()" class="text-xs text-gray-500 hover:text-gray-300"><i class="fas fa-sync-alt mr-1"></i><span data-i18n="btn_refresh">Refresh</span></button>
+          </div>
+          <div id="swap-history-list">
+            <div class="text-center py-6 text-gray-600 text-sm"><i class="fas fa-exchange-alt mr-2"></i><span data-i18n="swap_no_history">No swaps yet</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VAULTS TAB -->
+    <div id="tab-content-vaults" class="tab-content hidden">
+      <div class="space-y-6">
+        <!-- Header -->
+        <div class="text-center mb-2">
+          <h2 class="text-2xl font-bold text-white mb-1"><i class="fas fa-vault text-green-400 mr-2"></i><span data-i18n="vaults_title">Yield Vaults</span></h2>
+          <p class="text-gray-400 text-sm" data-i18n="vaults_subtitle">Earn yield on USDC and EURC on Arc Testnet</p>
+        </div>
+
+        <!-- Vault Cards -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          <!-- USDC Vault -->
+          <div class="bg-gradient-to-br from-blue-900/40 to-blue-800/20 border border-blue-700/40 rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-5">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-blue-800/60 flex items-center justify-center">
+                  <span class="text-2xl">💵</span>
+                </div>
+                <div>
+                  <h3 class="text-white font-bold text-lg">USDC Vault</h3>
+                  <p class="text-blue-400 text-xs">Arc Testnet</p>
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-2xl font-bold text-green-400" id="usdc-vault-apy">5.2%</div>
+                <div class="text-xs text-gray-400">APY</div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-5">
+              <div class="bg-black/20 rounded-xl p-3">
+                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_balance">Total Balance</p>
+                <p class="text-white font-bold" id="usdc-vault-balance">—</p>
+              </div>
+              <div class="bg-black/20 rounded-xl p-3">
+                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_yield_accrued">Yield Accrued</p>
+                <p class="text-green-400 font-bold" id="usdc-vault-accrued">—</p>
+              </div>
+              <div class="bg-black/20 rounded-xl p-3">
+                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_deposited">Total Deposited</p>
+                <p class="text-blue-400 font-mono text-sm" id="usdc-vault-deposited">—</p>
+              </div>
+              <div class="bg-black/20 rounded-xl p-3">
+                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_participants">Participants</p>
+                <p class="text-purple-400 font-bold" id="usdc-vault-participants">—</p>
+              </div>
+            </div>
+
+            <!-- Deposit/Withdraw -->
+            <div class="space-y-3">
+              <div class="flex gap-2">
+                <button onclick="setVaultAction('usdc','deposit')" id="usdc-dep-btn" class="vault-action-btn flex-1 bg-blue-700 hover:bg-blue-600 text-white rounded-xl py-2 text-sm font-semibold transition-all">
+                  <i class="fas fa-arrow-down mr-1"></i><span data-i18n="vault_deposit">Deposit</span>
+                </button>
+                <button onclick="setVaultAction('usdc','withdraw')" id="usdc-wit-btn" class="vault-action-btn flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2 text-sm font-semibold transition-all border border-gray-700">
+                  <i class="fas fa-arrow-up mr-1"></i><span data-i18n="vault_withdraw">Withdraw</span>
+                </button>
+              </div>
+              <div id="usdc-vault-form" class="hidden space-y-2">
+                <input type="number" id="usdc-vault-amount" placeholder="Amount in USDC" min="0" step="0.01"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:border-blue-500 focus:outline-none">
+                <div class="flex items-center gap-2">
+                  <input type="checkbox" id="usdc-include-yield" class="rounded">
+                  <label for="usdc-include-yield" class="text-xs text-gray-400" data-i18n="vault_claim_yield">Also claim accrued yield</label>
+                </div>
+                <button onclick="submitVaultAction('usdc')" id="usdc-vault-submit-btn"
+                  class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-2.5 text-sm font-semibold transition-all flex items-center justify-center gap-2">
+                  <i class="fas fa-check"></i> <span id="usdc-vault-action-label" data-i18n="vault_confirm">Confirm</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- EURC Vault -->
+          <div class="bg-gradient-to-br from-yellow-900/40 to-orange-800/20 border border-yellow-700/40 rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-5">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-yellow-800/60 flex items-center justify-center">
+                  <span class="text-2xl">💶</span>
+                </div>
+                <div>
+                  <h3 class="text-white font-bold text-lg">EURC Vault</h3>
+                  <p class="text-yellow-400 text-xs">Arc Testnet</p>
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-2xl font-bold text-green-400" id="eurc-vault-apy">4.8%</div>
+                <div class="text-xs text-gray-400">APY</div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-5">
+              <div class="bg-black/20 rounded-xl p-3">
+                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_balance">Total Balance</p>
+                <p class="text-white font-bold" id="eurc-vault-balance">—</p>
+              </div>
+              <div class="bg-black/20 rounded-xl p-3">
+                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_yield_accrued">Yield Accrued</p>
+                <p class="text-green-400 font-bold" id="eurc-vault-accrued">—</p>
+              </div>
+              <div class="bg-black/20 rounded-xl p-3">
+                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_deposited">Total Deposited</p>
+                <p class="text-yellow-400 font-mono text-sm" id="eurc-vault-deposited">—</p>
+              </div>
+              <div class="bg-black/20 rounded-xl p-3">
+                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_participants">Participants</p>
+                <p class="text-purple-400 font-bold" id="eurc-vault-participants">—</p>
+              </div>
+            </div>
+
+            <!-- Deposit/Withdraw -->
+            <div class="space-y-3">
+              <div class="flex gap-2">
+                <button onclick="setVaultAction('eurc','deposit')" id="eurc-dep-btn" class="vault-action-btn flex-1 bg-yellow-700 hover:bg-yellow-600 text-white rounded-xl py-2 text-sm font-semibold transition-all">
+                  <i class="fas fa-arrow-down mr-1"></i><span data-i18n="vault_deposit">Deposit</span>
+                </button>
+                <button onclick="setVaultAction('eurc','withdraw')" id="eurc-wit-btn" class="vault-action-btn flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2 text-sm font-semibold transition-all border border-gray-700">
+                  <i class="fas fa-arrow-up mr-1"></i><span data-i18n="vault_withdraw">Withdraw</span>
+                </button>
+              </div>
+              <div id="eurc-vault-form" class="hidden space-y-2">
+                <input type="number" id="eurc-vault-amount" placeholder="Amount in EURC" min="0" step="0.01"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:border-yellow-500 focus:outline-none">
+                <div class="flex items-center gap-2">
+                  <input type="checkbox" id="eurc-include-yield" class="rounded">
+                  <label for="eurc-include-yield" class="text-xs text-gray-400" data-i18n="vault_claim_yield">Also claim accrued yield</label>
+                </div>
+                <button onclick="submitVaultAction('eurc')" id="eurc-vault-submit-btn"
+                  class="w-full bg-yellow-600 hover:bg-yellow-500 text-white rounded-xl py-2.5 text-sm font-semibold transition-all flex items-center justify-center gap-2">
+                  <i class="fas fa-check"></i> <span id="eurc-vault-action-label" data-i18n="vault_confirm">Confirm</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vault History -->
+        <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-white font-semibold flex items-center gap-2"><i class="fas fa-history text-green-400"></i> <span data-i18n="vault_history">Vault Activity</span></h3>
+            <div class="flex gap-2">
+              <button onclick="loadVaultHistory('usdc')" class="text-xs px-3 py-1 rounded-lg bg-blue-900/40 text-blue-400 border border-blue-700/40 hover:bg-blue-900/60">USDC</button>
+              <button onclick="loadVaultHistory('eurc')" class="text-xs px-3 py-1 rounded-lg bg-yellow-900/40 text-yellow-400 border border-yellow-700/40 hover:bg-yellow-900/60">EURC</button>
+            </div>
+          </div>
+          <div id="vault-history-list">
+            <div class="text-center py-6 text-gray-600 text-sm"><i class="fas fa-vault mr-2"></i><span data-i18n="vault_no_history">No vault activity yet</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
+
+  <!-- ===== CHATBOT WIDGET ===== -->
+  <div id="chat-widget" class="hidden fixed bottom-24 right-6 z-[85] w-96 max-w-[calc(100vw-24px)] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60" style="height:520px">
+
+    <!-- Chat Header -->
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 rounded-t-2xl">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+          <i class="fas fa-robot text-white text-sm"></i>
+        </div>
+        <div>
+          <p class="text-white font-semibold text-sm">ARC AI Assistant</p>
+          <div class="flex items-center gap-1.5">
+            <div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
+            <p class="text-xs text-green-400">Online</p>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="clearChatHistory()" class="text-gray-500 hover:text-gray-300 text-xs p-1.5 rounded-lg hover:bg-gray-800 transition-all" title="Clear chat">
+          <i class="fas fa-trash"></i>
+        </button>
+        <button onclick="toggleChat()" class="text-gray-500 hover:text-gray-300 p-1.5 rounded-lg hover:bg-gray-800 transition-all">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-3 scroll-smooth">
+      <!-- Welcome message inserted by JS -->
+    </div>
+
+    <!-- Quick actions -->
+    <div id="chat-quick-actions" class="px-3 pb-2 flex gap-2 overflow-x-auto">
+      <button onclick="sendQuickMessage('Show vault APY')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">🏦 Vault APY</button>
+      <button onclick="sendQuickMessage('Current swap rates')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">🔄 Swap Rates</button>
+      <button onclick="sendQuickMessage('Payment queue')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">💳 Payments</button>
+      <button onclick="sendQuickMessage('Active contracts')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">📋 Contracts</button>
+      <button onclick="sendQuickMessage('Agent status')" class="chat-quick-btn flex-shrink-0 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-full border border-gray-700 transition-all">🧠 Agents</button>
+    </div>
+
+    <!-- Input -->
+    <div class="px-3 pb-3">
+      <div class="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 focus-within:border-purple-500 transition-all">
+        <input id="chat-input" type="text" placeholder="Ask about payments, vaults, swaps..."
+          class="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
+          onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendChatMessage();}">
+        <button onclick="sendChatMessage()" id="chat-send-btn"
+          class="w-8 h-8 bg-purple-600 hover:bg-purple-500 rounded-lg flex items-center justify-center text-white transition-all flex-shrink-0">
+          <i class="fas fa-paper-plane text-xs"></i>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Notification Toast -->
   <div id="toast" class="fixed bottom-6 right-6 z-50 hidden">
@@ -1206,6 +1542,9 @@ forge create src/ContractManager.sol:ContractManager \\
   <script src="/static/csv-upload.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/settings.js"></script>
+  <script src="/static/swap.js"></script>
+  <script src="/static/vaults.js"></script>
+  <script src="/static/chat.js"></script>
 </body>
 </html>`)
 })
