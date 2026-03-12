@@ -271,53 +271,8 @@ function renderPaymentsList(data) {
   `).join('');
 }
 
-async function analyzePayment() {
-  const from = document.getElementById('pay-from').value;
-  const to = document.getElementById('pay-to').value;
-  const amount = document.getElementById('pay-amount').value;
-  const description = document.getElementById('pay-description').value;
-  const priority = document.getElementById('pay-priority').value;
-  
-  if (!from || !to || !amount) {
-    showToast('Preencha os campos: de, para e valor', 'warning');
-    return;
-  }
-  
-  try {
-    const result = await API.post('/api/payments/analyze', { from, to, amount, description, priority });
-    const resultDiv = document.getElementById('payment-analysis-result');
-    
-    const riskColors = { low: 'green', medium: 'yellow', high: 'orange', critical: 'red' };
-    const color = riskColors[result.decision.riskLevel] || 'gray';
-    
-    resultDiv.className = `bg-${color}-900/20 border border-${color}-700/40 rounded-xl p-4`;
-    resultDiv.innerHTML = `
-      <div class="flex items-center justify-between mb-3">
-        <h4 class="text-white font-semibold">Análise do Agente IA</h4>
-        <span class="text-xs px-2 py-1 rounded-full bg-${color}-900/50 text-${color}-400 border border-${color}-700/40">
-          ${result.decision.riskLevel.toUpperCase()}
-        </span>
-      </div>
-      <div class="flex items-center gap-2 mb-2">
-        <i class="fas fa-${result.decision.action === 'approve' ? 'check-circle text-green-400' : result.decision.action === 'reject' ? 'times-circle text-red-400' : 'exclamation-circle text-yellow-400'}"></i>
-        <span class="text-sm font-medium text-white capitalize">${result.decision.action}</span>
-        <span class="text-xs text-gray-400">• Confiança: ${result.decision.confidence}%</span>
-      </div>
-      <p class="text-sm text-gray-300 mb-3">${result.decision.reason}</p>
-      ${result.decision.recommendations.length > 0 ? `
-        <div>
-          <div class="text-xs text-gray-500 mb-1">Recomendações:</div>
-          ${result.decision.recommendations.map(r => `<div class="text-xs text-gray-400">• ${r}</div>`).join('')}
-        </div>
-      ` : ''}
-    `;
-    resultDiv.classList.remove('hidden');
-    
-    addLog(`[AGENT:PAY] Análise: ${result.decision.action.toUpperCase()} - ${result.decision.riskLevel} risk (${result.decision.confidence}% conf)`, 'agent');
-  } catch (err) {
-    showToast('Erro na análise: ' + err.message, 'error');
-  }
-}
+// analyzePayment() substituída por analyzeMultisend() em csv-upload.js
+function analyzePayment() { if (typeof analyzeMultisend === 'function') analyzeMultisend(); }
 
 async function createDemoPayments() {
   try {
@@ -346,30 +301,7 @@ async function processPayments() {
   }
 }
 
-document.getElementById('payment-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  
-  const from = document.getElementById('pay-from').value;
-  const to = document.getElementById('pay-to').value;
-  const amount = document.getElementById('pay-amount').value;
-  const description = document.getElementById('pay-description').value;
-  const priority = document.getElementById('pay-priority').value;
-  
-  if (!from || !to || !amount || !description) {
-    showToast('Preencha todos os campos', 'warning');
-    return;
-  }
-  
-  try {
-    const result = await API.post('/api/payments/submit', { from, to, amount, description, priority });
-    showToast(`✅ Pagamento submetido! ID: ${result.taskId.substring(0, 20)}...`, 'success');
-    addLog(`[AGENT:PAY] Novo pagamento $${parseFloat(amount).toFixed(2)} USDC → análise pendente`, 'agent');
-    e.target.reset();
-    await loadPayments();
-  } catch (err) {
-    showToast('Erro: ' + err.message, 'error');
-  }
-});
+// payment-form removido — usar submitMultisend() de csv-upload.js
 
 // ============================================================
 // CONTRACTS

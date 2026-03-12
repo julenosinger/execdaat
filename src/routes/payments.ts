@@ -147,6 +147,67 @@ paymentsRouter.get('/report', (c) => {
   });
 });
 
+// POST /api/payments/batch - Pagamentos em lote (upload Excel)
+paymentsRouter.post('/batch', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { payments, fileName = 'batch' } = body;
+
+    if (!Array.isArray(payments) || payments.length === 0) {
+      return c.json({ success: false, error: 'payments array is required and must not be empty' }, 400);
+    }
+    if (payments.length > 500) {
+      return c.json({ success: false, error: 'Maximum 500 payments per batch' }, 400);
+    }
+
+    const agent = getAgent();
+    const batchId = `batch-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    const taskIds: string[] = [];
+    const errors: string[] = [];
+    let totalAmount = 0;
+
+    for (const [i, p] of payments.entries()) {
+      try {
+        const { from, to, amount, description, priority = 'medium' } = p;
+        if (!from || !to || !amount) {
+          errors.push(`Row ${i + 1}: missing from/to/amount`);
+          continue;
+        }
+        const amountNum = parseFloat(amount);
+        if (isNaN(amountNum) || amountNum <= 0) {
+          errors.push(`Row ${i + 1}: invalid amount "${amount}"`);
+          continue;
+        }
+        const taskId = await agent.submitPaymentTask({
+          type: 'execute',
+          from: String(from),
+          to: String(to),
+          amount: Math.round(amountNum * 1e6),
+          description: description || `Batch payment ${i + 1} from ${fileName}`,
+          priority: ['low','medium','high','critical'].includes(priority) ? priority : 'medium',
+        });
+        taskIds.push(taskId);
+        totalAmount += amountNum;
+      } catch (rowErr) {
+        errors.push(`Row ${i + 1}: ${String(rowErr)}`);
+      }
+    }
+
+    return c.json({
+      success: true,
+      batchId,
+      submitted: taskIds.length,
+      skipped: errors.length,
+      totalAmount,
+      taskIds,
+      errors,
+      message: `Batch "${fileName}": ${taskIds.length} payments queued, ${errors.length} skipped`,
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // POST /api/payments/demo - Criar pagamentos de demonstração
 paymentsRouter.post('/demo', async (c) => {
   const agent = getAgent();

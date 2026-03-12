@@ -274,117 +274,155 @@ app.get('/', (c) => {
 
     <!-- PAYMENTS TAB -->
     <div id="tab-content-payments" class="tab-content hidden">
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Form de pagamento -->
-        <div class="lg:col-span-1">
-          <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-6 sticky top-24">
-            <h3 class="text-white font-semibold mb-4 flex items-center gap-2">
-              <i class="fas fa-paper-plane text-purple-400"></i>
-              Novo Pagamento USDC
-            </h3>
-            <form id="payment-form" class="space-y-4">
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block">Endereço Remetente</label>
-                <input type="text" id="pay-from" placeholder="0x..." class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none font-mono">
-              </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block">Endereço Destinatário</label>
-                <input type="text" id="pay-to" placeholder="0x..." class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none font-mono">
-              </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block">Valor (USDC)</label>
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                  <input type="number" id="pay-amount" placeholder="0.00" step="0.01" min="0" class="w-full bg-gray-800 border border-gray-600 rounded-lg pl-7 pr-3 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none">
+      <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+
+        <!-- ═══════════════════════════════════════════════════
+             COLUNA ESQUERDA: Envio Manual + Multi-send
+             ═══════════════════════════════════════════════════ -->
+        <div class="xl:col-span-3 space-y-5">
+
+          <!-- ── PAINEL MULTI-SEND (estilo da imagem) ── -->
+          <div class="bg-gray-900/70 border border-gray-700/50 rounded-2xl overflow-hidden">
+
+            <!-- Cabeçalho do painel -->
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/40">
+              <div class="flex items-center gap-4">
+                <div>
+                  <p class="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Token</p>
+                  <p class="text-cyan-400 font-bold text-lg leading-none">USDC</p>
+                </div>
+                <div class="w-px h-8 bg-gray-700/60"></div>
+                <div>
+                  <p class="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Total a enviar</p>
+                  <p id="multisend-total" class="text-cyan-400 font-bold text-lg leading-none">0.0000 <span class="text-sm text-gray-400 font-normal">USDC</span></p>
                 </div>
               </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block">Descrição</label>
-                <textarea id="pay-description" placeholder="Finalidade do pagamento..." rows="3" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none"></textarea>
-              </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block">Prioridade</label>
-                <select id="pay-priority" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white focus:border-purple-500 focus:outline-none">
-                  <option value="low">Baixa</option>
-                  <option value="medium" selected>Média</option>
-                  <option value="high">Alta</option>
-                  <option value="critical">Crítica</option>
-                </select>
-              </div>
-              <div class="flex gap-2">
-                <button type="button" onclick="analyzePayment()" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
-                  <i class="fas fa-search mr-2"></i>Analisar
+              <!-- Botão CSV fixo no cabeçalho -->
+              <div class="flex items-center gap-2">
+                <input id="csv-file-input" type="file" accept=".csv,.txt" class="hidden"
+                  onchange="handleCSVFile(this.files[0])">
+                <button
+                  onclick="document.getElementById('csv-file-input').click()"
+                  ondragover="event.preventDefault(); event.currentTarget.classList.add('border-cyan-400','bg-cyan-900/20')"
+                  ondragleave="event.currentTarget.classList.remove('border-cyan-400','bg-cyan-900/20')"
+                  ondrop="event.preventDefault(); event.currentTarget.classList.remove('border-cyan-400','bg-cyan-900/20'); handleCSVFile(event.dataTransfer.files[0])"
+                  class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-cyan-500 text-gray-200 font-semibold rounded-xl px-4 py-2.5 text-sm transition-all">
+                  <i class="fas fa-upload text-cyan-400"></i>
+                  <span>CSV</span>
                 </button>
-                <button type="submit" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
-                  <i class="fas fa-send mr-2"></i>Enviar
+                <button onclick="downloadCSVTemplate()"
+                  title="Baixar template CSV"
+                  class="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-gray-500 text-gray-400 hover:text-cyan-400 rounded-xl transition-all">
+                  <i class="fas fa-download text-xs"></i>
                 </button>
               </div>
-            </form>
-            <div class="mt-4">
-              <button onclick="createDemoPayments()" class="w-full bg-blue-900/40 border border-blue-700/50 hover:bg-blue-800/40 text-blue-400 rounded-lg py-2 text-sm transition-colors">
-                <i class="fas fa-flask mr-2"></i>Criar Pagamentos Demo
+            </div>
+
+            <!-- Banner de erro CSV (oculto por padrão) -->
+            <div id="csv-error-banner" class="hidden px-5 py-2 bg-red-900/20 border-b border-red-700/30 flex items-center gap-2">
+              <i class="fas fa-exclamation-circle text-red-400 text-xs"></i>
+              <span id="csv-error-text" class="text-xs text-red-300"></span>
+            </div>
+
+            <!-- Cabeçalhos das colunas -->
+            <div class="grid grid-cols-12 gap-3 px-5 py-2 bg-gray-800/30 border-b border-gray-700/30">
+              <div class="col-span-5 text-xs text-gray-500 uppercase tracking-wider">Endereço</div>
+              <div class="col-span-3 text-xs text-gray-500 uppercase tracking-wider">Valor (USDC)</div>
+              <div class="col-span-3 text-xs text-gray-500 uppercase tracking-wider">Nota</div>
+              <div class="col-span-1"></div>
+            </div>
+
+            <!-- Linhas de destinatários -->
+            <div id="multisend-rows" class="divide-y divide-gray-800/60">
+              <!-- Linhas geradas pelo JS -->
+            </div>
+
+            <!-- Botão Adicionar destinatário -->
+            <div class="px-5 py-3 border-t border-gray-700/30">
+              <button onclick="addMultisendRow()"
+                class="w-full flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-medium py-1 transition-colors">
+                <i class="fas fa-plus text-xs"></i> Adicionar Destinatário
               </button>
+            </div>
+
+            <!-- Remetente -->
+            <div class="px-5 py-3 border-t border-gray-700/30 bg-gray-800/20">
+              <label class="text-xs text-gray-500 mb-1.5 block uppercase tracking-wider">De (Remetente)</label>
+              <input type="text" id="pay-from" placeholder="0x... (auto-preenchido pela wallet)"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none font-mono">
+            </div>
+
+            <!-- Prioridade + botões de ação -->
+            <div class="px-5 py-4 border-t border-gray-700/30 bg-gray-800/10">
+              <div class="flex items-center gap-3 flex-wrap">
+                <div class="flex items-center gap-2">
+                  <label class="text-xs text-gray-500">Prioridade:</label>
+                  <select id="pay-priority"
+                    class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-cyan-500 focus:outline-none">
+                    <option value="low">Baixa</option>
+                    <option value="medium" selected>Média</option>
+                    <option value="high">Alta</option>
+                    <option value="critical">Crítica</option>
+                  </select>
+                </div>
+                <div class="flex-1 flex gap-2 justify-end">
+                  <button onclick="analyzeMultisend()"
+                    class="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl px-4 py-2 text-sm font-medium transition-colors">
+                    <i class="fas fa-brain text-purple-400"></i>Analisar IA
+                  </button>
+                  <button onclick="submitMultisend()"
+                    class="flex items-center gap-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-xl px-5 py-2 text-sm font-bold transition-colors shadow-lg shadow-cyan-900/30">
+                    <i class="fas fa-paper-plane"></i>Enviar Tudo
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- ─────────────────────────────────────────────
-               CSV BATCH UPLOAD CARD
-               ───────────────────────────────────────────── -->
-          <div class="bg-gray-900/60 border border-green-700/30 rounded-xl p-5 mt-4">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-white font-semibold flex items-center gap-2 text-sm">
-                <i class="fas fa-file-csv text-green-400"></i>
-                Batch Upload (CSV)
-              </h3>
-              <button onclick="downloadCSVTemplate()"
-                class="flex items-center gap-1.5 text-xs text-green-400 hover:text-green-300 bg-green-900/20 hover:bg-green-900/40 border border-green-700/30 rounded-lg px-2.5 py-1.5 transition-colors">
-                <i class="fas fa-download"></i>Template
-              </button>
+          <!-- Info de formato CSV (compacto, sempre visível) -->
+          <div class="bg-gray-900/40 border border-gray-700/30 rounded-xl px-4 py-3 flex items-start gap-3">
+            <i class="fas fa-info-circle text-cyan-600 mt-0.5 flex-shrink-0"></i>
+            <div class="text-xs text-gray-500">
+              <strong class="text-gray-400">Formato CSV:</strong>
+              colunas <code class="text-cyan-500 bg-gray-800 px-1 rounded">address</code>,
+              <code class="text-cyan-500 bg-gray-800 px-1 rounded">amount</code>,
+              <code class="text-gray-400 bg-gray-800 px-1 rounded">note</code> (opcional),
+              <code class="text-gray-400 bg-gray-800 px-1 rounded">priority</code> (opcional) —
+              separador vírgula ou ponto-e-vírgula · máx 500 linhas
             </div>
+          </div>
 
-            <!-- Drop zone -->
-            <div id="csv-drop-zone"
-              class="relative border-2 border-dashed border-gray-600 hover:border-green-600 rounded-xl p-6 text-center transition-all cursor-pointer group"
-              onclick="document.getElementById('csv-file-input').click()"
-              ondragover="event.preventDefault(); this.classList.add('border-green-500','bg-green-900/10')"
-              ondragleave="this.classList.remove('border-green-500','bg-green-900/10')"
-              ondrop="event.preventDefault(); this.classList.remove('border-green-500','bg-green-900/10'); handleCSVFile(event.dataTransfer.files[0])">
-              <i class="fas fa-file-csv text-3xl text-gray-600 group-hover:text-green-500 transition-colors mb-2 block"></i>
-              <p class="text-gray-400 text-sm">Arraste &amp; solte seu arquivo <span class="text-green-400 font-medium">.csv</span> aqui</p>
-              <p class="text-gray-600 text-xs mt-1">ou clique para selecionar</p>
-              <input id="csv-file-input" type="file" accept=".csv,.txt" class="hidden"
-                onchange="handleCSVFile(this.files[0])">
-            </div>
+          <!-- Preview CSV após upload -->
+          <div id="csv-preview-container" class="hidden"></div>
 
-            <!-- Preview container (hidden until file loaded) -->
-            <div id="csv-preview-container" class="mt-3 hidden"></div>
+          <!-- Resultado da análise IA -->
+          <div id="payment-analysis-result" class="hidden"></div>
 
-            <!-- Required columns hint -->
-            <div class="mt-3 p-2.5 bg-gray-800/50 rounded-lg">
-              <p class="text-xs text-gray-500 mb-1.5 font-medium uppercase tracking-wider">Colunas obrigatórias</p>
-              <div class="flex flex-wrap gap-1.5">
-                <span class="text-xs bg-red-900/30 text-red-400 border border-red-700/30 rounded px-2 py-0.5">address *</span>
-                <span class="text-xs bg-red-900/30 text-red-400 border border-red-700/30 rounded px-2 py-0.5">amount *</span>
-                <span class="text-xs bg-gray-700/50 text-gray-400 border border-gray-600/30 rounded px-2 py-0.5">note</span>
-                <span class="text-xs bg-gray-700/50 text-gray-400 border border-gray-600/30 rounded px-2 py-0.5">priority</span>
-              </div>
-              <p class="text-xs text-gray-600 mt-1.5">Máx 500 linhas · Máx $10.000 por linha · sep: vírgula ou ponto-e-vírgula</p>
-            </div>
+          <!-- Botões secundários -->
+          <div class="flex gap-2">
+            <button onclick="createDemoPayments()"
+              class="flex-1 bg-blue-900/30 border border-blue-700/40 hover:bg-blue-800/40 text-blue-400 rounded-xl py-2 text-sm transition-colors">
+              <i class="fas fa-flask mr-2"></i>Demo Payments
+            </button>
+            <button onclick="processPayments()"
+              class="flex-1 bg-green-800/40 border border-green-700/40 hover:bg-green-700/50 text-green-400 rounded-xl py-2 text-sm font-medium transition-colors">
+              <i class="fas fa-play mr-2"></i>Processar Fila
+            </button>
           </div>
         </div>
 
-        <!-- Lista de pagamentos -->
-        <div class="lg:col-span-2 space-y-4">
+        <!-- ═══════════════════════════════════════════════════
+             COLUNA DIREITA: Fila de Pagamentos
+             ═══════════════════════════════════════════════════ -->
+        <div class="xl:col-span-2 space-y-4">
           <div class="flex items-center justify-between">
-            <h3 class="text-white font-semibold">Payment Queue</h3>
-            <button onclick="processPayments()" class="bg-green-700 hover:bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors">
-              <i class="fas fa-play mr-2"></i>Process Queue
+            <h3 class="text-white font-semibold flex items-center gap-2">
+              <i class="fas fa-list text-purple-400"></i>Fila de Pagamentos
+            </h3>
+            <button onclick="loadPayments()" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+              <i class="fas fa-sync mr-1"></i>Atualizar
             </button>
           </div>
-          <div id="payment-analysis-result" class="hidden"></div>
-
-          <!-- CSV batch result rendered by csv-upload.js -->
-
           <div id="payments-list" class="space-y-3">
             <div class="text-gray-500 text-sm text-center py-8 bg-gray-900/40 rounded-xl border border-gray-700/30">
               <i class="fas fa-inbox text-4xl mb-3 block text-gray-700"></i>
@@ -392,6 +430,7 @@ app.get('/', (c) => {
             </div>
           </div>
         </div>
+
       </div>
     </div>
 
