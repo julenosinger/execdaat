@@ -334,14 +334,32 @@ async function submitVaultAction(token) {
       showToast('Provider da wallet não encontrado. Reconecte.', 'error'); return;
     }
 
-    // Garantir rede Arc Testnet
+    // ── Verificar rede SEMPRE antes de qualquer tx ────────────────────────────
+    // Mesmo que walletState.onArcNetwork=true, o usuário pode ter trocado de rede
+    setBtn('<i class="fas fa-exchange-alt fa-spin mr-2"></i>Verificando rede...', true);
+    try {
+      const currentChainHex = await provider.request({ method: 'eth_chainId' });
+      const currentChain = parseInt(currentChainHex, 16);
+      window.walletState.chainId = currentChain;
+      window.walletState.onArcNetwork = (currentChain === 5042002);
+    } catch (_) { /* ignorar */ }
+
     if (!window.walletState.onArcNetwork) {
       setBtn('<i class="fas fa-exchange-alt fa-spin mr-2"></i>Adicionando Arc Testnet...', true);
       try {
         const switched = await switchToArcTestnet(provider);
         if (!switched) {
-          showToast('Troque para Arc Testnet (Chain ID 5042002) e tente novamente', 'error'); return;
+          showToast('Troque para Arc Testnet (Chain ID: 5042002) e tente novamente', 'error'); return;
         }
+        // Aguardar wallet processar a troca de rede
+        await new Promise(r => setTimeout(r, 800));
+        // Re-verificar após a troca
+        const chainHex2 = await provider.request({ method: 'eth_chainId' });
+        const chain2 = parseInt(chainHex2, 16);
+        if (chain2 !== 5042002) {
+          showToast(`Rede incorreta (${chain2}). Use Arc Testnet (5042002).`, 'error'); return;
+        }
+        window.walletState.chainId = 5042002;
         window.walletState.onArcNetwork = true;
       } catch (netErr) {
         showToast('Erro ao trocar rede: ' + netErr.message, 'error'); return;
@@ -385,6 +403,9 @@ async function submitVaultAction(token) {
         // Na Arc, USDC nativo usa 18 casas no campo value da tx
         const amountNativeHex = '0x' + (amountRaw * BigInt(1_000_000_000_000n)).toString(16); // × 10^12 para 18 dec
 
+        // ⚠️ NÃO incluir chainId no objeto de tx — MetaMask rejeita com
+        // "chainId should be same as current chainId"
+        // A rede já foi validada acima via switchToArcTestnet()
         txHash = await provider.request({
           method: 'eth_sendTransaction',
           params: [{
@@ -392,7 +413,6 @@ async function submitVaultAction(token) {
             to: custodian,
             value: amountNativeHex,    // USDC nativo no campo value
             data: '0x',                // sem calldata
-            chainId: ARC_CHAIN_HEX_VAULT,
           }],
         });
 
@@ -468,6 +488,7 @@ async function submitVaultAction(token) {
         const paddedAmt = amountRaw.toString(16).padStart(64, '0');
         const approveData = approveSelector + paddedSpender + paddedAmt;
 
+        // ⚠️ NÃO incluir chainId — MetaMask rejeita com "chainId should be same"
         approveTxHash = await provider.request({
           method: 'eth_sendTransaction',
           params: [{
@@ -475,7 +496,6 @@ async function submitVaultAction(token) {
             to: tokenCfg.address,
             data: approveData,
             value: '0x0',
-            chainId: ARC_CHAIN_HEX_VAULT,
           }],
         });
 
@@ -509,6 +529,7 @@ async function submitVaultAction(token) {
         const paddedAmt2 = amountRaw.toString(16).padStart(64, '0');
         const transferData = transferSelector + paddedTo + paddedAmt2;
 
+        // ⚠️ NÃO incluir chainId — MetaMask rejeita com "chainId should be same"
         transferTxHash = await provider.request({
           method: 'eth_sendTransaction',
           params: [{
@@ -516,7 +537,6 @@ async function submitVaultAction(token) {
             to: tokenCfg.address,
             data: transferData,
             value: '0x0',
-            chainId: ARC_CHAIN_HEX_VAULT,
           }],
         });
 

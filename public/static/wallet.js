@@ -10,9 +10,11 @@ const ARC_TESTNET_PARAMS = {
   chainId: '0x4CFC12',          // 5042002 em hex
   chainName: 'Arc Testnet',
   nativeCurrency: {
+    // MetaMask exige decimals=18 para o campo nativeCurrency em wallet_addEthereumChain
+    // mesmo que o token nativo (USDC) use 6 casas — este campo é obrigatório ser 18
     name: 'USDC',
     symbol: 'USDC',
-    decimals: 6,
+    decimals: 18,
   },
   // RPC primário + alternativos (a wallet usa o primeiro da lista)
   rpcUrls: [
@@ -174,20 +176,57 @@ async function fetchUSDCBalance(address, provider) {
 // ============================================================
 async function switchToArcTestnet(provider) {
   try {
+    // ── 1. Verificar se já está na rede correta ──────────────────────────────
+    try {
+      const currentChainHex = await provider.request({ method: 'eth_chainId' });
+      const currentChain = parseInt(currentChainHex, 16);
+      if (currentChain === 5042002) {
+        // Já está na Arc Testnet — atualizar estado e retornar
+        if (window.walletState) {
+          window.walletState.chainId = 5042002;
+          window.walletState.onArcNetwork = true;
+        }
+        console.log('[WALLET] Já está na Arc Testnet (5042002)');
+        return true;
+      }
+    } catch (_) { /* ignorar erro na leitura do chainId */ }
+
+    // ── 2. Tentar trocar para Arc Testnet ────────────────────────────────────
     await provider.request({
       method: 'wallet_switchEthereumChain',
-      params: [{ chainId: ARC_TESTNET_PARAMS.chainId }],
+      params: [{ chainId: ARC_TESTNET_PARAMS.chainId }],  // '0x4CFC12'
     });
+
+    // Atualizar estado após troca bem-sucedida
+    if (window.walletState) {
+      window.walletState.chainId = 5042002;
+      window.walletState.onArcNetwork = true;
+    }
+    console.log('[WALLET] Trocou para Arc Testnet com sucesso');
     return true;
+
   } catch (switchError) {
-    // 4902 = rede não adicionada ainda
+    // ── 3. Rede não conhecida — adicionar Arc Testnet ────────────────────────
+    // Códigos: 4902 (EIP-1193 padrão), -32603 (alguns providers)
     if (switchError.code === 4902 || switchError.code === -32603 ||
-        (switchError.data && switchError.data.originalError && switchError.data.originalError.code === 4902)) {
+        (switchError.data?.originalError?.code === 4902) ||
+        switchError.message?.includes('Unrecognized chain ID') ||
+        switchError.message?.includes('wallet_addEthereumChain')) {
       try {
         await provider.request({
           method: 'wallet_addEthereumChain',
           params: [ARC_TESTNET_PARAMS],
         });
+        // Após adicionar, tentar trocar novamente
+        await provider.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: ARC_TESTNET_PARAMS.chainId }],
+        });
+        if (window.walletState) {
+          window.walletState.chainId = 5042002;
+          window.walletState.onArcNetwork = true;
+        }
+        console.log('[WALLET] Arc Testnet adicionada e ativada');
         return true;
       } catch (addError) {
         console.error('[WALLET] Erro ao adicionar rede Arc:', addError);
@@ -195,12 +234,17 @@ async function switchToArcTestnet(provider) {
         return false;
       }
     }
-    // 4001 = usuário rejeitou
-    if (switchError.code === 4001) {
+
+    // ── 4. Usuário rejeitou ───────────────────────────────────────────────────
+    if (switchError.code === 4001 ||
+        switchError.message?.includes('User rejected') ||
+        switchError.message?.includes('user denied')) {
       showWalletToast('Troca de rede cancelada pelo usuário', 'warning');
       return false;
     }
+
     console.error('[WALLET] Erro ao trocar rede:', switchError);
+    showWalletToast('Erro ao trocar rede: ' + (switchError.message || switchError), 'error');
     return false;
   }
 }

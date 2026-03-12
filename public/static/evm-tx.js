@@ -69,12 +69,22 @@ async function evmSignAndSend({ to, data, value = '0x0', description = '' }) {
     throw new Error('Wallet not connected. Please connect your EVM wallet first.');
   }
 
+  // ── Verificar rede atual via eth_chainId (sempre, não confiar só no estado) ──
+  try {
+    const chainHex = await provider.request({ method: 'eth_chainId' });
+    const chainDec = parseInt(chainHex, 16);
+    window.walletState.chainId = chainDec;
+    window.walletState.onArcNetwork = (chainDec === 5042002);
+  } catch (_) { /* ignorar erro de leitura */ }
+
   if (!window.walletState?.onArcNetwork) {
     // Try to switch network first
     const switched = await switchToArcTestnet(provider);
     if (!switched) {
       throw new Error('Please switch to Arc Testnet (Chain ID: 5042002) before signing transactions.');
     }
+    // Aguardar wallet processar
+    await new Promise(r => setTimeout(r, 600));
   }
 
   // Show signing notification
@@ -108,6 +118,9 @@ async function evmSignAndSend({ to, data, value = '0x0', description = '' }) {
       console.warn('[EVM] Gas price fetch failed, using default');
     }
 
+    // ⚠️ NÃO incluir chainId no objeto de tx — MetaMask/EIP-1193 rejeita com
+    // "chainId should be same as current chainId" quando já está na rede correta.
+    // A validação de rede é feita antes via switchToArcTestnet().
     const txParams = {
       from,
       to,
@@ -116,7 +129,6 @@ async function evmSignAndSend({ to, data, value = '0x0', description = '' }) {
       gas: gasEstimate,
       gasPrice,
       nonce,
-      chainId: ARC_CHAIN_HEX,
     };
 
     console.log('[EVM] Sending transaction:', { ...txParams, data: data.slice(0, 18) + '...' });
