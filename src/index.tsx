@@ -7,6 +7,8 @@ import settingsRouter from './routes/settings'
 import swapRouter from './routes/swap'
 import vaultsRouter from './routes/vaults'
 import chatRouter from './routes/chat'
+import guardianRouter from './routes/guardian'
+import yieldRouter from './routes/yield-optimizer'
 import { ARC_TESTNET } from './types/arc'
 
 const app = new Hono()
@@ -28,6 +30,8 @@ app.route('/api/settings', settingsRouter)
 app.route('/api/swap', swapRouter)
 app.route('/api/vaults', vaultsRouter)
 app.route('/api/chat', chatRouter)
+app.route('/api/guardian', guardianRouter)
+app.route('/api/yield', yieldRouter)
 
 // GET /api/status - Status geral do sistema
 app.get('/api/status', (c) => {
@@ -698,9 +702,253 @@ app.get('/', (c) => {
           <div class="text-blue-400">[NETWORK] Connected to Arc Testnet (Chain ID: 5042002)</div>
           <div class="text-purple-400">[AGENT:PAY] ArcPay Agent v1.0 ready</div>
           <div class="text-cyan-400">[AGENT:CTR] ArcContract Agent v1.0 ready</div>
-          <div class="text-gray-500">[INFO] Waiting for tasks...</div>
+          <div class="text-yellow-400">[AGENT:GRD] Guardian Agent v1.0 ready</div>
+          <div class="text-green-400">[AGENT:YLD] Yield Optimizer v1.0 ready</div>
+          <div class="text-gray-500">[INFO] All 4 agents active — waiting for tasks...</div>
         </div>
       </div>
+
+      <!-- NOVOS AGENTES: Guardian + Yield Optimizer -->
+      <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Guardian Agent — Compliance/KYC -->
+        <div class="bg-gray-900/60 border border-yellow-700/40 rounded-xl p-6">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-600 to-orange-600 flex items-center justify-center">
+              <i class="fas fa-shield-alt text-white text-xl"></i>
+            </div>
+            <div>
+              <h3 class="text-white font-semibold">Guardian Agent v1.0</h3>
+              <p class="text-yellow-400 text-xs">Compliance &amp; KYC / AML</p>
+            </div>
+            <div id="guardian-agent-dot" class="ml-auto w-3 h-3 rounded-full bg-yellow-400 animate-pulse"></div>
+          </div>
+
+          <!-- Stats rápidas -->
+          <div id="guardian-agent-stats" class="grid grid-cols-2 gap-3 mb-5">
+            <div class="bg-yellow-900/20 border border-yellow-700/30 rounded-lg p-3 text-center">
+              <p class="text-2xl font-bold text-white" id="guardian-total-checks">--</p>
+              <p class="text-xs text-yellow-400 mt-0.5">Total Checks</p>
+            </div>
+            <div class="bg-green-900/20 border border-green-700/30 rounded-lg p-3 text-center">
+              <p class="text-2xl font-bold text-green-400" id="guardian-approved">--</p>
+              <p class="text-xs text-gray-400 mt-0.5">Approved</p>
+            </div>
+            <div class="bg-red-900/20 border border-red-700/30 rounded-lg p-3 text-center">
+              <p class="text-2xl font-bold text-red-400" id="guardian-blocked">--</p>
+              <p class="text-xs text-gray-400 mt-0.5">Blocked</p>
+            </div>
+            <div class="bg-blue-900/20 border border-blue-700/30 rounded-lg p-3 text-center">
+              <p class="text-2xl font-bold text-blue-400" id="guardian-kyc-verified">--</p>
+              <p class="text-xs text-gray-400 mt-0.5">KYC Verified</p>
+            </div>
+          </div>
+
+          <!-- Capacidades -->
+          <div class="grid grid-cols-2 gap-2 mb-4">
+            <div class="bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 text-center">
+              <i class="fas fa-gavel text-yellow-400 text-sm mb-1 block"></i>
+              <span class="text-xs text-gray-300">Sanction Screen</span>
+            </div>
+            <div class="bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 text-center">
+              <i class="fas fa-id-card text-orange-400 text-sm mb-1 block"></i>
+              <span class="text-xs text-gray-300">KYC Verification</span>
+            </div>
+            <div class="bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 text-center">
+              <i class="fas fa-globe text-red-400 text-sm mb-1 block"></i>
+              <span class="text-xs text-gray-300">Jurisdiction Check</span>
+            </div>
+            <div class="bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 text-center">
+              <i class="fas fa-chart-bar text-purple-400 text-sm mb-1 block"></i>
+              <span class="text-xs text-gray-300">AML / Structuring</span>
+            </div>
+          </div>
+
+          <!-- Quick Check form -->
+          <div class="bg-gray-800/50 rounded-lg p-4">
+            <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3">Quick Compliance Check</h4>
+            <div class="space-y-2">
+              <input id="guardian-check-addr" type="text" placeholder="0x... wallet address"
+                class="w-full bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-yellow-500/60 focus:outline-none">
+              <div class="flex gap-2">
+                <input id="guardian-check-amt" type="number" placeholder="Amount USDC" min="0"
+                  class="flex-1 bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-yellow-500/60 focus:outline-none">
+                <select id="guardian-check-token"
+                  class="bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white focus:border-yellow-500/60 focus:outline-none">
+                  <option value="USDC">USDC</option>
+                  <option value="EURC">EURC</option>
+                </select>
+              </div>
+              <button onclick="runGuardianCheck()"
+                class="w-full bg-yellow-600 hover:bg-yellow-500 text-white rounded-lg py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+                <i class="fas fa-search-plus"></i> Run Compliance Check
+              </button>
+            </div>
+            <div id="guardian-check-result" class="mt-3 hidden"></div>
+          </div>
+
+          <!-- KYC Submit -->
+          <div class="bg-gray-800/50 rounded-lg p-4 mt-3">
+            <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3">Submit KYC</h4>
+            <div class="space-y-2">
+              <input id="kyc-submit-addr" type="text" placeholder="0x... (or connected wallet)"
+                class="w-full bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-yellow-500/60 focus:outline-none">
+              <div class="flex gap-2">
+                <select id="kyc-submit-tier"
+                  class="flex-1 bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white focus:border-yellow-500/60 focus:outline-none">
+                  <option value="1">Tier 1 — Basic ($1k/tx)</option>
+                  <option value="2">Tier 2 — Standard ($10k/tx)</option>
+                  <option value="3">Tier 3 — Full ($500k/tx)</option>
+                </select>
+                <input id="kyc-submit-country" type="text" placeholder="US" maxlength="2"
+                  class="w-16 bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-yellow-500/60 focus:outline-none">
+              </div>
+              <button onclick="submitKYC()"
+                class="w-full bg-orange-600 hover:bg-orange-500 text-white rounded-lg py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+                <i class="fas fa-id-card"></i> Submit KYC Application
+              </button>
+            </div>
+            <div id="kyc-submit-result" class="mt-3 hidden"></div>
+          </div>
+
+          <div class="mt-3 flex gap-2">
+            <button onclick="loadGuardianStatus()" class="flex-1 text-xs text-yellow-400 hover:text-yellow-300 bg-yellow-900/20 border border-yellow-700/30 rounded-lg py-2 transition-colors">
+              <i class="fas fa-sync mr-1"></i> Refresh Stats
+            </button>
+            <button onclick="loadComplianceLog()" class="flex-1 text-xs text-orange-400 hover:text-orange-300 bg-orange-900/20 border border-orange-700/30 rounded-lg py-2 transition-colors">
+              <i class="fas fa-list mr-1"></i> View Log
+            </button>
+          </div>
+        </div>
+
+        <!-- Yield Optimizer Agent -->
+        <div class="bg-gray-900/60 border border-green-700/40 rounded-xl p-6">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-600 to-teal-600 flex items-center justify-center">
+              <i class="fas fa-seedling text-white text-xl"></i>
+            </div>
+            <div>
+              <h3 class="text-white font-semibold">Yield Optimizer v1.0</h3>
+              <p class="text-green-400 text-xs">Auto Rebalancing &amp; APY Maximizer</p>
+            </div>
+            <div id="yield-agent-dot" class="ml-auto w-3 h-3 rounded-full bg-green-400 animate-pulse"></div>
+          </div>
+
+          <!-- Stats rápidas -->
+          <div id="yield-agent-stats" class="grid grid-cols-2 gap-3 mb-5">
+            <div class="bg-green-900/20 border border-green-700/30 rounded-lg p-3 text-center">
+              <p class="text-2xl font-bold text-green-400" id="yield-best-apy">--</p>
+              <p class="text-xs text-gray-400 mt-0.5">Best APY %</p>
+            </div>
+            <div class="bg-teal-900/20 border border-teal-700/30 rounded-lg p-3 text-center">
+              <p class="text-2xl font-bold text-teal-400" id="yield-total-pools">--</p>
+              <p class="text-xs text-gray-400 mt-0.5">Active Pools</p>
+            </div>
+            <div class="bg-blue-900/20 border border-blue-700/30 rounded-lg p-3 text-center">
+              <p class="text-2xl font-bold text-blue-400" id="yield-positions">--</p>
+              <p class="text-xs text-gray-400 mt-0.5">Positions</p>
+            </div>
+            <div class="bg-purple-900/20 border border-purple-700/30 rounded-lg p-3 text-center">
+              <p class="text-2xl font-bold text-purple-400" id="yield-rebalances">--</p>
+              <p class="text-xs text-gray-400 mt-0.5">Rebalances</p>
+            </div>
+          </div>
+
+          <!-- Capacidades -->
+          <div class="grid grid-cols-2 gap-2 mb-4">
+            <div class="bg-green-900/20 border border-green-700/20 rounded-lg p-2.5 text-center">
+              <i class="fas fa-swimming-pool text-green-400 text-sm mb-1 block"></i>
+              <span class="text-xs text-gray-300">Pool Discovery</span>
+            </div>
+            <div class="bg-green-900/20 border border-green-700/20 rounded-lg p-2.5 text-center">
+              <i class="fas fa-balance-scale text-teal-400 text-sm mb-1 block"></i>
+              <span class="text-xs text-gray-300">Auto-Rebalance</span>
+            </div>
+            <div class="bg-green-900/20 border border-green-700/20 rounded-lg p-2.5 text-center">
+              <i class="fas fa-chart-line text-blue-400 text-sm mb-1 block"></i>
+              <span class="text-xs text-gray-300">APY Tracking</span>
+            </div>
+            <div class="bg-green-900/20 border border-green-700/20 rounded-lg p-2.5 text-center">
+              <i class="fas fa-redo text-purple-400 text-sm mb-1 block"></i>
+              <span class="text-xs text-gray-300">Compounding</span>
+            </div>
+          </div>
+
+          <!-- APY Projections -->
+          <div class="bg-gray-800/50 rounded-lg p-4 mb-3">
+            <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3">APY Projection Calculator</h4>
+            <div class="flex gap-2 mb-3">
+              <input id="yield-proj-amount" type="number" placeholder="1000" min="1" value="1000"
+                class="flex-1 bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500/60 focus:outline-none">
+              <select id="yield-proj-token"
+                class="bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white focus:border-green-500/60 focus:outline-none">
+                <option value="USDC">USDC</option>
+                <option value="EURC">EURC</option>
+              </select>
+              <button onclick="calcYieldProjection()"
+                class="bg-green-600 hover:bg-green-500 text-white rounded-lg px-3 py-2 text-sm font-semibold transition-colors">
+                <i class="fas fa-calculator"></i>
+              </button>
+            </div>
+            <div id="yield-projection-result" class="text-xs text-gray-500 text-center">
+              Click to calculate projected returns
+            </div>
+          </div>
+
+          <!-- Open Position with EVM signing -->
+          <div class="bg-gray-800/50 rounded-lg p-4">
+            <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3">Open Yield Position</h4>
+            <div class="space-y-2">
+              <select id="yield-open-pool"
+                class="w-full bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white focus:border-green-500/60 focus:outline-none">
+                <option value="">Select pool...</option>
+              </select>
+              <input id="yield-open-amount" type="number" placeholder="Amount USDC/EURC" min="1"
+                class="w-full bg-gray-700/60 border border-gray-600/60 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500/60 focus:outline-none">
+              <button onclick="openYieldPosition()"
+                class="w-full bg-green-600 hover:bg-green-500 text-white rounded-lg py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+                <i class="fas fa-sign-in-alt"></i> Open Position (Sign on Arc)
+              </button>
+            </div>
+            <div id="yield-open-result" class="mt-3 hidden"></div>
+          </div>
+
+          <!-- Active Positions -->
+          <div class="mt-3">
+            <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-2">Active Positions</h4>
+            <div id="yield-positions-list" class="space-y-2 max-h-48 overflow-y-auto">
+              <div class="text-center text-gray-600 text-xs py-3">Connect wallet to see positions</div>
+            </div>
+          </div>
+
+          <div class="mt-3 flex gap-2">
+            <button onclick="loadYieldData()" class="flex-1 text-xs text-green-400 hover:text-green-300 bg-green-900/20 border border-green-700/30 rounded-lg py-2 transition-colors">
+              <i class="fas fa-sync mr-1"></i> Refresh Pools
+            </button>
+            <button onclick="loadYieldPositions()" class="flex-1 text-xs text-teal-400 hover:text-teal-300 bg-teal-900/20 border border-teal-700/30 rounded-lg py-2 transition-colors">
+              <i class="fas fa-list mr-1"></i> My Positions
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Compliance Log (Guardian) -->
+      <div class="mt-6 bg-gray-900/60 border border-yellow-700/30 rounded-xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-white font-semibold flex items-center gap-2">
+            <i class="fas fa-shield-alt text-yellow-400"></i>
+            Compliance Log (Guardian)
+          </h3>
+          <button onclick="loadComplianceLog()" class="text-xs text-yellow-400 hover:text-yellow-300">
+            <i class="fas fa-sync mr-1"></i> Refresh
+          </button>
+        </div>
+        <div id="compliance-log-list" class="space-y-2 max-h-48 overflow-y-auto">
+          <div class="text-center text-gray-600 text-sm py-4">No compliance checks yet. Run a check above.</div>
+        </div>
+      </div>
+
     </div>
 
     <!-- DEPLOY TAB -->
@@ -1538,12 +1786,15 @@ forge create src/ContractManager.sol:ContractManager \\
     </div>
   </div>
 
+  <script src="/static/evm-tx.js"></script>
   <script src="/static/wallet.js"></script>
   <script src="/static/csv-upload.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/settings.js"></script>
   <script src="/static/swap.js"></script>
   <script src="/static/vaults.js"></script>
+  <script src="/static/guardian.js"></script>
+  <script src="/static/yield-optimizer.js"></script>
   <script src="/static/chat.js"></script>
 </body>
 </html>`)

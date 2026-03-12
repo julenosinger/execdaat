@@ -54,7 +54,11 @@ function switchTab(tab) {
   if (tab === 'dashboard') loadDashboard();
   if (tab === 'payments') loadPayments();
   if (tab === 'contracts') loadContracts();
-  if (tab === 'agents') loadAgentsDetails();
+  if (tab === 'agents') {
+    loadAgentsDetails();
+    if (window.loadGuardianStatus) window.loadGuardianStatus();
+    if (window.loadYieldData) window.loadYieldData();
+  }
   if (tab === 'swap' && window.loadSwap) window.loadSwap();
   if (tab === 'vaults' && window.loadVaultData) window.loadVaultData();
 }

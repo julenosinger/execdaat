@@ -72,7 +72,7 @@ async function submitVaultAction(token) {
     return;
   }
 
-  const walletAddress = window._walletAddress || '0xDemo0000000000000000000000000000000000';
+  const walletAddress = window.walletState?.address || window._walletAddress || '0xDemo0000000000000000000000000000000000';
   const tokenSymbol = token.toUpperCase();
 
   const submitBtn = document.getElementById(`${token}-vault-submit-btn`);
@@ -82,14 +82,59 @@ async function submitVaultAction(token) {
   }
 
   try {
+    // ── 1. Guardian compliance check ─────────────────────────────────────────
+    if (walletAddress && !walletAddress.startsWith('0xDemo')) {
+      submitBtn && (submitBtn.innerHTML = '<i class="fas fa-shield-alt fa-spin mr-2"></i> Compliance check...');
+      try {
+        const gcType = action === 'deposit' ? 'vault_deposit' : 'vault_withdraw';
+        const gcRes = await axios.post('/api/guardian/check', {
+          txType: gcType, fromAddress: walletAddress, amount, token: tokenSymbol,
+        });
+        if (!gcRes.data.approved) {
+          showToast(`🚫 Guardian: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance failed'}`, 'error');
+          return;
+        }
+      } catch(e) { /* non-critical */ }
+    }
+
+    // ── 2. EVM on-chain signing ───────────────────────────────────────────────
+    let txHash = null;
+    if (window.walletState?.connected && window.evmTransferToken) {
+      submitBtn && (submitBtn.innerHTML = '<i class="fas fa-signature fa-spin mr-2"></i> Sign in wallet...');
+      try {
+        // Vault contract address (USDC or EURC vault)
+        const VAULT_CONTRACTS = {
+          usdc: '0x1100000000000000000000000000000000000001',
+          eurc: '0x2200000000000000000000000000000000000002',
+        };
+        const vaultContract = VAULT_CONTRACTS[token] || USDC_ADDRESS;
+        const result = await evmTransferToken(
+          action === 'deposit' ? vaultContract : walletAddress,
+          amount,
+          tokenSymbol,
+          `${action === 'deposit' ? 'Deposit' : 'Withdraw'} ${amount} ${tokenSymbol} ${action === 'deposit' ? 'into' : 'from'} ${tokenSymbol} Vault`
+        );
+        txHash = result.txHash;
+      } catch (e) {
+        if (e.message?.includes('rejected')) {
+          showToast(`${tokenSymbol} vault ${action} rejected`, 'warning');
+          return;
+        }
+        console.warn('[Vault] EVM sign skipped:', e.message);
+      }
+    }
+
+    // ── 3. Submit to backend ──────────────────────────────────────────────────
+    submitBtn && (submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Confirming...');
     const endpoint = `/api/vaults/${token}/${action}`;
-    const payload = { walletAddress, amount, includeYield };
+    const payload = { walletAddress, amount, includeYield, txHash };
     const res = await axios.post(endpoint, payload);
 
     if (res.data.success) {
+      const explorerLink = txHash ? ` <a href="https://testnet.arcscan.app/tx/${txHash}" target="_blank" class="underline text-blue-400">tx ↗</a>` : '';
       const msg = action === 'deposit'
-        ? `✅ Deposited ${amount} ${tokenSymbol} into vault`
-        : `✅ Withdrew ${amount} ${tokenSymbol} from vault`;
+        ? `✅ Deposited ${amount} ${tokenSymbol} into vault${explorerLink}`
+        : `✅ Withdrew ${amount} ${tokenSymbol} from vault${explorerLink}`;
       showToast(msg, 'success');
 
       // Clear form

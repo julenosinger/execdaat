@@ -187,10 +187,50 @@ async function submitMultisend() {
 
   try {
     const payments = rows.map(r => ({ ...r, from }));
-    const res = await axios.post('/api/payments/batch', { payments, fileName: 'multisend' });
+
+    // ── 1. Guardian compliance check on batch ──────────────────────────────────
+    const totalAmount = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    if (from && !from.startsWith('0xDemo')) {
+      if (btn) btn.innerHTML = '<i class="fas fa-shield-alt fa-spin mr-2"></i> Compliance check...';
+      try {
+        const gcRes = await axios.post('/api/guardian/check', {
+          txType: 'payment', fromAddress: from, amount: totalAmount, token: 'USDC',
+        });
+        if (!gcRes.data.approved) {
+          showToast(`🚫 Guardian blocked: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance check failed'}`, 'error');
+          return;
+        }
+      } catch(e) { /* non-critical */ }
+    }
+
+    // ── 2. EVM on-chain batch authorization signature ──────────────────────────
+    let batchTxHash = null;
+    if (window.walletState?.connected && window.evmSignOperation && payments.length > 0) {
+      if (btn) btn.innerHTML = '<i class="fas fa-signature fa-spin mr-2"></i> Sign batch in wallet...';
+      try {
+        const signResult = await evmSignOperation('BATCH_PAYMENT', {
+          count: payments.length,
+          totalAmount,
+          token: 'USDC',
+        });
+        batchTxHash = signResult.signature?.slice(0, 66) || null;
+        addLog(`[MULTI-SEND] Batch signed: ${signResult.signature?.slice(0,20)}...`, 'success');
+      } catch(e) {
+        if (e.message?.includes('rejected')) {
+          showToast('Batch signature rejected', 'warning');
+          return;
+        }
+        console.warn('[Multisend] EVM sign skipped:', e.message);
+      }
+    }
+
+    // ── 3. Submit to backend ───────────────────────────────────────────────────
+    if (btn) btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>${t('toast_loading')}`;
+    const paymentsWithTx = payments.map(p => ({ ...p, batchTxHash }));
+    const res = await axios.post('/api/payments/batch', { payments: paymentsWithTx, fileName: 'multisend' });
     const d = res.data;
-    showToast(`✅ ${d.submitted} ${t('toast_batch_ok')} — $${Number(d.totalAmount).toFixed(2)} USDC`, 'success');
-    addLog(`[MULTI-SEND] ${d.submitted} payments sent | $${Number(d.totalAmount).toFixed(2)} USDC | batchId: ${d.batchId}`, 'success');
+    showToast(`✅ ${d.submitted} ${t('toast_batch_ok')} — $${Number(d.totalAmount).toFixed(2)} USDC${batchTxHash ? ' (signed)' : ''}`, 'success');
+    addLog(`[MULTI-SEND] ${d.submitted} payments sent | $${Number(d.totalAmount).toFixed(2)} USDC | batchId: ${d.batchId}${batchTxHash ? ' | signed' : ''}`, 'success');
     initMultisend();
     await loadPayments();
     if (typeof loadDashboard === 'function') await loadDashboard();

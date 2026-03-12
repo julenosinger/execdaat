@@ -50,6 +50,20 @@ interface ModuleData {
 function detectIntent(text: string): { intent: string; module: string; entities: Record<string, string> } {
   const lower = text.toLowerCase();
 
+  // Guardian / Compliance / KYC intents
+  if (/guardian|kyc|compliance|aml|sanction|bloqueio|risco|risk score|verificar|verify|complian/.test(lower)) {
+    if (/kyc|verific|identific|document/.test(lower)) return { intent: 'guardian_kyc', module: 'guardian', entities: {} };
+    if (/sanction|sanctioned|bloqueado|blocked/.test(lower)) return { intent: 'guardian_sanction', module: 'guardian', entities: {} };
+    return { intent: 'guardian_status', module: 'guardian', entities: {} };
+  }
+
+  // Yield Optimizer intents
+  if (/yield optim|otimizador|otimizar|rebalance|rebalanc|pool|melhor apy|best apy|posicao|position/.test(lower)) {
+    if (/pool|pools|melhores?.pool/.test(lower)) return { intent: 'yield_pools', module: 'yield', entities: {} };
+    if (/position|posicao/.test(lower)) return { intent: 'yield_positions', module: 'yield', entities: {} };
+    return { intent: 'yield_status', module: 'yield', entities: {} };
+  }
+
   // Intents de pagamentos
   if (/pagamento|payment|pagar|send|enviar|transfer/.test(lower)) {
     if (/anali[sz]|risk|risco|check/.test(lower)) return { intent: 'analyze_payment', module: 'payments', entities: {} };
@@ -78,7 +92,7 @@ function detectIntent(text: string): { intent: string; module: string; entities:
   }
 
   // Intents de agentes
-  if (/agent|ia|ai|bot|autonom|risco|risk|aprova/.test(lower)) {
+  if (/agent|ia|ai|bot|autonom|aprova/.test(lower)) {
     return { intent: 'agents_status', module: 'agents', entities: {} };
   }
 
@@ -125,15 +139,15 @@ async function generateResponse(
   switch (intent) {
     case 'greeting': {
       const greetings = [
-        "Hello! I'm **ARC AI Assistant** 🤖. I can help you with:\n\n• 💳 **Payments** — queue, analysis, batch processing\n• 🏦 **Vaults** — USDC & EURC deposits and yield\n• 🔄 **Swap** — exchange USDC ↔ EURC\n• 📋 **Contracts** — status and milestones\n• 🧠 **AI Agents** — ArcPay & ArcContract status\n\nWhat would you like to do?",
-        "Hi! I'm your **ARC AI Assistant** 👋. I'm integrated with all system modules.\n\nTry asking:\n- *\"Show vault APY\"*\n- *\"What's the USDC → EURC rate?\"*\n- *\"How many pending payments?\"*\n- *\"Show active contracts\"*",
+        "Hello! I'm **ARC AI Assistant** 🤖. I can help you with:\n\n• 💳 **Payments** — queue, analysis, batch processing\n• 🏦 **Vaults** — USDC & EURC deposits and yield\n• 🔄 **Swap** — exchange USDC ↔ EURC\n• 📋 **Contracts** — status and milestones\n• 🛡️ **Guardian** — compliance, KYC, AML\n• 🌱 **Yield Optimizer** — best APY, pool rebalancing\n• 🧠 **AI Agents** — all 4 agents status\n\nWhat would you like to do?",
+        "Hi! I'm your **ARC AI Assistant** 👋. I'm integrated with all 4 AI agents.\n\nTry asking:\n- *\"Show vault APY\"*\n- *\"What's the USDC → EURC rate?\"*\n- *\"Guardian status\"*\n- *\"Best yield pools\"*\n- *\"How many pending payments?\"*",
       ];
       return { content: greetings[Math.floor(Math.random() * greetings.length)], module: 'general' };
     }
 
     case 'help': {
       return {
-        content: `## Available Commands 🤖\n\n**💳 Payments**\n- *"Show payment queue"*\n- *"How many pending payments?"*\n- *"Analyze a payment of 500 USDC"*\n\n**🏦 Vaults**\n- *"Show vault APY"*\n- *"USDC vault balance"*\n- *"EURC vault info"*\n\n**🔄 Swap**\n- *"USDC to EURC rate"*\n- *"How to swap 100 USDC to EURC?"*\n- *"Current exchange rates"*\n\n**📋 Contracts**\n- *"Show active contracts"*\n- *"Contract status"*\n\n**🧠 AI Agents**\n- *"Agent status"*\n- *"ArcPay agent stats"*\n\n**🌐 Network**\n- *"Arc testnet info"*\n- *"What's the chain ID?"*`,
+        content: `## Available Commands 🤖\n\n**💳 Payments**\n- *"Show payment queue"*\n- *"Pending payments"*\n\n**🏦 Vaults**\n- *"USDC vault APY"*\n- *"EURC vault balance"*\n\n**🔄 Swap**\n- *"USDC to EURC rate"*\n- *"Swap 100 USDC"*\n\n**📋 Contracts**\n- *"Active contracts"*\n\n**🛡️ Guardian (Compliance/KYC)**\n- *"Guardian status"*\n- *"KYC tiers"*\n- *"Compliance check"*\n\n**🌱 Yield Optimizer**\n- *"Best yield pools"*\n- *"Yield positions"*\n- *"Yield optimizer status"*\n\n**🧠 AI Agents**\n- *"Agent status"*\n\n**🌐 Network**\n- *"Arc testnet info"*`,
         module: 'general',
       };
     }
@@ -247,13 +261,77 @@ async function generateResponse(
     case 'agents_status': {
       const payData = await fetchApi('/api/payments/agent');
       const conData = await fetchApi('/api/contracts/agent');
+      const guardData = await fetchApi('/api/guardian/status');
+      const yieldData = await fetchApi('/api/yield/status');
 
       const payStats = payData?.stats || {};
       const conStats = conData?.stats || {};
+      const gStats = guardData?.stats || {};
+      const yStats = yieldData?.stats || {};
 
       return {
-        content: `## 🧠 AI Agents Status\n\n**ArcPay Agent v1.0** 🟢\n- Approved: ${payStats.approved || 0} payments\n- Rejected: ${payStats.rejected || 0} payments\n- Pending: ${payStats.pending || 0} tasks\n- Total Volume: $${((payStats.totalAmount || 0) / 1e6).toFixed(2)} USDC\n\n**ArcContract Agent v1.0** 🟢\n- Active: ${conStats.active || 0} contracts\n- Completed: ${conStats.completed || 0} contracts\n- Disputed: ${conStats.disputed || 0} contracts\n\nBoth agents are online and monitoring the Arc Testnet.`,
+        content: `## 🧠 AI Agents Status\n\n**ArcPay Agent v1.0** 🟢\n- Approved: ${payStats.approved || 0} | Rejected: ${payStats.rejected || 0} | Pending: ${payStats.pending || 0}\n- Volume: $${((payStats.totalAmount || 0) / 1e6).toFixed(2)} USDC\n\n**ArcContract Agent v1.0** 🟢\n- Active: ${conStats.active || 0} | Completed: ${conStats.completed || 0}\n\n**Guardian Agent v1.0** 🛡️\n- Total Checks: ${gStats.totalChecks || 0} | Approved: ${gStats.approved || 0} | Blocked: ${gStats.blocked || 0}\n- KYC Verified: ${gStats.kycVerified || 0} | Avg Risk: ${(gStats.averageRiskScore || 0).toFixed(1)}/100\n\n**Yield Optimizer v1.0** 🌱\n- Best APY: ${yStats.bestApy || 0}% | Active Pools: ${yStats.totalPools || 0} | Positions: ${yStats.activePositions || 0}\n\nAll 4 agents are online monitoring Arc Testnet.`,
         module: 'agents',
+      };
+    }
+
+    case 'guardian_status':
+    case 'guardian_sanction': {
+      const data = await fetchApi('/api/guardian/status');
+      if (!data?.success) return { content: 'Unable to fetch Guardian status.', module: 'guardian' };
+      const s = data.stats;
+      return {
+        content: `## 🛡️ Guardian Agent — Compliance & KYC\n\n**Status:** ${data.agent?.status?.toUpperCase() || 'ACTIVE'}\n\n| Metric | Value |\n|--------|-------|\n| Total Checks | ${s.totalChecks} |\n| Approved | ✅ ${s.approved} |\n| Blocked | 🚫 ${s.blocked} |\n| Flagged | ⚠️ ${s.flagged} |\n| KYC Verified | 🔐 ${s.kycVerified} |\n| KYC Pending | ⏳ ${s.kycPending} |\n| Avg Risk Score | ${(s.averageRiskScore || 0).toFixed(1)}/100 |\n\n**Capabilities:**\n- 🔍 OFAC/Sanction screening\n- 🆔 KYC/AML verification (Tier 0–3)\n- 🌍 Jurisdiction risk check\n- 📊 Structuring detection\n- 🔒 On-chain compliance signatures\n\nTo check compliance for a transaction, go to **AI Agents** tab → Guardian card.`,
+        module: 'guardian',
+      };
+    }
+
+    case 'guardian_kyc': {
+      return {
+        content: `## 🆔 KYC Tiers\n\n| Tier | Label | Max per Tx | Daily Limit |\n|------|-------|-----------|-------------|\n| 0 | No KYC | $100 | $200 |\n| 1 | Basic | $1,000 | $5,000 |\n| 2 | Standard | $10,000 | $50,000 |\n| 3 | Full | $500,000 | $1,000,000 |\n\nTo submit KYC:\n1. Go to **AI Agents** → **Guardian Agent** card\n2. Click **Submit KYC Application**\n3. Enter your wallet address and select tier\n4. Auto-verification in ~15 seconds (testnet)\n\nHigher KYC tier = higher transaction limits on Arc Testnet!`,
+        module: 'guardian',
+      };
+    }
+
+    case 'yield_status': {
+      const data = await fetchApi('/api/yield/status');
+      if (!data?.success) return { content: 'Unable to fetch Yield Optimizer status.', module: 'yield' };
+      const s = data.stats;
+      return {
+        content: `## 🌱 Yield Optimizer Agent\n\n**Status:** ${s.agentStatus?.toUpperCase() || 'IDLE'}\n\n| Metric | Value |\n|--------|-------|\n| Best APY | ${s.bestApy || 0}% |\n| Active Pools | ${s.totalPools || 0} |\n| Active Positions | ${s.activePositions || 0} |\n| Rebalances | ${s.rebalances || 0} |\n| Avg APY | ${s.averageApy || 0}% |\n\n**Strategies:**\n- 🏦 Conservative — Low risk, stable yield\n- ⚖️ Balanced — Mix of stability and yield\n- 🚀 Aggressive — Maximum yield, higher risk\n\nTo open a yield position, go to **AI Agents** tab → Yield Optimizer card.`,
+        module: 'yield',
+      };
+    }
+
+    case 'yield_pools': {
+      const data = await fetchApi('/api/yield/pools');
+      if (!data?.success) return { content: 'Unable to fetch yield pools.', module: 'yield' };
+      const pools = (data.pools || []).slice(0, 6);
+      const lines = pools.map((p: { name: string; token: string; apy: number; risk: string; tvl: number }) =>
+        `| ${p.token === 'USDC' ? '💵' : '💶'} ${p.name} | ${p.token} | **${p.apy}%** | ${p.risk} | $${(p.tvl / 1000).toFixed(0)}k |`
+      );
+      return {
+        content: `## 🏊 Yield Pools\n\n| Pool | Token | APY | Risk | TVL |\n|------|-------|-----|------|-----|\n${lines.join('\n')}\n\n*Best USDC pool: ${data.bestUsdc?.name || '—'} at **${data.bestUsdc?.apy || 0}% APY***\n*Best EURC pool: ${data.bestEurc?.name || '—'} at **${data.bestEurc?.apy || 0}% APY***\n\nOpen a position in **AI Agents** → **Yield Optimizer** card!`,
+        module: 'yield',
+      };
+    }
+
+    case 'yield_positions': {
+      const data = await fetchApi('/api/yield/positions');
+      if (!data?.success) return { content: 'Unable to fetch positions.', module: 'yield' };
+      const positions = data.positions || [];
+      if (!positions.length) {
+        return {
+          content: `## 📊 Yield Positions\n\nNo active positions found.\n\nTo open one:\n1. Go to **AI Agents** → **Yield Optimizer** card\n2. Select a pool and amount\n3. Click **Open Position (Sign on Arc)**\n4. Confirm the transaction in your wallet`,
+          module: 'yield',
+        };
+      }
+      const lines = positions.map((p: { poolId: string; deposited: number; token: string; entryApy: number; yieldEarned: number }) =>
+        `- **${p.poolId}**: ${(p.deposited / 1e6).toFixed(2)} ${p.token} @ ${p.entryApy}% APY | Earned: +${(p.yieldEarned / 1e6).toFixed(4)}`
+      );
+      return {
+        content: `## 📊 Active Yield Positions\n\n${lines.join('\n')}\n\n*Total: ${positions.length} position${positions.length !== 1 ? 's' : ''}*`,
+        module: 'yield',
       };
     }
 

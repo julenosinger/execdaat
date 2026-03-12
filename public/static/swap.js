@@ -160,8 +160,8 @@ async function executeSwap() {
 
   const toToken = fromToken === 'USDC' ? 'EURC' : 'USDC';
 
-  // Get wallet address from connected wallet or use placeholder
-  const walletAddress = window._walletAddress || '0xDemo0000000000000000000000000000000000';
+  // Get wallet address
+  const walletAddress = window.walletState?.address || window._walletAddress || '0xDemo0000000000000000000000000000000000';
 
   const btn = document.getElementById('swap-submit-btn');
   if (btn) {
@@ -170,17 +170,60 @@ async function executeSwap() {
   }
 
   try {
+    // ── 1. Guardian compliance check ─────────────────────────────────────────
+    if (walletAddress && !walletAddress.startsWith('0xDemo')) {
+      btn && (btn.innerHTML = '<i class="fas fa-shield-alt fa-spin mr-2"></i> Compliance check...');
+      try {
+        const gcRes = await axios.post('/api/guardian/check', {
+          txType: 'swap', fromAddress: walletAddress, amount, token: fromToken,
+        });
+        if (!gcRes.data.approved) {
+          showToast(`🚫 Guardian: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance check failed'}`, 'error');
+          return;
+        }
+      } catch(e) { /* non-critical if guardian unavailable */ }
+    }
+
+    // ── 2. EVM on-chain signing (if wallet connected) ─────────────────────────
+    let txHash = null;
+    if (window.walletState?.connected && window.evmTransferToken) {
+      btn && (btn.innerHTML = '<i class="fas fa-signature fa-spin mr-2"></i> Sign in wallet...');
+      try {
+        // Swap contract is the USDC contract itself (token transfer to router)
+        // Arc Testnet: USDC ↔ EURC uses Circle's cross-chain transfer protocol
+        const swapRouterAddr = fromToken === 'USDC' ? USDC_ADDRESS : EURC_ADDRESS;
+        const result = await evmTransferToken(
+          swapRouterAddr,
+          amount,
+          fromToken,
+          `Swap ${amount} ${fromToken} → ${toToken} on Arc Testnet`
+        );
+        txHash = result.txHash;
+      } catch (e) {
+        if (e.message?.includes('rejected')) {
+          showToast('Swap rejected by user', 'warning');
+          return;
+        }
+        // Wallet error — continue without on-chain tx for demo
+        console.warn('[Swap] EVM sign skipped:', e.message);
+      }
+    }
+
+    // ── 3. Submit to backend ──────────────────────────────────────────────────
+    btn && (btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Confirming...');
     const res = await axios.post('/api/swap/execute', {
       fromToken,
       toToken,
       amountIn: amount,
       walletAddress,
       slippageTolerance: swapState.slippage,
+      txHash,
     });
 
     if (res.data.success) {
       const swap = res.data.swap;
-      showToast(`✅ Swapped ${amount} ${fromToken} → ${swap.amountOut.toFixed(4)} ${toToken}`, 'success');
+      const explorerLink = txHash ? `<a href="https://testnet.arcscan.app/tx/${txHash}" target="_blank" class="underline">View tx ↗</a>` : '';
+      showToast(`✅ Swapped ${amount} ${fromToken} → ${swap.amountOut.toFixed(4)} ${toToken} ${explorerLink}`, 'success');
       // Clear form
       const amtEl = document.getElementById('swap-amount-in');
       if (amtEl) amtEl.value = '';
