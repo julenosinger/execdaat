@@ -95,7 +95,7 @@ function addLog(message, type = 'info') {
     agent: 'text-cyan-400',
   };
   
-  const time = new Date().toLocaleTimeString('pt-BR');
+  const time = new Date().toLocaleTimeString();
   const div = document.createElement('div');
   div.className = colors[type] || colors.info;
   div.textContent = `[${time}] ${message}`;
@@ -194,11 +194,11 @@ async function loadDashboard() {
       `;
     });
     
-    activity.innerHTML = activityHtml || '<div class="text-gray-500 text-sm text-center py-4">Nenhuma atividade recente</div>';
+    activity.innerHTML = activityHtml || `<div class="text-gray-500 text-sm text-center py-4">${t('no_activity')}</div>`;
     
   } catch (err) {
     console.error('Dashboard load error:', err);
-    showToast('Erro ao carregar dashboard', 'error');
+    showToast(t('toast_error_load_dashboard'), 'error');
   }
 }
 
@@ -210,7 +210,7 @@ async function loadPayments() {
     const data = await API.get('/api/payments/queue');
     renderPaymentsList(data);
   } catch (err) {
-    showToast('Erro ao carregar pagamentos', 'error');
+    showToast(t('toast_error_load_payments'), 'error');
   }
 }
 
@@ -222,7 +222,7 @@ function renderPaymentsList(data) {
     list.innerHTML = `
       <div class="text-gray-500 text-sm text-center py-8 bg-gray-900/40 rounded-xl border border-gray-700/30">
         <i class="fas fa-inbox text-4xl mb-3 block text-gray-700"></i>
-        Nenhum pagamento na fila
+        ${t('no_payments')}
       </div>
     `;
     return;
@@ -239,11 +239,11 @@ function renderPaymentsList(data) {
       </div>
       <div class="grid grid-cols-2 gap-3 mb-3">
         <div>
-          <div class="text-xs text-gray-500">De</div>
+          <div class="text-xs text-gray-500">${t('from_label')}</div>
           <div class="text-xs text-gray-300 font-mono truncate">${task.from}</div>
         </div>
         <div>
-          <div class="text-xs text-gray-500">Para</div>
+          <div class="text-xs text-gray-500">${t('to_label')}</div>
           <div class="text-xs text-gray-300 font-mono truncate">${task.to}</div>
         </div>
       </div>
@@ -253,11 +253,11 @@ function renderPaymentsList(data) {
           <span class="text-xs text-gray-500">USDC</span>
           <span class="text-xs px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-400 capitalize">${task.priority}</span>
         </div>
-        ${task.riskScore !== undefined ? `<div class="text-xs text-gray-400">Risco: <span class="${getRiskClass(task.riskScore)}">${task.riskScore}/100</span></div>` : ''}
+        ${task.riskScore !== undefined ? `<div class="text-xs text-gray-400">${t('risk_label')}: <span class="${getRiskClass(task.riskScore)}">${task.riskScore}/100</span></div>` : ''}
       </div>
       ${task.agentDecision ? `
         <div class="mt-3 p-2 bg-gray-800/50 rounded-lg">
-          <div class="text-xs text-gray-500 mb-1">Decisão do Agente:</div>
+          <div class="text-xs text-gray-500 mb-1">${t('agent_decision')}:</div>
           <div class="text-xs text-gray-300">${task.agentDecision}</div>
         </div>
       ` : ''}
@@ -278,26 +278,26 @@ async function createDemoPayments() {
   try {
     const result = await API.post('/api/payments/demo', {});
     showToast(result.message, 'success');
-    addLog('[AGENT:PAY] 3 pagamentos demo criados na fila', 'system');
+    addLog(`[AGENT:PAY] ${t('toast_demo_created')}`, 'system');
     await loadPayments();
   } catch (err) {
-    showToast('Erro ao criar demos: ' + err.message, 'error');
+    showToast(`${t('toast_error')}: ${err.message}`, 'error');
   }
 }
 
 async function processPayments() {
   try {
-    showToast('Processando fila de pagamentos...', 'info');
-    addLog('[AGENT:PAY] Iniciando processamento da fila...', 'agent');
+    showToast(t('toast_processing'), 'info');
+    addLog(`[AGENT:PAY] ${t('toast_processing')}`, 'agent');
     
     const result = await API.post('/api/payments/process', {});
-    showToast(`✅ ${result.result.processed} pagamentos processados`, 'success');
-    addLog(`[AGENT:PAY] Processadas ${result.result.processed} tarefas. Erros: ${result.result.errors.length}`, 'success');
+    showToast(`✅ ${result.result.processed} ${t('toast_processed')}`, 'success');
+    addLog(`[AGENT:PAY] Processed ${result.result.processed} tasks. Errors: ${result.result.errors.length}`, 'success');
     
     await loadPayments();
     if (currentTab === 'dashboard') await loadDashboard();
   } catch (err) {
-    showToast('Erro ao processar: ' + err.message, 'error');
+    showToast(`${t('toast_error')}: ${err.message}`, 'error');
   }
 }
 
@@ -311,7 +311,7 @@ async function loadContracts() {
     const data = await API.get('/api/contracts');
     renderContractsList(data.contracts);
   } catch (err) {
-    showToast('Erro ao carregar contratos', 'error');
+    showToast(t('toast_error_load_contracts'), 'error');
   }
 }
 
@@ -319,7 +319,7 @@ function renderContractsList(contracts) {
   const list = document.getElementById('contracts-list');
   
   if (!contracts || contracts.length === 0) {
-    list.innerHTML = '<div class="text-gray-500 text-sm text-center py-8">Nenhum contrato encontrado</div>';
+    list.innerHTML = `<div class="text-gray-500 text-sm text-center py-8">${t('no_contracts')}</div>`;
     return;
   }
   
@@ -335,11 +335,11 @@ function renderContractsList(contracts) {
               <h4 class="text-white font-semibold">${ct.title}</h4>
               <span class="text-xs px-2 py-0.5 rounded-full status-${ct.status.toLowerCase()}">${ct.status}</span>
             </div>
-            <div class="text-xs text-gray-400">#${ct.id} • Criado em ${new Date(ct.createdAt).toLocaleDateString('pt-BR')}</div>
+            <div class="text-xs text-gray-400">#${ct.id} • ${new Date(ct.createdAt).toLocaleDateString()}</div>
           </div>
           <div class="text-right">
             <div class="text-lg font-bold text-white">${ct.totalValueFormatted}</div>
-            <div class="text-xs text-gray-400">${ct.milestonesProgress} marcos</div>
+            <div class="text-xs text-gray-400">${ct.milestonesProgress} ${t('milestones')}</div>
           </div>
         </div>
         
@@ -348,14 +348,14 @@ function renderContractsList(contracts) {
         <!-- Addresses -->
         <div class="grid grid-cols-2 gap-2 mb-3">
           <div class="bg-gray-800/50 rounded-lg p-2">
-            <div class="text-xs text-gray-500 mb-0.5">Cliente</div>
+            <div class="text-xs text-gray-500 mb-0.5">${t('client_label')}</div>
             <div class="text-xs text-gray-300 font-mono truncate">${ct.client}</div>
-            ${ct.clientSigned ? '<div class="text-xs text-green-400 mt-0.5"><i class="fas fa-check-circle mr-1"></i>Assinado</div>' : '<div class="text-xs text-gray-500 mt-0.5">Não assinado</div>'}
+            ${ct.clientSigned ? `<div class="text-xs text-green-400 mt-0.5"><i class="fas fa-check-circle mr-1"></i>${t('signed')}</div>` : `<div class="text-xs text-gray-500 mt-0.5">${t('unsigned')}</div>`}
           </div>
           <div class="bg-gray-800/50 rounded-lg p-2">
-            <div class="text-xs text-gray-500 mb-0.5">Contratante</div>
+            <div class="text-xs text-gray-500 mb-0.5">${t('contractor_label')}</div>
             <div class="text-xs text-gray-300 font-mono truncate">${ct.contractor}</div>
-            ${ct.contractorSigned ? '<div class="text-xs text-green-400 mt-0.5"><i class="fas fa-check-circle mr-1"></i>Assinado</div>' : '<div class="text-xs text-gray-500 mt-0.5">Não assinado</div>'}
+            ${ct.contractorSigned ? `<div class="text-xs text-green-400 mt-0.5"><i class="fas fa-check-circle mr-1"></i>${t('signed')}</div>` : `<div class="text-xs text-gray-500 mt-0.5">${t('unsigned')}</div>`}
           </div>
         </div>
         
@@ -363,7 +363,7 @@ function renderContractsList(contracts) {
         ${ct.milestones.length > 0 ? `
           <div class="mb-3">
             <div class="flex justify-between text-xs text-gray-400 mb-1">
-              <span>Progresso</span>
+              <span>${t('contract_progress')}</span>
               <span>${progressPct.toFixed(0)}%</span>
             </div>
             <div class="milestone-bar">
@@ -385,19 +385,19 @@ function renderContractsList(contracts) {
         <!-- Actions -->
         <div class="flex gap-2 flex-wrap">
           <button onclick="analyzeContract(${ct.id})" class="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg px-3 py-1.5 transition-colors">
-            <i class="fas fa-brain mr-1"></i>Analisar IA
+            <i class="fas fa-brain mr-1"></i>${t('btn_analyze_ai')}
           </button>
           ${ct.status === 'Draft' && ct.clientSigned && ct.contractorSigned ? `
             <button onclick="activateContract(${ct.id})" class="text-xs bg-green-700 hover:bg-green-600 text-white rounded-lg px-3 py-1.5 transition-colors">
-              <i class="fas fa-bolt mr-1"></i>Ativar + Escrow
+              <i class="fas fa-bolt mr-1"></i>${t('btn_activate')}
             </button>
           ` : ''}
           ${ct.status === 'Active' ? `
             <button onclick="completeMilestone(${ct.id})" class="text-xs bg-blue-700 hover:bg-blue-600 text-white rounded-lg px-3 py-1.5 transition-colors">
-              <i class="fas fa-check mr-1"></i>Completar Marco
+              <i class="fas fa-check mr-1"></i>${t('btn_verify_milestone')}
             </button>
             <button onclick="disputeContract(${ct.id})" class="text-xs bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded-lg px-3 py-1.5 transition-colors">
-              <i class="fas fa-exclamation-triangle mr-1"></i>Disputar
+              <i class="fas fa-exclamation-triangle mr-1"></i>${t('btn_dispute')}
             </button>
           ` : ''}
           <a href="https://testnet.arcscan.app" target="_blank" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg px-3 py-1.5 transition-colors">
@@ -407,7 +407,7 @@ function renderContractsList(contracts) {
         
         ${ct.agentAnalysis ? `
           <div class="mt-3 p-2 bg-purple-900/20 border border-purple-700/30 rounded-lg">
-            <div class="text-xs text-purple-400 mb-1"><i class="fas fa-robot mr-1"></i>Análise do Agente:</div>
+            <div class="text-xs text-purple-400 mb-1"><i class="fas fa-robot mr-1"></i>${t('agent_decision')}:</div>
             <div class="text-xs text-gray-300">${ct.agentAnalysis}</div>
           </div>
         ` : ''}
@@ -418,65 +418,65 @@ function renderContractsList(contracts) {
 
 async function analyzeContract(contractId) {
   try {
-    addLog(`[AGENT:CTR] Analisando contrato #${contractId}...`, 'agent');
+    addLog(`[AGENT:CTR] Analyzing contract #${contractId}...`, 'agent');
     const result = await API.post(`/api/contracts/${contractId}/analyze`, {});
     
     const colors = { low: 'green', medium: 'yellow', high: 'orange', critical: 'red' };
     const color = colors[result.decision.riskLevel] || 'gray';
     
-    showToast(`Análise #${contractId}: ${result.decision.action.toUpperCase()} (${result.decision.confidence}% conf)`, 
+    showToast(`Analysis #${contractId}: ${result.decision.action.toUpperCase()} (${result.decision.confidence}% conf)`, 
               result.decision.action === 'approve' ? 'success' : 'warning');
-    addLog(`[AGENT:CTR] Contrato #${contractId}: ${result.decision.action} - ${result.decision.reason.substring(0, 80)}...`, 'success');
+    addLog(`[AGENT:CTR] Contract #${contractId}: ${result.decision.action} - ${result.decision.reason.substring(0, 80)}...`, 'success');
   } catch (err) {
-    showToast('Erro na análise: ' + err.message, 'error');
+    showToast(`${t('toast_error')}: ${err.message}`, 'error');
   }
 }
 
 async function activateContract(contractId) {
-  if (!confirm(`Ativar contrato #${contractId}? O valor em escrow será debitado do cliente.`)) return;
+  if (!confirm(`Activate contract #${contractId}? The escrow amount will be debited from the client.`)) return;
   
   try {
-    addLog(`[AGENT:CTR] Ativando contrato #${contractId}...`, 'agent');
+    addLog(`[AGENT:CTR] Activating contract #${contractId}...`, 'agent');
     const result = await API.post(`/api/contracts/${contractId}/activate`, {});
     showToast(result.message, 'success');
-    addLog(`[AGENT:CTR] Contrato #${contractId} ativado! Escrow depositado.`, 'success');
+    addLog(`[AGENT:CTR] Contract #${contractId} activated! Escrow deposited.`, 'success');
     await loadContracts();
   } catch (err) {
-    showToast('Erro: ' + err.message, 'error');
+    showToast(`${t('toast_error')}: ${err.message}`, 'error');
   }
 }
 
 async function completeMilestone(contractId) {
-  const milestoneId = prompt('ID do Marco a completar (1, 2, 3...):', '1');
+  const milestoneId = prompt('Milestone ID to complete (1, 2, 3...):', '1');
   if (!milestoneId) return;
   
-  const evidence = prompt('Evidência de conclusão (URL, descrição, hash):', 'Entregue em: https://github.com/...');
+  const evidence = prompt('Completion evidence (URL, description, hash):', 'Delivered at: https://github.com/...');
   if (!evidence) return;
   
   try {
-    addLog(`[AGENT:CTR] Verificando milestone #${milestoneId} do contrato #${contractId}...`, 'agent');
+    addLog(`[AGENT:CTR] Verifying milestone #${milestoneId} of contract #${contractId}...`, 'agent');
     const result = await API.post(`/api/contracts/${contractId}/milestone/${milestoneId}/complete`, { evidence });
     showToast(result.message, result.milestone?.status === 'Completed' ? 'success' : 'warning');
-    addLog(`[AGENT:CTR] Milestone #${milestoneId}: ${result.milestone?.status}`, 
+    addLog(`[AGENT:CTR] Milestone #${milestoneId} status: ${result.milestone?.status}`, 
            result.milestone?.status === 'Completed' ? 'success' : 'warning');
     await loadContracts();
   } catch (err) {
-    showToast('Erro: ' + err.message, 'error');
+    showToast(`${t('toast_error')}: ${err.message}`, 'error');
   }
 }
 
 async function disputeContract(contractId) {
-  const reason = prompt('Motivo da disputa:');
+  const reason = prompt('Dispute reason:');
   if (!reason) return;
   
   try {
-    addLog(`[AGENT:CTR] Registrando disputa no contrato #${contractId}...`, 'warning');
+    addLog(`[AGENT:CTR] Registering dispute on contract #${contractId}...`, 'warning');
     const result = await API.post(`/api/contracts/${contractId}/dispute`, { reason });
     showToast(result.message, 'warning');
-    addLog(`[AGENT:CTR] Disputa #${contractId} enviada para arbitragem`, 'warning');
+    addLog(`[AGENT:CTR] Dispute #${contractId} submitted for arbitration`, 'warning');
     await loadContracts();
   } catch (err) {
-    showToast('Erro: ' + err.message, 'error');
+    showToast(`${t('toast_error')}: ${err.message}`, 'error');
   }
 }
 
@@ -490,7 +490,7 @@ document.getElementById('contract-form').addEventListener('submit', async (e) =>
   const totalValue = document.getElementById('ct-value').value;
   
   if (!client || !contractor || !title || !description || !totalValue) {
-    showToast('Preencha todos os campos', 'warning');
+    showToast(t('toast_fill_required'), 'warning');
     return;
   }
   
@@ -498,12 +498,12 @@ document.getElementById('contract-form').addEventListener('submit', async (e) =>
     const result = await API.post('/api/contracts/create', {
       client, contractor, title, description, totalValue
     });
-    showToast(`✅ Contrato #${result.contractId} criado!`, 'success');
-    addLog(`[AGENT:CTR] Novo contrato #${result.contractId}: "${title}" - $${parseFloat(totalValue).toFixed(2)} USDC`, 'system');
+    showToast(`✅ Contract #${result.contractId} created!`, 'success');
+    addLog(`[AGENT:CTR] New contract #${result.contractId}: "${title}" - $${parseFloat(totalValue).toFixed(2)} USDC`, 'system');
     e.target.reset();
     await loadContracts();
   } catch (err) {
-    showToast('Erro: ' + err.message, 'error');
+    showToast(`${t('toast_error')}: ${err.message}`, 'error');
   }
 });
 
@@ -523,19 +523,19 @@ async function loadAgentsDetails() {
         <span class="${getAgentStatusTextClass(payData.agent.status)} font-medium capitalize">${payData.agent.status}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">Aprovados</span>
+        <span class="text-gray-400">${t('stat_approved')}</span>
         <span class="text-green-400">${payData.stats.approved}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">Rejeitados</span>
+        <span class="text-gray-400">${t('stat_rejected')}</span>
         <span class="text-red-400">${payData.stats.rejected}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">Pendentes</span>
+        <span class="text-gray-400">${t('stat_pending_label')}</span>
         <span class="text-yellow-400">${payData.stats.pending}</span>
       </div>
       <div class="flex justify-between text-sm py-1">
-        <span class="text-gray-400">Volume Total</span>
+        <span class="text-gray-400">${t('stat_total_volume')}</span>
         <span class="text-white font-medium">$${(payData.stats.totalValueProcessed / 1e6).toFixed(2)} USDC</span>
       </div>
     `;
@@ -548,19 +548,19 @@ async function loadAgentsDetails() {
         <span class="${getAgentStatusTextClass(ctData.agent.status)} font-medium capitalize">${ctData.agent.status}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">Contratos Ativos</span>
+        <span class="text-gray-400">${t('stat_contracts_label')}</span>
         <span class="text-green-400">${ctData.stats.activeContracts}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">Concluídos</span>
+        <span class="text-gray-400">${t('stat_completed')}</span>
         <span class="text-blue-400">${ctData.stats.completedContracts}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">Em Disputa</span>
+        <span class="text-gray-400">${t('stat_disputed')}</span>
         <span class="text-red-400">${ctData.stats.disputedContracts}</span>
       </div>
       <div class="flex justify-between text-sm py-1">
-        <span class="text-gray-400">Total Registrados</span>
+        <span class="text-gray-400">${t('stat_total_registered')}</span>
         <span class="text-white font-medium">${ctData.stats.totalContracts}</span>
       </div>
     `;
@@ -645,7 +645,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentTab === 'agents') loadAgentsDetails();
   }, 30000);
   
-  addLog('[SYSTEM] Interface ARC AI Agents carregada', 'system');
+  addLog('[SYSTEM] ARC AI Agents interface loaded', 'system');
   addLog('[NETWORK] Arc Testnet - Chain ID: 5042002 - USDC Gas', 'info');
 
   // ============================================================
@@ -693,7 +693,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Resetar status na aba agentes
     const agentsStatus = document.getElementById('wallet-agents-status');
     if (agentsStatus) {
-      agentsStatus.textContent = 'Nenhuma wallet conectada. Conecte para ver saldo e endereço.';
+      agentsStatus.innerHTML = `<span>${t('no_wallet_connected')}</span>`;
       agentsStatus.className = 'text-gray-500 text-sm';
     }
 
@@ -711,7 +711,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ctClient.classList.remove('border-green-500/60');
     }
 
-    addLog('[WALLET] Wallet desconectada', 'warning');
+    addLog('[WALLET] Wallet disconnected', 'warning');
   });
 });
 
@@ -725,7 +725,7 @@ function updateWalletAgentsStatus(walletData) {
   const { address, shortAddress, onArcNetwork, usdcBalance, chainId } = walletData;
 
   if (!address) {
-    el.textContent = 'Nenhuma wallet conectada.';
+    el.innerHTML = `<span>${t('no_wallet_connected')}</span>`;
     el.className = 'text-gray-500 text-sm';
     return;
   }
@@ -739,7 +739,7 @@ function updateWalletAgentsStatus(walletData) {
           ${address.slice(2, 4).toUpperCase()}
         </div>
         <div>
-          <div class="text-xs text-gray-400">Endereço</div>
+          <div class="text-xs text-gray-400">${t('address_label')}</div>
           <div class="text-sm text-white font-mono font-medium">${shortAddress}</div>
         </div>
         <button onclick="copyAddress()" class="text-gray-500 hover:text-white ml-1 transition-colors">
@@ -751,7 +751,7 @@ function updateWalletAgentsStatus(walletData) {
       <div class="flex items-center gap-2 bg-blue-900/30 border border-blue-700/30 rounded-lg px-3 py-2">
         <i class="fas fa-coins text-blue-400 text-sm"></i>
         <div>
-          <div class="text-xs text-gray-400">Saldo USDC</div>
+          <div class="text-xs text-gray-400">${t('balance_label')}</div>
           <div class="text-sm text-white font-semibold">${usdcBalance !== null ? '$' + usdcBalance : '...'} <span class="text-blue-400 text-xs">USDC</span></div>
         </div>
         <button onclick="refreshBalance()" class="text-blue-500 hover:text-blue-300 ml-1 transition-colors">
@@ -763,14 +763,14 @@ function updateWalletAgentsStatus(walletData) {
       <div class="flex items-center gap-2 bg-gray-800/60 rounded-lg px-3 py-2">
         <div class="w-2 h-2 rounded-full ${onArcNetwork ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}"></div>
         <div>
-          <div class="text-xs text-gray-400">Rede</div>
+          <div class="text-xs text-gray-400">${t('network_label')}</div>
           <div class="text-sm ${onArcNetwork ? 'text-green-400' : 'text-yellow-400'} font-medium">
-            ${onArcNetwork ? 'Arc Testnet ✓' : 'Incorreta - Chain ' + chainId}
+            ${onArcNetwork ? t('arc_testnet') : t('wrong_network') + ' - Chain ' + chainId}
           </div>
         </div>
         ${!onArcNetwork ? `
           <button onclick="switchNetworkFromUI()" class="text-xs bg-yellow-600 hover:bg-yellow-700 text-white rounded px-2 py-1 transition-colors ml-1">
-            Trocar
+            ${t('switch_network')}
           </button>
         ` : ''}
       </div>
@@ -778,7 +778,7 @@ function updateWalletAgentsStatus(walletData) {
       <!-- Explorer link -->
       <a href="https://testnet.arcscan.app/address/${address}" target="_blank"
          class="flex items-center gap-1.5 bg-gray-800/60 hover:bg-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-400 hover:text-purple-400 transition-colors">
-        <i class="fas fa-external-link-alt"></i>Ver no Explorer
+        <i class="fas fa-external-link-alt"></i>${t('view_explorer')}
       </a>
     </div>
   `;

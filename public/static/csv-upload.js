@@ -122,17 +122,17 @@ function collectRows() {
     const addr   = row.querySelector('.ms-addr-input')?.value.trim()   || '';
     const amt    = row.querySelector('.ms-amount-input')?.value.trim() || '';
     const note   = row.querySelector('.ms-note-input')?.value.trim()   || '';
-    if (!addr && !amt) return; // linha vazia — ignorar
+    if (!addr && !amt) return; // empty row — skip
 
     const amount = parseFloat(amt);
-    if (!addr)                          errors.push(`Linha ${i+1}: endereço obrigatório`);
-    else if (!isValidEthAddress(addr))  errors.push(`Linha ${i+1}: endereço inválido`);
-    if (!amt)                           errors.push(`Linha ${i+1}: valor obrigatório`);
-    else if (isNaN(amount) || amount<=0)errors.push(`Linha ${i+1}: valor inválido`);
-    else if (amount > MAX_AMOUNT_ROW)   errors.push(`Linha ${i+1}: valor excede $${MAX_AMOUNT_ROW}`);
+    if (!addr)                          errors.push(`Row ${i+1}: address required`);
+    else if (!isValidEthAddress(addr))  errors.push(`Row ${i+1}: invalid address`);
+    if (!amt)                           errors.push(`Row ${i+1}: amount required`);
+    else if (isNaN(amount) || amount<=0)errors.push(`Row ${i+1}: invalid amount`);
+    else if (amount > MAX_AMOUNT_ROW)   errors.push(`Row ${i+1}: amount exceeds $${MAX_AMOUNT_ROW}`);
 
     if (addr && isValidEthAddress(addr) && !isNaN(amount) && amount > 0) {
-      rows.push({ from: from || undefined, to: addr, amount, description: note || `Pagamento batch linha ${i+1}`, priority });
+      rows.push({ from: from || undefined, to: addr, amount, description: note || `Batch payment row ${i+1}`, priority });
     }
   });
 
@@ -143,8 +143,8 @@ function collectRows() {
 async function analyzeMultisend() {
   const { rows, errors, from } = collectRows();
   if (errors.length) { showToast(errors[0], 'warning'); return; }
-  if (rows.length === 0) { showToast('Adicione pelo menos uma linha', 'warning'); return; }
-  if (!from || !isValidEthAddress(from)) { showToast('Preencha o endereço remetente', 'warning'); return; }
+  if (rows.length === 0) { showToast(t('no_rows_to_submit'), 'warning'); return; }
+  if (!from || !isValidEthAddress(from)) { showToast(t('fill_sender'), 'warning'); return; }
 
   const result_div = document.getElementById('payment-analysis-result');
   try {
@@ -157,20 +157,20 @@ async function analyzeMultisend() {
     result_div.className = `bg-${c}-900/20 border border-${c}-700/40 rounded-xl p-4`;
     result_div.innerHTML = `
       <div class="flex items-center justify-between mb-2">
-        <h4 class="text-white font-semibold text-sm">Análise IA — ${rows.length} pagamento(s)</h4>
+        <h4 class="text-white font-semibold text-sm">${t('btn_analyze_ai')} — ${rows.length} payment(s)</h4>
         <span class="text-xs px-2 py-0.5 rounded-full bg-${c}-900/50 text-${c}-400 border border-${c}-700/40">${d.decision.riskLevel.toUpperCase()}</span>
       </div>
       <div class="flex items-center gap-2 mb-1">
         <i class="fas fa-${d.decision.action==='approve'?'check-circle text-green-400':d.decision.action==='reject'?'times-circle text-red-400':'exclamation-circle text-yellow-400'}"></i>
         <span class="text-sm font-medium text-white capitalize">${d.decision.action}</span>
-        <span class="text-xs text-gray-400">• Confiança: ${d.decision.confidence}%</span>
+        <span class="text-xs text-gray-400">${t('confidence_label') || 'Confidence'}: ${d.decision.confidence}%</span>
       </div>
       <p class="text-xs text-gray-300">${d.decision.reason}</p>
     `;
     result_div.classList.remove('hidden');
-    addLog(`[AGENT:PAY] Análise: ${d.decision.action.toUpperCase()} — ${d.decision.riskLevel} risk (${d.decision.confidence}% conf)`, 'agent');
+    addLog(`[AGENT:PAY] Analysis: ${d.decision.action.toUpperCase()} — ${d.decision.riskLevel} risk (${d.decision.confidence}% conf)`, 'agent');
   } catch(e) {
-    showToast('Erro na análise: ' + (e.response?.data?.error || e.message), 'error');
+    showToast(t('toast_error') + ': ' + (e.response?.data?.error || e.message), 'error');
   }
 }
 
@@ -179,25 +179,25 @@ async function submitMultisend() {
   const { rows, errors, from } = collectRows();
 
   if (errors.length) { showToast(errors[0], 'warning'); return; }
-  if (rows.length === 0) { showToast('Adicione pelo menos uma linha com endereço e valor', 'warning'); return; }
-  if (!from || !isValidEthAddress(from)) { showToast('Preencha o endereço remetente (campo "De")', 'warning'); return; }
+  if (rows.length === 0) { showToast(t('no_rows_to_submit'), 'warning'); return; }
+  if (!from || !isValidEthAddress(from)) { showToast(t('fill_sender'), 'warning'); return; }
 
   const btn = document.querySelector('button[onclick="submitMultisend()"]');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Enviando...'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>${t('toast_loading')}`; }
 
   try {
     const payments = rows.map(r => ({ ...r, from }));
     const res = await axios.post('/api/payments/batch', { payments, fileName: 'multisend' });
     const d = res.data;
-    showToast(`✅ ${d.submitted} pagamento(s) na fila — $${Number(d.totalAmount).toFixed(2)} USDC`, 'success');
-    addLog(`[MULTI-SEND] ${d.submitted} pagamentos enviados | $${Number(d.totalAmount).toFixed(2)} USDC | batchId: ${d.batchId}`, 'success');
+    showToast(`✅ ${d.submitted} ${t('toast_batch_ok')} — $${Number(d.totalAmount).toFixed(2)} USDC`, 'success');
+    addLog(`[MULTI-SEND] ${d.submitted} payments sent | $${Number(d.totalAmount).toFixed(2)} USDC | batchId: ${d.batchId}`, 'success');
     initMultisend();
     await loadPayments();
     if (typeof loadDashboard === 'function') await loadDashboard();
   } catch(e) {
-    showToast('Erro: ' + (e.response?.data?.error || e.message), 'error');
+    showToast(t('toast_error') + ': ' + (e.response?.data?.error || e.message), 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Enviar Tudo'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-paper-plane mr-2"></i>${t('btn_send_all')}`; }
   }
 }
 
@@ -263,8 +263,8 @@ function handleCSVFile(file) {
   if (!file) return;
   const name = file.name.toLowerCase();
   if (!name.endsWith('.csv') && !name.endsWith('.txt')) {
-    showCSVBanner('Use arquivos .csv. Para Excel: Arquivo → Salvar como → CSV.');
-    if (typeof showToast === 'function') showToast('Formato inválido. Use .csv', 'error');
+    showCSVBanner(t('csv_excel_hint'));
+    if (typeof showToast === 'function') showToast(t('toast_csv_invalid_format'), 'error');
     return;
   }
 
@@ -272,8 +272,8 @@ function handleCSVFile(file) {
   reader.onload = (e) => {
     try {
       const { rows } = parseCSVText(e.target.result);
-      if (rows.length === 0) { showCSVBanner('CSV sem dados (verifique cabeçalhos).'); return; }
-      if (rows.length > MAX_ROWS) { showCSVBanner(`CSV com ${rows.length} linhas. Máximo: ${MAX_ROWS}.`); return; }
+      if (rows.length === 0) { showCSVBanner(t('toast_csv_no_data')); return; }
+      if (rows.length > MAX_ROWS) { showCSVBanner(t('toast_csv_too_many') + `: ${rows.length}`); return; }
 
       const senderAddr = window.walletState?.address || '';
       const valid = [], invalid = [];
@@ -282,11 +282,11 @@ function handleCSVFile(file) {
         const r    = normalizeRow(raw);
         const errs = [];
         const amt  = parseFloat(r.amount);
-        if (!r.address)                             errs.push('endereço obrigatório');
-        else if (!isValidEthAddress(r.address))     errs.push('endereço EVM inválido');
-        if (!r.amount)                              errs.push('valor obrigatório');
-        else if (isNaN(amt) || amt <= 0)            errs.push('valor inválido');
-        else if (amt > MAX_AMOUNT_ROW)              errs.push(`valor > $${MAX_AMOUNT_ROW}`);
+        if (!r.address)                             errs.push('address required');
+        else if (!isValidEthAddress(r.address))     errs.push('invalid EVM address');
+        if (!r.amount)                              errs.push('amount required');
+        else if (isNaN(amt) || amt <= 0)            errs.push('invalid amount');
+        else if (amt > MAX_AMOUNT_ROW)              errs.push(`amount > $${MAX_AMOUNT_ROW}`);
 
         if (errs.length) invalid.push({ line: idx+2, errs });
         else valid.push({ address: r.address, amount: amt, note: r.note, priority: r.priority });
@@ -313,18 +313,18 @@ function handleCSVFile(file) {
       const skipped = invalid.length;
       if (typeof showToast === 'function') {
         showToast(
-          `✅ ${valid.length} linha(s) carregada(s)` + (skipped ? ` · ${skipped} ignorada(s)` : ''),
+          `✅ ${valid.length} ${t('toast_csv_loaded')}` + (skipped ? ` · ${skipped} ${t('toast_csv_skipped')}` : ''),
           skipped ? 'warning' : 'success'
         );
       }
       if (typeof addLog === 'function') {
-        addLog(`[CSV] ${file.name}: ${valid.length} linhas válidas, ${skipped} erros`, skipped ? 'warning' : 'success');
+        addLog(`[CSV] ${file.name}: ${valid.length} valid rows, ${skipped} errors`, skipped ? 'warning' : 'success');
       }
 
       // Mostrar erros no banner se houver
       if (invalid.length) {
-        const msg = invalid.slice(0,3).map(r => `Linha ${r.line}: ${r.errs.join(', ')}`).join(' | ')
-                  + (invalid.length > 3 ? ` (+${invalid.length-3} mais)` : '');
+        const msg = invalid.slice(0,3).map(r => `Row ${r.line}: ${r.errs.join(', ')}`).join(' | ')
+                  + (invalid.length > 3 ? ` (+${invalid.length-3} more)` : '');
         showCSVBanner(msg);
       }
 
@@ -333,7 +333,7 @@ function handleCSVFile(file) {
       if (inp) inp.value = '';
 
     } catch(err) {
-      showCSVBanner('Falha ao parsear CSV: ' + err.message);
+      showCSVBanner(t('csv_parse_fail') + ' ' + err.message);
     }
   };
   reader.readAsText(file, 'UTF-8');
@@ -343,9 +343,9 @@ function handleCSVFile(file) {
 function downloadCSVTemplate() {
   const csv = [
     'address,amount,note,priority',
-    '0xB815A0c4bC23930119324d4359dB65e27A846A2d,10.00,Pagamento consultoria,medium',
-    '0x411c60F8e61B5Cbe32F9a873b16D21CA85e9A634,25.50,Taxa de licença de software,high',
-    '0xC927B1d3fE6e12B1b72E3E5F3e3c5A7B9d4F2E1A,5.00,Reembolso de despesas,low',
+    '0xB815A0c4bC23930119324d4359dB65e27A846A2d,10.00,Payment for consulting services,medium',
+    '0x411c60F8e61B5Cbe32F9a873b16D21CA85e9A634,25.50,Software license fee,high',
+    '0xC927B1d3fE6e12B1b72E3E5F3e3c5A7B9d4F2E1A,5.00,Expense reimbursement,low',
   ].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url  = URL.createObjectURL(blob);
