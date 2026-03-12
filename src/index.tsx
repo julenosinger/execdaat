@@ -5,11 +5,16 @@ import paymentsRouter from './routes/payments'
 import contractsRouter from './routes/contracts'
 import settingsRouter from './routes/settings'
 import swapRouter from './routes/swap'
-import vaultsRouter from './routes/vaults'
+import vaultsRouter, { vaultStore } from './routes/vaults'
 import chatRouter from './routes/chat'
 import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import { ARC_TESTNET } from './types/arc'
+import { injectVaultStore } from './agents/PaymentAgent'
+
+// Injetar vault store no agente de pagamentos para que ele possa
+// consultar e usar saldo depositado pelo usuário sem chamadas HTTP
+injectVaultStore(vaultStore)
 
 const app = new Hono()
 
@@ -1212,10 +1217,18 @@ forge create src/ContractManager.sol:ContractManager \\
     <!-- VAULTS TAB -->
     <div id="tab-content-vaults" class="tab-content hidden">
       <div class="space-y-6">
+
         <!-- Header -->
-        <div class="text-center mb-2">
-          <h2 class="text-2xl font-bold text-white mb-1"><i class="fas fa-vault text-green-400 mr-2"></i><span data-i18n="vaults_title">Yield Vaults</span></h2>
-          <p class="text-gray-400 text-sm" data-i18n="vaults_subtitle">Earn yield on USDC and EURC on Arc Testnet</p>
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+              <i class="fas fa-vault text-green-400"></i>Yield Vaults
+            </h2>
+            <p class="text-gray-400 text-sm mt-0.5">Deposite USDC/EURC — Agentes IA otimizam seu rendimento automaticamente</p>
+          </div>
+          <button onclick="runVaultAgent()" class="flex items-center gap-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-600/40 text-purple-400 rounded-xl px-4 py-2 text-sm transition-all">
+            <i class="fas fa-robot"></i><span class="hidden sm:inline">Run Agent</span>
+          </button>
         </div>
 
         <!-- Vault Cards -->
@@ -1223,14 +1236,18 @@ forge create src/ContractManager.sol:ContractManager \\
 
           <!-- USDC Vault -->
           <div class="bg-gradient-to-br from-blue-900/40 to-blue-800/20 border border-blue-700/40 rounded-2xl p-6">
-            <div class="flex items-center justify-between mb-5">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-4">
               <div class="flex items-center gap-3">
                 <div class="w-12 h-12 rounded-2xl bg-blue-800/60 flex items-center justify-center">
                   <span class="text-2xl">💵</span>
                 </div>
                 <div>
                   <h3 class="text-white font-bold text-lg">USDC Vault</h3>
-                  <p class="text-blue-400 text-xs">Arc Testnet</p>
+                  <div class="flex items-center gap-1.5">
+                    <div class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
+                    <p class="text-blue-400 text-xs">Arc Testnet · IA Gerenciado</p>
+                  </div>
                 </div>
               </div>
               <div class="text-right">
@@ -1239,45 +1256,104 @@ forge create src/ContractManager.sol:ContractManager \\
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3 mb-5">
+            <!-- Stats globais do vault -->
+            <div class="grid grid-cols-2 gap-2 mb-4">
               <div class="bg-black/20 rounded-xl p-3">
-                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_balance">Total Balance</p>
-                <p class="text-white font-bold" id="usdc-vault-balance">—</p>
+                <p class="text-xs text-gray-400 mb-1">TVL do Vault</p>
+                <p class="text-white font-bold text-sm" id="usdc-vault-balance">—</p>
               </div>
               <div class="bg-black/20 rounded-xl p-3">
-                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_yield_accrued">Yield Accrued</p>
-                <p class="text-green-400 font-bold" id="usdc-vault-accrued">—</p>
+                <p class="text-xs text-gray-400 mb-1">Yield Acumulado</p>
+                <p class="text-green-400 font-bold text-sm" id="usdc-vault-accrued">—</p>
               </div>
               <div class="bg-black/20 rounded-xl p-3">
-                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_deposited">Total Deposited</p>
-                <p class="text-blue-400 font-mono text-sm" id="usdc-vault-deposited">—</p>
+                <p class="text-xs text-gray-400 mb-1">Total Depositado</p>
+                <p class="text-blue-400 font-mono text-xs" id="usdc-vault-deposited">—</p>
               </div>
               <div class="bg-black/20 rounded-xl p-3">
-                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_participants">Participants</p>
-                <p class="text-purple-400 font-bold" id="usdc-vault-participants">—</p>
+                <p class="text-xs text-gray-400 mb-1">Participantes</p>
+                <p class="text-purple-400 font-bold text-sm" id="usdc-vault-participants">—</p>
               </div>
             </div>
 
-            <!-- Deposit/Withdraw -->
+            <!-- Minha posição neste vault -->
+            <div class="mb-4 bg-gray-800/40 border border-gray-700/30 rounded-xl p-3">
+              <p class="text-xs text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <i class="fas fa-user text-blue-400"></i>Minha Posição
+              </p>
+              <div id="usdc-wallet-position">
+                <div class="text-center py-2 text-gray-500 text-xs">Conecte sua wallet para ver sua posição</div>
+              </div>
+            </div>
+
+            <!-- Contrato do vault -->
+            <div class="bg-black/20 rounded-lg px-3 py-2 mb-4 flex items-center justify-between">
+              <span class="text-xs text-gray-500">Vault Contract</span>
+              <span class="text-xs text-blue-400 font-mono">0x3600...0011</span>
+            </div>
+
+            <!-- Formulário Deposit/Withdraw -->
             <div class="space-y-3">
               <div class="flex gap-2">
-                <button onclick="setVaultAction('usdc','deposit')" id="usdc-dep-btn" class="vault-action-btn flex-1 bg-blue-700 hover:bg-blue-600 text-white rounded-xl py-2 text-sm font-semibold transition-all">
-                  <i class="fas fa-arrow-down mr-1"></i><span data-i18n="vault_deposit">Deposit</span>
+                <button onclick="setVaultAction('usdc','deposit')" id="usdc-dep-btn"
+                  class="vault-action-btn flex-1 bg-blue-700 hover:bg-blue-600 text-white rounded-xl py-2.5 text-sm font-semibold transition-all ring-2 ring-white/20">
+                  <i class="fas fa-arrow-down mr-1"></i>Depositar
                 </button>
-                <button onclick="setVaultAction('usdc','withdraw')" id="usdc-wit-btn" class="vault-action-btn flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2 text-sm font-semibold transition-all border border-gray-700">
-                  <i class="fas fa-arrow-up mr-1"></i><span data-i18n="vault_withdraw">Withdraw</span>
+                <button onclick="setVaultAction('usdc','withdraw')" id="usdc-wit-btn"
+                  class="vault-action-btn flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2.5 text-sm font-semibold transition-all border border-gray-700">
+                  <i class="fas fa-arrow-up mr-1"></i>Sacar
                 </button>
               </div>
-              <div id="usdc-vault-form" class="hidden space-y-2">
-                <input type="number" id="usdc-vault-amount" placeholder="Amount in USDC" min="0" step="0.01"
-                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:border-blue-500 focus:outline-none">
-                <div class="flex items-center gap-2">
-                  <input type="checkbox" id="usdc-include-yield" class="rounded">
-                  <label for="usdc-include-yield" class="text-xs text-gray-400" data-i18n="vault_claim_yield">Also claim accrued yield</label>
+
+              <div id="usdc-vault-form" class="space-y-3">
+                <!-- Hint de saldo disponível (saque) -->
+                <div id="usdc-balance-hint" class="hidden text-xs text-blue-400 bg-blue-900/20 border border-blue-700/20 rounded-lg px-3 py-2">
+                  <i class="fas fa-info-circle mr-1"></i>
                 </div>
+
+                <!-- Saldo on-chain da wallet (para depósito) -->
+                <div id="usdc-onchain-balance" class="hidden text-xs text-gray-400 bg-gray-800/40 border border-gray-700/20 rounded-lg px-3 py-2 flex items-center justify-between">
+                  <span><i class="fas fa-wallet mr-1 text-blue-400"></i>Saldo na wallet: <span id="usdc-onchain-val" class="text-white font-mono">—</span> USDC</span>
+                  <button onclick="refreshOnChainBalance('usdc')" class="text-blue-400 hover:text-blue-300 ml-2"><i class="fas fa-sync-alt text-xs"></i></button>
+                </div>
+
+                <!-- Input de valor + MAX -->
+                <div class="relative">
+                  <input type="number" id="usdc-vault-amount" placeholder="0.00" min="0.01" step="0.01"
+                    class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-blue-500 focus:outline-none pr-20">
+                  <button onclick="setMaxVaultAmount('usdc', vaultActions['usdc'])"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-400 hover:text-blue-300 bg-blue-900/30 px-2 py-1 rounded-lg transition-colors">
+                    MAX
+                  </button>
+                </div>
+
+                <!-- Estratégia (somente depósito) -->
+                <div id="usdc-strategy-row">
+                  <label class="text-xs text-gray-400 block mb-1">Estratégia do Agente IA</label>
+                  <select id="usdc-strategy"
+                    class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                    <option value="conservative">🛡️ Conservadora — APY estável, risco baixo</option>
+                    <option value="balanced" selected>⚖️ Balanceada — APY otimizado, risco médio</option>
+                    <option value="aggressive">🚀 Agressiva — APY máximo, risco alto</option>
+                  </select>
+                </div>
+
+                <!-- Incluir yield (somente saque) -->
+                <div id="usdc-yield-row" style="display:none" class="flex items-center gap-2">
+                  <input type="checkbox" id="usdc-include-yield" class="rounded accent-blue-500">
+                  <label for="usdc-include-yield" class="text-xs text-gray-400">Incluir yield acumulado no saque</label>
+                </div>
+
+                <!-- Fluxo EVM info -->
+                <div class="bg-gray-800/40 rounded-lg p-2.5 text-xs text-gray-500">
+                  <i class="fas fa-info-circle text-blue-400 mr-1"></i>
+                  Depósito: <span class="text-gray-400">approve() + transfer() on-chain na Arc Testnet</span>
+                </div>
+
+                <!-- Botão Submit -->
                 <button onclick="submitVaultAction('usdc')" id="usdc-vault-submit-btn"
-                  class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-2.5 text-sm font-semibold transition-all flex items-center justify-center gap-2">
-                  <i class="fas fa-check"></i> <span id="usdc-vault-action-label" data-i18n="vault_confirm">Confirm</span>
+                  class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-3 text-sm font-semibold transition-all flex items-center justify-center gap-2">
+                  <i class="fas fa-arrow-down mr-2"></i>Depositar USDC no Vault
                 </button>
               </div>
             </div>
@@ -1285,14 +1361,18 @@ forge create src/ContractManager.sol:ContractManager \\
 
           <!-- EURC Vault -->
           <div class="bg-gradient-to-br from-yellow-900/40 to-orange-800/20 border border-yellow-700/40 rounded-2xl p-6">
-            <div class="flex items-center justify-between mb-5">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-4">
               <div class="flex items-center gap-3">
                 <div class="w-12 h-12 rounded-2xl bg-yellow-800/60 flex items-center justify-center">
                   <span class="text-2xl">💶</span>
                 </div>
                 <div>
                   <h3 class="text-white font-bold text-lg">EURC Vault</h3>
-                  <p class="text-yellow-400 text-xs">Arc Testnet</p>
+                  <div class="flex items-center gap-1.5">
+                    <div class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
+                    <p class="text-yellow-400 text-xs">Arc Testnet · IA Gerenciado</p>
+                  </div>
                 </div>
               </div>
               <div class="text-right">
@@ -1301,64 +1381,150 @@ forge create src/ContractManager.sol:ContractManager \\
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3 mb-5">
+            <!-- Stats globais do vault -->
+            <div class="grid grid-cols-2 gap-2 mb-4">
               <div class="bg-black/20 rounded-xl p-3">
-                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_balance">Total Balance</p>
-                <p class="text-white font-bold" id="eurc-vault-balance">—</p>
+                <p class="text-xs text-gray-400 mb-1">TVL do Vault</p>
+                <p class="text-white font-bold text-sm" id="eurc-vault-balance">—</p>
               </div>
               <div class="bg-black/20 rounded-xl p-3">
-                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_yield_accrued">Yield Accrued</p>
-                <p class="text-green-400 font-bold" id="eurc-vault-accrued">—</p>
+                <p class="text-xs text-gray-400 mb-1">Yield Acumulado</p>
+                <p class="text-green-400 font-bold text-sm" id="eurc-vault-accrued">—</p>
               </div>
               <div class="bg-black/20 rounded-xl p-3">
-                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_deposited">Total Deposited</p>
-                <p class="text-yellow-400 font-mono text-sm" id="eurc-vault-deposited">—</p>
+                <p class="text-xs text-gray-400 mb-1">Total Depositado</p>
+                <p class="text-yellow-400 font-mono text-xs" id="eurc-vault-deposited">—</p>
               </div>
               <div class="bg-black/20 rounded-xl p-3">
-                <p class="text-xs text-gray-400 mb-1" data-i18n="vault_participants">Participants</p>
-                <p class="text-purple-400 font-bold" id="eurc-vault-participants">—</p>
+                <p class="text-xs text-gray-400 mb-1">Participantes</p>
+                <p class="text-purple-400 font-bold text-sm" id="eurc-vault-participants">—</p>
               </div>
             </div>
 
-            <!-- Deposit/Withdraw -->
+            <!-- Minha posição neste vault -->
+            <div class="mb-4 bg-gray-800/40 border border-gray-700/30 rounded-xl p-3">
+              <p class="text-xs text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <i class="fas fa-user text-yellow-400"></i>Minha Posição
+              </p>
+              <div id="eurc-wallet-position">
+                <div class="text-center py-2 text-gray-500 text-xs">Conecte sua wallet para ver sua posição</div>
+              </div>
+            </div>
+
+            <!-- Contrato -->
+            <div class="bg-black/20 rounded-lg px-3 py-2 mb-4 flex items-center justify-between">
+              <span class="text-xs text-gray-500">Token Contract</span>
+              <span class="text-xs text-yellow-400 font-mono">0x89B5...D72a</span>
+            </div>
+
+            <!-- Formulário Deposit/Withdraw -->
             <div class="space-y-3">
               <div class="flex gap-2">
-                <button onclick="setVaultAction('eurc','deposit')" id="eurc-dep-btn" class="vault-action-btn flex-1 bg-yellow-700 hover:bg-yellow-600 text-white rounded-xl py-2 text-sm font-semibold transition-all">
-                  <i class="fas fa-arrow-down mr-1"></i><span data-i18n="vault_deposit">Deposit</span>
+                <button onclick="setVaultAction('eurc','deposit')" id="eurc-dep-btn"
+                  class="vault-action-btn flex-1 bg-yellow-700 hover:bg-yellow-600 text-white rounded-xl py-2.5 text-sm font-semibold transition-all ring-2 ring-white/20">
+                  <i class="fas fa-arrow-down mr-1"></i>Depositar
                 </button>
-                <button onclick="setVaultAction('eurc','withdraw')" id="eurc-wit-btn" class="vault-action-btn flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2 text-sm font-semibold transition-all border border-gray-700">
-                  <i class="fas fa-arrow-up mr-1"></i><span data-i18n="vault_withdraw">Withdraw</span>
+                <button onclick="setVaultAction('eurc','withdraw')" id="eurc-wit-btn"
+                  class="vault-action-btn flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl py-2.5 text-sm font-semibold transition-all border border-gray-700">
+                  <i class="fas fa-arrow-up mr-1"></i>Sacar
                 </button>
               </div>
-              <div id="eurc-vault-form" class="hidden space-y-2">
-                <input type="number" id="eurc-vault-amount" placeholder="Amount in EURC" min="0" step="0.01"
-                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:border-yellow-500 focus:outline-none">
-                <div class="flex items-center gap-2">
-                  <input type="checkbox" id="eurc-include-yield" class="rounded">
-                  <label for="eurc-include-yield" class="text-xs text-gray-400" data-i18n="vault_claim_yield">Also claim accrued yield</label>
+
+              <div id="eurc-vault-form" class="space-y-3">
+                <div id="eurc-balance-hint" class="hidden text-xs text-yellow-400 bg-yellow-900/20 border border-yellow-700/20 rounded-lg px-3 py-2">
+                  <i class="fas fa-info-circle mr-1"></i>
                 </div>
+
+                <!-- Saldo on-chain da wallet (para depósito) -->
+                <div id="eurc-onchain-balance" class="hidden text-xs text-gray-400 bg-gray-800/40 border border-gray-700/20 rounded-lg px-3 py-2 flex items-center justify-between">
+                  <span><i class="fas fa-wallet mr-1 text-yellow-400"></i>Saldo na wallet: <span id="eurc-onchain-val" class="text-white font-mono">—</span> EURC</span>
+                  <button onclick="refreshOnChainBalance('eurc')" class="text-yellow-400 hover:text-yellow-300 ml-2"><i class="fas fa-sync-alt text-xs"></i></button>
+                </div>
+
+                <div class="relative">
+                  <input type="number" id="eurc-vault-amount" placeholder="0.00" min="0.01" step="0.01"
+                    class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white font-mono focus:border-yellow-500 focus:outline-none pr-20">
+                  <button onclick="setMaxVaultAmount('eurc', vaultActions['eurc'])"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-yellow-400 hover:text-yellow-300 bg-yellow-900/30 px-2 py-1 rounded-lg transition-colors">
+                    MAX
+                  </button>
+                </div>
+
+                <div id="eurc-strategy-row">
+                  <label class="text-xs text-gray-400 block mb-1">Estratégia do Agente IA</label>
+                  <select id="eurc-strategy"
+                    class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:border-yellow-500 focus:outline-none">
+                    <option value="conservative">🛡️ Conservadora — APY estável, risco baixo</option>
+                    <option value="balanced" selected>⚖️ Balanceada — APY otimizado, risco médio</option>
+                    <option value="aggressive">🚀 Agressiva — APY máximo, risco alto</option>
+                  </select>
+                </div>
+
+                <div id="eurc-yield-row" style="display:none" class="flex items-center gap-2">
+                  <input type="checkbox" id="eurc-include-yield" class="rounded accent-yellow-500">
+                  <label for="eurc-include-yield" class="text-xs text-gray-400">Incluir yield acumulado no saque</label>
+                </div>
+
+                <div class="bg-gray-800/40 rounded-lg p-2.5 text-xs text-gray-500">
+                  <i class="fas fa-info-circle text-yellow-400 mr-1"></i>
+                  Depósito: <span class="text-gray-400">approve() + transfer() on-chain na Arc Testnet</span>
+                </div>
+
                 <button onclick="submitVaultAction('eurc')" id="eurc-vault-submit-btn"
-                  class="w-full bg-yellow-600 hover:bg-yellow-500 text-white rounded-xl py-2.5 text-sm font-semibold transition-all flex items-center justify-center gap-2">
-                  <i class="fas fa-check"></i> <span id="eurc-vault-action-label" data-i18n="vault_confirm">Confirm</span>
+                  class="w-full bg-yellow-600 hover:bg-yellow-500 text-white rounded-xl py-3 text-sm font-semibold transition-all flex items-center justify-center gap-2">
+                  <i class="fas fa-arrow-down mr-2"></i>Depositar EURC no Vault
                 </button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Vault History -->
+        <!-- Operações do Agente IA -->
+        <div class="bg-gray-900/60 border border-purple-700/30 rounded-xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-white font-semibold flex items-center gap-2">
+              <i class="fas fa-robot text-purple-400"></i>Agente IA — Operações em Tempo Real
+            </h3>
+            <div class="flex gap-2">
+              <button onclick="runVaultAgent('usdc')" class="text-xs px-3 py-1 rounded-lg bg-blue-900/30 text-blue-400 border border-blue-700/30 hover:bg-blue-900/50 transition-colors">
+                <i class="fas fa-play mr-1"></i>Run USDC
+              </button>
+              <button onclick="runVaultAgent('eurc')" class="text-xs px-3 py-1 rounded-lg bg-yellow-900/30 text-yellow-400 border border-yellow-700/30 hover:bg-yellow-900/50 transition-colors">
+                <i class="fas fa-play mr-1"></i>Run EURC
+              </button>
+            </div>
+          </div>
+          <div id="vault-agent-ops" class="space-y-1">
+            <div class="text-center py-4 text-gray-600 text-xs">
+              <i class="fas fa-robot mr-1"></i>Deposite tokens para ativar o agente IA
+            </div>
+          </div>
+        </div>
+
+        <!-- Histórico do vault -->
         <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-5">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-white font-semibold flex items-center gap-2"><i class="fas fa-history text-green-400"></i> <span data-i18n="vault_history">Vault Activity</span></h3>
+            <h3 class="text-white font-semibold flex items-center gap-2">
+              <i class="fas fa-history text-green-400"></i>Histórico do Vault
+            </h3>
             <div class="flex gap-2">
-              <button onclick="loadVaultHistory('usdc')" class="text-xs px-3 py-1 rounded-lg bg-blue-900/40 text-blue-400 border border-blue-700/40 hover:bg-blue-900/60">USDC</button>
-              <button onclick="loadVaultHistory('eurc')" class="text-xs px-3 py-1 rounded-lg bg-yellow-900/40 text-yellow-400 border border-yellow-700/40 hover:bg-yellow-900/60">EURC</button>
+              <button onclick="loadVaultHistory('usdc', window.walletState?.address)"
+                class="text-xs px-3 py-1 rounded-lg bg-blue-900/40 text-blue-400 border border-blue-700/40 hover:bg-blue-900/60 transition-colors">
+                💵 USDC
+              </button>
+              <button onclick="loadVaultHistory('eurc', window.walletState?.address)"
+                class="text-xs px-3 py-1 rounded-lg bg-yellow-900/40 text-yellow-400 border border-yellow-700/40 hover:bg-yellow-900/60 transition-colors">
+                💶 EURC
+              </button>
             </div>
           </div>
           <div id="vault-history-list">
-            <div class="text-center py-6 text-gray-600 text-sm"><i class="fas fa-vault mr-2"></i><span data-i18n="vault_no_history">No vault activity yet</span></div>
+            <div class="text-center py-6 text-gray-600 text-sm">
+              <i class="fas fa-vault mr-2"></i>Nenhuma atividade ainda
+            </div>
           </div>
         </div>
+
       </div>
     </div>
 

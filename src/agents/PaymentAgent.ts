@@ -20,6 +20,15 @@ const PAYMENT_MANAGER_ABI = [
   'function getPayment(uint256 paymentId) external view returns (tuple(uint256 id, address from, address to, uint256 amount, string description, uint8 status, uint256 createdAt, uint256 executedAt, string agentDecision))',
 ];
 
+// ─── Vault integration helper ────────────────────────────────────────────────
+// Acessa o estado dos vaults em memória (importado em runtime para evitar circular deps)
+// Em produção: usar D1 ou KV para persistência compartilhada
+let _vaultStore: Record<string, { positions: Map<string, { balance: number; yieldEarned: number; strategy: string }> }> | null = null;
+
+export function injectVaultStore(store: typeof _vaultStore) {
+  _vaultStore = store;
+}
+
 export class PaymentAgent {
   private state: AgentState;
   private taskQueue: PaymentTask[] = [];
@@ -78,6 +87,73 @@ export class PaymentAgent {
     this.updateState('idle', `Nova tarefa adicionada: ${taskId}`);
 
     return taskId;
+  }
+
+  /**
+   * Consulta saldo disponível no vault para uma carteira
+   */
+  getVaultBalance(walletAddress: string, token: 'usdc' | 'eurc' = 'usdc'): number {
+    if (!_vaultStore) return 0;
+    const vault = _vaultStore[token];
+    if (!vault) return 0;
+    const pos = vault.positions.get(walletAddress.toLowerCase());
+    return pos?.balance ?? 0;
+  }
+
+  /**
+   * Verifica se o agente pode operar com saldo do vault para um pagamento
+   */
+  canUseVaultFunds(walletAddress: string, amountUSDC: number): { can: boolean; vaultBalance: number; reason: string } {
+    const vaultBal = this.getVaultBalance(walletAddress, 'usdc');
+    if (vaultBal <= 0) {
+      return { can: false, vaultBalance: 0, reason: 'Nenhum saldo depositado no vault USDC' };
+    }
+    const amountRaw = amountUSDC * 1e6;
+    if (amountRaw > this.RISK_THRESHOLDS.MEDIUM_RISK_LIMIT) {
+      return { can: false, vaultBalance: vaultBal, reason: `Operação acima do limite via vault ($${amountUSDC} > $100)` };
+    }
+    if (vaultBal < amountUSDC) {
+      return { can: false, vaultBalance: vaultBal, reason: `Saldo no vault insuficiente: ${vaultBal.toFixed(4)} USDC` };
+    }
+    return { can: true, vaultBalance: vaultBal, reason: `Vault USDC disponível: ${vaultBal.toFixed(4)} USDC` };
+  }
+
+  /**
+   * Executa um pagamento usando saldo do vault (debita a posição da carteira)
+   * Retorna txHash simulado + detalhes para o backend de vault registrar
+   */
+  async executeWithVaultFunds(
+    task: PaymentTask
+  ): Promise<{ success: boolean; txHash?: string; vaultDebit?: { wallet: string; token: string; amount: number }; error?: string }> {
+    const amountUSDC = task.amount / 1e6;
+    const check = this.canUseVaultFunds(task.from, amountUSDC);
+    if (!check.can) {
+      return { success: false, error: check.reason };
+    }
+
+    if (!_vaultStore) return { success: false, error: 'Vault store não disponível' };
+
+    const vault = _vaultStore['usdc'];
+    if (!vault) return { success: false, error: 'Vault USDC não encontrado' };
+
+    const pos = vault.positions.get(task.from.toLowerCase());
+    if (!pos || pos.balance < amountUSDC) {
+      return { success: false, error: 'Saldo insuficiente no vault durante execução' };
+    }
+
+    // Debitar saldo da posição
+    pos.balance -= amountUSDC;
+
+    // Simular execução on-chain
+    const txResult = await this.simulateBlockchainExecution(task);
+
+    this.updateState('executing', `Pagamento via vault: ${amountUSDC} USDC de ${task.from.slice(0,10)}... para ${task.to.slice(0,10)}...`);
+
+    return {
+      success: txResult.success,
+      txHash: txResult.hash,
+      vaultDebit: { wallet: task.from.toLowerCase(), token: 'usdc', amount: amountUSDC },
+    };
   }
 
   /**
@@ -165,11 +241,34 @@ export class PaymentAgent {
         const decision = await this.analyzePayment(task);
 
         if (decision.action === 'approve') {
-          // Simula execução na blockchain
-          const txResult = await this.simulateBlockchainExecution(task);
+          // Verificar se pode usar saldo do vault antes de executar
+          const amountUSDC = task.amount / 1e6;
+          const vaultCheck = this.canUseVaultFunds(task.from, amountUSDC);
+
+          let txResult: { success: boolean; hash: string };
+          let usedVault = false;
+
+          if (vaultCheck.can) {
+            // Usar saldo do vault para executar o pagamento
+            const vaultResult = await this.executeWithVaultFunds(task);
+            if (vaultResult.success && vaultResult.txHash) {
+              txResult = { success: true, hash: vaultResult.txHash };
+              usedVault = true;
+              task.agentDecision = `${decision.reason} [VAULT: ${vaultCheck.vaultBalance.toFixed(4)} USDC disponível → debitado ${amountUSDC.toFixed(4)} USDC]`;
+            } else {
+              // Fallback para simulação normal
+              txResult = await this.simulateBlockchainExecution(task);
+              task.agentDecision = `${decision.reason} [Vault indisponível, execução direta]`;
+            }
+          } else {
+            // Execução normal (sem vault)
+            txResult = await this.simulateBlockchainExecution(task);
+            task.agentDecision = decision.reason;
+          }
+
           task.status = txResult.success ? 'executed' : 'failed';
           task.txHash = txResult.hash;
-          task.agentDecision = decision.reason;
+          if (!task.agentDecision) task.agentDecision = decision.reason;
           task.executedAt = Date.now();
           processed++;
         } else if (decision.action === 'reject') {
