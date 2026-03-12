@@ -367,158 +367,363 @@ app.get('/', (c) => {
       <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
 
         <!-- ═══════════════════════════════════════════════════
-             COLUNA ESQUERDA: Envio Manual + Multi-send
+             COLUNA ESQUERDA — Send Payment (EVM Real)
              ═══════════════════════════════════════════════════ -->
         <div class="xl:col-span-3 space-y-5">
 
-          <!-- ── PAINEL MULTI-SEND (estilo da imagem) ── -->
-          <div class="bg-gray-900/70 border border-gray-700/50 rounded-2xl overflow-hidden">
-
-            <!-- Cabeçalho do painel -->
-            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/40">
-              <div class="flex items-center gap-4">
-                <div>
-                  <p class="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Token</p>
-                  <p class="text-cyan-400 font-bold text-lg leading-none">USDC</p>
-                </div>
-                <div class="w-px h-8 bg-gray-700/60"></div>
-                <div>
-                  <p class="text-xs text-gray-500 uppercase tracking-wider mb-0.5" data-i18n="total_to_send">Total to Send</p>
-                  <p id="multisend-total" class="text-cyan-400 font-bold text-lg leading-none">0.0000 <span class="text-sm text-gray-400 font-normal">USDC</span></p>
-                </div>
+          <!-- ── WALLET BANNER ── -->
+          <div class="bg-gray-900/70 border border-purple-700/40 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+                <i class="fas fa-wallet text-white text-sm"></i>
               </div>
-              <!-- Botão CSV fixo no cabeçalho -->
-              <div class="flex items-center gap-2">
-                <input id="csv-file-input" type="file" accept=".csv,.txt" class="hidden"
-                  onchange="handleCSVFile(this.files[0])">
-                <button
-                  onclick="document.getElementById('csv-file-input').click()"
-                  ondragover="event.preventDefault(); event.currentTarget.classList.add('border-cyan-400','bg-cyan-900/20')"
-                  ondragleave="event.currentTarget.classList.remove('border-cyan-400','bg-cyan-900/20')"
-                  ondrop="event.preventDefault(); event.currentTarget.classList.remove('border-cyan-400','bg-cyan-900/20'); handleCSVFile(event.dataTransfer.files[0])"
-                  class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-cyan-500 text-gray-200 font-semibold rounded-xl px-4 py-2.5 text-sm transition-all">
-                  <i class="fas fa-upload text-cyan-400"></i>
-                  <span>CSV</span>
-                </button>
-                <button onclick="downloadCSVTemplate()"
-                  data-i18n-title="download_template" title="Download CSV template"
-                  class="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-gray-500 text-gray-400 hover:text-cyan-400 rounded-xl transition-all">
-                  <i class="fas fa-download text-xs"></i>
-                </button>
+              <div>
+                <p class="text-xs text-gray-500 uppercase tracking-wider">Wallet</p>
+                <p id="pay-wallet-short" class="text-white text-sm font-mono font-semibold">Not connected</p>
               </div>
             </div>
-
-            <!-- Banner de erro CSV (oculto por padrão) -->
-            <div id="csv-error-banner" class="hidden px-5 py-2 bg-red-900/20 border-b border-red-700/30 flex items-center gap-2">
-              <i class="fas fa-exclamation-circle text-red-400 text-xs"></i>
-              <span id="csv-error-text" class="text-xs text-red-300"></span>
-            </div>
-
-            <!-- Cabeçalhos das colunas -->
-            <div class="grid grid-cols-12 gap-3 px-5 py-2 bg-gray-800/30 border-b border-gray-700/30">
-              <div class="col-span-5 text-xs text-gray-500 uppercase tracking-wider" data-i18n="col_address">ADDRESS</div>
-              <div class="col-span-3 text-xs text-gray-500 uppercase tracking-wider" data-i18n="col_amount">AMOUNT (USDC)</div>
-              <div class="col-span-3 text-xs text-gray-500 uppercase tracking-wider" data-i18n="col_note">NOTE</div>
-              <div class="col-span-1"></div>
-            </div>
-
-            <!-- Linhas de destinatários -->
-            <div id="multisend-rows" class="divide-y divide-gray-800/60">
-              <!-- Linhas geradas pelo JS -->
-            </div>
-
-            <!-- Botão Adicionar destinatário -->
-            <div class="px-5 py-3 border-t border-gray-700/30">
-              <button onclick="addMultisendRow()"
-                class="w-full flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-medium py-1 transition-colors">
-                <i class="fas fa-plus text-xs"></i> <span data-i18n="btn_add_recipient">+ Add Recipient</span>
+            <div class="flex items-center gap-4 flex-wrap">
+              <div class="text-right">
+                <p class="text-xs text-gray-500">USDC</p>
+                <p id="pay-balance-usdc" class="text-cyan-400 text-sm font-bold">— USDC</p>
+              </div>
+              <div class="text-right">
+                <p class="text-xs text-gray-500">EURC</p>
+                <p id="pay-balance-eurc" class="text-purple-400 text-sm font-bold">— EURC</p>
+              </div>
+              <div class="text-right">
+                <p class="text-xs text-gray-500">Network</p>
+                <p id="pay-network-name" class="text-green-400 text-xs font-semibold">—</p>
+              </div>
+              <button onclick="refreshPaymentBalances()"
+                class="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 hover:text-cyan-400 rounded-lg transition-all text-xs">
+                <i class="fas fa-sync"></i>
               </button>
             </div>
+          </div>
 
-            <!-- Remetente -->
-            <div class="px-5 py-3 border-t border-gray-700/30 bg-gray-800/20">
-              <label class="text-xs text-gray-500 mb-1.5 block uppercase tracking-wider" data-i18n="from_sender">From (Sender)</label>
-              <input type="text" id="pay-from" data-i18n-placeholder="from_placeholder" placeholder="0x... (auto-filled by wallet)"
-                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none font-mono">
+          <!-- ── SEND PAYMENT PANEL ── -->
+          <div class="bg-gray-900/70 border border-gray-700/50 rounded-2xl overflow-hidden">
+
+            <!-- Header -->
+            <div class="px-5 py-4 border-b border-gray-700/40 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i class="fas fa-paper-plane text-cyan-400"></i>
+                <h3 class="text-white font-semibold text-sm">Send Payment</h3>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs text-gray-500">Token:</span>
+                <button id="pay-token-usdc" onclick="selectPayToken('USDC')"
+                  class="px-4 py-2 rounded-lg border text-sm font-semibold transition-all bg-cyan-700 text-white border-cyan-500">
+                  USDC
+                </button>
+                <button id="pay-token-eurc" onclick="selectPayToken('EURC')"
+                  class="px-4 py-2 rounded-lg border text-sm font-semibold transition-all bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-500">
+                  EURC
+                </button>
+              </div>
             </div>
 
-            <!-- Prioridade + botões de ação -->
-            <div class="px-5 py-4 border-t border-gray-700/30 bg-gray-800/10">
-              <div class="flex items-center gap-3 flex-wrap">
-                <div class="flex items-center gap-2">
-                  <label class="text-xs text-gray-500" data-i18n="priority_label">Priority:</label>
-                  <select id="pay-priority"
-                    class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-cyan-500 focus:outline-none">
-                    <option value="low" data-i18n="priority_low">Low</option>
-                    <option value="medium" selected data-i18n="priority_medium">Medium</option>
-                    <option value="high" data-i18n="priority_high">High</option>
-                    <option value="critical" data-i18n="priority_critical">Critical</option>
-                  </select>
+            <!-- Form body -->
+            <div class="p-5 space-y-4">
+
+              <!-- Recipient -->
+              <div>
+                <label class="text-xs text-gray-400 uppercase tracking-wider mb-1.5 block">Recipient Address</label>
+                <input type="text" id="pay-recipient" placeholder="0x... recipient wallet address"
+                  oninput="updatePayPreview(); validatePayForm()"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none font-mono transition-colors">
+              </div>
+
+              <!-- Amount + MAX -->
+              <div>
+                <div class="flex justify-between items-center mb-1.5">
+                  <label class="text-xs text-gray-400 uppercase tracking-wider">Amount</label>
+                  <span id="pay-max-hint" class="text-xs text-gray-600"></span>
                 </div>
-                <div class="flex-1 flex gap-2 justify-end">
-                  <button onclick="analyzeMultisend()"
-                    class="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl px-4 py-2 text-sm font-medium transition-colors">
-                    <i class="fas fa-brain text-purple-400"></i><span data-i18n="btn_analyze_ai">AI Analysis</span>
-                  </button>
-                  <button onclick="submitMultisend()"
-                    class="flex items-center gap-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-xl px-5 py-2 text-sm font-bold transition-colors shadow-lg shadow-cyan-900/30">
-                    <i class="fas fa-paper-plane"></i><span data-i18n="btn_send_all">Send All</span>
+                <div class="flex gap-2">
+                  <input type="number" id="pay-amount" placeholder="0.000000" min="0" step="0.000001"
+                    oninput="updatePayPreview(); validatePayForm()"
+                    class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none transition-colors">
+                  <button onclick="setPayMax()"
+                    class="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-cyan-400 text-xs font-bold rounded-xl transition-colors">
+                    MAX
                   </button>
                 </div>
+              </div>
+
+              <!-- Description / Note -->
+              <div>
+                <label class="text-xs text-gray-400 uppercase tracking-wider mb-1.5 block">Note (optional)</label>
+                <input type="text" id="pay-description" placeholder="Payment for services, invoice #123..."
+                  oninput="updatePayPreview()"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-gray-500 focus:outline-none transition-colors">
+              </div>
+
+              <!-- Transaction Preview -->
+              <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-4 space-y-2">
+                <p class="text-xs text-gray-400 uppercase tracking-wider mb-2">Transaction Preview</p>
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">Token</span>
+                  <span id="prev-token" class="text-cyan-400 font-semibold">USDC</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">Amount</span>
+                  <span id="prev-amount" class="text-white font-bold">—</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">To</span>
+                  <span id="prev-recipient" class="text-gray-300 font-mono">—</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">From</span>
+                  <span id="pay-from-display" class="text-gray-300 font-mono">—</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">Network</span>
+                  <span id="prev-network" class="text-green-400">Arc Testnet</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">Gas</span>
+                  <span id="prev-gas" class="text-yellow-400">~1 tx (native)</span>
+                </div>
+              </div>
+
+              <!-- Error box -->
+              <div id="pay-error-box" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl px-4 py-3 flex items-start gap-2">
+                <i class="fas fa-exclamation-circle text-red-400 mt-0.5 flex-shrink-0"></i>
+                <div class="flex-1">
+                  <span id="pay-error-text" class="text-red-300 text-xs"></span>
+                </div>
+                <button onclick="hidePayError()" class="text-gray-600 hover:text-gray-400 text-xs ml-1">✕</button>
+              </div>
+
+              <!-- Send button -->
+              <button id="pay-send-btn" onclick="executePayment()" disabled
+                class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-700 to-blue-700 hover:from-cyan-600 hover:to-blue-600 disabled:from-gray-700 disabled:to-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl py-3 text-sm transition-all shadow-lg shadow-cyan-900/20">
+                <i class="fas fa-paper-plane mr-2"></i>Sign &amp; Send
+              </button>
+
+              <!-- ARC note -->
+              <p class="text-xs text-gray-600 text-center">
+                <i class="fas fa-info-circle mr-1"></i>
+                USDC is the native gas token on Arc Testnet. Dynamic gas estimation. No hard-coded values.
+              </p>
+            </div>
+          </div>
+
+          <!-- ── PROGRESS STEPS ── -->
+          <div id="pay-steps-panel" class="hidden bg-gray-900/70 border border-gray-700/50 rounded-2xl p-5">
+            <p class="text-xs text-gray-400 uppercase tracking-wider mb-4">Transaction Progress</p>
+            <div class="space-y-2">
+              <div id="pay-step-0" class="pay-step pay-step-idle flex items-center gap-3">
+                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
+                  <i class="fas fa-network-wired"></i>
+                </div>
+                <span id="pay-step-label-0" class="text-xs">Verify Arc Testnet network</span>
+              </div>
+              <div id="pay-step-1" class="pay-step pay-step-idle flex items-center gap-3">
+                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
+                  <i class="fas fa-coins"></i>
+                </div>
+                <span id="pay-step-label-1" class="text-xs">Read on-chain balance</span>
+              </div>
+              <div id="pay-step-2" class="pay-step pay-step-idle flex items-center gap-3">
+                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
+                  <i class="fas fa-check-double"></i>
+                </div>
+                <span id="pay-step-label-2" class="text-xs">Approve token spending (EURC only)</span>
+              </div>
+              <div id="pay-step-3" class="pay-step pay-step-idle flex items-center gap-3">
+                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
+                  <i class="fas fa-signature"></i>
+                </div>
+                <span id="pay-step-label-3" class="text-xs">Sign &amp; broadcast transaction</span>
+              </div>
+              <div id="pay-step-4" class="pay-step pay-step-idle flex items-center gap-3">
+                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
+                  <i class="fas fa-hourglass-half"></i>
+                </div>
+                <span id="pay-step-label-4" class="text-xs">Wait for on-chain confirmation</span>
+              </div>
+              <div id="pay-step-5" class="pay-step pay-step-idle flex items-center gap-3">
+                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
+                  <i class="fas fa-receipt"></i>
+                </div>
+                <span id="pay-step-label-5" class="text-xs">Generate receipt</span>
               </div>
             </div>
           </div>
 
-          <!-- Info de formato CSV (compacto, sempre visível) -->
+          <!-- ── RECEIPT PANEL ── -->
+          <div id="pay-receipt-panel" class="hidden">
+            <div id="pay-receipt-content"></div>
+          </div>
+
+          <!-- ── BATCH / CSV SECTION (collapsible) ── -->
+          <details class="bg-gray-900/50 border border-gray-700/40 rounded-2xl overflow-hidden">
+            <summary class="px-5 py-3 cursor-pointer text-sm text-gray-300 hover:text-white flex items-center gap-2 select-none list-none">
+              <i class="fas fa-table text-cyan-600"></i>
+              <span class="font-medium">Batch / Multi-send (CSV)</span>
+              <i class="fas fa-chevron-down text-xs text-gray-600 ml-auto"></i>
+            </summary>
+            <div class="border-t border-gray-700/40">
+
+              <!-- Cabeçalho do painel multi-send -->
+              <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/40">
+                <div class="flex items-center gap-4">
+                  <div>
+                    <p class="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Token</p>
+                    <p class="text-cyan-400 font-bold text-lg leading-none">USDC</p>
+                  </div>
+                  <div class="w-px h-8 bg-gray-700/60"></div>
+                  <div>
+                    <p class="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Total to Send</p>
+                    <p id="multisend-total" class="text-cyan-400 font-bold text-lg leading-none">0.0000 <span class="text-sm text-gray-400 font-normal">USDC</span></p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <input id="csv-file-input" type="file" accept=".csv,.txt" class="hidden"
+                    onchange="handleCSVFile(this.files[0])">
+                  <button
+                    onclick="document.getElementById('csv-file-input').click()"
+                    ondragover="event.preventDefault(); event.currentTarget.classList.add('border-cyan-400','bg-cyan-900/20')"
+                    ondragleave="event.currentTarget.classList.remove('border-cyan-400','bg-cyan-900/20')"
+                    ondrop="event.preventDefault(); event.currentTarget.classList.remove('border-cyan-400','bg-cyan-900/20'); handleCSVFile(event.dataTransfer.files[0])"
+                    class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-cyan-500 text-gray-200 font-semibold rounded-xl px-4 py-2.5 text-sm transition-all">
+                    <i class="fas fa-upload text-cyan-400"></i>
+                    <span>CSV</span>
+                  </button>
+                  <button onclick="downloadCSVTemplate()" title="Download CSV template"
+                    class="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-gray-500 text-gray-400 hover:text-cyan-400 rounded-xl transition-all">
+                    <i class="fas fa-download text-xs"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div id="csv-error-banner" class="hidden px-5 py-2 bg-red-900/20 border-b border-red-700/30 flex items-center gap-2">
+                <i class="fas fa-exclamation-circle text-red-400 text-xs"></i>
+                <span id="csv-error-text" class="text-xs text-red-300"></span>
+              </div>
+
+              <div class="grid grid-cols-12 gap-3 px-5 py-2 bg-gray-800/30 border-b border-gray-700/30">
+                <div class="col-span-5 text-xs text-gray-500 uppercase tracking-wider">ADDRESS</div>
+                <div class="col-span-3 text-xs text-gray-500 uppercase tracking-wider">AMOUNT (USDC)</div>
+                <div class="col-span-3 text-xs text-gray-500 uppercase tracking-wider">NOTE</div>
+                <div class="col-span-1"></div>
+              </div>
+
+              <div id="multisend-rows" class="divide-y divide-gray-800/60"></div>
+
+              <div class="px-5 py-3 border-t border-gray-700/30">
+                <button onclick="addMultisendRow()"
+                  class="w-full flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-medium py-1 transition-colors">
+                  <i class="fas fa-plus text-xs"></i> + Add Recipient
+                </button>
+              </div>
+
+              <div class="px-5 py-3 border-t border-gray-700/30 bg-gray-800/20">
+                <label class="text-xs text-gray-500 mb-1.5 block uppercase tracking-wider">From (Sender)</label>
+                <input type="text" id="pay-from" placeholder="0x... (auto-filled by wallet)"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none font-mono">
+              </div>
+
+              <div class="px-5 py-4 border-t border-gray-700/30 bg-gray-800/10">
+                <div class="flex items-center gap-3 flex-wrap">
+                  <div class="flex items-center gap-2">
+                    <label class="text-xs text-gray-500">Priority:</label>
+                    <select id="pay-priority"
+                      class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-cyan-500 focus:outline-none">
+                      <option value="low">Low</option>
+                      <option value="medium" selected>Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                  <div class="flex-1 flex gap-2 justify-end">
+                    <button onclick="analyzeMultisend()"
+                      class="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl px-4 py-2 text-sm font-medium transition-colors">
+                      <i class="fas fa-brain text-purple-400"></i> AI Analysis
+                    </button>
+                    <button onclick="submitMultisend()"
+                      class="flex items-center gap-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-xl px-5 py-2 text-sm font-bold transition-colors shadow-lg shadow-cyan-900/30">
+                      <i class="fas fa-paper-plane"></i> Send All
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- CSV format hint -->
           <div class="bg-gray-900/40 border border-gray-700/30 rounded-xl px-4 py-3 flex items-start gap-3">
             <i class="fas fa-info-circle text-cyan-600 mt-0.5 flex-shrink-0"></i>
             <div class="text-xs text-gray-500">
-              <strong class="text-gray-400" data-i18n="csv_format_title">CSV Format:</strong>
-              <span data-i18n="csv_cols_hint">columns</span> <code class="text-cyan-500 bg-gray-800 px-1 rounded">address</code>,
+              <strong class="text-gray-400">CSV Format:</strong>
+              columns <code class="text-cyan-500 bg-gray-800 px-1 rounded">address</code>,
               <code class="text-cyan-500 bg-gray-800 px-1 rounded">amount</code>,
-              <code class="text-gray-400 bg-gray-800 px-1 rounded">note</code> <span data-i18n="csv_optional">(optional)</span>,
-              <code class="text-gray-400 bg-gray-800 px-1 rounded">priority</code> <span data-i18n="csv_optional">(optional)</span> —
-              <span data-i18n="csv_limits">max 500 rows · max $10,000 per row · separator: comma or semicolon</span>
+              <code class="text-gray-400 bg-gray-800 px-1 rounded">note</code> (optional),
+              <code class="text-gray-400 bg-gray-800 px-1 rounded">priority</code> (optional) —
+              max 500 rows · max $10,000 per row
             </div>
           </div>
 
-          <!-- Preview CSV após upload -->
           <div id="csv-preview-container" class="hidden"></div>
-
-          <!-- Resultado da análise IA -->
           <div id="payment-analysis-result" class="hidden"></div>
 
-          <!-- Botões secundários -->
           <div class="flex gap-2">
             <button onclick="createDemoPayments()"
               class="flex-1 bg-blue-900/30 border border-blue-700/40 hover:bg-blue-800/40 text-blue-400 rounded-xl py-2 text-sm transition-colors">
-              <i class="fas fa-flask mr-2"></i><span data-i18n="btn_demo">Demo Payments</span>
+              <i class="fas fa-flask mr-2"></i>Demo Payments
             </button>
             <button onclick="processPayments()"
               class="flex-1 bg-green-800/40 border border-green-700/40 hover:bg-green-700/50 text-green-400 rounded-xl py-2 text-sm font-medium transition-colors">
-              <i class="fas fa-play mr-2"></i><span data-i18n="btn_process_queue">Process Queue</span>
+              <i class="fas fa-play mr-2"></i>Process Queue
             </button>
           </div>
         </div>
 
         <!-- ═══════════════════════════════════════════════════
-             COLUNA DIREITA: Fila de Pagamentos
+             COLUNA DIREITA — Queue + History
              ═══════════════════════════════════════════════════ -->
         <div class="xl:col-span-2 space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-white font-semibold flex items-center gap-2">
-              <i class="fas fa-list text-purple-400"></i><span data-i18n="payment_queue">Payment Queue</span>
-            </h3>
-            <button onclick="loadPayments()" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
-              <i class="fas fa-sync mr-1"></i><span data-i18n="btn_update">Update</span>
-            </button>
-          </div>
-          <div id="payments-list" class="space-y-3">
-            <div class="text-gray-500 text-sm text-center py-8 bg-gray-900/40 rounded-xl border border-gray-700/30">
-              <i class="fas fa-inbox text-4xl mb-3 block text-gray-700"></i>
-              <span data-i18n="no_payments">No payments in queue</span>
+
+          <!-- On-chain payment history -->
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-white font-semibold flex items-center gap-2 text-sm">
+                <i class="fas fa-history text-cyan-400"></i> On-chain History
+              </h3>
+              <button onclick="refreshPaymentBalances(); renderPaymentHistory()" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                <i class="fas fa-sync mr-1"></i>Refresh
+              </button>
+            </div>
+            <div id="pay-history-list" class="space-y-2">
+              <div class="text-gray-600 text-xs text-center py-6 bg-gray-900/40 rounded-xl border border-gray-700/30">
+                <i class="fas fa-clock text-2xl mb-2 block"></i>
+                No transactions yet
+              </div>
             </div>
           </div>
+
+          <!-- Agent Payment Queue -->
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-white font-semibold flex items-center gap-2 text-sm">
+                <i class="fas fa-robot text-purple-400"></i> Agent Queue
+              </h3>
+              <button onclick="loadPayments()" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+                <i class="fas fa-sync mr-1"></i>Update
+              </button>
+            </div>
+            <div id="payments-list" class="space-y-3">
+              <div class="text-gray-500 text-sm text-center py-8 bg-gray-900/40 rounded-xl border border-gray-700/30">
+                <i class="fas fa-inbox text-4xl mb-3 block text-gray-700"></i>
+                No payments in queue
+              </div>
+            </div>
+          </div>
+
         </div>
 
       </div>
@@ -2104,6 +2309,7 @@ forge create src/ContractManager.sol:ContractManager \\
   <script src="/static/evm-tx.js"></script>
   <script src="/static/csv-upload.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/payments.js"></script>
   <script src="/static/settings.js"></script>
   <script src="/static/swap.js"></script>
   <script src="/static/vaults.js"></script>

@@ -446,3 +446,61 @@ input[type="checkbox"].sr-only:checked ~ div > div {
 #chat-messages::-webkit-scrollbar { width: 3px; }
 #chat-messages::-webkit-scrollbar-track { background: #111827; }
 #chat-messages::-webkit-scrollbar-thumb { background: #4c1d95; border-radius: 4px; }
+
+/* ── Payment Steps Panel ── */
+.pay-step {
+  color: #4b5563;
+  transition: all 0.2s ease;
+}
+
+.pay-step-icon {
+  border: 1.5px solid #374151;
+  background: rgba(31,41,55,0.6);
+  flex-shrink: 0;
+}
+
+.pay-step.pay-step-idle .pay-step-icon i { color: #4b5563; }
+.pay-step.pay-step-idle { color: #6b7280; }
+
+.pay-step.pay-step-active .pay-step-icon {
+  border-color: #06b6d4;
+  background: rgba(6,182,212,0.15);
+  animation: payStepPulse 1.2s ease-in-out infinite;
+}
+.pay-step.pay-step-active .pay-step-icon i { color: #06b6d4; }
+.pay-step.pay-step-active { color: #e2e8f0; }
+
+.pay-step.pay-step-done .pay-step-icon {
+  border-color: #22c55e;
+  background: rgba(34,197,94,0.12);
+}
+.pay-step.pay-step-done .pay-step-icon i { color: #22c55e; }
+.pay-step.pay-step-done .pay-step-icon i::before { content: "\f00c"; }
+.pay-step.pay-step-done { color: #86efac; }
+
+.pay-step.pay-step-error .pay-step-icon {
+  border-color: #ef4444;
+  background: rgba(239,68,68,0.12);
+}
+.pay-step.pay-step-error .pay-step-icon i { color: #ef4444; }
+.pay-step.pay-step-error .pay-step-icon i::before { content: "\f00d"; }
+.pay-step.pay-step-error { color: #fca5a5; }
+
+@keyframes payStepPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(6,182,212,0.4); }
+  50%       { box-shadow: 0 0 0 5px rgba(6,182,212,0); }
+}
+
+/* ── Receipt Card ── */
+.pay-receipt-card {
+  background: linear-gradient(135deg, rgba(6,78,59,0.15), rgba(17,24,39,0.8));
+  border: 1px solid rgba(34,197,94,0.25);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  animation: fadeIn 0.3s ease;
+}
+
+/* ── Details/Summary for batch panel ── */
+details > summary::-webkit-details-marker { display: none; }
+details[open] > summary .fa-chevron-down { transform: rotate(180deg); }
+details > summary .fa-chevron-down { transition: transform 0.2s ease; }

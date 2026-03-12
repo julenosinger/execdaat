@@ -52,7 +52,7 @@ function switchTab(tab) {
   
   // Load data for the tab
   if (tab === 'dashboard') loadDashboard();
-  if (tab === 'payments') loadPayments();
+  if (tab === 'payments') { loadPayments(); if (window.initPayments) window.initPayments(); }
   if (tab === 'contracts') loadContracts();
   if (tab === 'agents') {
     loadAgentsDetails();

@@ -5,6 +5,26 @@ import { PaymentAgent } from '../agents/PaymentAgent';
 
 const paymentsRouter = new Hono();
 
+// ─── In-memory receipt store (production: use Cloudflare KV / D1) ─────────────
+interface OnChainReceipt {
+  txHash: string;
+  approveTxHash: string | null;
+  sender: string;
+  recipient: string;
+  amount: number;
+  token: string;
+  description: string;
+  gasFee: string;
+  gasUsed: string;
+  network: string;
+  chainId: number;
+  timestamp: string;
+  durationMs: number;
+  explorerUrl: string;
+}
+
+const onChainReceipts: OnChainReceipt[] = [];
+
 // Singleton do agente (em produção, persistir estado em KV)
 let paymentAgent: PaymentAgent | null = null;
 
@@ -257,6 +277,97 @@ paymentsRouter.post('/demo', async (c) => {
     message: '3 pagamentos de demonstração criados',
     taskIds,
     note: 'Use POST /api/payments/process para executar a análise dos agentes',
+  });
+});
+
+// POST /api/payments/record — Save on-chain receipt from frontend
+paymentsRouter.post('/record', async (c) => {
+  try {
+    const body = await c.req.json() as Partial<OnChainReceipt>;
+    const { txHash, sender, recipient, amount, token, timestamp } = body;
+
+    if (!txHash || !sender || !recipient || amount === undefined || !token) {
+      return c.json({ success: false, error: 'Missing required fields: txHash, sender, recipient, amount, token' }, 400);
+    }
+
+    const receipt: OnChainReceipt = {
+      txHash: String(txHash),
+      approveTxHash: body.approveTxHash || null,
+      sender: String(sender),
+      recipient: String(recipient),
+      amount: Number(amount),
+      token: String(token),
+      description: body.description || '',
+      gasFee: String(body.gasFee || '0'),
+      gasUsed: String(body.gasUsed || '0'),
+      network: body.network || 'Arc Testnet',
+      chainId: body.chainId || 5042002,
+      timestamp: timestamp || new Date().toISOString(),
+      durationMs: body.durationMs || 0,
+      explorerUrl: body.explorerUrl || `https://testnet.arcscan.app/tx/${txHash}`,
+    };
+
+    // Avoid duplicate txHash
+    const exists = onChainReceipts.some(r => r.txHash === receipt.txHash);
+    if (!exists) {
+      onChainReceipts.unshift(receipt);
+      if (onChainReceipts.length > 200) onChainReceipts.splice(200);
+    }
+
+    return c.json({ success: true, receipt });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// GET /api/payments/receipts — List on-chain receipts
+paymentsRouter.get('/receipts', (c) => {
+  const limit = Math.min(Number(c.req.query('limit') || '50'), 200);
+  return c.json({
+    success: true,
+    total: onChainReceipts.length,
+    receipts: onChainReceipts.slice(0, limit),
+    network: {
+      name: 'Arc Testnet',
+      chainId: 5042002,
+      explorerUrl: 'https://testnet.arcscan.app',
+      usdcAddress: '0x3600000000000000000000000000000000000000',
+      eurcAddress: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
+    },
+  });
+});
+
+// GET /api/payments/receipts/:txHash — Get specific receipt
+paymentsRouter.get('/receipts/:txHash', (c) => {
+  const txHash = c.req.param('txHash');
+  const receipt = onChainReceipts.find(r => r.txHash.toLowerCase() === txHash.toLowerCase());
+  if (!receipt) {
+    return c.json({ success: false, error: 'Receipt not found' }, 404);
+  }
+  return c.json({ success: true, receipt });
+});
+
+// GET /api/payments/network — Network info for frontend
+paymentsRouter.get('/network', (c) => {
+  return c.json({
+    success: true,
+    network: {
+      name: 'Arc Testnet',
+      chainId: 5042002,
+      chainHex: '0x4CFC12',
+      rpcUrl: 'https://rpc.testnet.arc.network',
+      rpcAlternatives: [
+        'https://rpc.blockdaemon.testnet.arc.network',
+        'https://rpc.drpc.testnet.arc.network',
+        'https://rpc.quicknode.testnet.arc.network',
+      ],
+      explorerUrl: 'https://testnet.arcscan.app',
+      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+      tokens: {
+        USDC: { address: '0x3600000000000000000000000000000000000000', decimals: 6, type: 'native' },
+        EURC: { address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a', decimals: 6, type: 'erc20' },
+      },
+    },
   });
 });
 
