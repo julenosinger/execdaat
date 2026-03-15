@@ -1,4 +1,5 @@
 // Rotas da API para o Agente de Contratos
+// Inclui: Receipt struct, ContractReceiptIssued event, Escrow deposit tracking
 
 import { Hono } from 'hono';
 import { ContractAgent } from '../agents/ContractAgent';
@@ -6,13 +7,83 @@ import type { ContractData } from '../agents/ContractAgent';
 
 const contractsRouter = new Hono();
 
+// ─── Receipt Struct (mirrors Solidity Receipt struct) ─────────────────────────
+interface ContractReceipt {
+  id: number;                  // receiptCount (auto-increment)
+  contractId: number;
+  client: string;
+  contractor: string;
+  amount: number;              // in micro-USDC (6 decimals)
+  contractTitle: string;
+  timestamp: number;           // Unix ms
+  txHash: string;              // on-chain tx hash (real or simulated)
+  blockNumber: number | null;
+  escrowAddress: string;       // escrow/custodian address
+  eventName: 'ContractReceiptIssued' | 'EscrowDepositIssued';
+  network: string;
+  chainId: number;
+  explorerUrl: string;
+  type: 'creation' | 'escrow_deposit';
+}
+
+// ─── In-memory receipt store (mirrors on-chain mapping(uint256 => Receipt)) ───
+const contractReceipts: ContractReceipt[] = [];
+let receiptCount = 0; // mirrors uint256 public receiptCount
+
+// ─── Escrow contract address (ARC Testnet — deploy real contract here) ────────
+const ESCROW_ADDRESS = '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8';
+const USDC_ADDRESS   = '0x3600000000000000000000000000000000000000';
+const NETWORK_NAME   = 'Arc Testnet';
+const CHAIN_ID       = 5042002;
+const EXPLORER_URL   = 'https://testnet.arcscan.app';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function generateTxHash(): string {
+  const bytes = Array.from({ length: 32 }, () =>
+    Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
+  );
+  return '0x' + bytes.join('');
+}
+
+function issueReceipt(
+  contractId: number,
+  client: string,
+  contractor: string,
+  amount: number,
+  contractTitle: string,
+  txHash: string,
+  type: 'creation' | 'escrow_deposit',
+  blockNumber: number | null = null
+): ContractReceipt {
+  receiptCount++;
+  const receipt: ContractReceipt = {
+    id: receiptCount,
+    contractId,
+    client,
+    contractor,
+    amount,
+    contractTitle,
+    timestamp: Date.now(),
+    txHash,
+    blockNumber,
+    escrowAddress: ESCROW_ADDRESS,
+    eventName: type === 'creation' ? 'ContractReceiptIssued' : 'EscrowDepositIssued',
+    network: NETWORK_NAME,
+    chainId: CHAIN_ID,
+    explorerUrl: `${EXPLORER_URL}/tx/${txHash}`,
+    type,
+  };
+  contractReceipts.unshift(receipt);
+  return receipt;
+}
+
+// ─── Agent Singleton ──────────────────────────────────────────────────────────
 let contractAgent: ContractAgent | null = null;
 let contractIdCounter = 1;
 
 function getAgent(contractAddress = '0x0000000000000000000000000000000000000002'): ContractAgent {
   if (!contractAgent) {
     contractAgent = new ContractAgent(contractAddress);
-    // Adicionar contratos de demonstração
     seedDemoContracts(contractAgent);
   }
   return contractAgent;
@@ -59,8 +130,8 @@ function seedDemoContracts(agent: ContractAgent) {
     },
     {
       id: contractIdCounter++,
-      client: '0xE523F9c8dG6b4C0f2G3E6d9B8c4D7g0e3D6C9E2B',
-      contractor: '0xF634G0d9eH7c5D1g3H4F7e0C9d5E8h1f4E7D0F3C',
+      client: '0xE523F9c8dA6b4C0f2A3E6d9B8c4D7A0e3D6C9E2B',
+      contractor: '0xF634A0d9eB7c5D1a3B4F7e0C9d5E8b1f4E7D0F3C',
       title: 'Integração de Pagamentos USDC - E-commerce',
       description: 'Integração completa de pagamentos em USDC na rede Arc para plataforma de e-commerce. Inclui SDK, webhook e painel de controle.',
       totalValue: 3500 * 1e6,
@@ -79,20 +150,52 @@ function seedDemoContracts(agent: ContractAgent) {
     },
   ];
 
-  demos.forEach(contract => agent.registerContract(contract));
+  // Seed demo receipts for existing contracts
+  demos.forEach(contract => {
+    agent.registerContract(contract);
+    // Issue creation receipt for active/completed demo contracts
+    if (contract.status === 'Active' || contract.status === 'Completed') {
+      const txHash = generateTxHash();
+      issueReceipt(
+        contract.id,
+        contract.client,
+        contract.contractor,
+        contract.totalValue,
+        contract.title,
+        txHash,
+        'creation',
+        Math.floor(Math.random() * 1000000) + 5000000
+      );
+      // Also issue escrow deposit receipt
+      const escrowTx = generateTxHash();
+      issueReceipt(
+        contract.id,
+        contract.client,
+        contract.contractor,
+        contract.totalValue,
+        contract.title,
+        escrowTx,
+        'escrow_deposit',
+        Math.floor(Math.random() * 1000000) + 5000000
+      );
+    }
+  });
 }
 
-// GET /api/contracts/agent - Status do agente de contratos
+// ─── GET /api/contracts/agent ─────────────────────────────────────────────────
 contractsRouter.get('/agent', (c) => {
   const agent = getAgent();
   return c.json({
     success: true,
     agent: agent.getState(),
     stats: agent.getStats(),
+    escrowAddress: ESCROW_ADDRESS,
+    usdcAddress: USDC_ADDRESS,
+    network: { name: NETWORK_NAME, chainId: CHAIN_ID, explorerUrl: EXPLORER_URL },
   });
 });
 
-// GET /api/contracts - Listar todos os contratos
+// ─── GET /api/contracts ───────────────────────────────────────────────────────
 contractsRouter.get('/', (c) => {
   const agent = getAgent();
   const contracts = agent.getContracts();
@@ -102,17 +205,20 @@ contractsRouter.get('/', (c) => {
       ...contract,
       totalValueFormatted: `$${(contract.totalValue / 1e6).toFixed(2)} USDC`,
       milestonesProgress: `${contract.milestones.filter(m => m.status === 'Completed').length}/${contract.milestones.length}`,
+      // Attach latest receipt for this contract
+      receipt: contractReceipts.find(r => r.contractId === contract.id && r.type === 'creation') || null,
+      escrowReceipt: contractReceipts.find(r => r.contractId === contract.id && r.type === 'escrow_deposit') || null,
     })),
     total: contracts.length,
   });
 });
 
-// GET /api/contracts/:id - Detalhes de um contrato
+// ─── GET /api/contracts/:id ───────────────────────────────────────────────────
 contractsRouter.get('/:id', (c) => {
   const agent = getAgent();
   const id = parseInt(c.req.param('id'));
   const contracts = agent.getContracts();
-  const contract = contracts.find(c => c.id === id);
+  const contract = contracts.find(ct => ct.id === id);
 
   if (!contract) {
     return c.json({ success: false, error: 'Contrato não encontrado' }, 404);
@@ -124,15 +230,23 @@ contractsRouter.get('/:id', (c) => {
       ...contract,
       totalValueFormatted: `$${(contract.totalValue / 1e6).toFixed(2)} USDC`,
       milestonesProgress: `${contract.milestones.filter(m => m.status === 'Completed').length}/${contract.milestones.length}`,
+      receipt: contractReceipts.find(r => r.contractId === contract.id && r.type === 'creation') || null,
+      escrowReceipt: contractReceipts.find(r => r.contractId === contract.id && r.type === 'escrow_deposit') || null,
     },
   });
 });
 
-// POST /api/contracts/create - Criar novo contrato
+// ─── POST /api/contracts/create ───────────────────────────────────────────────
+// When "Create Contract" is executed:
+//   1. Validates input
+//   2. Creates contract in agent store
+//   3. Increments receiptCount (mirrors Solidity)
+//   4. Stores receipt (mirrors mapping(uint256 => Receipt))
+//   5. Returns receipt with event data (mirrors emit ContractReceiptIssued)
 contractsRouter.post('/create', async (c) => {
   try {
     const body = await c.req.json();
-    const { client, contractor, title, description, totalValue, milestones = [] } = body;
+    const { client, contractor, title, description, totalValue, milestones = [], txHash, blockNumber } = body;
 
     if (!client || !contractor || !title || !description || !totalValue) {
       return c.json({ success: false, error: 'Campos obrigatórios: client, contractor, title, description, totalValue' }, 400);
@@ -140,6 +254,7 @@ contractsRouter.post('/create', async (c) => {
 
     const agent = getAgent();
     const contractId = contractIdCounter++;
+    const amountRaw = Math.round(parseFloat(totalValue) * 1e6);
 
     const newContract: ContractData = {
       id: contractId,
@@ -147,7 +262,7 @@ contractsRouter.post('/create', async (c) => {
       contractor,
       title,
       description,
-      totalValue: Math.round(parseFloat(totalValue) * 1e6),
+      totalValue: amountRaw,
       status: 'Draft',
       clientSigned: false,
       contractorSigned: false,
@@ -162,27 +277,150 @@ contractsRouter.post('/create', async (c) => {
 
     agent.registerContract(newContract);
 
+    // ── Issue ContractReceiptIssued (mirrors Solidity emit) ────────────────────
+    const resolvedTxHash = txHash || generateTxHash();
+    const receipt = issueReceipt(
+      contractId,
+      client,
+      contractor,
+      amountRaw,
+      title,
+      resolvedTxHash,
+      'creation',
+      blockNumber || null
+    );
+
     return c.json({
       success: true,
       contractId,
       contract: newContract,
-      message: `Contrato #${contractId} criado. Aguardando assinaturas de ambas as partes.`,
+      receipt,
+      // Mirror Solidity event fields
+      event: {
+        name: 'ContractReceiptIssued',
+        receiptId: receipt.id,
+        client,
+        contractor,
+        amount: amountRaw,
+        amountFormatted: `$${(amountRaw / 1e6).toFixed(2)} USDC`,
+        contractTitle: title,
+        timestamp: receipt.timestamp,
+        txHash: resolvedTxHash,
+        explorerUrl: receipt.explorerUrl,
+        escrowAddress: ESCROW_ADDRESS,
+        network: NETWORK_NAME,
+        chainId: CHAIN_ID,
+      },
+      message: `Contrato #${contractId} criado. Receipt #${receipt.id} emitido na Arc Testnet.`,
     });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
 
-// POST /api/contracts/:id/sign - Assinar contrato
+// ─── POST /api/contracts/:id/escrow-deposit ───────────────────────────────────
+// Called after on-chain USDC transfer to escrow:
+//   mirrors: transfer USDC to escrow + emit EscrowDepositIssued
+contractsRouter.post('/:id/escrow-deposit', async (c) => {
+  try {
+    const id = parseInt(c.req.param('id'));
+    const body = await c.req.json();
+    const { txHash, blockNumber, depositor } = body;
+
+    const agent = getAgent();
+    const contracts = agent.getContracts();
+    const contract = contracts.find(ct => ct.id === id);
+
+    if (!contract) {
+      return c.json({ success: false, error: 'Contrato não encontrado' }, 404);
+    }
+
+    if (!txHash) {
+      return c.json({ success: false, error: 'txHash é obrigatório para registrar depósito em escrow' }, 400);
+    }
+
+    const receipt = issueReceipt(
+      id,
+      depositor || contract.client,
+      contract.contractor,
+      contract.totalValue,
+      contract.title,
+      txHash,
+      'escrow_deposit',
+      blockNumber || null
+    );
+
+    // Update contract status to Active after escrow deposit
+    contract.clientSigned = true;
+    contract.contractorSigned = true;
+    if (contract.status === 'Draft') {
+      contract.status = 'Active';
+      contract.startedAt = Date.now();
+    }
+
+    return c.json({
+      success: true,
+      receipt,
+      contract: {
+        ...contract,
+        totalValueFormatted: `$${(contract.totalValue / 1e6).toFixed(2)} USDC`,
+      },
+      event: {
+        name: 'EscrowDepositIssued',
+        receiptId: receipt.id,
+        contractId: id,
+        depositor: depositor || contract.client,
+        amount: contract.totalValue,
+        amountFormatted: `$${(contract.totalValue / 1e6).toFixed(2)} USDC`,
+        txHash,
+        explorerUrl: receipt.explorerUrl,
+        escrowAddress: ESCROW_ADDRESS,
+        timestamp: receipt.timestamp,
+        network: NETWORK_NAME,
+        chainId: CHAIN_ID,
+      },
+      message: `Escrow de $${(contract.totalValue / 1e6).toFixed(2)} USDC depositado. Receipt #${receipt.id} emitido.`,
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ─── GET /api/contracts/receipts/all ──────────────────────────────────────────
+contractsRouter.get('/receipts/all', (c) => {
+  const limit = Math.min(Number(c.req.query('limit') || '50'), 200);
+  return c.json({
+    success: true,
+    receiptCount,
+    total: contractReceipts.length,
+    receipts: contractReceipts.slice(0, limit),
+    escrowAddress: ESCROW_ADDRESS,
+    network: { name: NETWORK_NAME, chainId: CHAIN_ID, explorerUrl: EXPLORER_URL },
+  });
+});
+
+// ─── GET /api/contracts/receipts/:contractId ──────────────────────────────────
+contractsRouter.get('/receipts/:contractId', (c) => {
+  const contractId = parseInt(c.req.param('contractId'));
+  const receipts = contractReceipts.filter(r => r.contractId === contractId);
+  return c.json({
+    success: true,
+    contractId,
+    receipts,
+    total: receipts.length,
+  });
+});
+
+// ─── POST /api/contracts/:id/sign ─────────────────────────────────────────────
 contractsRouter.post('/:id/sign', async (c) => {
   try {
     const id = parseInt(c.req.param('id'));
     const body = await c.req.json();
-    const { signer, role } = body; // role: 'client' | 'contractor'
+    const { signer, role } = body;
 
     const agent = getAgent();
     const contracts = agent.getContracts();
-    const contract = contracts.find(c => c.id === id);
+    const contract = contracts.find(ct => ct.id === id);
 
     if (!contract) {
       return c.json({ success: false, error: 'Contrato não encontrado' }, 404);
@@ -207,7 +445,7 @@ contractsRouter.post('/:id/sign', async (c) => {
   }
 });
 
-// POST /api/contracts/:id/analyze - Análise do agente de IA
+// ─── POST /api/contracts/:id/analyze ──────────────────────────────────────────
 contractsRouter.post('/:id/analyze', async (c) => {
   try {
     const id = parseInt(c.req.param('id'));
@@ -236,10 +474,13 @@ contractsRouter.post('/:id/analyze', async (c) => {
   }
 });
 
-// POST /api/contracts/:id/activate - Ativar contrato (agente de IA)
+// ─── POST /api/contracts/:id/activate ─────────────────────────────────────────
 contractsRouter.post('/:id/activate', async (c) => {
   try {
     const id = parseInt(c.req.param('id'));
+    const body = await c.req.json().catch(() => ({}));
+    const { txHash, blockNumber } = body as { txHash?: string; blockNumber?: number };
+
     const agent = getAgent();
     const contracts = agent.getContracts();
     const contract = contracts.find(ct => ct.id === id);
@@ -248,30 +489,53 @@ contractsRouter.post('/:id/activate', async (c) => {
       return c.json({ success: false, error: 'Contrato não encontrado' }, 404);
     }
 
-    const taskId = await agent.submitContractTask({
-      type: 'activate',
-      contractId: id,
-    });
-
+    const taskId = await agent.submitContractTask({ type: 'activate', contractId: id });
     const result = await agent.processTaskQueue();
-
     const updatedContract = contracts.find(ct => ct.id === id);
+
+    // Issue escrow receipt on activation
+    let escrowReceipt: ContractReceipt | null = null;
+    if (updatedContract?.status === 'Active') {
+      const resolvedTxHash = txHash || generateTxHash();
+      escrowReceipt = issueReceipt(
+        id,
+        contract.client,
+        contract.contractor,
+        contract.totalValue,
+        contract.title,
+        resolvedTxHash,
+        'escrow_deposit',
+        blockNumber || null
+      );
+    }
 
     return c.json({
       success: true,
       taskId,
       result,
       contract: updatedContract,
+      escrowReceipt,
+      event: escrowReceipt ? {
+        name: 'EscrowDepositIssued',
+        receiptId: escrowReceipt.id,
+        contractId: id,
+        amount: contract.totalValue,
+        amountFormatted: `$${(contract.totalValue / 1e6).toFixed(2)} USDC`,
+        txHash: escrowReceipt.txHash,
+        explorerUrl: escrowReceipt.explorerUrl,
+        escrowAddress: ESCROW_ADDRESS,
+        timestamp: escrowReceipt.timestamp,
+      } : null,
       message: updatedContract?.status === 'Active'
-        ? `Contrato #${id} ativado com sucesso! Escrow de $${(contract.totalValue / 1e6).toFixed(2)} USDC depositado.`
-        : 'Ativação pendente - verifique os requisitos',
+        ? `Contrato #${id} ativado! Escrow de $${(contract.totalValue / 1e6).toFixed(2)} USDC depositado. Receipt #${escrowReceipt?.id} emitido.`
+        : 'Ativação pendente — verifique os requisitos',
     });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
 
-// POST /api/contracts/:id/milestone/:milestoneId/complete - Completar milestone
+// ─── POST /api/contracts/:id/milestone/:milestoneId/complete ──────────────────
 contractsRouter.post('/:id/milestone/:milestoneId/complete', async (c) => {
   try {
     const contractId = parseInt(c.req.param('id'));
@@ -308,14 +572,14 @@ contractsRouter.post('/:id/milestone/:milestoneId/complete', async (c) => {
       milestone,
       message: milestone?.status === 'Completed'
         ? `Milestone #${milestoneId} verificado e aprovado! Pagamento de $${(milestone.amount / 1e6).toFixed(2)} USDC liberado.`
-        : 'Verificação pendente - evidência insuficiente',
+        : 'Verificação pendente — evidência insuficiente',
     });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
 
-// POST /api/contracts/:id/dispute - Reportar disputa
+// ─── POST /api/contracts/:id/dispute ──────────────────────────────────────────
 contractsRouter.post('/:id/dispute', async (c) => {
   try {
     const id = parseInt(c.req.param('id'));
@@ -335,13 +599,7 @@ contractsRouter.post('/:id/dispute', async (c) => {
     }
 
     contract.status = 'Disputed';
-
-    const taskId = await agent.submitContractTask({
-      type: 'resolve_dispute',
-      contractId: id,
-      data: { reason },
-    });
-
+    const taskId = await agent.submitContractTask({ type: 'resolve_dispute', contractId: id, data: { reason } });
     const result = await agent.processTaskQueue();
 
     return c.json({
@@ -355,13 +613,21 @@ contractsRouter.post('/:id/dispute', async (c) => {
   }
 });
 
-// GET /api/contracts/stats/summary - Resumo estatístico
+// ─── GET /api/contracts/stats/summary ─────────────────────────────────────────
 contractsRouter.get('/stats/summary', (c) => {
   const agent = getAgent();
   return c.json({
     success: true,
     stats: agent.getStats(),
     report: agent.generateReport(),
+    receiptStats: {
+      totalReceipts: receiptCount,
+      creationReceipts: contractReceipts.filter(r => r.type === 'creation').length,
+      escrowReceipts: contractReceipts.filter(r => r.type === 'escrow_deposit').length,
+      totalEscrowedUSDC: contractReceipts
+        .filter(r => r.type === 'escrow_deposit')
+        .reduce((sum, r) => sum + r.amount, 0) / 1e6,
+    },
   });
 });
 

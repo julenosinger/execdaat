@@ -760,10 +760,39 @@ app.get('/', (c) => {
                 <label class="text-xs text-gray-400 mb-1 block" data-i18n="ct_desc_label">Description</label>
                 <textarea id="ct-description" data-i18n-placeholder="ct_desc_placeholder" placeholder="Describe the work to be performed..." rows="3" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500 focus:outline-none resize-none"></textarea>
               </div>
-              <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              <button type="submit" id="ct-submit-btn" class="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
                 <i class="fas fa-file-plus mr-2"></i><span data-i18n="btn_create_contract">Create Contract</span>
               </button>
             </form>
+
+            <!-- Contract creation steps panel -->
+            <div id="ct-steps-panel" class="hidden mt-4 space-y-2 bg-gray-800/60 border border-gray-700/40 rounded-xl p-4">
+              <p class="text-xs text-gray-400 uppercase tracking-wider mb-3">Transaction Progress</p>
+              <div id="ct-step-0" class="ct-step ct-step-idle flex items-center gap-3">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-network-wired"></i></div>
+                <span class="text-xs">Verify Arc Testnet network</span>
+              </div>
+              <div id="ct-step-1" class="ct-step ct-step-idle flex items-center gap-3">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-coins"></i></div>
+                <span class="text-xs">Read USDC balance</span>
+              </div>
+              <div id="ct-step-2" class="ct-step ct-step-idle flex items-center gap-3">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-file-alt"></i></div>
+                <span class="text-xs">Register contract on-chain</span>
+              </div>
+              <div id="ct-step-3" class="ct-step ct-step-idle flex items-center gap-3">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-lock"></i></div>
+                <span class="text-xs">Deposit USDC to escrow (wallet signature)</span>
+              </div>
+              <div id="ct-step-4" class="ct-step ct-step-idle flex items-center gap-3">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-hourglass-half"></i></div>
+                <span class="text-xs">Wait for on-chain confirmation</span>
+              </div>
+              <div id="ct-step-5" class="ct-step ct-step-idle flex items-center gap-3">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-receipt"></i></div>
+                <span class="text-xs">Emit ContractReceiptIssued event</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2310,6 +2339,7 @@ forge create src/ContractManager.sol:ContractManager \\
   <script src="/static/csv-upload.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/payments.js"></script>
+  <script src="/static/contracts.js"></script>
   <script src="/static/settings.js"></script>
   <script src="/static/swap.js"></script>
   <script src="/static/vaults.js"></script>

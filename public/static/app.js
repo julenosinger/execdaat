@@ -53,7 +53,7 @@ function switchTab(tab) {
   // Load data for the tab
   if (tab === 'dashboard') loadDashboard();
   if (tab === 'payments') { loadPayments(); if (window.initPayments) window.initPayments(); }
-  if (tab === 'contracts') loadContracts();
+  if (tab === 'contracts') { loadContracts(); if (window.loadContractReceipts) window.loadContractReceipts(); }
   if (tab === 'agents') {
     loadAgentsDetails();
     if (window.loadGuardianStatus) window.loadGuardianStatus();
@@ -314,7 +314,23 @@ async function processPayments() {
 // ============================================================
 async function loadContracts() {
   try {
+    // Pre-load receipts into ctState before rendering
+    if (window.loadContractReceipts) await window.loadContractReceipts();
     const data = await API.get('/api/contracts');
+    // Merge server-side receipts into ctState
+    if (window.ctState && data.contracts) {
+      data.contracts.forEach(ct => {
+        if (!window.ctState.receiptsByContract[ct.id]) window.ctState.receiptsByContract[ct.id] = [];
+        if (ct.receipt) {
+          const exists = window.ctState.receiptsByContract[ct.id].some(r => r.id === ct.receipt.id);
+          if (!exists) window.ctState.receiptsByContract[ct.id].unshift(ct.receipt);
+        }
+        if (ct.escrowReceipt) {
+          const exists = window.ctState.receiptsByContract[ct.id].some(r => r.id === ct.escrowReceipt.id);
+          if (!exists) window.ctState.receiptsByContract[ct.id].unshift(ct.escrowReceipt);
+        }
+      });
+    }
     renderContractsList(data.contracts);
   } catch (err) {
     showToast(t('toast_error_load_contracts'), 'error');
@@ -387,9 +403,19 @@ function renderContractsList(contracts) {
             `).join('')}
           </div>
         ` : ''}
+
+        <!-- ── Blockchain Receipt Panel (below progress bar) ── -->
+        ${(() => {
+          const receipts = (window.ctState?.receiptsByContract?.[ct.id] || []);
+          const best = receipts.find(r => r.type === 'escrow_deposit') || receipts.find(r => r.type === 'creation')
+                    || ct.escrowReceipt || ct.receipt;
+          if (!best) return '';
+          if (typeof window.renderContractReceiptPanel === 'function') return window.renderContractReceiptPanel(best);
+          return '';
+        })()}
         
         <!-- Actions -->
-        <div class="flex gap-2 flex-wrap">
+        <div class="flex gap-2 flex-wrap mt-3">
           <button onclick="analyzeContract(${ct.id})" class="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg px-3 py-1.5 transition-colors">
             <i class="fas fa-brain mr-1"></i>${t('btn_analyze_ai')}
           </button>
@@ -406,9 +432,17 @@ function renderContractsList(contracts) {
               <i class="fas fa-exclamation-triangle mr-1"></i>${t('btn_dispute')}
             </button>
           ` : ''}
-          <a href="https://testnet.arcscan.app" target="_blank" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg px-3 py-1.5 transition-colors">
-            <i class="fas fa-external-link-alt mr-1"></i>Explorer
-          </a>
+          ${(() => {
+            // Explorer link: use receipt's explorerUrl if available, else default
+            const receipts2 = (window.ctState?.receiptsByContract?.[ct.id] || []);
+            const anyReceipt = receipts2.find(r => r.explorerUrl) || ct.escrowReceipt || ct.receipt;
+            const explorerBase = anyReceipt?.explorerUrl
+              ? anyReceipt.explorerUrl.replace(/\/tx\/.*/, '')
+              : 'https://testnet.arcscan.app';
+            return `<a href="${explorerBase}" target="_blank" rel="noopener" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg px-3 py-1.5 transition-colors">
+              <i class="fas fa-external-link-alt mr-1"></i>Explorer
+            </a>`;
+          })()}
         </div>
         
         ${ct.agentAnalysis ? `
@@ -439,16 +473,33 @@ async function analyzeContract(contractId) {
 }
 
 async function activateContract(contractId) {
-  if (!confirm(`Activate contract #${contractId}? The escrow amount will be debited from the client.`)) return;
-  
+  if (!confirm(`Activate contract #${contractId}?\n\nThis will:\n• Transfer USDC to escrow on Arc Testnet\n• Issue a blockchain receipt (ContractReceiptIssued event)\n\nMake sure your wallet is connected.`)) return;
+
   try {
-    addLog(`[AGENT:CTR] Activating contract #${contractId}...`, 'agent');
-    const result = await API.post(`/api/contracts/${contractId}/activate`, {});
-    showToast(result.message, 'success');
-    addLog(`[AGENT:CTR] Contract #${contractId} activated! Escrow deposited.`, 'success');
+    addLog(`[AGENT:CTR] Activating contract #${contractId} with EVM escrow deposit...`, 'agent');
+
+    // Get contract data for amount
+    const ctData = await API.get(`/api/contracts/${contractId}`);
+    const contract = ctData.contract;
+
+    if (typeof window.activateContractEVM === 'function') {
+      const result = await window.activateContractEVM(contractId, contract);
+      showToast(result.message || `Contract #${contractId} activated!`, 'success');
+      if (result.escrowReceipt) {
+        addLog(`[AGENT:CTR] Contract #${contractId} activated! Escrow Receipt #${result.escrowReceipt.id} emitted. TX: ${result.escrowReceipt.txHash.slice(0,14)}...`, 'success');
+      }
+    } else {
+      const result = await API.post(`/api/contracts/${contractId}/activate`, {});
+      showToast(result.message, 'success');
+      addLog(`[AGENT:CTR] Contract #${contractId} activated!`, 'success');
+    }
     await loadContracts();
   } catch (err) {
-    showToast(`${t('toast_error')}: ${err.message}`, 'error');
+    if (err.message?.includes('rejected')) {
+      showToast('Transaction rejected by user.', 'warning');
+    } else {
+      showToast(`${t('toast_error')}: ${err.message}`, 'error');
+    }
   }
 }
 
@@ -488,28 +539,39 @@ async function disputeContract(contractId) {
 
 document.getElementById('contract-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  
-  const client = document.getElementById('ct-client').value;
-  const contractor = document.getElementById('ct-contractor').value;
-  const title = document.getElementById('ct-title').value;
-  const description = document.getElementById('ct-description').value;
-  const totalValue = document.getElementById('ct-value').value;
-  
+
+  const client      = document.getElementById('ct-client').value.trim();
+  const contractor  = document.getElementById('ct-contractor').value.trim();
+  const title       = document.getElementById('ct-title').value.trim();
+  const description = document.getElementById('ct-description').value.trim();
+  const totalValue  = document.getElementById('ct-value').value.trim();
+
   if (!client || !contractor || !title || !description || !totalValue) {
     showToast(t('toast_fill_required'), 'warning');
     return;
   }
-  
-  try {
-    const result = await API.post('/api/contracts/create', {
-      client, contractor, title, description, totalValue
-    });
-    showToast(`✅ Contract #${result.contractId} created!`, 'success');
-    addLog(`[AGENT:CTR] New contract #${result.contractId}: "${title}" - $${parseFloat(totalValue).toFixed(2)} USDC`, 'system');
-    e.target.reset();
-    await loadContracts();
-  } catch (err) {
-    showToast(`${t('toast_error')}: ${err.message}`, 'error');
+
+  addLog(`[AGENT:CTR] Creating contract "${title}" — $${parseFloat(totalValue).toFixed(2)} USDC escrow...`, 'agent');
+
+  // Use contracts.js EVM flow (handles wallet + on-chain receipt)
+  if (typeof window.createContractWithReceipt === 'function') {
+    const result = await window.createContractWithReceipt({ client, contractor, title, description, totalValue });
+    if (result?.success) {
+      addLog(`[AGENT:CTR] Contract #${result.contractId} created. Receipt #${result.receipt?.id || '?'} emitted on Arc Testnet.`, 'success');
+      e.target.reset();
+      await loadContracts();
+    }
+  } else {
+    // Fallback to plain API
+    try {
+      const result = await API.post('/api/contracts/create', { client, contractor, title, description, totalValue });
+      showToast(`✅ Contract #${result.contractId} created!`, 'success');
+      addLog(`[AGENT:CTR] New contract #${result.contractId}: "${title}" - $${parseFloat(totalValue).toFixed(2)} USDC`, 'system');
+      e.target.reset();
+      await loadContracts();
+    } catch (err) {
+      showToast(`${t('toast_error')}: ${err.message}`, 'error');
+    }
   }
 });
 
