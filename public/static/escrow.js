@@ -50,7 +50,29 @@
   function encUint(val) {
     return BigInt(Math.floor(Number(val))).toString(16).padStart(64, '0');
   }
+
+  // ── USDC 6-decimal conversion (mirrors ethers.parseUnits) ─────────────────
+  // USDC on ARC has 6 decimals. ALWAYS convert via these helpers.
+  //   parseUsdcUnits(1)    → 1000000n   ← pass to contract calls
+  //   parseUsdcUnits(0.5)  → 500000n
+  //   parseUsdcUnits(10)   → 10000000n
+  //   fmtUsdc (below)      ← divides raw units by 1e6 for display
+  // ⚠️  NEVER send raw floats to the contract — use parseUsdcUnits() always.
+  function parseUsdcUnits(humanAmount) {
+    const str = String(humanAmount).trim();
+    const [intPart = '0', fracPart = ''] = str.split('.');
+    const frac = fracPart.slice(0, 6).padEnd(6, '0');
+    const result = BigInt(intPart) * 1_000_000n + BigInt(frac);
+    console.log(`[USDC] parseUsdcUnits(${humanAmount}) → ${result.toString()} base units`);
+    return result;
+  }
+  // Hex string for tx value field
+  function usdcToHex(humanAmount) {
+    return '0x' + parseUsdcUnits(humanAmount).toString(16);
+  }
+
   function encString(str) {
+
     // ABI-encode dynamic string: offset + length + data
     const bytes = Array.from(new TextEncoder().encode(str));
     const offset = '0000000000000000000000000000000000000000000000000000000000000080';
@@ -250,8 +272,12 @@
   }
 
   // ── On-chain write: approve USDC ───────────────────────────────────────────
+  // amount = human-readable USDC (e.g. 1.5). parseUsdcUnits converts to 6-decimal base units.
   async function approveUsdc(spender, amount) {
-    const amountRaw = BigInt(Math.round(amount * 1e6));
+    // ✅ FIX: parseUsdcUnits() correctly converts human USDC → 6-decimal base units
+    // 1 USDC → 1000000, 0.5 → 500000, 10 → 10000000
+    const amountRaw = parseUsdcUnits(amount);
+    console.log(`[USDC:approve] amount=${amount} USDC → amountRaw=${amountRaw.toString()}`);
     const data = SEL_APPROVE + encAddr(spender) + encUint(amountRaw);
     return evmSendTx(USDC_ADDR, data);
   }
@@ -263,12 +289,16 @@
     // Layout: [selector][offset_str=0x80][addr_client][addr_contractor][uint_amount][str_len][str_data]
     const { len, data: strData } = encString(title);
     // offset to string data = 4 args * 32 = 128 bytes = 0x80
+    const amountRaw = parseUsdcUnits(totalAmountUsdc);
+    console.log(`[USDC:createEscrow] totalAmountUsdc=${totalAmountUsdc} USDC → amountRaw=${amountRaw.toString()} base units`);
     const calldata =
       SEL_CREATE_ESCROW_REAL +
       '0000000000000000000000000000000000000000000000000000000000000080' + // offset to string
       encAddr(client) +
       encAddr(contractor) +
-      encUint(BigInt(Math.round(totalAmountUsdc * 1e6))) +
+      // ✅ FIX: parseUsdcUnits() converts human USDC to 6-decimal base units
+      // e.g. totalAmountUsdc=1 → 1000000, 10 → 10000000
+      encUint(amountRaw) +
       len +
       strData;
 
@@ -1337,12 +1367,17 @@
         await evmEnsureNetwork();
         // ERC-20 approve + transferFrom simulation
         showEscrowMsg(msg, '<i class="fas fa-spinner fa-spin mr-2"></i>Confirm approval in wallet…', 'loading');
-        const amountHex = '0x' + BigInt(Math.round(amount * 1e6)).toString(16);
+
+        // ✅ FIX: Use parseUsdcUnits() — converts human USDC to 6-decimal base units
+        // 1 USDC → 1000000, 0.5 → 500000, 10 → 10000000
+        const amountRaw = parseUsdcUnits(amount);
+        const amountHex = usdcToHex(amount);
+        console.log(`[USDC:deposit] amount=${amount} USDC → amountRaw=${amountRaw.toString()} → hex=${amountHex}`);
 
         // Approve escrow custodian
         const approveTx = await evmSendTx(
           USDC_ADDR,
-          SEL_APPROVE + encAddr('0x867650F5eAe8df91445971f14d89fd84F0C9a9f8') + encUint(BigInt(Math.round(amount * 1e6))),
+          SEL_APPROVE + encAddr('0x867650F5eAe8df91445971f14d89fd84F0C9a9f8') + encUint(amountRaw),
         );
         showEscrowMsg(msg, '<i class="fas fa-spinner fa-spin mr-2"></i>Waiting for approval…', 'loading');
         await evmWaitReceipt(approveTx);

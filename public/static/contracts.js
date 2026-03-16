@@ -64,6 +64,41 @@ function ctEscapeJson(obj) {
 function ctEncAddr(addr) { return addr.replace(/^0x/, '').padStart(64, '0'); }
 function ctEncUint(val)  { return BigInt(Math.floor(Number(val))).toString(16).padStart(64, '0'); }
 
+// ─── USDC 6-decimal conversion utilities ──────────────────────────────────────
+// USDC on ARC uses 6 decimals. ALWAYS use these functions to convert between
+// human-readable USDC (e.g. 1.5) and on-chain base units (e.g. 1500000).
+//
+//   parseUsdcUnits(1)     → 1000000n   (BigInt, for contract calls)
+//   parseUsdcUnits(0.5)   → 500000n
+//   parseUsdcUnits(10)    → 10000000n
+//   formatUsdcUnits(1000000n) → 1.0    (Number, for display)
+//
+// ⚠️  NEVER pass raw floats to contract calls — always parseUsdcUnits() first.
+// ⚠️  NEVER display raw BigInt from contract — always formatUsdcUnits() first.
+const USDC_DECIMALS = 6;
+const USDC_SCALE    = 1_000_000n; // 10 ** 6
+
+function parseUsdcUnits(humanAmount) {
+  // Accepts string or number, e.g. "1.5" or 1.5 → 1500000n
+  const str = String(humanAmount).trim();
+  const [intPart = '0', fracPart = ''] = str.split('.');
+  const frac = fracPart.slice(0, USDC_DECIMALS).padEnd(USDC_DECIMALS, '0');
+  const result = BigInt(intPart) * USDC_SCALE + BigInt(frac);
+  console.log(`[USDC] parseUsdcUnits(${humanAmount}) → ${result.toString()} base units`);
+  return result;
+}
+
+function formatUsdcUnits(baseUnits) {
+  // Accepts BigInt or number of base units → human-readable number
+  const n = typeof baseUnits === 'bigint' ? baseUnits : BigInt(Math.floor(Number(baseUnits)));
+  return Number(n) / 1e6;
+}
+
+// Convenience: return hex string "0x..." for tx value field
+function usdcToHex(humanAmount) {
+  return '0x' + parseUsdcUnits(humanAmount).toString(16);
+}
+
 // ─── Network validation ───────────────────────────────────────────────────────
 async function ctEnsureNetwork() {
   const provider = window.walletState?.provider;
@@ -243,8 +278,11 @@ async function createContractWithReceipt(formData) {
       await ctEnsureNetwork();
 
       const from = window.walletState.address;
-      const amountRaw = BigInt(Math.round(amount * 1e6));
-      const valueHex = '0x' + amountRaw.toString(16);
+      // ✅ FIX: Use parseUsdcUnits() — converts human USDC to 6-decimal base units
+      // e.g. "1" → 1000000n, "0.5" → 500000n, "10" → 10000000n
+      const amountRaw = parseUsdcUnits(amount);
+      const valueHex  = '0x' + amountRaw.toString(16);
+      console.log(`[CT:create] amount=${amount} USDC → amountRaw=${amountRaw.toString()} → hex=${valueHex}`);
 
       // ── Step 1: Read USDC balance ──────────────────────────────────────────
       ctSetStep(1);
@@ -393,7 +431,10 @@ async function activateContractEVM(contractId, contractData) {
     await ctEnsureNetwork();
     const from = window.walletState.address;
     const amount = contractData?.totalValue || 0;
-    const valueHex = '0x' + BigInt(Math.round(amount)).toString(16);
+    // ✅ FIX: Use parseUsdcUnits() to correctly convert human USDC → 6-decimal base units
+    // e.g. 1 USDC → 1000000, 0.5 → 500000, 10 → 10000000
+    const valueHex = usdcToHex(amount);
+    console.log(`[CT:activate] totalValue=${amount} USDC → hex=${valueHex} (base units)`);
 
     showToast('📝 Confirm USDC escrow deposit in your wallet…', 'info');
     const txHash = await ctSendTx(CT_ESCROW_ADDR, '0x', valueHex);
