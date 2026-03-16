@@ -22,10 +22,11 @@ const ARC_RPC    = 'https://rpc.testnet.arc.network';
 const CHAIN_ID   = 5042002;
 const EXPLORER   = 'https://testnet.arcscan.app';
 
-// ⚠️  Update this after running: node contracts/script/deployAMM.js
-// Set via env var AMM_ADDRESS or hardcode after first deploy.
+// SimpleAMM deployed on Arc Testnet — 2026-03-16
+// Deploy tx: 0x35d96b9659ab438b84c606c6d47d16c883388b6552465a21f9a97d75680c5022
+// ArcScan: https://testnet.arcscan.app/address/0x3148E2807F172D1cC354F35fB4fC4104e8b6b561
 const AMM_ADDRESS: string = (globalThis as any).AMM_CONTRACT_ADDRESS
-  || '0x0000000000000000000000000000000000000000'; // placeholder — deploy first
+  || '0x3148E2807F172D1cC354F35fB4fC4104e8b6b561';
 
 export const TOKEN_REGISTRY = {
   EURC: {
