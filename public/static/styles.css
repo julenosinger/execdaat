@@ -640,3 +640,379 @@ details > summary .fa-chevron-down { transition: transform 0.2s ease; }
 #ct-receipt-modal .animate-modal-in {
   animation: modal-in 0.25s cubic-bezier(0.34,1.56,0.64,1) forwards;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ARC DEX — AMM Liquidity Pool Styles
+   Arc Testnet · x*y=k · 0.3% fee
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── DEX Stat Cards ── */
+.dex-stat-card {
+  background: linear-gradient(135deg, rgba(17,24,39,0.8), rgba(31,41,55,0.6));
+  border: 1px solid rgba(75,85,99,0.4);
+  border-radius: 1rem;
+  padding: 1rem 1.25rem;
+  transition: border-color 0.2s ease;
+}
+.dex-stat-card:hover {
+  border-color: rgba(6,182,212,0.3);
+}
+
+/* ── DEX Panel (glass card) ── */
+.dex-panel {
+  background: linear-gradient(135deg, rgba(17,24,39,0.85), rgba(31,41,55,0.7));
+  border: 1px solid rgba(75,85,99,0.35);
+  border-radius: 1.25rem;
+  padding: 1.25rem;
+  backdrop-filter: blur(12px);
+  transition: border-color 0.2s ease;
+}
+.dex-panel:hover {
+  border-color: rgba(6,182,212,0.2);
+}
+
+/* ── DEX Card Header ── */
+.dex-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(75,85,99,0.25);
+}
+
+/* ── Token Input Groups ── */
+.dex-token-input-group {
+  background: rgba(31,41,55,0.6);
+  border: 1px solid rgba(75,85,99,0.4);
+  border-radius: 0.875rem;
+  padding: 0.75rem;
+  transition: border-color 0.2s ease;
+}
+.dex-token-input-group:focus-within {
+  border-color: rgba(6,182,212,0.5);
+  background: rgba(8,47,73,0.3);
+}
+
+/* ── Token Selects ── */
+.dex-token-select {
+  background: rgba(17,24,39,0.9);
+  border: 1px solid rgba(75,85,99,0.5);
+  border-radius: 0.625rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s ease;
+  min-width: 100px;
+}
+.dex-token-select:focus {
+  border-color: rgba(6,182,212,0.6);
+}
+
+/* ── Amount Inputs ── */
+.dex-amount-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: white;
+  font-family: 'Courier New', monospace;
+  min-width: 0;
+  width: 100%;
+}
+.dex-amount-input::placeholder { color: rgba(107,114,128,0.6); }
+.dex-amount-input::-webkit-inner-spin-button,
+.dex-amount-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.dex-amount-input[type=number] { -moz-appearance: textfield; }
+
+/* ── Quote Box ── */
+.dex-quote-box {
+  background: rgba(17,24,39,0.7);
+  border: 1px solid rgba(75,85,99,0.3);
+  border-radius: 0.875rem;
+  padding: 0.75rem 1rem;
+  space-y: 0.375rem;
+}
+
+.dex-quote-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(75,85,99,0.15);
+}
+.dex-quote-row:last-child { border-bottom: none; }
+
+/* ── Transaction Steps ── */
+.dex-step {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.375rem 0;
+  color: #6b7280;
+  font-size: 0.75rem;
+  transition: color 0.2s ease;
+}
+
+.dex-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(75,85,99,0.5);
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.dex-step-idle .dex-step-dot { background: rgba(75,85,99,0.4); }
+.dex-step-idle { color: #4b5563; }
+
+.dex-step-active {
+  color: #22d3ee;
+  animation: dexStepPulseText 1.4s ease-in-out infinite;
+}
+.dex-step-active .dex-step-dot {
+  background: #22d3ee;
+  box-shadow: 0 0 0 0 rgba(34,211,238,0.4);
+  animation: dexStepPulseDot 1.4s ease-in-out infinite;
+}
+
+.dex-step-done { color: #4ade80; }
+.dex-step-done .dex-step-dot {
+  background: #4ade80;
+  box-shadow: 0 0 5px rgba(74,222,128,0.4);
+}
+
+.dex-step-error { color: #f87171; }
+.dex-step-error .dex-step-dot {
+  background: #f87171;
+  box-shadow: 0 0 5px rgba(248,113,113,0.4);
+}
+
+@keyframes dexStepPulseDot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0.5); }
+  50%       { box-shadow: 0 0 0 6px rgba(34,211,238,0); }
+}
+@keyframes dexStepPulseText {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
+}
+
+/* ── Position Cards ── */
+.dex-position-card {
+  background: linear-gradient(135deg, rgba(17,24,39,0.8), rgba(31,41,55,0.5));
+  border: 1px solid rgba(75,85,99,0.3);
+  border-radius: 1rem;
+  padding: 1rem;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.dex-position-card:hover {
+  border-color: rgba(139,92,246,0.4);
+  transform: translateY(-1px);
+}
+
+.dex-pos-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  padding: 0.125rem 0;
+}
+
+/* ── Pool Table ── */
+#dex-pools-table tr:hover td { background: rgba(6,182,212,0.04); }
+#dex-pools-table td { transition: background 0.15s ease; }
+
+/* ── Subtab active indicator ── */
+.dex-subtab {
+  position: relative;
+  overflow: hidden;
+}
+.dex-subtab::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 50%; right: 50%;
+  height: 2px;
+  background: transparent;
+  transition: all 0.2s ease;
+  border-radius: 1px;
+}
+.dex-subtab.active::after,
+.dex-subtab[class*="bg-cyan"]::after {
+  left: 20%; right: 20%;
+  background: rgba(34,211,238,0.6);
+}
+
+/* ── Network Badge ── */
+#dex-network-badge {
+  position: relative;
+  overflow: hidden;
+}
+#dex-network-badge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(34,211,238,0.05) 50%, transparent 100%);
+  animation: dexNetworkScan 4s ease-in-out infinite;
+}
+@keyframes dexNetworkScan {
+  0%, 100% { transform: translateX(-100%); }
+  50%       { transform: translateX(100%); }
+}
+
+/* ── Price impact indicators ── */
+.dex-impact-low    { color: #4ade80; }
+.dex-impact-medium { color: #facc15; }
+.dex-impact-high   { color: #fb923c; }
+.dex-impact-danger { color: #f87171; }
+
+/* ── LP Token badge ── */
+.dex-lp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  background: linear-gradient(90deg, rgba(234,179,8,0.15), rgba(234,179,8,0.08));
+  border: 1px solid rgba(234,179,8,0.25);
+  border-radius: 9999px;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #fbbf24;
+  font-family: 'Courier New', monospace;
+}
+
+/* ── Analytics Grid ── */
+.dex-analytics-metric {
+  background: rgba(31,41,55,0.5);
+  border: 1px solid rgba(75,85,99,0.25);
+  border-radius: 0.75rem;
+  padding: 0.875rem;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+.dex-analytics-metric:hover {
+  border-color: rgba(6,182,212,0.3);
+  background: rgba(8,47,73,0.25);
+}
+
+/* ── APR Badge ── */
+.dex-apr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+.dex-apr-badge.high   { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
+.dex-apr-badge.medium { background: rgba(234,179,8,0.12); color: #fbbf24; border: 1px solid rgba(234,179,8,0.2); }
+.dex-apr-badge.low    { background: rgba(6,182,212,0.1);  color: #22d3ee; border: 1px solid rgba(6,182,212,0.2); }
+
+/* ── Swap Arrow Flip Animation ── */
+.dex-flip-btn {
+  transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+}
+.dex-flip-btn:active { transform: rotate(180deg) scale(0.9); }
+
+/* ── Token Pair Icons ── */
+.dex-token-pair {
+  display: flex;
+  align-items: center;
+}
+.dex-token-pair > span:first-child { z-index: 1; }
+.dex-token-pair > span + span { margin-left: -6px; }
+
+/* ── Glow effects for active pools ── */
+.dex-pool-active-glow {
+  box-shadow: 0 0 20px rgba(6,182,212,0.08), 0 0 40px rgba(6,182,212,0.04);
+}
+
+/* ── Receipt overlay ── */
+#dex-receipt-modal,
+#dex-lp-receipt-modal {
+  animation: dexModalFadeIn 0.2s ease forwards;
+}
+@keyframes dexModalFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Dark scrollbar for DEX panels ── */
+#dex-recent-swaps::-webkit-scrollbar,
+#dex-positions-list::-webkit-scrollbar { width: 4px; }
+#dex-recent-swaps::-webkit-scrollbar-track,
+#dex-positions-list::-webkit-scrollbar-track { background: rgba(17,24,39,0.5); }
+#dex-recent-swaps::-webkit-scrollbar-thumb,
+#dex-positions-list::-webkit-scrollbar-thumb { background: rgba(75,85,99,0.5); border-radius: 2px; }
+
+/* ── DEX loading skeleton ── */
+.dex-skeleton {
+  background: linear-gradient(90deg, rgba(31,41,55,0.5) 25%, rgba(55,65,81,0.5) 50%, rgba(31,41,55,0.5) 75%);
+  background-size: 200% 100%;
+  animation: dexSkeletonShimmer 1.5s infinite;
+  border-radius: 0.5rem;
+}
+@keyframes dexSkeletonShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Pool TVL bar ── */
+.dex-tvl-bar {
+  height: 3px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #06b6d4, #3b82f6);
+  transition: width 0.6s ease;
+}
+
+/* ── Info tooltip ── */
+.dex-tooltip {
+  position: relative;
+  cursor: help;
+}
+.dex-tooltip::before {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(17,24,39,0.95);
+  border: 1px solid rgba(75,85,99,0.4);
+  color: #d1d5db;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 50;
+}
+.dex-tooltip:hover::before { opacity: 1; }
+
+/* ── "New Pool" badge ── */
+.dex-new-pool-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(90deg, rgba(139,92,246,0.2), rgba(59,130,246,0.15));
+  border: 1px solid rgba(139,92,246,0.3);
+  border-radius: 9999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #a78bfa;
+}
+
+/* ── Mobile responsive ── */
+@media (max-width: 640px) {
+  .dex-panel { padding: 1rem; }
+  .dex-token-select { min-width: 80px; font-size: 0.75rem; }
+  .dex-amount-input { font-size: 1rem; }
+}

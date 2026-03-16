@@ -60,6 +60,7 @@ function switchTab(tab) {
     if (window.loadYieldData) window.loadYieldData();
   }
   if (tab === 'swap' && window.loadSwap) window.loadSwap();
+  if (tab === 'liquidity' && window.dexInit) window.dexInit();
   if (tab === 'vaults' && window.loadVaultData) window.loadVaultData();
 }
 

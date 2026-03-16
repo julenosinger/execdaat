@@ -9,6 +9,7 @@ import vaultsRouter, { vaultStore } from './routes/vaults'
 import chatRouter from './routes/chat'
 import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
+import dexRouter from './routes/dex'
 import { ARC_TESTNET } from './types/arc'
 import { injectVaultStore } from './agents/PaymentAgent'
 
@@ -37,6 +38,7 @@ app.route('/api/vaults', vaultsRouter)
 app.route('/api/chat', chatRouter)
 app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
+app.route('/api/dex', dexRouter)
 
 // GET /api/status - Status geral do sistema
 app.get('/api/status', (c) => {
@@ -207,6 +209,9 @@ app.get('/', (c) => {
         </button>
         <button onclick="switchTab('swap')" id="tab-swap" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-exchange-alt mr-2"></i><span data-i18n="tab_swap">Swap</span>
+        </button>
+        <button onclick="switchTab('liquidity')" id="tab-liquidity" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
+          <i class="fas fa-water mr-2"></i><span>Liquidity</span>
         </button>
         <button onclick="switchTab('vaults')" id="tab-vaults" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-vault mr-2"></i><span data-i18n="tab_vaults">Vaults</span>
@@ -1542,6 +1547,482 @@ forge create src/ContractManager.sol:ContractManager \\
       </div>
     </div>
 
+    <!-- ═══════════════════════════════ LIQUIDITY / DEX TAB ══════════════════════════════ -->
+    <div id="tab-content-liquidity" class="tab-content hidden">
+      <div class="space-y-6">
+
+        <!-- DEX Header -->
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-white flex items-center gap-3">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-600 flex items-center justify-center">
+                <i class="fas fa-water text-white text-sm"></i>
+              </div>
+              ARC DEX — Liquidity Pools
+            </h2>
+            <p class="text-gray-400 text-sm mt-1">AMM · x·y=k · 0.3% fee · Arc Testnet</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="dex-network-badge" class="flex items-center gap-2 bg-gray-900/60 border border-cyan-700/30 rounded-xl px-3 py-1.5">
+              <div class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+              <span class="text-cyan-400 text-xs font-medium">Arc Testnet · 5042002</span>
+            </div>
+            <button onclick="dexRefreshAll()" class="text-xs text-cyan-400 hover:text-cyan-300 bg-gray-800 border border-gray-700 rounded-xl px-3 py-1.5 transition-colors">
+              <i class="fas fa-sync mr-1"></i>Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- DEX Stats Bar -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div class="dex-stat-card">
+            <div class="text-xs text-gray-500 mb-1">Total Value Locked</div>
+            <div id="dex-stat-tvl" class="text-lg font-bold text-cyan-400">—</div>
+          </div>
+          <div class="dex-stat-card">
+            <div class="text-xs text-gray-500 mb-1">24h Volume</div>
+            <div id="dex-stat-vol" class="text-lg font-bold text-green-400">—</div>
+          </div>
+          <div class="dex-stat-card">
+            <div class="text-xs text-gray-500 mb-1">24h Fees</div>
+            <div id="dex-stat-fees" class="text-lg font-bold text-yellow-400">—</div>
+          </div>
+          <div class="dex-stat-card">
+            <div class="text-xs text-gray-500 mb-1">Total Pools</div>
+            <div id="dex-stat-pools" class="text-lg font-bold text-purple-400">—</div>
+          </div>
+        </div>
+
+        <!-- DEX Sub-tabs -->
+        <div class="flex gap-1 bg-gray-900/60 border border-gray-700/40 rounded-xl p-1 w-fit">
+          <button onclick="dexSwitchTab('swap')" id="dex-tab-swap"
+            class="dex-subtab active px-4 py-2 text-sm rounded-lg font-medium transition-all bg-cyan-900/40 text-cyan-300 border border-cyan-700/40">
+            <i class="fas fa-exchange-alt mr-1.5"></i>Swap
+          </button>
+          <button onclick="dexSwitchTab('add')" id="dex-tab-add"
+            class="dex-subtab px-4 py-2 text-sm rounded-lg font-medium transition-all text-gray-400 hover:text-gray-200">
+            <i class="fas fa-plus-circle mr-1.5"></i>Add Liquidity
+          </button>
+          <button onclick="dexSwitchTab('remove')" id="dex-tab-remove"
+            class="dex-subtab px-4 py-2 text-sm rounded-lg font-medium transition-all text-gray-400 hover:text-gray-200">
+            <i class="fas fa-minus-circle mr-1.5"></i>Remove
+          </button>
+          <button onclick="dexSwitchTab('positions')" id="dex-tab-positions"
+            class="dex-subtab px-4 py-2 text-sm rounded-lg font-medium transition-all text-gray-400 hover:text-gray-200">
+            <i class="fas fa-chart-pie mr-1.5"></i>My Positions
+          </button>
+          <button onclick="dexSwitchTab('analytics')" id="dex-tab-analytics"
+            class="dex-subtab px-4 py-2 text-sm rounded-lg font-medium transition-all text-gray-400 hover:text-gray-200">
+            <i class="fas fa-chart-bar mr-1.5"></i>Analytics
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          <!-- ── LEFT COLUMN: Action Cards ── -->
+          <div class="lg:col-span-1 space-y-4">
+
+            <!-- ── SWAP CARD ── -->
+            <div id="dex-panel-swap" class="dex-panel">
+              <div class="dex-card-header">
+                <i class="fas fa-exchange-alt text-cyan-400"></i>
+                <span class="font-semibold text-white">Swap Tokens</span>
+                <div class="ml-auto flex items-center gap-2">
+                  <span class="text-xs text-gray-500">Slippage:</span>
+                  <select id="dex-slippage" class="text-xs bg-gray-800 border border-gray-600 text-cyan-400 rounded-lg px-2 py-1">
+                    <option value="0.1">0.1%</option>
+                    <option value="0.5" selected>0.5%</option>
+                    <option value="1.0">1.0%</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- From -->
+              <div class="space-y-3">
+                <div class="dex-token-input-group">
+                  <div class="flex justify-between items-center mb-1.5">
+                    <label class="text-xs text-gray-500">From</label>
+                    <span id="dex-swap-balance-from" class="text-xs text-gray-500">Balance: —</span>
+                  </div>
+                  <div class="flex gap-2">
+                    <select id="dex-swap-from" onchange="dexOnSwapFromChange()" class="dex-token-select">
+                      <option value="USDC">💵 USDC</option>
+                      <option value="EURC">💶 EURC</option>
+                      <option value="USYC">📈 USYC</option>
+                    </select>
+                    <input type="number" id="dex-swap-amount-in" placeholder="0.00" step="0.000001"
+                      oninput="dexOnSwapInput()"
+                      class="dex-amount-input flex-1">
+                  </div>
+                </div>
+
+                <!-- Swap direction toggle -->
+                <button onclick="dexFlipSwap()" class="mx-auto block w-8 h-8 rounded-full bg-gray-800 border border-gray-600 hover:bg-cyan-900/30 hover:border-cyan-600/50 text-gray-400 hover:text-cyan-400 transition-all">
+                  <i class="fas fa-arrow-down text-xs"></i>
+                </button>
+
+                <!-- To -->
+                <div class="dex-token-input-group">
+                  <div class="flex justify-between items-center mb-1.5">
+                    <label class="text-xs text-gray-500">To (estimated)</label>
+                    <span id="dex-swap-balance-to" class="text-xs text-gray-500">Balance: —</span>
+                  </div>
+                  <div class="flex gap-2">
+                    <select id="dex-swap-to" onchange="dexOnSwapInput()" class="dex-token-select">
+                      <option value="USDC">💵 USDC</option>
+                      <option value="EURC" selected>💶 EURC</option>
+                      <option value="USYC">📈 USYC</option>
+                    </select>
+                    <input type="number" id="dex-swap-amount-out" placeholder="0.00" readonly
+                      class="dex-amount-input flex-1 opacity-70 cursor-not-allowed">
+                  </div>
+                </div>
+
+                <!-- Quote details -->
+                <div id="dex-swap-quote" class="hidden dex-quote-box">
+                  <div class="dex-quote-row">
+                    <span>Price Impact</span>
+                    <span id="dex-q-impact" class="font-mono">—</span>
+                  </div>
+                  <div class="dex-quote-row">
+                    <span>Min Received</span>
+                    <span id="dex-q-min" class="font-mono text-green-400">—</span>
+                  </div>
+                  <div class="dex-quote-row">
+                    <span>LP Fee (0.3%)</span>
+                    <span id="dex-q-fee" class="font-mono text-yellow-400">—</span>
+                  </div>
+                  <div class="dex-quote-row">
+                    <span>Route</span>
+                    <span id="dex-q-route" class="font-mono text-cyan-400 text-xs">—</span>
+                  </div>
+                </div>
+
+                <!-- High impact warning -->
+                <div id="dex-impact-warning" class="hidden bg-red-900/20 border border-red-700/40 rounded-lg p-2 text-xs text-red-400 flex items-center gap-2">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  <span id="dex-impact-msg">High price impact detected</span>
+                </div>
+
+                <!-- Swap steps -->
+                <div id="dex-swap-steps" class="hidden space-y-1.5 bg-gray-800/40 rounded-xl p-3">
+                  <div id="dex-step-0" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Verify Arc Testnet</span></div>
+                  <div id="dex-step-1" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Read balances</span></div>
+                  <div id="dex-step-2" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Check allowance</span></div>
+                  <div id="dex-step-3" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Approve token (if needed)</span></div>
+                  <div id="dex-step-4" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Sign & send swap</span></div>
+                  <div id="dex-step-5" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Confirm & generate receipt</span></div>
+                </div>
+
+                <button id="dex-swap-btn" onclick="dexExecuteSwap()"
+                  class="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl py-3 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-cyan-900/20">
+                  <i class="fas fa-exchange-alt mr-2"></i>Swap
+                </button>
+              </div>
+            </div>
+
+            <!-- ── ADD LIQUIDITY CARD ── -->
+            <div id="dex-panel-add" class="dex-panel hidden">
+              <div class="dex-card-header">
+                <i class="fas fa-plus-circle text-green-400"></i>
+                <span class="font-semibold text-white">Add Liquidity</span>
+              </div>
+
+              <div class="space-y-3">
+                <!-- Token A -->
+                <div class="dex-token-input-group">
+                  <div class="flex justify-between items-center mb-1.5">
+                    <label class="text-xs text-gray-500">Token A</label>
+                    <span id="dex-lp-bal-a" class="text-xs text-gray-500">Balance: —</span>
+                  </div>
+                  <div class="flex gap-2">
+                    <select id="dex-lp-token-a" onchange="dexOnLPTokenChange()" class="dex-token-select">
+                      <option value="USDC">💵 USDC</option>
+                      <option value="EURC">💶 EURC</option>
+                      <option value="USYC">📈 USYC</option>
+                    </select>
+                    <input type="number" id="dex-lp-amount-a" placeholder="0.00" step="0.000001"
+                      oninput="dexOnLPAmountChange('a')"
+                      class="dex-amount-input flex-1">
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 text-gray-600 text-xs pl-1">
+                  <i class="fas fa-plus text-[10px]"></i>
+                </div>
+
+                <!-- Token B -->
+                <div class="dex-token-input-group">
+                  <div class="flex justify-between items-center mb-1.5">
+                    <label class="text-xs text-gray-500">Token B</label>
+                    <span id="dex-lp-bal-b" class="text-xs text-gray-500">Balance: —</span>
+                  </div>
+                  <div class="flex gap-2">
+                    <select id="dex-lp-token-b" onchange="dexOnLPTokenChange()" class="dex-token-select">
+                      <option value="USDC">💵 USDC</option>
+                      <option value="EURC" selected>💶 EURC</option>
+                      <option value="USYC">📈 USYC</option>
+                    </select>
+                    <input type="number" id="dex-lp-amount-b" placeholder="0.00" step="0.000001"
+                      oninput="dexOnLPAmountChange('b')"
+                      class="dex-amount-input flex-1">
+                  </div>
+                </div>
+
+                <!-- Pool info preview -->
+                <div id="dex-lp-preview" class="hidden dex-quote-box">
+                  <div class="dex-quote-row">
+                    <span>Price Ratio</span>
+                    <span id="dex-lp-ratio" class="font-mono text-cyan-400">—</span>
+                  </div>
+                  <div class="dex-quote-row">
+                    <span>Pool Share</span>
+                    <span id="dex-lp-share" class="font-mono text-green-400">—</span>
+                  </div>
+                  <div class="dex-quote-row">
+                    <span>LP Tokens</span>
+                    <span id="dex-lp-tokens" class="font-mono text-yellow-400">—</span>
+                  </div>
+                  <div class="dex-quote-row">
+                    <span>Pool Status</span>
+                    <span id="dex-lp-status" class="font-mono text-purple-400">—</span>
+                  </div>
+                </div>
+
+                <!-- IL Warning -->
+                <div class="bg-yellow-900/10 border border-yellow-700/20 rounded-lg p-2.5 text-xs text-yellow-600/80">
+                  <i class="fas fa-info-circle mr-1"></i>
+                  LP positions are subject to impermanent loss when prices diverge.
+                </div>
+
+                <!-- LP Steps -->
+                <div id="dex-lp-steps" class="hidden space-y-1.5 bg-gray-800/40 rounded-xl p-3">
+                  <div id="dex-lp-step-0" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Verify network</span></div>
+                  <div id="dex-lp-step-1" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Check balances</span></div>
+                  <div id="dex-lp-step-2" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Approve Token A</span></div>
+                  <div id="dex-lp-step-3" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Approve Token B</span></div>
+                  <div id="dex-lp-step-4" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Add liquidity on-chain</span></div>
+                  <div id="dex-lp-step-5" class="dex-step dex-step-idle"><div class="dex-step-dot"></div><span class="text-xs">Mint LP tokens</span></div>
+                </div>
+
+                <button id="dex-add-btn" onclick="dexAddLiquidity()"
+                  class="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl py-3 font-semibold text-sm transition-all disabled:opacity-50 shadow-lg shadow-green-900/20">
+                  <i class="fas fa-plus mr-2"></i>Add Liquidity
+                </button>
+              </div>
+            </div>
+
+            <!-- ── REMOVE LIQUIDITY CARD ── -->
+            <div id="dex-panel-remove" class="dex-panel hidden">
+              <div class="dex-card-header">
+                <i class="fas fa-minus-circle text-red-400"></i>
+                <span class="font-semibold text-white">Remove Liquidity</span>
+              </div>
+
+              <div class="space-y-3">
+                <div>
+                  <label class="text-xs text-gray-500 mb-1.5 block">Select Pool</label>
+                  <select id="dex-rm-pool" onchange="dexOnRemovePoolChange()" class="w-full bg-gray-800 border border-gray-600 rounded-xl px-3 py-2 text-sm text-white focus:border-red-500 focus:outline-none">
+                    <option value="">— Select pool —</option>
+                  </select>
+                </div>
+
+                <div id="dex-rm-position-info" class="hidden dex-quote-box">
+                  <div class="dex-quote-row">
+                    <span>Your LP Tokens</span>
+                    <span id="dex-rm-lp-owned" class="font-mono text-yellow-400">—</span>
+                  </div>
+                  <div class="dex-quote-row">
+                    <span>Pool Share</span>
+                    <span id="dex-rm-share" class="font-mono text-cyan-400">—</span>
+                  </div>
+                  <div class="dex-quote-row">
+                    <span>Position Value</span>
+                    <span id="dex-rm-value" class="font-mono text-green-400">—</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="flex justify-between items-center mb-1.5">
+                    <label class="text-xs text-gray-500">LP Tokens to Burn</label>
+                    <button onclick="dexSetMaxLP()" class="text-xs text-cyan-400 hover:text-cyan-300">MAX</button>
+                  </div>
+                  <input type="number" id="dex-rm-amount" placeholder="0.00" step="0.000001"
+                    oninput="dexOnRemoveAmountChange()"
+                    class="dex-amount-input w-full">
+                </div>
+
+                <!-- Expected return -->
+                <div id="dex-rm-preview" class="hidden dex-quote-box">
+                  <div class="text-xs text-gray-500 mb-2">Expected Return:</div>
+                  <div class="dex-quote-row">
+                    <span id="dex-rm-token-a-label">Token A</span>
+                    <span id="dex-rm-amount-a" class="font-mono text-green-400">—</span>
+                  </div>
+                  <div class="dex-quote-row">
+                    <span id="dex-rm-token-b-label">Token B</span>
+                    <span id="dex-rm-amount-b" class="font-mono text-green-400">—</span>
+                  </div>
+                </div>
+
+                <button id="dex-remove-btn" onclick="dexRemoveLiquidity()"
+                  class="w-full bg-gradient-to-r from-red-700 to-rose-700 hover:from-red-600 hover:to-rose-600 text-white rounded-xl py-3 font-semibold text-sm transition-all disabled:opacity-50 shadow-lg shadow-red-900/20">
+                  <i class="fas fa-minus mr-2"></i>Remove Liquidity
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- ── RIGHT COLUMN: Pools + Positions ── -->
+          <div class="lg:col-span-2 space-y-4">
+
+            <!-- ── MY POSITIONS ── -->
+            <div id="dex-panel-positions" class="dex-panel">
+              <div class="dex-card-header mb-3">
+                <i class="fas fa-chart-pie text-purple-400"></i>
+                <span class="font-semibold text-white">My Liquidity Positions</span>
+                <button onclick="dexLoadPositions()" class="ml-auto text-xs text-gray-400 hover:text-gray-200">
+                  <i class="fas fa-sync"></i>
+                </button>
+              </div>
+              <div id="dex-positions-list" class="space-y-3 min-h-[80px]">
+                <div class="text-center text-gray-500 text-sm py-6">
+                  <i class="fas fa-wallet text-2xl mb-2 text-gray-600 block"></i>
+                  Connect wallet to view positions
+                </div>
+              </div>
+            </div>
+
+            <!-- ── POOL LIST ── -->
+            <div id="dex-panel-analytics" class="dex-panel">
+              <div class="dex-card-header mb-3">
+                <i class="fas fa-chart-bar text-yellow-400"></i>
+                <span class="font-semibold text-white">Pool Analytics</span>
+                <button onclick="dexLoadPools()" class="ml-auto text-xs text-gray-400 hover:text-gray-200">
+                  <i class="fas fa-sync"></i>
+                </button>
+              </div>
+
+              <!-- Top Pools Table -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="border-b border-gray-700/50 text-gray-500">
+                      <th class="text-left py-2 px-2">Pool</th>
+                      <th class="text-right py-2 px-2">TVL</th>
+                      <th class="text-right py-2 px-2">24h Volume</th>
+                      <th class="text-right py-2 px-2">APR</th>
+                      <th class="text-right py-2 px-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dex-pools-table">
+                    <tr><td colspan="5" class="text-center py-6 text-gray-500">Loading pools…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Analytics Panel -->
+              <div id="dex-analytics-expanded" class="hidden mt-4 space-y-4">
+                <!-- Impermanent Loss Table -->
+                <div class="bg-gray-800/40 rounded-xl p-4">
+                  <h4 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i class="fas fa-chart-line text-orange-400"></i> Impermanent Loss Reference
+                  </h4>
+                  <div class="grid grid-cols-4 gap-2">
+                    <div class="text-center">
+                      <div class="text-xs text-gray-500">Price ±10%</div>
+                      <div id="dex-il-10" class="text-sm font-mono text-orange-400 mt-0.5">—</div>
+                    </div>
+                    <div class="text-center">
+                      <div class="text-xs text-gray-500">Price ±25%</div>
+                      <div id="dex-il-25" class="text-sm font-mono text-orange-400 mt-0.5">—</div>
+                    </div>
+                    <div class="text-center">
+                      <div class="text-xs text-gray-500">Price ±50%</div>
+                      <div id="dex-il-50" class="text-sm font-mono text-red-400 mt-0.5">—</div>
+                    </div>
+                    <div class="text-center">
+                      <div class="text-xs text-gray-500">Price ±100%</div>
+                      <div id="dex-il-100" class="text-sm font-mono text-red-400 mt-0.5">—</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- APR Interactive Estimator -->
+                <div class="bg-gray-800/40 rounded-xl p-4">
+                  <h4 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i class="fas fa-percentage text-green-400"></i> APR Estimator
+                    <span class="text-xs text-gray-500 font-normal ml-1">APR = (24h Fees × 365) / TVL</span>
+                  </h4>
+                  <div class="grid grid-cols-3 gap-2 mb-3">
+                    <div>
+                      <label class="text-xs text-gray-500 block mb-1">TVL (USD)</label>
+                      <input type="number" id="dex-apr-tvl" placeholder="960000" value="960000"
+                        oninput="dexEstimateAPR()"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:border-green-500 focus:outline-none">
+                    </div>
+                    <div>
+                      <label class="text-xs text-gray-500 block mb-1">24h Volume (USD)</label>
+                      <input type="number" id="dex-apr-vol" placeholder="125000" value="125000"
+                        oninput="dexEstimateAPR()"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:border-green-500 focus:outline-none">
+                    </div>
+                    <div>
+                      <label class="text-xs text-gray-500 block mb-1">Fee %</label>
+                      <input type="number" id="dex-apr-fee" placeholder="0.3" value="0.3" step="0.1" min="0.1" max="1"
+                        oninput="dexEstimateAPR()"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:border-green-500 focus:outline-none">
+                    </div>
+                  </div>
+                  <div id="dex-apr-result"></div>
+                </div>
+
+                <!-- IL Interactive Calculator -->
+                <div class="bg-gray-800/40 rounded-xl p-4">
+                  <h4 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    <i class="fas fa-chart-line text-orange-400"></i> IL Calculator
+                    <span class="text-xs text-gray-500 font-normal ml-1">2√(r)/(1+r) − 1</span>
+                  </h4>
+                  <div class="flex gap-2 items-end">
+                    <div class="flex-1">
+                      <label class="text-xs text-gray-500 block mb-1">Price change %</label>
+                      <input type="number" id="dex-il-price-change" placeholder="50" value="50"
+                        oninput="dexCalcIL()"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:border-orange-500 focus:outline-none">
+                    </div>
+                    <button onclick="dexCalcIL()" class="bg-orange-900/30 hover:bg-orange-800/40 border border-orange-700/30 text-orange-400 text-xs rounded-lg px-3 py-1.5 transition-colors">
+                      Calculate
+                    </button>
+                  </div>
+                  <div id="dex-il-calc-result"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── RECENT SWAPS ── -->
+            <div class="dex-panel">
+              <div class="dex-card-header mb-3">
+                <i class="fas fa-history text-cyan-400"></i>
+                <span class="font-semibold text-white">Recent Swaps</span>
+                <span class="ml-auto text-xs text-gray-600 font-mono">Live · 30s refresh</span>
+              </div>
+              <div id="dex-recent-swaps" class="space-y-2 max-h-64 overflow-y-auto">
+                <div class="text-center text-gray-500 text-sm py-4">Loading…</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- DEX Receipt Modal trigger area -->
+        <div id="dex-tx-receipt" class="hidden"></div>
+
+      </div>
+    </div>
+    <!-- ════════════════════════════════════════════════════════════════ -->
+
     <!-- VAULTS TAB -->
     <div id="tab-content-vaults" class="tab-content hidden">
       <div class="space-y-6">
@@ -2342,6 +2823,7 @@ forge create src/ContractManager.sol:ContractManager \\
   <script src="/static/contracts.js"></script>
   <script src="/static/settings.js"></script>
   <script src="/static/swap.js"></script>
+  <script src="/static/dex.js"></script>
   <script src="/static/vaults.js"></script>
   <script src="/static/guardian.js"></script>
   <script src="/static/yield-optimizer.js"></script>
