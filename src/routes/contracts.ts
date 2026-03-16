@@ -4,6 +4,7 @@
 import { Hono } from 'hono';
 import { ContractAgent } from '../agents/ContractAgent';
 import type { ContractData } from '../agents/ContractAgent';
+import { createEscrowFromContract } from './escrow';
 
 const contractsRouter = new Hono();
 
@@ -150,7 +151,7 @@ function seedDemoContracts(agent: ContractAgent) {
     },
   ];
 
-  // Seed demo receipts for existing contracts
+  // Seed demo receipts + escrows for existing contracts
   demos.forEach(contract => {
     agent.registerContract(contract);
     // Issue creation receipt for active/completed demo contracts
@@ -179,6 +180,18 @@ function seedDemoContracts(agent: ContractAgent) {
         Math.floor(Math.random() * 1000000) + 5000000
       );
     }
+    // Seed linked escrow for ALL demo contracts
+    createEscrowFromContract({
+      title: contract.title,
+      client: contract.client,
+      contractor: contract.contractor,
+      totalAmount: contract.totalValue / 1e6,
+      milestones: contract.milestones.map(m => ({
+        description: m.description,
+        amount: m.amount / 1e6,
+      })),
+      contractId: contract.id,
+    });
   });
 }
 
@@ -290,28 +303,66 @@ contractsRouter.post('/create', async (c) => {
       blockNumber || null
     );
 
+    // ── Automatically create linked Escrow (EscrowCreated event) ──────────────
+    const escrowMilestones = milestones.length > 0
+      ? milestones.map((m: { description: string; amount: string | number }) => ({
+          description: m.description,
+          amount: parseFloat(String(m.amount)),
+        }))
+      : [{ description: title, amount: parseFloat(totalValue) }];
+
+    const linkedEscrow = createEscrowFromContract({
+      title,
+      client,
+      contractor,
+      totalAmount: parseFloat(totalValue),
+      milestones: escrowMilestones,
+      contractId,
+      contractTxHash: resolvedTxHash,
+    });
+
     return c.json({
       success: true,
       contractId,
       contract: newContract,
       receipt,
-      // Mirror Solidity event fields
+      // Linked escrow — auto-created
+      escrow: {
+        id: linkedEscrow.id,
+        escrowAddress: linkedEscrow.escrowAddress,
+        state: linkedEscrow.state,
+        totalAmount: linkedEscrow.totalAmount,
+        txHash: linkedEscrow.txHash,
+        explorerUrl: linkedEscrow.explorerUrl,
+        milestoneCount: linkedEscrow.milestones.length,
+      },
+      // All emitted events (mirrors on-chain)
+      events: [
+        {
+          name: 'ContractReceiptIssued',
+          receiptId: receipt.id, client, contractor, amount: amountRaw,
+          amountFormatted: `$${(amountRaw / 1e6).toFixed(2)} USDC`,
+          contractTitle: title, timestamp: receipt.timestamp,
+          txHash: resolvedTxHash, explorerUrl: receipt.explorerUrl,
+          escrowAddress: ESCROW_ADDRESS, network: NETWORK_NAME, chainId: CHAIN_ID,
+        },
+        {
+          name: 'EscrowCreated',
+          escrowId: linkedEscrow.id, title, client, contractor,
+          amount: parseFloat(totalValue), contractId,
+          txHash: linkedEscrow.txHash, explorerUrl: linkedEscrow.explorerUrl,
+          timestamp: linkedEscrow.createdAt, network: NETWORK_NAME, chainId: CHAIN_ID,
+        },
+      ],
       event: {
         name: 'ContractReceiptIssued',
-        receiptId: receipt.id,
-        client,
-        contractor,
-        amount: amountRaw,
+        receiptId: receipt.id, client, contractor, amount: amountRaw,
         amountFormatted: `$${(amountRaw / 1e6).toFixed(2)} USDC`,
-        contractTitle: title,
-        timestamp: receipt.timestamp,
-        txHash: resolvedTxHash,
-        explorerUrl: receipt.explorerUrl,
-        escrowAddress: ESCROW_ADDRESS,
-        network: NETWORK_NAME,
-        chainId: CHAIN_ID,
+        contractTitle: title, timestamp: receipt.timestamp,
+        txHash: resolvedTxHash, explorerUrl: receipt.explorerUrl,
+        escrowAddress: ESCROW_ADDRESS, network: NETWORK_NAME, chainId: CHAIN_ID,
       },
-      message: `Contrato #${contractId} criado. Receipt #${receipt.id} emitido na Arc Testnet.`,
+      message: `Contrato #${contractId} criado. Escrow #${linkedEscrow.id} criado automaticamente. Receipt #${receipt.id} emitido.`,
     });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);

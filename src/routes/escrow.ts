@@ -28,6 +28,8 @@ const EXPLORER_URL    = 'https://testnet.arcscan.app';
 const RPC_URL         = 'https://rpc.testnet.arc.network';
 // Simulated factory address (replace with deployed address after `forge create`)
 const FACTORY_ADDRESS = '0xEscrow0000000000000000000000000000000001';
+// EscrowRegistry address (from EscrowRegistry.sol — deploy separately)
+const REGISTRY_ADDRESS = '0xEscrowRegistry00000000000000000000000002';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type EscrowState = 'Created' | 'Active' | 'Disputed' | 'Completed' | 'Refunded';
@@ -62,6 +64,10 @@ interface EscrowWallet {
   network: string;
   chainId: number;
   explorerUrl: string;
+  // Optional: link back to contracts module
+  contractId?: number;
+  title?: string;
+  source?: 'manual' | 'contract_creation';
 }
 
 interface EscrowEvent {
@@ -75,9 +81,89 @@ interface EscrowEvent {
 }
 
 // ─── In-Memory Store (mirrors on-chain state) ─────────────────────────────────
-const escrowStore: Map<number, EscrowWallet> = new Map();
-const escrowEvents: EscrowEvent[] = [];
-let escrowCounter = 0;
+// Exported so contracts.ts can push escrows directly (shared singleton)
+export const escrowStore: Map<number, EscrowWallet> = new Map();
+export const escrowEvents: EscrowEvent[] = [];
+export let escrowCounter = 0;
+export function incrementEscrowCounter() { escrowCounter++; return escrowCounter; }
+
+// ── Helper: create an escrow from a contract creation call ────────────────────
+export function createEscrowFromContract(params: {
+  title: string;
+  client: string;
+  contractor: string;
+  totalAmount: number;          // human-readable USDC
+  milestones?: Array<{ description: string; amount: number }>;
+  contractId: number;
+  contractTxHash?: string;
+}): EscrowWallet {
+  const id = incrementEscrowCounter();
+  const txHash = params.contractTxHash || genTxHash();
+  const blockNumber = genBlockNumber();
+
+  // Build milestones — if none provided, create one milestone for the full amount
+  const rawMilestones = params.milestones && params.milestones.length > 0
+    ? params.milestones
+    : [{ description: params.title, amount: params.totalAmount }];
+
+  const milestones: Milestone[] = rawMilestones.map((m, i) => ({
+    id: i,
+    amount: parseFloat(m.amount.toString()),
+    description: m.description || `Milestone ${i + 1}`,
+    state: 'Pending' as MilestoneState,
+    completed: false,
+    released: false,
+    requestedAt: null,
+    verifiedAt: null,
+    releasedAt: null,
+  }));
+
+  const escrow: EscrowWallet = {
+    id,
+    escrowAddress: genAddress(),
+    client: params.client,
+    contractor: params.contractor,
+    totalAmount: parseFloat(params.totalAmount.toString()),
+    depositedAmount: 0,
+    releasedAmount: 0,
+    state: 'Created',
+    milestones,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    txHash,
+    blockNumber,
+    network: NETWORK_NAME,
+    chainId: CHAIN_ID,
+    explorerUrl: `${EXPLORER_URL}/tx/${txHash}`,
+    // Extra metadata linking back to Contract
+    contractId: params.contractId,
+    title: params.title,
+  } as EscrowWallet & { contractId: number; title: string };
+
+  escrowStore.set(id, escrow);
+
+  // Emit EscrowCreated event (mirrors on-chain)
+  const ev: EscrowEvent = {
+    escrowId: id,
+    event: 'EscrowCreated',
+    txHash,
+    blockNumber,
+    timestamp: Date.now(),
+    data: {
+      title: params.title,
+      client: params.client,
+      contractor: params.contractor,
+      totalAmount: params.totalAmount,
+      milestoneCount: milestones.length,
+      contractId: params.contractId,
+      source: 'contract_creation',
+    },
+    explorerUrl: `${EXPLORER_URL}/tx/${txHash}`,
+  };
+  escrowEvents.unshift(ev);
+
+  return escrow;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function genTxHash(): string {
@@ -280,7 +366,14 @@ escrowRouter.get('/:id/milestones', (c) => {
 escrowRouter.post('/create', async (c) => {
   try {
     const body = await c.req.json();
-    const { client, contractor, totalAmount, milestones: milestoneInput, txHash: userTxHash } = body;
+    const {
+      client, contractor, totalAmount,
+      milestones: milestoneInput,
+      txHash: userTxHash,
+      title: bodyTitle,
+      source: bodySource,
+      blockNumber: bodyBlockNumber,
+    } = body;
 
     // Validation
     if (!client || !contractor) return c.json({ error: 'client and contractor are required' }, 400);
@@ -323,15 +416,19 @@ escrowRouter.post('/create', async (c) => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       txHash,
-      blockNumber,
+      blockNumber: bodyBlockNumber || blockNumber,
       network: NETWORK_NAME,
       chainId: CHAIN_ID,
       explorerUrl: `${EXPLORER_URL}/tx/${txHash}`,
+      // Optional metadata from frontend
+      title: bodyTitle,
+      source: (bodySource as 'manual' | 'contract_creation' | undefined) || 'manual',
     };
 
     escrowStore.set(id, escrow);
     const ev = emitEvent(id, 'EscrowCreated', {
-      client, contractor, totalAmount, milestoneCount: milestones.length,
+      title: bodyTitle, client, contractor, totalAmount, milestoneCount: milestones.length,
+      source: bodySource,
     });
 
     return c.json({
@@ -340,9 +437,24 @@ escrowRouter.post('/create', async (c) => {
       escrowId: id,
       escrowAddress: escrow.escrowAddress,
       txHash,
-      blockNumber,
+      blockNumber: bodyBlockNumber || blockNumber,
       explorerUrl: ev.explorerUrl,
       escrow: { ...escrow, balance: 0, progress: 0 },
+      // Mirror on-chain EscrowCreated event
+      event: {
+        name: 'EscrowCreated',
+        escrowId: id,
+        title: bodyTitle,
+        client,
+        contractor,
+        amount: parseFloat(totalAmount.toString()),
+        milestoneCount: milestones.length,
+        txHash,
+        explorerUrl: ev.explorerUrl,
+        network: NETWORK_NAME,
+        chainId: CHAIN_ID,
+        timestamp: escrow.createdAt,
+      },
     }, 201);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -621,6 +733,130 @@ escrowRouter.post('/:id/refund', async (c) => {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: 'Failed to process refund', details: msg }, 500);
   }
+});
+
+// ── POST /api/escrow/from-contract ────────────────────────────────────────────
+// Called by contracts.ts when a new contract is created.
+// Automatically creates an escrow entry linked to the contract.
+// Mirrors: EscrowRegistry.createEscrow(title, client, contractor, totalAmount)
+escrowRouter.post('/from-contract', async (c) => {
+  try {
+    const body = await c.req.json();
+    const {
+      title,
+      client,
+      contractor,
+      totalAmount,      // human-readable USDC (float)
+      milestones,       // optional: [{description, amount}]
+      contractId,
+      txHash: contractTxHash,
+    } = body;
+
+    if (!title || !client || !contractor || !totalAmount || !contractId) {
+      return c.json({ error: 'title, client, contractor, totalAmount and contractId are required' }, 400);
+    }
+
+    // Validate addresses
+    if (!/^0x[0-9a-fA-F]{40}$/.test(client))
+      return c.json({ error: 'Invalid client address' }, 400);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(contractor))
+      return c.json({ error: 'Invalid contractor address' }, 400);
+    if (client.toLowerCase() === contractor.toLowerCase())
+      return c.json({ error: 'Client and contractor must be different' }, 400);
+
+    const amount = parseFloat(totalAmount.toString());
+    if (isNaN(amount) || amount <= 0)
+      return c.json({ error: 'totalAmount must be > 0' }, 400);
+
+    // Prevent duplicate: check if a linked escrow already exists for this contractId
+    const existing = Array.from(escrowStore.values()).find(
+      e => (e as EscrowWallet & { contractId?: number }).contractId === contractId
+    );
+    if (existing) {
+      return c.json({
+        success: true,
+        alreadyExists: true,
+        escrowId: existing.id,
+        escrow: { ...existing, balance: usdcBalance(existing) },
+        message: `Escrow #${existing.id} already linked to contract #${contractId}`,
+      });
+    }
+
+    // Build milestone list from contract milestones or single milestone
+    const milestoneList = milestones && Array.isArray(milestones) && milestones.length > 0
+      ? milestones
+      : [{ description: title, amount }];
+
+    const escrow = createEscrowFromContract({
+      title,
+      client,
+      contractor,
+      totalAmount: amount,
+      milestones: milestoneList,
+      contractId,
+      contractTxHash,
+    });
+
+    // Set source metadata
+    (escrow as EscrowWallet & { source: string }).source = 'contract_creation';
+
+    return c.json({
+      success: true,
+      message: `Escrow #${escrow.id} created from contract #${contractId} — event: EscrowCreated`,
+      escrowId: escrow.id,
+      contractId,
+      escrowAddress: escrow.escrowAddress,
+      txHash: escrow.txHash,
+      blockNumber: escrow.blockNumber,
+      explorerUrl: escrow.explorerUrl,
+      escrow: { ...escrow, balance: usdcBalance(escrow), progress: 0 },
+      // Mirrors on-chain EscrowCreated event
+      event: {
+        name: 'EscrowCreated',
+        escrowId: escrow.id,
+        title,
+        client,
+        contractor,
+        amount,
+        contractId,
+        txHash: escrow.txHash,
+        explorerUrl: escrow.explorerUrl,
+        network: NETWORK_NAME,
+        chainId: CHAIN_ID,
+        registryAddress: REGISTRY_ADDRESS,
+        timestamp: escrow.createdAt,
+      },
+    }, 201);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: 'Failed to create escrow from contract', details: msg }, 500);
+  }
+});
+
+// ── GET /api/escrow/by-contract/:contractId ───────────────────────────────────
+// Find escrow linked to a specific contract
+escrowRouter.get('/by-contract/:contractId', (c) => {
+  const contractId = parseInt(c.req.param('contractId'));
+  const found = Array.from(escrowStore.values()).find(
+    e => (e as EscrowWallet & { contractId?: number }).contractId === contractId
+  );
+  if (!found) {
+    return c.json({ found: false, contractId, escrow: null });
+  }
+  const events = escrowEvents.filter(e => e.escrowId === found.id);
+  return c.json({
+    found: true,
+    contractId,
+    escrowId: found.id,
+    escrow: {
+      ...found,
+      balance: usdcBalance(found),
+      progress: found.totalAmount > 0
+        ? parseFloat(((found.releasedAmount / found.totalAmount) * 100).toFixed(1))
+        : 0,
+    },
+    events,
+  });
 });
 
 export default escrowRouter;

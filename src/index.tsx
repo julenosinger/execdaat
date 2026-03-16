@@ -218,8 +218,9 @@ app.get('/', (c) => {
         <button onclick="switchTab('vaults')" id="tab-vaults" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-vault mr-2"></i><span data-i18n="tab_vaults">Vaults</span>
         </button>
-        <button onclick="switchTab('escrow')" id="tab-escrow" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
+        <button onclick="switchTab('escrow')" id="tab-escrow" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all relative">
           <i class="fas fa-shield-alt mr-2"></i><span>Escrow</span>
+          <span id="tab-escrow-badge" class="hidden absolute -top-0.5 -right-0.5 w-5 h-5 bg-cyan-500 text-white text-xs font-bold rounded-full flex items-center justify-center">0</span>
         </button>
         <button onclick="switchTab('deploy')" id="tab-deploy" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-rocket mr-2"></i><span data-i18n="tab_deploy">Deploy</span>

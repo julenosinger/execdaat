@@ -312,6 +312,11 @@ async function createContractWithReceipt(formData) {
       // Show receipt modal
       showContractReceiptModal(receipt, createData.contract);
 
+      // ── Notify Escrow Wallet module (EscrowCreated event) ─────────────────
+      if (escrowData.event) {
+        ctDispatchEscrowCreated(escrowData.event, contractId);
+      }
+
       return { success: true, contractId, receipt, txHash };
 
     } else {
@@ -331,10 +336,20 @@ async function createContractWithReceipt(formData) {
       if (!ctState.receiptsByContract[contractId]) ctState.receiptsByContract[contractId] = [];
       ctState.receiptsByContract[contractId].unshift(receipt);
 
-      showToast(`✅ Contract #${contractId} created! Receipt #${receipt.id} issued. (Connect wallet to deposit escrow)`, 'success');
+      showToast(
+        `✅ Contract #${contractId} created! Escrow #${createData.escrow?.id || '?'} linked. Receipt #${receipt.id} issued.`,
+        'success'
+      );
       showContractReceiptModal(receipt, createData.contract);
 
-      return { success: true, contractId, receipt };
+      // ── Notify Escrow Wallet module (EscrowCreated event) ─────────────────
+      const escrowEv = (createData.events || []).find(ev => ev.name === 'EscrowCreated')
+        || createData.events?.[1];
+      if (escrowEv) {
+        ctDispatchEscrowCreated(escrowEv, contractId);
+      }
+
+      return { success: true, contractId, receipt, escrowId: createData.escrow?.id };
     }
 
   } catch (err) {
@@ -849,6 +864,95 @@ async function loadContractReceipts() {
 }
 
 // ─── Expose globally ──────────────────────────────────────────────────────────
+// ── Bridge: notify Escrow Wallet module when a contract creates an escrow ───
+// Fires 'escrow:created' DOM event AND calls escrowNotifyFromContract() (escrow.js v2.0)
+function ctDispatchEscrowCreated(escrowEvent, contractId) {
+  try {
+    // 1. Badge counter on Escrow tab
+    ctUpdateEscrowTabBadge(1);
+
+    // 2. Build unified payload (mirrors EscrowCreated event fields)
+    const payload = {
+      ...escrowEvent,
+      contractId,
+      source: 'contract_creation',
+      timestamp: escrowEvent.timestamp || Date.now(),
+    };
+
+    // 3. Fire custom DOM event — escrow.js listener will pick this up
+    window.dispatchEvent(new CustomEvent('escrow:created', { detail: payload }));
+
+    // 4. Direct call to escrow.js v2.0 notification API
+    if (typeof window.escrowNotifyFromContract === 'function') {
+      window.escrowNotifyFromContract(payload);
+    }
+
+    // 5. Refresh escrow module if loaded
+    if (window.escrowLoadAll) {
+      setTimeout(window.escrowLoadAll, 400);
+    }
+
+    // 6. Show floating notification chip linking to escrow
+    const escrowId = escrowEvent.escrowId;
+    if (escrowId) {
+      const existing = document.getElementById('ct-escrow-chip');
+      if (existing) existing.remove();
+      const chip = document.createElement('div');
+      chip.id = 'ct-escrow-chip';
+      chip.className = [
+        'fixed bottom-20 right-6 z-[70]',
+        'bg-cyan-900/90 border border-cyan-700/50 rounded-xl px-4 py-3',
+        'shadow-xl text-sm text-white flex items-center gap-3',
+        'cursor-pointer hover:bg-cyan-800/90 transition-all',
+        'animate-fade-in-up',
+      ].join(' ');
+      chip.innerHTML = `
+        <div class="w-8 h-8 bg-cyan-700/40 rounded-lg flex items-center justify-center flex-shrink-0">
+          <i class="fas fa-shield-alt text-cyan-400"></i>
+        </div>
+        <div class="flex-1">
+          <div class="font-semibold text-cyan-300 text-sm">Escrow #${escrowId} created!</div>
+          <div class="text-xs text-cyan-400/70">
+            ${escrowEvent.amount ? `$${parseFloat(escrowEvent.amount).toFixed(2)} USDC · ` : ''}Click to view
+          </div>
+        </div>
+        <i class="fas fa-arrow-right text-cyan-400 text-xs"></i>
+      `;
+      chip.onclick = () => {
+        if (typeof switchTab === 'function') switchTab('escrow');
+        setTimeout(() => { if (window.escrowShowDetail) window.escrowShowDetail(escrowId); }, 350);
+        chip.remove();
+      };
+      document.body.appendChild(chip);
+      // Auto-remove after 10s
+      setTimeout(() => { chip.remove(); }, 10000);
+    }
+
+    console.log('[CT] EscrowCreated dispatched — escrow#', escrowEvent.escrowId || '?', '· contractId:', contractId);
+  } catch (e) {
+    console.warn('[CT] Failed to dispatch EscrowCreated:', e);
+  }
+}
+
+// Increment the notification badge on Escrow tab
+function ctUpdateEscrowTabBadge(delta) {
+  const badge = document.getElementById('tab-escrow-badge');
+  if (!badge) return;
+  const current = parseInt(badge.textContent || '0');
+  const next = current + delta;
+  badge.textContent = next;
+  badge.classList.toggle('hidden', next <= 0);
+  // Auto-hide after 10s
+  if (delta > 0) {
+    setTimeout(() => {
+      badge.textContent = '0';
+      badge.classList.add('hidden');
+    }, 10000);
+  }
+}
+
+window.ctDispatchEscrowCreated = ctDispatchEscrowCreated;
+window.ctUpdateEscrowTabBadge  = ctUpdateEscrowTabBadge;
 window.createContractWithReceipt = createContractWithReceipt;
 window.activateContractEVM       = activateContractEVM;
 window.showContractReceiptModal  = showContractReceiptModal;

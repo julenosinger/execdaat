@@ -435,10 +435,180 @@ contract EscrowWallet {
     }
 }
 
+// ─── EscrowRegistry ───────────────────────────────────────────────────────────
+/**
+ * @title EscrowRegistry
+ * @notice Lightweight registry for escrow records linked to contracts
+ * @dev Implements the createEscrow(title, client, contractor, totalAmount) pattern
+ *      This contract is used when deploying a separate registry (no child contract deploy)
+ */
+contract EscrowRegistry {
+    address public usdcToken;
+    address public owner;
+
+    // ─── Escrow struct (as specified) ─────────────────────────────────────────
+    struct Escrow {
+        uint256 id;
+        string  title;
+        address client;
+        address contractor;
+        uint256 totalAmount;
+        uint256 releasedAmount;
+        uint256 depositedAmount;
+        uint256 createdAt;
+        bool    active;
+        string  contractRef;   // optional: link to off-chain contract ID
+    }
+
+    mapping(uint256 => Escrow) public escrows;
+    mapping(address => uint256[]) public clientEscrows;
+    mapping(address => uint256[]) public contractorEscrows;
+    uint256 public escrowCount;
+
+    // ─── Events ───────────────────────────────────────────────────────────────
+    event EscrowCreated(
+        uint256 indexed escrowId,
+        string  title,
+        address indexed client,
+        address indexed contractor,
+        uint256 amount,
+        uint256 timestamp
+    );
+    event EscrowDeposited(
+        uint256 indexed escrowId,
+        address depositor,
+        uint256 amount,
+        uint256 newBalance,
+        uint256 timestamp
+    );
+    event EscrowReleased(
+        uint256 indexed escrowId,
+        address contractor,
+        uint256 amount,
+        uint256 timestamp
+    );
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "EscrowRegistry: not owner");
+        _;
+    }
+
+    modifier escrowExists(uint256 escrowId) {
+        require(escrowId > 0 && escrowId <= escrowCount, "EscrowRegistry: escrow not found");
+        _;
+    }
+
+    constructor(address _usdcToken) {
+        usdcToken = _usdcToken;
+        owner = msg.sender;
+    }
+
+    /**
+     * @notice Register a new escrow from a contract creation
+     * @param title       Human-readable contract/escrow title
+     * @param client      Address of the payer (client)
+     * @param contractor  Address of the receiver (contractor)
+     * @param totalAmount Total USDC amount (6 decimals)
+     * @dev Only client can create — security: prevent duplicate by using escrowCount
+     */
+    function createEscrow(
+        string memory title,
+        address client,
+        address contractor,
+        uint256 totalAmount
+    ) external returns (uint256 escrowId) {
+        require(bytes(title).length > 0, "EscrowRegistry: title required");
+        require(client != address(0), "EscrowRegistry: invalid client");
+        require(contractor != address(0), "EscrowRegistry: invalid contractor");
+        require(client != contractor, "EscrowRegistry: client == contractor");
+        require(totalAmount > 0, "EscrowRegistry: amount must be > 0");
+
+        escrowCount++;
+        escrowId = escrowCount;
+
+        escrows[escrowId] = Escrow({
+            id:              escrowId,
+            title:           title,
+            client:          client,
+            contractor:      contractor,
+            totalAmount:     totalAmount,
+            releasedAmount:  0,
+            depositedAmount: 0,
+            createdAt:       block.timestamp,
+            active:          true,
+            contractRef:     ""
+        });
+
+        clientEscrows[client].push(escrowId);
+        contractorEscrows[contractor].push(escrowId);
+
+        emit EscrowCreated(escrowId, title, client, contractor, totalAmount, block.timestamp);
+    }
+
+    /**
+     * @notice Deposit USDC into escrow
+     * @dev Caller must have approved this contract first
+     */
+    function depositUSDC(uint256 escrowId, uint256 amount)
+        external
+        escrowExists(escrowId)
+    {
+        Escrow storage esc = escrows[escrowId];
+        require(esc.active, "EscrowRegistry: escrow not active");
+        require(
+            esc.depositedAmount + amount <= esc.totalAmount,
+            "EscrowRegistry: over-deposit"
+        );
+        require(
+            IERC20(usdcToken).transferFrom(msg.sender, address(this), amount),
+            "EscrowRegistry: USDC transfer failed"
+        );
+        esc.depositedAmount += amount;
+        emit EscrowDeposited(escrowId, msg.sender, amount, esc.depositedAmount, block.timestamp);
+    }
+
+    /**
+     * @notice Release funds to contractor (only client can call)
+     */
+    function releaseToContractor(uint256 escrowId, uint256 amount)
+        external
+        escrowExists(escrowId)
+    {
+        Escrow storage esc = escrows[escrowId];
+        require(msg.sender == esc.client, "EscrowRegistry: only client");
+        require(esc.active, "EscrowRegistry: not active");
+        uint256 available = esc.depositedAmount - esc.releasedAmount;
+        require(amount <= available, "EscrowRegistry: insufficient balance");
+        esc.releasedAmount += amount;
+        if (esc.releasedAmount >= esc.totalAmount) esc.active = false;
+        require(
+            IERC20(usdcToken).transfer(esc.contractor, amount),
+            "EscrowRegistry: transfer failed"
+        );
+        emit EscrowReleased(escrowId, esc.contractor, amount, block.timestamp);
+    }
+
+    /**
+     * @notice Get escrow balance (locked USDC)
+     */
+    function escrowBalance(uint256 escrowId) external view escrowExists(escrowId) returns (uint256) {
+        Escrow storage esc = escrows[escrowId];
+        return esc.depositedAmount - esc.releasedAmount;
+    }
+
+    function getClientEscrows(address client) external view returns (uint256[] memory) {
+        return clientEscrows[client];
+    }
+
+    function getContractorEscrows(address contractor) external view returns (uint256[] memory) {
+        return contractorEscrows[contractor];
+    }
+}
+
 // ─── EscrowFactory ────────────────────────────────────────────────────────────
 /**
  * @title EscrowFactory
- * @notice Deploys and tracks EscrowWallet contracts
+ * @notice Deploys and tracks EscrowWallet contracts (full milestone support)
  */
 contract EscrowFactory {
     address public usdcToken;
@@ -474,7 +644,7 @@ contract EscrowFactory {
     }
 
     /**
-     * @notice Create a new escrow
+     * @notice Create a new escrow (full milestone support)
      */
     function createEscrow(
         address _contractor,
