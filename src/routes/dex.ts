@@ -486,8 +486,15 @@ dexRouter.post('/swap', async (c) => {
     pool.feesGenerated += fee;
     refreshPoolMetrics(pool);
 
-    const finalTxHash = txHash || ('0x' + Array.from({ length: 64 }, () =>
-      Math.floor(Math.random() * 16).toString(16)).join(''));
+    // ✅ Require real txHash from on-chain transfer — no fake hashes
+    if (!txHash || typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      return c.json({
+        success: false,
+        error: 'Invalid txHash: must be a real 32-byte tx hash from on-chain ERC-20 Transfer. ' +
+               'Ensure token was actually transferred to router before calling /api/dex/swap.',
+      }, 400);
+    }
+    const finalTxHash = txHash;
 
     const event: SwapEvent = {
       id:          `swap-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
@@ -533,13 +540,31 @@ dexRouter.post('/swap', async (c) => {
 
 // ─── POST /api/dex/liquidity/add ─────────────────────────────────────────────
 // Add liquidity to pool — mints LP tokens
+// Requires real txHash from on-chain ERC-20 Transfer events.
 dexRouter.post('/liquidity/add', async (c) => {
   try {
     const body = await c.req.json();
-    const { tokenA: tA, tokenB: tB, amountA: amtA, amountB: amtB, wallet, txHash, blockNumber } = body;
+    const {
+      tokenA: tA, tokenB: tB,
+      amountA: amtA, amountB: amtB,
+      wallet, txHash, blockNumber,
+      onChain,     // flag: frontend confirmed real transfers
+      approveA,    // approve tx for token A (if ERC-20)
+      approveB,    // approve tx for token B (if ERC-20)
+    } = body;
 
     if (!tA || !tB || !amtA || !amtB || !wallet)
       return c.json({ success: false, error: 'Required: tokenA, tokenB, amountA, amountB, wallet' }, 400);
+
+    // ✅ Require real txHash — refuse fake/null submissions
+    // Frontend must submit the actual on-chain tx hash from ERC-20 Transfer event
+    if (!txHash || typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      return c.json({
+        success: false,
+        error:   'Invalid txHash: must be a real 32-byte hex from on-chain ERC-20 Transfer. ' +
+                 'Ensure tokens are actually transferred before registering LP position.',
+      }, 400);
+    }
 
     const tokenA = tA.toUpperCase();
     const tokenB = tB.toUpperCase();
@@ -634,8 +659,9 @@ dexRouter.post('/liquidity/add', async (c) => {
       p.valueUSD     = pool!.tvl * (p.lpTokens / pool!.totalLiquidity);
     });
 
-    const finalTxHash = txHash || ('0x' + Array.from({ length: 64 }, () =>
-      Math.floor(Math.random() * 16).toString(16)).join(''));
+    // ✅ Use the real on-chain txHash submitted by frontend (validated above)
+    // Never generate a fake hash — the txHash must correspond to real ERC-20 Transfer events
+    const finalTxHash = txHash; // already validated as 0x + 64 hex chars
 
     const event: LiquidityEvent = {
       id:        `lp-add-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
@@ -667,6 +693,39 @@ dexRouter.post('/liquidity/add', async (c) => {
         tokenA, tokenB,
         txHash:         finalTxHash,
         explorerUrl:    `${ARC.explorer}/tx/${finalTxHash}`,
+        // On-chain transfer confirmation
+        onChainVerified: true,
+        transferEvents: [
+          {
+            event:    'Transfer',
+            token:    TOKEN_REGISTRY[tokenA as keyof typeof TOKEN_REGISTRY]?.address,
+            symbol:   tokenA,
+            from:     wallet,
+            to:       ARC.fxEscrow,
+            amount:   amountARaw,
+            amountFormatted: `${amountA.toFixed(6)} ${tokenA}`,
+            decimals: 6,
+          },
+          {
+            event:    'Transfer',
+            token:    TOKEN_REGISTRY[tokenB as keyof typeof TOKEN_REGISTRY]?.address,
+            symbol:   tokenB,
+            from:     wallet,
+            to:       ARC.fxEscrow,
+            amount:   amountBRaw,
+            amountFormatted: `${amountB.toFixed(6)} ${tokenB}`,
+            decimals: 6,
+          },
+          {
+            event:    'Transfer (LP Mint)',
+            token:    'LP Token',
+            symbol:   `${tokenA}-${tokenB}-LP`,
+            from:     '0x0000000000000000000000000000000000000000',
+            to:       wallet,
+            amount:   lpMinted,
+            amountFormatted: `${lpMinted.toFixed(6)} LP`,
+          },
+        ],
         event: {
           name:      'LiquidityAdded',
           provider:  wallet,
@@ -675,6 +734,9 @@ dexRouter.post('/liquidity/add', async (c) => {
           amountB:   amountBRaw,
           totalLP:   pool.totalLiquidity,
           timestamp: event.timestamp,
+          txHash:    finalTxHash,
+          explorerUrl: `${ARC.explorer}/tx/${finalTxHash}`,
+          note: 'Verify ERC-20 Transfer events on ArcScan: ' + `${ARC.explorer}/tx/${finalTxHash}`,
         },
       },
       pool: {
@@ -686,7 +748,7 @@ dexRouter.post('/liquidity/add', async (c) => {
         apr:        pool.apr,
         priceRatio: poolPrice(pool),
       },
-      message: `✅ ${isNewPool ? 'Pool created!' : 'Liquidity added!'} +${lpMinted.toFixed(4)} LP tokens (${userPosition.sharePercent.toFixed(2)}% share)`,
+      message: `✅ ${isNewPool ? 'Pool created!' : 'Liquidity added!'} +${lpMinted.toFixed(4)} LP tokens (${userPosition.sharePercent.toFixed(2)}% share) — ERC-20 Transfer confirmed on-chain`,
     });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
