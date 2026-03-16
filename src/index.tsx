@@ -10,6 +10,7 @@ import chatRouter from './routes/chat'
 import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
+import escrowRouter from './routes/escrow'
 import { ARC_TESTNET } from './types/arc'
 import { injectVaultStore } from './agents/PaymentAgent'
 
@@ -39,6 +40,7 @@ app.route('/api/chat', chatRouter)
 app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
+app.route('/api/escrow', escrowRouter)
 
 // GET /api/status - Status geral do sistema
 app.get('/api/status', (c) => {
@@ -215,6 +217,9 @@ app.get('/', (c) => {
         </button>
         <button onclick="switchTab('vaults')" id="tab-vaults" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-vault mr-2"></i><span data-i18n="tab_vaults">Vaults</span>
+        </button>
+        <button onclick="switchTab('escrow')" id="tab-escrow" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
+          <i class="fas fa-shield-alt mr-2"></i><span>Escrow</span>
         </button>
         <button onclick="switchTab('deploy')" id="tab-deploy" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-rocket mr-2"></i><span data-i18n="tab_deploy">Deploy</span>
@@ -1207,6 +1212,17 @@ app.get('/', (c) => {
         </div>
       </div>
 
+    </div>
+
+    <!-- ESCROW WALLET TAB -->
+    <div id="tab-content-escrow" class="tab-content hidden">
+      <!-- Rendered by escrow.js: escrowInit() -->
+      <div class="flex items-center justify-center py-20 text-gray-500">
+        <div class="text-center">
+          <i class="fas fa-spinner fa-spin text-4xl mb-4 block text-cyan-600/40"></i>
+          <p class="text-sm">Loading Escrow Wallet...</p>
+        </div>
+      </div>
     </div>
 
     <!-- DEPLOY TAB -->
@@ -2827,6 +2843,7 @@ forge create src/ContractManager.sol:ContractManager \\
   <script src="/static/vaults.js"></script>
   <script src="/static/guardian.js"></script>
   <script src="/static/yield-optimizer.js"></script>
+  <script src="/static/escrow.js"></script>
   <script src="/static/chat.js"></script>
 </body>
 </html>`)

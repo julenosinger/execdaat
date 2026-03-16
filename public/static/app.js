@@ -61,6 +61,7 @@ function switchTab(tab) {
   }
   if (tab === 'swap' && window.loadSwap) window.loadSwap();
   if (tab === 'liquidity' && window.dexInit) window.dexInit();
+  if (tab === 'escrow' && window.escrowInit) window.escrowInit();
   if (tab === 'vaults' && window.loadVaultData) window.loadVaultData();
 }
 
