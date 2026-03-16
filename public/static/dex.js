@@ -230,19 +230,20 @@ function ammUpdatePoolUI(data) {
     setText('amm-price-a',   '—');
     setText('amm-price-b',   '—');
     setText('amm-tvl',       '—');
-    setText('amm-status',    '⚠️ Contract not deployed');
+    setText('amm-status',    '⚠️ Pool not deployed');
     show('amm-deploy-notice');
     return;
   }
   hide('amm-deploy-notice');
   const rA = parseFloat(data.reserveAHuman);
   const rB = parseFloat(data.reserveBHuman);
-  setText('amm-reserve-a',   rA.toFixed(4) + ' EURC');
-  setText('amm-reserve-b',   rB.toFixed(4) + ' USDC');
-  setText('amm-price-a',     '1 EURC = ' + parseFloat(data.priceAinB).toFixed(6) + ' USDC');
-  setText('amm-price-b',     '1 USDC = ' + parseFloat(data.priceBinA).toFixed(6) + ' EURC');
-  setText('amm-tvl',         '$' + parseFloat(data.tvl).toLocaleString(undefined, {maximumFractionDigits: 2}));
-  setText('amm-status',      '✅ Pool active · fee 0.3%');
+  const hasLiq = rA > 0 && rB > 0;
+  setText('amm-reserve-a',   hasLiq ? rA.toFixed(4) + ' EURC' : 'Empty — add liquidity');
+  setText('amm-reserve-b',   hasLiq ? rB.toFixed(4) + ' USDC' : 'Empty — add liquidity');
+  setText('amm-price-a',     hasLiq ? parseFloat(data.priceAinB).toFixed(6) + ' USDC' : '—');
+  setText('amm-price-b',     hasLiq ? parseFloat(data.priceBinA).toFixed(6) + ' EURC' : '—');
+  setText('amm-tvl',         hasLiq ? '$' + parseFloat(data.tvl).toLocaleString(undefined, {maximumFractionDigits: 2}) : '$0.00');
+  setText('amm-status',      hasLiq ? '✅ Active · 0.3% fee' : '⚡ Deployed · awaiting liquidity');
   setText('amm-addr-display', data.ammAddress ? data.ammAddress.slice(0,10)+'…'+data.ammAddress.slice(-6) : '');
 }
 

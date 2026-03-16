@@ -1353,345 +1353,392 @@ forge create src/ContractManager.sol:ContractManager \\
       </div>
     </div>
 
-    <!-- ══════════════════════════ DEX TAB — Swap & Liquidity ══════════════════════════ -->
+    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->
     <div id="tab-content-dex" class="tab-content hidden">
-      <div class="max-w-2xl mx-auto space-y-5">
 
-        <!-- Header -->
-        <div class="text-center mb-2">
-          <h2 class="text-2xl font-bold text-white mb-1">
-            <i class="fas fa-water text-cyan-400 mr-2"></i>ARC DEX
+      <!-- ── Page Header ─────────────────────────────────────────────────────── -->
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+            <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-base shadow-lg shadow-cyan-900/40">
+              <i class="fas fa-exchange-alt"></i>
+            </span>
+            ARC Swap
           </h2>
-          <p class="text-gray-400 text-sm">EURC / USDC · x·y=k AMM · 0.3% fee · Arc Testnet</p>
+          <p class="text-gray-500 text-xs mt-1 ml-11">EURC / USDC · x·y=k · 0.3% fee · Arc Testnet</p>
         </div>
-
-        <!-- Pool Status Card -->
-        <div class="bg-gray-900/70 border border-cyan-700/30 rounded-xl p-4 space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="text-xs text-gray-400 font-semibold uppercase tracking-wide">Pool Status</span>
-            <span class="text-xs font-medium" id="amm-status">Loading…</span>
-          </div>
-          <div class="grid grid-cols-2 gap-3 text-xs">
-            <div class="bg-gray-800/60 rounded-lg p-2.5">
-              <div class="text-gray-500 mb-1">💶 EURC Reserve</div>
-              <div class="text-white font-mono font-semibold" id="amm-reserve-a">—</div>
-            </div>
-            <div class="bg-gray-800/60 rounded-lg p-2.5">
-              <div class="text-gray-500 mb-1">💵 USDC Reserve</div>
-              <div class="text-white font-mono font-semibold" id="amm-reserve-b">—</div>
-            </div>
-            <div class="bg-gray-800/60 rounded-lg p-2.5">
-              <div class="text-gray-500 mb-1">📊 EURC→USDC</div>
-              <div class="text-cyan-400 font-mono text-xs" id="amm-price-a">—</div>
-            </div>
-            <div class="bg-gray-800/60 rounded-lg p-2.5">
-              <div class="text-gray-500 mb-1">📊 USDC→EURC</div>
-              <div class="text-purple-400 font-mono text-xs" id="amm-price-b">—</div>
-            </div>
-            <div class="bg-gray-800/60 rounded-lg p-2.5 col-span-2">
-              <div class="text-gray-500 mb-1">💰 TVL</div>
-              <div class="text-green-400 font-mono font-semibold" id="amm-tvl">—</div>
-            </div>
-          </div>
-          <div class="text-xs text-gray-600 truncate">Contract: <span id="amm-addr-display">—</span></div>
+        <!-- Status badge -->
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-900/60 border border-gray-700/50 rounded-full text-xs">
+          <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+          <span id="amm-status" class="text-gray-300">Loading…</span>
         </div>
+      </div>
 
-        <!-- Deploy Notice (shown when contract not deployed) -->
-        <div id="amm-deploy-notice" class="hidden bg-yellow-900/20 border border-yellow-600/30 rounded-xl p-4 text-sm text-yellow-300">
-          <p class="font-semibold mb-2">⚠️ SimpleAMM contract not yet deployed</p>
-          <p class="text-xs text-yellow-400 mb-3">Deploy the contract to Arc Testnet to enable real on-chain swaps and liquidity.</p>
-          <code class="text-xs bg-black/40 rounded px-2 py-1 block mb-3">node contracts/script/deployAMM.js &lt;PRIVATE_KEY&gt;</code>
-          <p class="text-xs text-gray-400">Or enter private key below to deploy via UI (testnet only):</p>
-          <div class="flex gap-2 mt-2">
-            <input type="password" id="amm-pk-input" placeholder="0x… private key (testnet only)"
-              class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none" />
-            <button onclick="ammDeployContract()"
-              class="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold rounded-lg transition-all">
-              Deploy
+      <!-- ── Main 2-column layout ────────────────────────────────────────────── -->
+      <div class="grid grid-cols-1 xl:grid-cols-5 gap-5 items-start">
+
+        <!-- LEFT — Swap / Liquidity tabs (3/5 width on xl) -->
+        <div class="xl:col-span-3 space-y-4">
+
+          <!-- Tab switcher -->
+          <div class="flex gap-1.5 bg-gray-900/70 border border-gray-700/40 rounded-2xl p-1.5">
+            <button id="amm-tab-swap" onclick="ammSwitchTab('swap')"
+              class="flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/30 transition-all">
+              <i class="fas fa-exchange-alt mr-1.5"></i>Swap
+            </button>
+            <button id="amm-tab-liquidity" onclick="ammSwitchTab('liquidity')"
+              class="flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all">
+              <i class="fas fa-tint mr-1.5"></i>Liquidity
             </button>
           </div>
-        </div>
 
-        <!-- Wallet Balances -->
-        <div class="bg-gray-900/50 border border-gray-700/40 rounded-xl px-4 py-3">
-          <div class="text-xs text-gray-500 font-semibold mb-2 uppercase tracking-wide">Your Balances</div>
-          <div class="grid grid-cols-3 gap-2 text-xs">
-            <div class="text-center">
-              <div class="text-gray-500 mb-0.5">EURC</div>
-              <div class="text-blue-300 font-mono font-semibold" id="amm-bal-eurc">—</div>
-            </div>
-            <div class="text-center">
-              <div class="text-gray-500 mb-0.5">USDC</div>
-              <div class="text-green-300 font-mono font-semibold" id="amm-bal-usdc">—</div>
-            </div>
-            <div class="text-center">
-              <div class="text-gray-500 mb-0.5">LP Token</div>
-              <div class="text-cyan-300 font-mono font-semibold" id="amm-bal-lp">—</div>
-            </div>
-          </div>
-        </div>
+          <!-- ══ SWAP PANEL ═══════════════════════════════════════════════════ -->
+          <div id="amm-panel-swap">
+            <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-3 shadow-xl">
 
-        <!-- ── Tabs: Swap / Liquidity ───────────────────────────────────────── -->
-        <div class="flex gap-2 bg-gray-900/60 border border-gray-700/40 rounded-xl p-1.5">
-          <button id="amm-tab-swap" onclick="ammSwitchTab('swap')"
-            class="flex-1 py-3 px-4 text-sm font-semibold rounded-lg bg-cyan-600 text-white transition-all">
-            <i class="fas fa-exchange-alt mr-1.5"></i>Swap
-          </button>
-          <button id="amm-tab-liquidity" onclick="ammSwitchTab('liquidity')"
-            class="flex-1 py-3 px-4 text-sm font-semibold rounded-lg text-gray-400 hover:text-white transition-all">
-            <i class="fas fa-water mr-1.5"></i>Liquidity
-          </button>
-        </div>
-
-        <!-- ══ SWAP PANEL ══════════════════════════════════════════════════════ -->
-        <div id="amm-panel-swap">
-
-          <div class="bg-gray-900/70 border border-gray-700/50 rounded-xl p-5 space-y-4">
-
-            <!-- From Token -->
-            <div class="space-y-2">
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-gray-400 font-semibold">You Pay</span>
-                <div class="flex items-center gap-2">
-                  <span class="text-gray-500" id="amm-swap-from-bal">Balance: —</span>
-                  <button onclick="ammSetSwapMax()"
-                    class="px-2 py-0.5 bg-cyan-900/40 hover:bg-cyan-800/60 border border-cyan-700/40 text-cyan-400 text-xs rounded font-medium transition-all">
-                    MAX
-                  </button>
-                </div>
-              </div>
-              <div class="flex items-center gap-3 bg-gray-800/60 border border-gray-600/30 rounded-xl px-4 py-3.5">
-                <div class="flex items-center gap-2 min-w-fit">
-                  <span class="text-xl" id="amm-swap-from-logo">💶</span>
-                  <span class="text-white font-bold text-base" id="amm-swap-from-symbol">EURC</span>
-                </div>
-                <input type="number" id="amm-swap-input" placeholder="0.000000" min="0" step="0.000001"
-                  class="flex-1 bg-transparent text-white text-xl font-bold text-right outline-none placeholder-gray-600"
-                  oninput="ammComputeSwapQuote()" />
-              </div>
-            </div>
-
-            <!-- Flip Button -->
-            <div class="flex items-center justify-center">
-              <button onclick="ammFlipSwap()"
-                class="w-10 h-10 rounded-xl bg-gray-800 border border-gray-600/40 hover:bg-gray-700 hover:border-cyan-500/50 flex items-center justify-center transition-all group">
-                <i class="fas fa-arrow-down text-gray-400 group-hover:text-cyan-400 transition-all"></i>
-              </button>
-            </div>
-
-            <!-- To Token -->
-            <div class="space-y-2">
-              <div class="flex items-center justify-between text-xs">
-                <span class="text-gray-400 font-semibold">You Receive</span>
-                <span class="text-gray-500" id="amm-swap-to-label">USDC</span>
-              </div>
-              <div class="flex items-center gap-3 bg-gray-800/30 border border-gray-700/30 rounded-xl px-4 py-3.5">
-                <div class="flex items-center gap-2 min-w-fit">
-                  <span class="text-xl" id="amm-swap-to-logo">💵</span>
-                  <span class="text-white font-bold text-base" id="amm-swap-to-symbol">USDC</span>
-                </div>
-                <input type="number" id="amm-swap-output" placeholder="0.000000" readonly
-                  class="flex-1 bg-transparent text-green-400 text-xl font-bold text-right outline-none placeholder-gray-600 cursor-default" />
-              </div>
-            </div>
-
-            <!-- Quote Details -->
-            <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3.5 space-y-2 text-xs">
-              <div class="flex justify-between text-gray-400">
-                <span>Price Impact</span>
-                <span id="amm-price-impact" class="text-green-400 font-mono">—</span>
-              </div>
-              <div class="flex justify-between text-gray-400">
-                <span>Fee (0.3%)</span>
-                <span id="amm-swap-fee" class="font-mono text-gray-300">—</span>
-              </div>
-              <div class="flex justify-between text-gray-400">
-                <span>Min. Received (<span id="amm-slip-label">0.5%</span> slippage)</span>
-                <span id="amm-min-received" class="font-mono text-gray-300">—</span>
-              </div>
-            </div>
-
-            <!-- Slippage Control -->
-            <div class="space-y-2">
-              <div class="text-xs text-gray-500 font-semibold">Slippage Tolerance</div>
-              <div class="flex gap-2">
-                <button id="amm-slip-01" onclick="ammSetSlippage(0.1)"
-                  class="px-3 py-1 rounded text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600">0.1%</button>
-                <button id="amm-slip-05" onclick="ammSetSlippage(0.5)"
-                  class="px-3 py-1 rounded text-xs font-bold bg-cyan-600 text-white">0.5%</button>
-                <button id="amm-slip-10" onclick="ammSetSlippage(1.0)"
-                  class="px-3 py-1 rounded text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600">1.0%</button>
-              </div>
-            </div>
-
-            <!-- Swap Button -->
-            <button id="amm-swap-btn" onclick="ammExecuteSwap()" disabled
-              class="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-base transition-all shadow-lg shadow-cyan-900/30">
-              Enter Amount
-            </button>
-
-            <!-- Result -->
-            <div id="amm-swap-result" class="hidden bg-green-900/20 border border-green-700/40 rounded-xl p-4 text-sm space-y-2">
-              <div class="flex items-center gap-2 text-green-400 font-semibold">
-                <i class="fas fa-check-circle"></i>Swap Confirmed!
-              </div>
-              <div class="grid grid-cols-2 gap-2 text-xs text-gray-300">
-                <span class="text-gray-500">Sent:</span>  <span id="amm-result-in" class="font-mono">—</span>
-                <span class="text-gray-500">Received:</span><span id="amm-result-out" class="font-mono text-green-300">—</span>
-                <span class="text-gray-500">Tx Hash:</span>
-                <a id="amm-result-hash-link" href="#" target="_blank" class="font-mono text-cyan-400 underline hover:text-cyan-300">
-                  <span id="amm-result-hash">—</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Error -->
-            <div id="amm-swap-error" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-sm text-red-300">
-              <i class="fas fa-times-circle mr-2"></i><span id="amm-swap-error-msg">—</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- ══ LIQUIDITY PANEL ═════════════════════════════════════════════════ -->
-        <div id="amm-panel-liquidity" class="hidden">
-          <div class="space-y-4">
-
-            <!-- Add Liquidity Card -->
-            <div class="bg-gray-900/70 border border-gray-700/50 rounded-xl p-5 space-y-4">
-              <div class="flex items-center gap-2">
-                <i class="fas fa-plus-circle text-cyan-400"></i>
-                <h3 class="text-white font-semibold">Add Liquidity</h3>
-              </div>
-              <p class="text-xs text-gray-400">Provide EURC + USDC to earn 0.3% fee on every swap.</p>
-
-              <!-- EURC Input -->
-              <div class="space-y-1.5">
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-400 font-semibold">EURC Amount</span>
+              <!-- From Token -->
+              <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3.5 space-y-2">
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                  <span class="font-semibold">You Pay</span>
                   <div class="flex items-center gap-2">
-                    <span class="text-gray-500" id="amm-liq-bal-eurc">—</span>
-                    <button onclick="ammSetLiqMaxA()"
-                      class="px-2 py-0.5 bg-blue-900/40 hover:bg-blue-800/60 border border-blue-700/40 text-blue-400 text-xs rounded font-medium transition-all">
+                    <span id="amm-swap-from-bal">Balance: —</span>
+                    <button onclick="ammSetSwapMax()"
+                      class="px-2 py-0.5 bg-cyan-900/50 hover:bg-cyan-700/60 border border-cyan-700/50 text-cyan-400 rounded-md font-bold transition-all">
                       MAX
                     </button>
                   </div>
                 </div>
-                <div class="flex items-center gap-3 bg-gray-800/60 border border-gray-600/30 rounded-xl px-4 py-3">
-                  <span class="text-xl">💶</span>
-                  <span class="text-white font-bold min-w-fit">EURC</span>
-                  <input type="number" id="amm-liq-input-a" placeholder="0.000000" min="0" step="0.000001"
-                    class="flex-1 bg-transparent text-white text-lg font-bold text-right outline-none placeholder-gray-600"
+                <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 min-w-fit border border-gray-600/30">
+                    <span class="text-lg" id="amm-swap-from-logo">💶</span>
+                    <span class="text-white font-bold text-sm" id="amm-swap-from-symbol">EURC</span>
+                  </div>
+                  <input type="number" id="amm-swap-input" placeholder="0.00" min="0" step="0.000001"
+                    class="flex-1 bg-transparent text-white text-2xl font-bold text-right outline-none placeholder-gray-700 w-0"
+                    oninput="ammComputeSwapQuote()" />
+                </div>
+              </div>
+
+              <!-- Flip -->
+              <div class="flex justify-center -my-1 relative z-10">
+                <button onclick="ammFlipSwap()"
+                  class="w-9 h-9 rounded-xl bg-gray-800 border border-gray-600/50 hover:border-cyan-500/60 hover:bg-gray-700 flex items-center justify-center transition-all shadow-lg group">
+                  <i class="fas fa-arrow-down text-gray-400 group-hover:text-cyan-400 transition-all text-sm"></i>
+                </button>
+              </div>
+
+              <!-- To Token -->
+              <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl px-4 py-3.5 space-y-2">
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                  <span class="font-semibold">You Receive</span>
+                  <span id="amm-swap-to-label" class="text-gray-500">USDC</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 min-w-fit border border-gray-600/30">
+                    <span class="text-lg" id="amm-swap-to-logo">💵</span>
+                    <span class="text-white font-bold text-sm" id="amm-swap-to-symbol">USDC</span>
+                  </div>
+                  <input type="number" id="amm-swap-output" placeholder="0.00" readonly
+                    class="flex-1 bg-transparent text-green-400 text-2xl font-bold text-right outline-none placeholder-gray-700 cursor-default w-0" />
+                </div>
+              </div>
+
+              <!-- Quote row -->
+              <div class="grid grid-cols-3 gap-2 text-xs text-center">
+                <div class="bg-gray-800/50 rounded-xl p-2.5">
+                  <div class="text-gray-500 mb-0.5">Price Impact</div>
+                  <div id="amm-price-impact" class="text-green-400 font-mono font-bold">—</div>
+                </div>
+                <div class="bg-gray-800/50 rounded-xl p-2.5">
+                  <div class="text-gray-500 mb-0.5">Fee (0.3%)</div>
+                  <div id="amm-swap-fee" class="text-gray-300 font-mono font-bold">—</div>
+                </div>
+                <div class="bg-gray-800/50 rounded-xl p-2.5">
+                  <div class="text-gray-500 mb-0.5">Min. Received</div>
+                  <div id="amm-min-received" class="text-gray-300 font-mono font-bold">—</div>
+                </div>
+              </div>
+
+              <!-- Slippage -->
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-500 font-semibold">Slippage: <span id="amm-slip-label" class="text-gray-300">0.5%</span></span>
+                <div class="flex gap-1.5">
+                  <button id="amm-slip-01" onclick="ammSetSlippage(0.1)"
+                    class="px-3 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all">0.1%</button>
+                  <button id="amm-slip-05" onclick="ammSetSlippage(0.5)"
+                    class="px-3 py-1 rounded-lg text-xs font-bold bg-cyan-600 text-white transition-all">0.5%</button>
+                  <button id="amm-slip-10" onclick="ammSetSlippage(1.0)"
+                    class="px-3 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all">1.0%</button>
+                </div>
+              </div>
+
+              <!-- Swap Button -->
+              <button id="amm-swap-btn" onclick="ammExecuteSwap()" disabled
+                class="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-base transition-all shadow-lg shadow-cyan-900/40 mt-1">
+                Enter Amount
+              </button>
+
+              <!-- Result / Error -->
+              <div id="amm-swap-result" class="hidden bg-green-900/20 border border-green-700/40 rounded-xl p-4 text-sm">
+                <div class="flex items-center gap-2 text-green-400 font-semibold mb-2">
+                  <i class="fas fa-check-circle"></i>Swap Confirmed!
+                </div>
+                <div class="grid grid-cols-2 gap-1.5 text-xs text-gray-300">
+                  <span class="text-gray-500">Sent:</span>     <span id="amm-result-in" class="font-mono">—</span>
+                  <span class="text-gray-500">Received:</span> <span id="amm-result-out" class="font-mono text-green-300">—</span>
+                  <span class="text-gray-500">Tx:</span>
+                  <a id="amm-result-hash-link" href="#" target="_blank" class="font-mono text-cyan-400 underline truncate">
+                    <span id="amm-result-hash">—</span>
+                  </a>
+                </div>
+              </div>
+              <div id="amm-swap-error" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-xs text-red-300">
+                <i class="fas fa-times-circle mr-2"></i><span id="amm-swap-error-msg">—</span>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- ══ LIQUIDITY PANEL ══════════════════════════════════════════════ -->
+          <div id="amm-panel-liquidity" class="hidden space-y-4">
+
+            <!-- Add Liquidity -->
+            <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-4 shadow-xl">
+              <div class="flex items-center gap-2">
+                <span class="w-7 h-7 rounded-lg bg-blue-600/30 border border-blue-600/40 flex items-center justify-center text-xs text-blue-400">
+                  <i class="fas fa-plus"></i>
+                </span>
+                <h3 class="text-white font-bold">Add Liquidity</h3>
+                <span class="ml-auto text-xs text-gray-500">Earn 0.3% per swap</span>
+              </div>
+
+              <!-- EURC -->
+              <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3 space-y-2">
+                <div class="flex justify-between text-xs text-gray-500">
+                  <span class="font-semibold">EURC Amount</span>
+                  <div class="flex items-center gap-2">
+                    <span id="amm-liq-bal-eurc">—</span>
+                    <button onclick="ammSetLiqMaxA()"
+                      class="px-2 py-0.5 bg-blue-900/50 border border-blue-700/40 text-blue-400 rounded-md text-xs font-bold hover:bg-blue-800/60 transition-all">MAX</button>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 border border-gray-600/30">
+                    <span>💶</span><span class="text-white font-bold text-sm">EURC</span>
+                  </div>
+                  <input type="number" id="amm-liq-input-a" placeholder="0.00" min="0" step="0.000001"
+                    class="flex-1 bg-transparent text-white text-xl font-bold text-right outline-none placeholder-gray-700 w-0"
                     oninput="ammUpdateLiqPreview()" />
                 </div>
               </div>
 
-              <!-- USDC Input -->
-              <div class="space-y-1.5">
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-400 font-semibold">USDC Amount</span>
+              <!-- Plus divider -->
+              <div class="flex justify-center">
+                <div class="w-8 h-8 rounded-xl bg-gray-800 border border-gray-600/40 flex items-center justify-center text-gray-500 text-sm font-bold">+</div>
+              </div>
+
+              <!-- USDC -->
+              <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3 space-y-2">
+                <div class="flex justify-between text-xs text-gray-500">
+                  <span class="font-semibold">USDC Amount</span>
                   <div class="flex items-center gap-2">
-                    <span class="text-gray-500" id="amm-liq-bal-usdc">—</span>
+                    <span id="amm-liq-bal-usdc">—</span>
                     <button onclick="ammSetLiqMaxB()"
-                      class="px-2 py-0.5 bg-green-900/40 hover:bg-green-800/60 border border-green-700/40 text-green-400 text-xs rounded font-medium transition-all">
-                      MAX
-                    </button>
+                      class="px-2 py-0.5 bg-green-900/50 border border-green-700/40 text-green-400 rounded-md text-xs font-bold hover:bg-green-800/60 transition-all">MAX</button>
                   </div>
                 </div>
-                <div class="flex items-center gap-3 bg-gray-800/60 border border-gray-600/30 rounded-xl px-4 py-3">
-                  <span class="text-xl">💵</span>
-                  <span class="text-white font-bold min-w-fit">USDC</span>
-                  <input type="number" id="amm-liq-input-b" placeholder="0.000000" min="0" step="0.000001"
-                    class="flex-1 bg-transparent text-white text-lg font-bold text-right outline-none placeholder-gray-600"
+                <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 border border-gray-600/30">
+                    <span>💵</span><span class="text-white font-bold text-sm">USDC</span>
+                  </div>
+                  <input type="number" id="amm-liq-input-b" placeholder="0.00" min="0" step="0.000001"
+                    class="flex-1 bg-transparent text-white text-xl font-bold text-right outline-none placeholder-gray-700 w-0"
                     oninput="ammUpdateLiqPreview()" />
                 </div>
               </div>
 
               <!-- LP Preview -->
-              <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3.5 text-xs space-y-2">
-                <div class="flex justify-between text-gray-400">
-                  <span>LP Tokens (estimated)</span>
-                  <span id="amm-liq-lp-est" class="font-mono text-cyan-300">—</span>
+              <div class="grid grid-cols-3 gap-2 text-xs text-center">
+                <div class="bg-gray-800/50 rounded-xl p-2.5">
+                  <div class="text-gray-500 mb-0.5">LP Est.</div>
+                  <div id="amm-liq-lp-est" class="text-cyan-300 font-mono font-bold">—</div>
                 </div>
-                <div class="flex justify-between text-gray-400">
-                  <span>Pool Share</span>
-                  <span id="amm-liq-pool-share" class="font-mono text-cyan-300">—</span>
+                <div class="bg-gray-800/50 rounded-xl p-2.5">
+                  <div class="text-gray-500 mb-0.5">Pool Share</div>
+                  <div id="amm-liq-pool-share" class="text-cyan-300 font-mono font-bold">—</div>
                 </div>
-                <div class="flex justify-between text-gray-400">
-                  <span>Your LP Balance</span>
-                  <span id="amm-liq-bal-lp" class="font-mono text-yellow-300">—</span>
+                <div class="bg-gray-800/50 rounded-xl p-2.5">
+                  <div class="text-gray-500 mb-0.5">Your LP</div>
+                  <div id="amm-liq-bal-lp" class="text-yellow-300 font-mono font-bold">—</div>
                 </div>
               </div>
 
-              <!-- Add Liquidity Button -->
               <button id="amm-add-liq-btn" onclick="ammAddLiquidity()" disabled
-                class="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold transition-all shadow-lg">
+                class="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold transition-all shadow-lg">
                 <i class="fas fa-plus mr-2"></i>Add Liquidity
               </button>
 
-              <!-- Liquidity Result -->
-              <div id="amm-liq-result" class="hidden bg-green-900/20 border border-green-700/40 rounded-xl p-4 text-sm space-y-2">
-                <div class="flex items-center gap-2 text-green-400 font-semibold">
-                  <i class="fas fa-check-circle"></i>Liquidity Added!
-                </div>
-                <div class="grid grid-cols-2 gap-2 text-xs text-gray-300">
-                  <span class="text-gray-500">EURC deposited:</span> <span id="amm-liq-result-a" class="font-mono">—</span>
-                  <span class="text-gray-500">USDC deposited:</span> <span id="amm-liq-result-b" class="font-mono">—</span>
-                  <span class="text-gray-500">LP minted:</span>       <span id="amm-liq-result-lp" class="font-mono text-cyan-300">—</span>
-                  <span class="text-gray-500">Tx Hash:</span>
-                  <a id="amm-liq-result-hash-link" href="#" target="_blank" class="font-mono text-cyan-400 underline">
+              <div id="amm-liq-result" class="hidden bg-green-900/20 border border-green-700/40 rounded-xl p-4 text-sm">
+                <div class="flex items-center gap-2 text-green-400 font-semibold mb-2"><i class="fas fa-check-circle"></i>Liquidity Added!</div>
+                <div class="grid grid-cols-2 gap-1.5 text-xs text-gray-300">
+                  <span class="text-gray-500">EURC:</span>   <span id="amm-liq-result-a" class="font-mono">—</span>
+                  <span class="text-gray-500">USDC:</span>   <span id="amm-liq-result-b" class="font-mono">—</span>
+                  <span class="text-gray-500">LP minted:</span> <span id="amm-liq-result-lp" class="font-mono text-cyan-300">—</span>
+                  <span class="text-gray-500">Tx:</span>
+                  <a id="amm-liq-result-hash-link" href="#" target="_blank" class="font-mono text-cyan-400 underline truncate">
                     <span id="amm-liq-result-hash">—</span>
                   </a>
                 </div>
               </div>
-
-              <!-- Liquidity Error -->
-              <div id="amm-liq-error" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-sm text-red-300">
+              <div id="amm-liq-error" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-xs text-red-300">
                 <i class="fas fa-times-circle mr-2"></i><span id="amm-liq-error-msg">—</span>
               </div>
             </div>
 
-            <!-- Remove Liquidity Card -->
-            <div class="bg-gray-900/70 border border-gray-700/50 rounded-xl p-5 space-y-4">
+            <!-- Remove Liquidity -->
+            <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-4 shadow-xl">
               <div class="flex items-center gap-2">
-                <i class="fas fa-fire text-red-400"></i>
-                <h3 class="text-white font-semibold">Remove Liquidity</h3>
+                <span class="w-7 h-7 rounded-lg bg-red-600/30 border border-red-600/40 flex items-center justify-center text-xs text-red-400">
+                  <i class="fas fa-fire"></i>
+                </span>
+                <h3 class="text-white font-bold">Remove Liquidity</h3>
               </div>
-              <p class="text-xs text-gray-400">Burn LP tokens to withdraw your EURC + USDC from the pool.</p>
-
-              <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3.5 text-xs">
-                <div class="flex justify-between mb-3">
-                  <span class="text-gray-400">Your LP Balance</span>
-                  <span class="font-mono text-cyan-300" id="amm-remove-lp-bal">—</span>
+              <p class="text-xs text-gray-500">Burn LP tokens to withdraw EURC + USDC from the pool.</p>
+              <div class="bg-gray-800/50 border border-gray-700/30 rounded-xl p-4 space-y-3 text-xs">
+                <div class="flex justify-between">
+                  <span class="text-gray-500">Your LP Balance</span>
+                  <span class="font-mono text-cyan-300 font-bold" id="amm-remove-lp-bal">—</span>
                 </div>
-                <div class="space-y-1.5">
-                  <div class="flex justify-between text-gray-400">
+                <div>
+                  <div class="flex justify-between text-gray-400 mb-2">
                     <span>Percentage to remove</span>
-                    <span class="font-mono" id="amm-remove-pct-display">100%</span>
+                    <span class="font-mono font-bold text-white" id="amm-remove-pct-display">100%</span>
                   </div>
                   <input type="range" id="amm-remove-pct" min="1" max="100" value="100"
-                    class="w-full accent-red-500"
+                    class="w-full accent-red-500 cursor-pointer"
                     oninput="
                       document.getElementById('amm-remove-pct-display').textContent = this.value + '%';
                       const lp = parseFloat(document.getElementById('amm-remove-lp-bal')?.textContent) || 0;
                       document.getElementById('amm-remove-lp-amt').textContent = (lp * parseInt(this.value) / 100).toFixed(4) + ' LP';
                     " />
-                  <div class="flex justify-between text-gray-500">
+                  <div class="flex justify-between text-gray-500 mt-2">
                     <span>LP to burn:</span>
-                    <span id="amm-remove-lp-amt" class="font-mono text-red-300">—</span>
+                    <span id="amm-remove-lp-amt" class="font-mono text-red-300 font-bold">—</span>
                   </div>
                 </div>
               </div>
-
               <button id="amm-remove-liq-btn" onclick="ammRemoveLiquidity()"
-                class="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-700 to-rose-700 hover:from-red-600 hover:to-rose-600 text-white font-bold transition-all">
+                class="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-700 to-rose-600 hover:from-red-600 hover:to-rose-500 text-white font-bold transition-all shadow-lg">
                 <i class="fas fa-fire mr-2"></i>Remove Liquidity
               </button>
             </div>
 
-          </div>
-        </div>
+          </div><!-- end liquidity panel -->
 
-      </div>
+        </div><!-- end LEFT col -->
+
+        <!-- RIGHT — Pool Status sidebar (2/5 width on xl) -->
+        <div class="xl:col-span-2 space-y-4">
+
+          <!-- Pool Stats Card -->
+          <div class="bg-gray-900/80 border border-cyan-700/20 rounded-2xl p-4 space-y-4 shadow-xl">
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-gray-400 font-bold uppercase tracking-widest">Pool Status</span>
+              <a href="https://testnet.arcscan.app/address/0x3148E2807F172D1cC354F35fB4fC4104e8b6b561"
+                target="_blank"
+                class="text-xs text-cyan-500 hover:text-cyan-400 transition-all flex items-center gap-1">
+                ArcScan <i class="fas fa-external-link-alt text-[10px]"></i>
+              </a>
+            </div>
+
+            <!-- TVL highlight -->
+            <div class="bg-gradient-to-br from-cyan-900/30 to-blue-900/20 border border-cyan-700/20 rounded-xl p-4 text-center">
+              <div class="text-xs text-gray-500 mb-1">Total Value Locked</div>
+              <div class="text-3xl font-bold text-white" id="amm-tvl">—</div>
+              <div class="text-xs text-cyan-500 mt-1">EURC/USDC Pool</div>
+            </div>
+
+            <!-- Reserves -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-base">💶</span>
+                  <span class="text-xs text-gray-400 font-semibold">EURC Reserve</span>
+                </div>
+                <span class="text-white font-mono font-bold text-sm" id="amm-reserve-a">—</span>
+              </div>
+              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <div class="flex items-center gap-2">
+                  <span class="text-base">💵</span>
+                  <span class="text-xs text-gray-400 font-semibold">USDC Reserve</span>
+                </div>
+                <span class="text-white font-mono font-bold text-sm" id="amm-reserve-b">—</span>
+              </div>
+            </div>
+
+            <!-- Prices -->
+            <div class="space-y-2">
+              <div class="text-xs text-gray-500 font-semibold uppercase tracking-wide">Live Prices</div>
+              <div class="bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <div class="text-xs text-gray-500 mb-0.5">1 EURC =</div>
+                <div class="text-cyan-400 font-mono font-bold" id="amm-price-a">—</div>
+              </div>
+              <div class="bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <div class="text-xs text-gray-500 mb-0.5">1 USDC =</div>
+                <div class="text-purple-400 font-mono font-bold" id="amm-price-b">—</div>
+              </div>
+            </div>
+
+            <!-- Contract address -->
+            <div class="border-t border-gray-700/40 pt-3">
+              <div class="text-xs text-gray-600 mb-1">Contract</div>
+              <div class="text-xs font-mono text-gray-500 truncate" id="amm-addr-display">—</div>
+            </div>
+          </div>
+
+          <!-- Your Balances Card -->
+          <div class="bg-gray-900/80 border border-gray-700/40 rounded-2xl p-4 shadow-xl">
+            <div class="text-xs text-gray-400 font-bold uppercase tracking-widest mb-3">Your Balances</div>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <div class="flex items-center gap-2">
+                  <span>💶</span><span class="text-xs text-gray-400 font-semibold">EURC</span>
+                </div>
+                <span class="text-blue-300 font-mono font-bold text-sm" id="amm-bal-eurc">—</span>
+              </div>
+              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <div class="flex items-center gap-2">
+                  <span>💵</span><span class="text-xs text-gray-400 font-semibold">USDC</span>
+                </div>
+                <span class="text-green-300 font-mono font-bold text-sm" id="amm-bal-usdc">—</span>
+              </div>
+              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <div class="flex items-center gap-2">
+                  <span>🏊</span><span class="text-xs text-gray-400 font-semibold">LP Token</span>
+                </div>
+                <span class="text-cyan-300 font-mono font-bold text-sm" id="amm-bal-lp">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Deploy Notice -->
+          <div id="amm-deploy-notice" class="hidden bg-yellow-900/20 border border-yellow-600/30 rounded-2xl p-4 text-sm text-yellow-300">
+            <p class="font-bold mb-1.5">⚠️ Contract not deployed</p>
+            <p class="text-xs text-yellow-400 mb-3">Deploy SimpleAMM to enable real swaps.</p>
+            <div class="flex gap-2">
+              <input type="password" id="amm-pk-input" placeholder="0x… private key"
+                class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none" />
+              <button onclick="ammDeployContract()"
+                class="px-3 py-2 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold rounded-lg transition-all">
+                Deploy
+              </button>
+            </div>
+          </div>
+
+        </div><!-- end RIGHT col -->
+
+      </div><!-- end grid -->
+
     </div>
     <!-- ════════════════════════════════════════════════════════════════ -->
 
