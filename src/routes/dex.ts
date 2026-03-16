@@ -1,1066 +1,430 @@
 // ============================================================
-// ARC DEX — AMM Engine (Uniswap V2 x* y = k model)
-// Arc Testnet · ChainId 5042002
+//  ARC DEX Backend — Real On-Chain Data
+//  Arc Testnet · ChainId 5042002 · x * y = k
 //
-// Token Registry:
-//   USDC  0x3600000000000000000000000000000000000000  (native, 6 dec)
-//   EURC  0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a  (ERC-20, 6 dec)
-//   USYC  0xe9185F0c5F296Ed1797AaE4238D26CCaBEadb86C  (ERC-20, 6 dec)
+//  SimpleAMM contract reads reserves directly from chain via RPC.
+//  NO mock data — all pool state comes from the deployed contract.
 //
-// AMM Formula: x * y = k
-//   amountOut = (reserveOut * amountIn * 997) / (reserveIn * 1000 + amountIn * 997)
-//   Fee: 0.3% (stays in pool, accrues to LP holders)
+//  Token Registry:
+//    EURC  0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a  (ERC-20, 6 dec)
+//    USDC  0x3600000000000000000000000000000000000000  (ERC-20, 6 dec)
 //
-// LP Token minting:
-//   First liquidity:  LP = sqrt(amountA * amountB)
-//   Subsequent:       LP = min(amountA * totalLP / reserveA, amountB * totalLP / reserveB)
+//  SimpleAMM contract address is stored in AMM_ADDRESS below.
+//  Update it after deploying with: node contracts/script/deployAMM.js
 // ============================================================
 
 import { Hono } from 'hono';
 
 const dexRouter = new Hono();
 
-// ─── Token Registry ───────────────────────────────────────────────────────────
+// ─── Network / Token Config ───────────────────────────────────────────────────
+const ARC_RPC    = 'https://rpc.testnet.arc.network';
+const CHAIN_ID   = 5042002;
+const EXPLORER   = 'https://testnet.arcscan.app';
+
+// ⚠️  Update this after running: node contracts/script/deployAMM.js
+// Set via env var AMM_ADDRESS or hardcode after first deploy.
+const AMM_ADDRESS: string = (globalThis as any).AMM_CONTRACT_ADDRESS
+  || '0x0000000000000000000000000000000000000000'; // placeholder — deploy first
+
 export const TOKEN_REGISTRY = {
-  USDC: {
-    symbol:   'USDC',
-    name:     'USD Coin',
-    address:  '0x3600000000000000000000000000000000000000',
-    decimals: 6,
-    logo:     '💵',
-    isNative: true,
-    chainId:  5042002,
-  },
   EURC: {
-    symbol:   'EURC',
-    name:     'Euro Coin',
-    address:  '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
-    decimals: 6,
-    logo:     '💶',
-    isNative: false,
-    chainId:  5042002,
+    symbol: 'EURC', name: 'Euro Coin',
+    address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
+    decimals: 6, logo: '💶', isNative: false, chainId: CHAIN_ID,
   },
-  USYC: {
-    symbol:   'USYC',
-    name:     'US Yield Coin',
-    address:  '0xe9185F0c5F296Ed1797AaE4238D26CCaBEadb86C',
-    decimals: 6,
-    logo:     '📈',
-    isNative: false,
-    chainId:  5042002,
+  USDC: {
+    symbol: 'USDC', name: 'USD Coin',
+    address: '0x3600000000000000000000000000000000000000',
+    decimals: 6, logo: '💵', isNative: false, chainId: CHAIN_ID,
   },
 };
 
-// ─── Network Config ───────────────────────────────────────────────────────────
-const ARC = {
-  name:         'Arc Testnet',
-  chainId:      5042002,
-  chainHex:     '0x4CFC12',
-  rpc:          'https://rpc.testnet.arc.network',
-  explorer:     'https://testnet.arcscan.app',
-  faucet:       'https://faucet.circle.com',
-  multicall3:   '0xcA11bde05977b3631167028862bE2a173976CA11',
-  permit2:      '0x000000000022D473030F116dDEE9F6B43aC78BA3',
-  create2:      '0x4e59b44847b379578588920cA78FbF26c0B4956C',
-  fxEscrow:     '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8',
+// ─── ABI selectors for eth_call ───────────────────────────────────────────────
+// SimpleAMM read functions
+const SEL = {
+  getReserves:    '0x0902f1ac', // getReserves() → (uint256,uint256)
+  totalSupply:    '0x18160ddd', // totalSupply() → uint256
+  getLPBalance:   '0x5dbe4756', // getLPBalance(address) → uint256
+  quoteAforB:     '0x9d33be0f', // quoteAforB(uint256) → uint256
+  quoteBforA:     '0xf99bbd0c', // quoteBforA(uint256) → uint256
+  priceImpactBps: '0x6e0e1a2d', // priceImpactBps(uint256,bool) → uint256
+  // ERC-20
+  balanceOf:      '0x70a08231', // balanceOf(address) → uint256
 };
 
-// ─── Interfaces ───────────────────────────────────────────────────────────────
-interface Pool {
-  id:             string;     // e.g. "USDC-EURC"
-  tokenA:         string;     // symbol
-  tokenB:         string;     // symbol
-  addressA:       string;
-  addressB:       string;
-  reserveA:       number;     // in token units (6 decimals)
-  reserveB:       number;
-  totalLiquidity: number;     // total LP tokens (sqrt units)
-  fee:            number;     // 0.003 = 0.3%
-  volume24h:      number;     // USD volume last 24h
-  feesGenerated:  number;     // total fees in USD
-  swapCount:      number;
-  createdAt:      number;
-  tvl:            number;     // USD TVL
-  apr:            number;     // estimated APR %
+// ─── RPC helpers ─────────────────────────────────────────────────────────────
+function encUint256(val: bigint | number): string {
+  return BigInt(val).toString(16).padStart(64, '0');
+}
+function encAddr(addr: string): string {
+  return addr.replace('0x', '').toLowerCase().padStart(64, '0');
+}
+function decUint256(hex: string): bigint {
+  if (!hex || hex === '0x') return 0n;
+  return BigInt(hex.startsWith('0x') ? hex : '0x' + hex);
 }
 
-interface LPPosition {
-  wallet:    string;
-  poolId:    string;
-  lpTokens:  number;
-  sharePercent: number;
-  valueUSD:  number;
-  feesEarned: number;
-  depositedAt: number;
+async function ethCall(to: string, data: string): Promise<string> {
+  const body = JSON.stringify({
+    jsonrpc: '2.0', id: 1, method: 'eth_call',
+    params: [{ to, data }, 'latest'],
+  });
+  const res = await fetch(ARC_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  const json = await res.json() as any;
+  if (json.error) throw new Error(json.error.message);
+  return json.result as string;
 }
 
-interface SwapEvent {
-  id:        string;
-  poolId:    string;
-  wallet:    string;
-  tokenIn:   string;
-  tokenOut:  string;
-  amountIn:  number;
-  amountOut: number;
-  fee:       number;
-  priceImpact: number;
-  txHash:    string;
-  timestamp: number;
-  blockNumber: number | null;
+// ─── On-Chain reads ───────────────────────────────────────────────────────────
+async function fetchReserves(): Promise<{ reserveA: bigint; reserveB: bigint }> {
+  try {
+    const result = await ethCall(AMM_ADDRESS, SEL.getReserves);
+    if (!result || result === '0x') return { reserveA: 0n, reserveB: 0n };
+    // Returns 2×uint256
+    const reserveA = decUint256('0x' + result.slice(2, 66));
+    const reserveB = decUint256('0x' + result.slice(66, 130));
+    return { reserveA, reserveB };
+  } catch {
+    return { reserveA: 0n, reserveB: 0n };
+  }
 }
 
-interface LiquidityEvent {
-  id:        string;
-  poolId:    string;
-  wallet:    string;
-  type:      'add' | 'remove';
-  amountA:   number;
-  amountB:   number;
-  lpTokens:  number;
-  txHash:    string;
-  timestamp: number;
+async function fetchTotalSupply(): Promise<bigint> {
+  try {
+    const result = await ethCall(AMM_ADDRESS, SEL.totalSupply);
+    return decUint256(result);
+  } catch {
+    return 0n;
+  }
 }
 
-// ─── In-memory DEX state ──────────────────────────────────────────────────────
-const pools: Map<string, Pool> = new Map();
-const lpPositions: Map<string, LPPosition[]> = new Map(); // poolId → positions
-const swapHistory: SwapEvent[] = [];
-const liquidityHistory: LiquidityEvent[] = [];
-
-// ─── DEX Statistics ───────────────────────────────────────────────────────────
-const dexStats = {
-  totalVolume24h: 0,
-  totalFeesAll:   0,
-  totalSwaps:     0,
-  totalLiquidityEvents: 0,
-  createdAt:      Date.now(),
-};
-
-// ─── Helper: generate pool ID ─────────────────────────────────────────────────
-function poolId(tokenA: string, tokenB: string): string {
-  const [a, b] = [tokenA.toUpperCase(), tokenB.toUpperCase()].sort();
-  return `${a}-${b}`;
+async function fetchLPBalance(wallet: string): Promise<bigint> {
+  try {
+    const data   = SEL.getLPBalance + encAddr(wallet);
+    const result = await ethCall(AMM_ADDRESS, data);
+    return decUint256(result);
+  } catch {
+    return 0n;
+  }
 }
 
-// ─── AMM Core: constant product formula ──────────────────────────────────────
-function ammGetAmountOut(
-  amountIn: number,
-  reserveIn: number,
-  reserveOut: number
-): number {
-  if (amountIn <= 0 || reserveIn <= 0 || reserveOut <= 0) return 0;
-  const amountInWithFee = amountIn * 997;
-  const numerator       = amountInWithFee * reserveOut;
-  const denominator     = reserveIn * 1000 + amountInWithFee;
+async function fetchERC20Balance(tokenAddr: string, wallet: string): Promise<bigint> {
+  try {
+    const data   = SEL.balanceOf + encAddr(wallet);
+    const result = await ethCall(tokenAddr, data);
+    return decUint256(result);
+  } catch {
+    return 0n;
+  }
+}
+
+// ─── AMM formula (pure, mirrors Solidity) ────────────────────────────────────
+function getAmountOut(amountIn: bigint, rIn: bigint, rOut: bigint): bigint {
+  if (amountIn === 0n || rIn === 0n || rOut === 0n) return 0n;
+  const amountInWithFee = amountIn * 997n;
+  const numerator       = amountInWithFee * rOut;
+  const denominator     = rIn * 1000n + amountInWithFee;
   return numerator / denominator;
 }
 
-function ammGetAmountIn(
-  amountOut: number,
-  reserveIn: number,
-  reserveOut: number
-): number {
-  if (amountOut <= 0 || reserveIn <= 0 || reserveOut <= 0) return 0;
-  const numerator   = reserveIn * amountOut * 1000;
-  const denominator = (reserveOut - amountOut) * 997;
-  return numerator / denominator + 1;
-}
-
-function calcPriceImpact(amountIn: number, reserveIn: number): number {
-  return (amountIn / (reserveIn + amountIn)) * 100;
-}
-
-function sqrtBig(n: number): number {
-  if (n <= 0) return 0;
-  return Math.sqrt(n);
-}
-
-// ─── Helper: calc pool price ratio ───────────────────────────────────────────
-function poolPrice(pool: Pool): { priceAinB: number; priceBinA: number } {
-  if (pool.reserveA === 0 || pool.reserveB === 0) return { priceAinB: 0, priceBinA: 0 };
-  return {
-    priceAinB: pool.reserveB / pool.reserveA,
-    priceBinA: pool.reserveA / pool.reserveB,
-  };
-}
-
-// ─── Helper: calculate TVL in USD ─────────────────────────────────────────────
-function calcTVL(pool: Pool): number {
-  // USDC = $1, EURC ≈ $1.09, USYC ≈ $1.00 (simplification for testnet)
-  const prices: Record<string, number> = { USDC: 1.0, EURC: 1.09, USYC: 1.0 };
-  const priceA = prices[pool.tokenA] || 1;
-  const priceB = prices[pool.tokenB] || 1;
-  return (pool.reserveA / 1e6) * priceA + (pool.reserveB / 1e6) * priceB;
-}
-
-// ─── Seed Demo Pools ──────────────────────────────────────────────────────────
-function seedDemoPools() {
-  const demoPools: Omit<Pool, 'tvl' | 'apr'>[] = [
-    {
-      id:             'EURC-USDC',
-      tokenA:         'EURC',
-      tokenB:         'USDC',
-      addressA:       TOKEN_REGISTRY.EURC.address,
-      addressB:       TOKEN_REGISTRY.USDC.address,
-      reserveA:       460_000 * 1e6,   // 460,000 EURC
-      reserveB:       500_000 * 1e6,   // 500,000 USDC
-      totalLiquidity: sqrtBig(460_000 * 1e6 * 500_000 * 1e6),
-      fee:            0.003,
-      volume24h:      125_000,
-      feesGenerated:  3_750,
-      swapCount:      842,
-      createdAt:      Date.now() - 30 * 24 * 60 * 60 * 1000,
-    },
-    {
-      id:             'USDC-USYC',
-      tokenA:         'USDC',
-      tokenB:         'USYC',
-      addressA:       TOKEN_REGISTRY.USDC.address,
-      addressB:       TOKEN_REGISTRY.USYC.address,
-      reserveA:       200_000 * 1e6,   // 200,000 USDC
-      reserveB:       198_000 * 1e6,   // 198,000 USYC (≈ price 1.01)
-      totalLiquidity: sqrtBig(200_000 * 1e6 * 198_000 * 1e6),
-      fee:            0.003,
-      volume24h:      45_000,
-      feesGenerated:  1_350,
-      swapCount:      289,
-      createdAt:      Date.now() - 14 * 24 * 60 * 60 * 1000,
-    },
-    {
-      id:             'EURC-USYC',
-      tokenA:         'EURC',
-      tokenB:         'USYC',
-      addressA:       TOKEN_REGISTRY.EURC.address,
-      addressB:       TOKEN_REGISTRY.USYC.address,
-      reserveA:       80_000 * 1e6,    // 80,000 EURC
-      reserveB:       87_200 * 1e6,    // 87,200 USYC (EURC ≈ 1.09 USD)
-      totalLiquidity: sqrtBig(80_000 * 1e6 * 87_200 * 1e6),
-      fee:            0.003,
-      volume24h:      18_000,
-      feesGenerated:  540,
-      swapCount:      104,
-      createdAt:      Date.now() - 7 * 24 * 60 * 60 * 1000,
-    },
-  ];
-
-  demoPools.forEach(p => {
-    const tvl = calcTVL({ ...p, tvl: 0, apr: 0 });
-    const dailyFees = p.volume24h * 0.003;
-    const apr = tvl > 0 ? ((dailyFees * 365) / tvl) * 100 : 0;
-    pools.set(p.id, { ...p, tvl, apr });
-
-    // Seed demo LP positions
-    lpPositions.set(p.id, [
-      {
-        wallet:      '0xB815A0c4bC23930119324d4359dB65e27A846A2d',
-        poolId:      p.id,
-        lpTokens:    p.totalLiquidity * 0.35,
-        sharePercent: 35,
-        valueUSD:    tvl * 0.35,
-        feesEarned:  p.feesGenerated * 0.35,
-        depositedAt: p.createdAt + 86400_000,
-      },
-      {
-        wallet:      '0x411c60F8e61B5Cbe32F9a873b16D21CA85e9A634',
-        poolId:      p.id,
-        lpTokens:    p.totalLiquidity * 0.25,
-        sharePercent: 25,
-        valueUSD:    tvl * 0.25,
-        feesEarned:  p.feesGenerated * 0.25,
-        depositedAt: p.createdAt + 172_800_000,
-      },
-    ]);
-  });
-
-  // Seed historical swap events
-  const demoSwaps: Partial<SwapEvent>[] = [
-    { poolId: 'EURC-USDC', wallet: '0xB815A0c4bC23930119324d4359dB65e27A846A2d', tokenIn: 'USDC', tokenOut: 'EURC', amountIn: 1000 * 1e6, amountOut: 915 * 1e6, fee: 3 * 1e6, priceImpact: 0.0002, txHash: '0x' + 'a1'.repeat(32), timestamp: Date.now() - 3600_000 },
-    { poolId: 'EURC-USDC', wallet: '0x411c60F8e61B5Cbe32F9a873b16D21CA85e9A634', tokenIn: 'EURC', tokenOut: 'USDC', amountIn: 500 * 1e6, amountOut: 545 * 1e6, fee: 1.5 * 1e6, priceImpact: 0.0001, txHash: '0x' + 'b2'.repeat(32), timestamp: Date.now() - 7200_000 },
-    { poolId: 'USDC-USYC', wallet: '0xB815A0c4bC23930119324d4359dB65e27A846A2d', tokenIn: 'USDC', tokenOut: 'USYC', amountIn: 5000 * 1e6, amountOut: 4950 * 1e6, fee: 15 * 1e6, priceImpact: 0.0025, txHash: '0x' + 'c3'.repeat(32), timestamp: Date.now() - 14400_000 },
-  ];
-  demoSwaps.forEach((s, i) => {
-    swapHistory.unshift({
-      id: `swap-demo-${i}`,
-      poolId: s.poolId!,
-      wallet: s.wallet!,
-      tokenIn: s.tokenIn!,
-      tokenOut: s.tokenOut!,
-      amountIn: s.amountIn!,
-      amountOut: s.amountOut!,
-      fee: s.fee!,
-      priceImpact: s.priceImpact!,
-      txHash: s.txHash!,
-      timestamp: s.timestamp!,
-      blockNumber: Math.floor(Math.random() * 1000000) + 5000000,
-    });
-  });
-}
-
-seedDemoPools();
-
-// ─── Update pool TVL + APR ────────────────────────────────────────────────────
-function refreshPoolMetrics(pool: Pool) {
-  pool.tvl  = calcTVL(pool);
-  const dailyFees = pool.volume24h * pool.fee;
-  pool.apr  = pool.tvl > 0 ? ((dailyFees * 365) / pool.tvl) * 100 : 0;
-}
-
-// ─── GET /api/dex/tokens ─────────────────────────────────────────────────────
+// ─── GET /api/dex/tokens ──────────────────────────────────────────────────────
 dexRouter.get('/tokens', (c) => {
   return c.json({
     success: true,
-    tokens: Object.values(TOKEN_REGISTRY),
-    network: { name: ARC.name, chainId: ARC.chainId, explorer: ARC.explorer },
+    tokens:  Object.values(TOKEN_REGISTRY),
+    network: { name: 'Arc Testnet', chainId: CHAIN_ID, explorer: EXPLORER },
   });
 });
 
-// ─── GET /api/dex/pools ───────────────────────────────────────────────────────
-dexRouter.get('/pools', (c) => {
-  const allPools = Array.from(pools.values()).map(p => ({
-    ...p,
-    priceRatio: poolPrice(p),
-    totalLiquidityFormatted: (p.totalLiquidity / 1e6).toFixed(6),
-    reserveAFormatted:       (p.reserveA / 1e6).toFixed(6),
-    reserveBFormatted:       (p.reserveB / 1e6).toFixed(6),
-    aprFormatted:            `${p.apr.toFixed(2)}%`,
-    tvlFormatted:            `$${p.tvl.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-    tokenAInfo:              TOKEN_REGISTRY[p.tokenA as keyof typeof TOKEN_REGISTRY],
-    tokenBInfo:              TOKEN_REGISTRY[p.tokenB as keyof typeof TOKEN_REGISTRY],
-  }));
+// ─── GET /api/dex/amm ────────────────────────────────────────────────────────
+// Returns real on-chain pool state from SimpleAMM contract
+dexRouter.get('/amm', async (c) => {
+  const isDeployed = AMM_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
-  const tvlTotal = allPools.reduce((s, p) => s + p.tvl, 0);
-  const vol24h   = allPools.reduce((s, p) => s + p.volume24h, 0);
-  const fees24h  = vol24h * 0.003;
-
-  return c.json({
-    success: true,
-    pools: allPools,
-    analytics: {
-      totalPools:  pools.size,
-      tvlTotal,
-      tvlFormatted: `$${tvlTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      volume24h: vol24h,
-      volume24hFormatted: `$${vol24h.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      fees24h: fees24h,
-      fees24hFormatted: `$${fees24h.toFixed(2)}`,
-      totalSwaps:   dexStats.totalSwaps + swapHistory.filter(s => !s.id.startsWith('swap-demo')).length,
-    },
-    network: { name: ARC.name, chainId: ARC.chainId },
-  });
-});
-
-// ─── GET /api/dex/pools/:id ───────────────────────────────────────────────────
-dexRouter.get('/pools/:id', (c) => {
-  const id   = c.req.param('id').toUpperCase();
-  const pool = pools.get(id);
-  if (!pool) return c.json({ success: false, error: 'Pool not found' }, 404);
-  refreshPoolMetrics(pool);
-
-  const positions = lpPositions.get(id) || [];
-  const recentSwaps = swapHistory.filter(s => s.poolId === id).slice(0, 20);
-
-  return c.json({
-    success: true,
-    pool: {
-      ...pool,
-      priceRatio: poolPrice(pool),
-      reserveAFormatted: (pool.reserveA / 1e6).toFixed(6),
-      reserveBFormatted: (pool.reserveB / 1e6).toFixed(6),
-      aprFormatted:      `${pool.apr.toFixed(2)}%`,
-      tvlFormatted:      `$${pool.tvl.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      tokenAInfo:        TOKEN_REGISTRY[pool.tokenA as keyof typeof TOKEN_REGISTRY],
-      tokenBInfo:        TOKEN_REGISTRY[pool.tokenB as keyof typeof TOKEN_REGISTRY],
-    },
-    positions,
-    recentSwaps,
-  });
-});
-
-// ─── GET /api/dex/quote ───────────────────────────────────────────────────────
-// Real AMM quote using x * y = k
-dexRouter.get('/quote', (c) => {
-  const fromToken     = (c.req.query('from')   || 'USDC').toUpperCase();
-  const toToken       = (c.req.query('to')     || 'EURC').toUpperCase();
-  const amountInStr   = c.req.query('amount')  || '0';
-  const slippage      = parseFloat(c.req.query('slippage') || '0.5') / 100;
-
-  const amountIn = parseFloat(amountInStr);
-  if (isNaN(amountIn) || amountIn <= 0)
-    return c.json({ success: false, error: 'Invalid amount' }, 400);
-  if (fromToken === toToken)
-    return c.json({ success: false, error: 'Tokens must be different' }, 400);
-
-  const pid  = poolId(fromToken, toToken);
-  const pool = pools.get(pid);
-
-  if (!pool) {
-    return c.json({ success: false, error: `No pool found for ${fromToken}/${toToken}. Create one by adding liquidity.`, poolId: pid });
+  if (!isDeployed) {
+    return c.json({
+      success:    false,
+      deployed:   false,
+      ammAddress: AMM_ADDRESS,
+      message:    'SimpleAMM not yet deployed. Run: node contracts/script/deployAMM.js <PRIVATE_KEY>',
+      reserveA:   '0',
+      reserveB:   '0',
+      totalSupply: '0',
+      priceAinB:  '0',
+      priceBinA:  '0',
+      tvl:        '0',
+    });
   }
 
-  const isAtoB   = pool.tokenA === fromToken;
-  const reserveIn  = isAtoB ? pool.reserveA : pool.reserveB;
-  const reserveOut = isAtoB ? pool.reserveB : pool.reserveA;
+  try {
+    const [{ reserveA, reserveB }, totalSupply] = await Promise.all([
+      fetchReserves(),
+      fetchTotalSupply(),
+    ]);
 
-  const amountInRaw = amountIn * 1e6;
-  const amountOutRaw = ammGetAmountOut(amountInRaw, reserveIn, reserveOut);
-  const amountOut = amountOutRaw / 1e6;
-  const fee = amountIn * pool.fee;
-  const priceImpact = calcPriceImpact(amountInRaw, reserveIn);
-  const minReceived = amountOut * (1 - slippage);
+    const rA = Number(reserveA) / 1e6;
+    const rB = Number(reserveB) / 1e6;
+    const priceAinB = rA > 0 ? (rB / rA).toFixed(6) : '0';
+    const priceBinA = rB > 0 ? (rA / rB).toFixed(6) : '0';
+    const tvl = (rA * 1.09 + rB * 1.0).toFixed(2); // EURC≈1.09 USD
 
-  // Spot price before swap
-  const spotPrice  = isAtoB ? pool.reserveB / pool.reserveA : pool.reserveA / pool.reserveB;
-  const execPrice  = amountOut / amountIn;
-
-  return c.json({
-    success: true,
-    quote: {
-      fromToken, toToken,
-      amountIn, amountOut,
-      amountOutFormatted: amountOut.toFixed(6),
-      fee, feePercent: pool.fee * 100,
-      priceImpact, priceImpactPercent: `${priceImpact.toFixed(4)}%`,
-      minimumReceived:    minReceived,
-      minimumReceivedFmt: minReceived.toFixed(6),
-      spotPrice, execPrice,
-      slippageTolerance:  slippage * 100,
-      highImpactWarning:  priceImpact > 5,
-      rejectSwap:         priceImpact > 15,
-      route:              `${fromToken} → ${toToken} (Direct, ${pool.id})`,
-      poolReserves: {
-        reserveIn:  (reserveIn  / 1e6).toFixed(6),
-        reserveOut: (reserveOut / 1e6).toFixed(6),
-      },
-      network: ARC.name,
-      chainId: ARC.chainId,
-    },
-  });
+    return c.json({
+      success:     true,
+      deployed:    true,
+      ammAddress:  AMM_ADDRESS,
+      tokenA:      TOKEN_REGISTRY.EURC,
+      tokenB:      TOKEN_REGISTRY.USDC,
+      reserveA:    reserveA.toString(),
+      reserveB:    reserveB.toString(),
+      reserveAHuman: rA.toFixed(6),
+      reserveBHuman: rB.toFixed(6),
+      totalSupply: totalSupply.toString(),
+      priceAinB,   // 1 EURC = X USDC
+      priceBinA,   // 1 USDC = X EURC
+      tvl,
+      fee: '0.30%',
+      network: { name: 'Arc Testnet', chainId: CHAIN_ID, explorer: EXPLORER },
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
 });
 
-// ─── POST /api/dex/swap ───────────────────────────────────────────────────────
-// Execute a swap — updates pool reserves after wallet signs on-chain
-dexRouter.post('/swap', async (c) => {
+// ─── GET /api/dex/amm/lp/:wallet ─────────────────────────────────────────────
+dexRouter.get('/amm/lp/:wallet', async (c) => {
+  const wallet = c.req.param('wallet');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+    return c.json({ success: false, error: 'Invalid wallet address' }, 400);
+  }
+
   try {
-    const body = await c.req.json();
-    const { fromToken, toToken, amountIn: amtInStr, wallet, txHash, slippage = 0.5, blockNumber } = body;
+    const [lpBalance, totalSupply, { reserveA, reserveB }] = await Promise.all([
+      fetchLPBalance(wallet),
+      fetchTotalSupply(),
+      fetchReserves(),
+    ]);
 
-    if (!fromToken || !toToken || !amtInStr || !wallet)
-      return c.json({ success: false, error: 'Required: fromToken, toToken, amountIn, wallet' }, 400);
+    const share = totalSupply > 0n ? Number(lpBalance * 10000n / totalSupply) / 100 : 0;
+    const userA = totalSupply > 0n ? Number(lpBalance * reserveA / totalSupply) / 1e6 : 0;
+    const userB = totalSupply > 0n ? Number(lpBalance * reserveB / totalSupply) / 1e6 : 0;
 
-    const from = fromToken.toUpperCase();
-    const to   = toToken.toUpperCase();
-    const amountIn = parseFloat(amtInStr);
+    return c.json({
+      success:     true,
+      wallet,
+      ammAddress:  AMM_ADDRESS,
+      lpBalance:   lpBalance.toString(),
+      lpHuman:     (Number(lpBalance) / 1e6).toFixed(6),
+      totalSupply: totalSupply.toString(),
+      sharePercent: share.toFixed(4),
+      eurcOwned:   userA.toFixed(6),
+      usdcOwned:   userB.toFixed(6),
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
 
-    if (isNaN(amountIn) || amountIn <= 0)
-      return c.json({ success: false, error: 'Invalid amountIn' }, 400);
+// ─── GET /api/dex/amm/quote ──────────────────────────────────────────────────
+// ?fromToken=EURC&toToken=USDC&amountIn=1000000
+dexRouter.get('/amm/quote', async (c) => {
+  const fromToken = c.req.query('fromToken') || 'EURC';
+  const toToken   = c.req.query('toToken')   || 'USDC';
+  const amountInS = c.req.query('amountIn')  || '0';
+  const amountIn  = BigInt(amountInS);
 
-    const pid  = poolId(from, to);
-    const pool = pools.get(pid);
-    if (!pool)
-      return c.json({ success: false, error: `Pool ${pid} not found. Add liquidity first.` }, 404);
+  if (amountIn === 0n) {
+    return c.json({ success: false, error: 'amountIn must be > 0' });
+  }
 
-    const isAtoB     = pool.tokenA === from;
-    const reserveIn  = isAtoB ? pool.reserveA : pool.reserveB;
-    const reserveOut = isAtoB ? pool.reserveB : pool.reserveA;
+  const aToB = fromToken === 'EURC' && toToken === 'USDC';
+  const bToA = fromToken === 'USDC' && toToken === 'EURC';
 
-    const amountInRaw  = amountIn * 1e6;
-    const amountOutRaw = ammGetAmountOut(amountInRaw, reserveIn, reserveOut);
-    const amountOut    = amountOutRaw / 1e6;
-    const fee          = amountIn * pool.fee;
-    const priceImpact  = calcPriceImpact(amountInRaw, reserveIn);
-    const minReceived  = amountOut * (1 - slippage / 100);
+  if (!aToB && !bToA) {
+    return c.json({ success: false, error: 'Supported pairs: EURC/USDC or USDC/EURC' });
+  }
 
-    if (priceImpact > 15)
-      return c.json({ success: false, error: `Swap rejected: price impact ${priceImpact.toFixed(2)}% exceeds maximum 15%`, priceImpact }, 400);
+  try {
+    const { reserveA, reserveB } = await fetchReserves();
 
-    // Update pool reserves (k adjusts due to fees staying in pool)
-    if (isAtoB) {
-      pool.reserveA += amountInRaw;
-      pool.reserveB -= amountOutRaw;
-    } else {
-      pool.reserveB += amountInRaw;
-      pool.reserveA -= amountOutRaw;
+    if (reserveA === 0n || reserveB === 0n) {
+      return c.json({ success: false, error: 'Pool is empty. Add liquidity first.' });
     }
-    pool.swapCount  += 1;
-    pool.volume24h  += amountIn;
-    pool.feesGenerated += fee;
-    refreshPoolMetrics(pool);
 
-    // ✅ Require real txHash from on-chain transfer — no fake hashes
-    if (!txHash || typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
-      return c.json({
-        success: false,
-        error: 'Invalid txHash: must be a real 32-byte tx hash from on-chain ERC-20 Transfer. ' +
-               'Ensure token was actually transferred to router before calling /api/dex/swap.',
-      }, 400);
-    }
-    const finalTxHash = txHash;
+    const rIn  = aToB ? reserveA : reserveB;
+    const rOut = aToB ? reserveB : reserveA;
 
-    const event: SwapEvent = {
-      id:          `swap-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      poolId:      pid,
-      wallet:      wallet.toLowerCase(),
-      tokenIn:     from, tokenOut: to,
-      amountIn:    amountInRaw,
-      amountOut:   amountOutRaw,
-      fee:         fee * 1e6,
-      priceImpact,
-      txHash:      finalTxHash,
-      timestamp:   Date.now(),
-      blockNumber: blockNumber || null,
-    };
-    swapHistory.unshift(event);
-    if (swapHistory.length > 500) swapHistory.pop();
-    dexStats.totalSwaps++;
+    const amountOut   = getAmountOut(amountIn, rIn, rOut);
+    const spotPrice   = aToB
+      ? Number(reserveB) / Number(reserveA)
+      : Number(reserveA) / Number(reserveB);
+    const idealOut    = Number(amountIn) * spotPrice;
+    const priceImpact = idealOut > 0
+      ? ((idealOut - Number(amountOut)) / idealOut) * 100
+      : 0;
+
+    const minOut997 = amountOut * 997n / 1000n; // 0.3% slippage default
+    const minOut995 = amountOut * 995n / 1000n; // 0.5%
+    const minOut990 = amountOut * 990n / 1000n; // 1%
+
+    return c.json({
+      success:      true,
+      fromToken,
+      toToken,
+      amountIn:     amountIn.toString(),
+      amountInHuman:(Number(amountIn) / 1e6).toFixed(6),
+      amountOut:    amountOut.toString(),
+      amountOutHuman:(Number(amountOut) / 1e6).toFixed(6),
+      priceImpact:  priceImpact.toFixed(4),
+      spotPrice:    spotPrice.toFixed(6),
+      fee:          (Number(amountIn) * 0.003 / 1e6).toFixed(6),
+      minOut:       {
+        '0.3%': minOut997.toString(),
+        '0.5%': minOut995.toString(),
+        '1.0%': minOut990.toString(),
+      },
+      reserveA: reserveA.toString(),
+      reserveB: reserveB.toString(),
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
+  }
+});
+
+// ─── GET /api/dex/amm/balances/:wallet ───────────────────────────────────────
+dexRouter.get('/amm/balances/:wallet', async (c) => {
+  const wallet = c.req.param('wallet');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) {
+    return c.json({ success: false, error: 'Invalid address' }, 400);
+  }
+
+  try {
+    const [eurcBal, usdcBal, lpBal] = await Promise.all([
+      fetchERC20Balance(TOKEN_REGISTRY.EURC.address, wallet),
+      fetchERC20Balance(TOKEN_REGISTRY.USDC.address, wallet),
+      AMM_ADDRESS !== '0x0000000000000000000000000000000000000000'
+        ? fetchLPBalance(wallet)
+        : Promise.resolve(0n),
+    ]);
 
     return c.json({
       success: true,
-      swap: {
-        ...event,
-        amountInFormatted:  amountIn.toFixed(6),
-        amountOutFormatted: amountOut.toFixed(6),
-        minReceived:        minReceived.toFixed(6),
-        feeFormatted:       fee.toFixed(6),
-        priceImpactPercent: `${priceImpact.toFixed(4)}%`,
-        explorerUrl:        `${ARC.explorer}/tx/${finalTxHash}`,
+      wallet,
+      balances: {
+        EURC: { raw: eurcBal.toString(), human: (Number(eurcBal) / 1e6).toFixed(6) },
+        USDC: { raw: usdcBal.toString(), human: (Number(usdcBal) / 1e6).toFixed(6) },
+        LP:   { raw: lpBal.toString(),   human: (Number(lpBal)   / 1e6).toFixed(6) },
       },
-      poolAfter: {
-        id:         pool.id,
-        reserveA:   (pool.reserveA / 1e6).toFixed(6),
-        reserveB:   (pool.reserveB / 1e6).toFixed(6),
-        tvl:        pool.tvl,
-        priceRatio: poolPrice(pool),
-      },
-      message: `✅ Swap: ${amountIn.toFixed(4)} ${from} → ${amountOut.toFixed(4)} ${to}`,
     });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message }, 500);
   }
 });
 
-// ─── POST /api/dex/liquidity/add ─────────────────────────────────────────────
-// Add liquidity to pool — mints LP tokens
-// Requires real txHash from on-chain ERC-20 Transfer events.
+// ─── POST /api/dex/amm/config ────────────────────────────────────────────────
+// Called after deploy to register contract address
+dexRouter.post('/amm/config', async (c) => {
+  const body = await c.req.json() as any;
+  const addr = body?.ammAddress;
+  if (!addr || !/^0x[0-9a-fA-F]{40}$/.test(addr)) {
+    return c.json({ success: false, error: 'Invalid address' }, 400);
+  }
+  (globalThis as any).AMM_CONTRACT_ADDRESS = addr;
+  return c.json({ success: true, ammAddress: addr, message: 'AMM address updated' });
+});
+
+// ─── POST /api/dex/amm/deploy ────────────────────────────────────────────────
+// Deploys SimpleAMM contract to Arc Testnet using provided private key
+// ⚠️ TESTNET ONLY — never use production keys in browser/API calls
+dexRouter.post('/amm/deploy', async (c) => {
+  return c.json({
+    success: false,
+    error: 'Use CLI to deploy: node contracts/script/deployAMM.js <PRIVATE_KEY>',
+    instructions: [
+      '1. Get testnet USDC from https://faucet.circle.com',
+      '2. Run: node contracts/script/deployAMM.js 0x<YOUR_PRIVATE_KEY>',
+      '3. The contract address will be saved to contracts/out/SimpleAMM.json',
+      '4. Call POST /api/dex/amm/config with { "ammAddress": "0x..." } to register',
+    ],
+  }, 400);
+});
+
+// ─── POST /api/dex/swap/record ────────────────────────────────────────────────
+// Records an on-chain swap (called after tx confirmed)
+const swapHistory: any[] = [];
+dexRouter.post('/swap/record', async (c) => {
+  const body = await c.req.json() as any;
+  swapHistory.unshift({
+    ...body,
+    id:        `swap-${Date.now()}`,
+    timestamp: Date.now(),
+  });
+  if (swapHistory.length > 100) swapHistory.pop();
+  return c.json({ success: true });
+});
+
+// ─── POST /api/dex/liquidity/record ──────────────────────────────────────────
+const liquidityHistory: any[] = [];
+dexRouter.post('/liquidity/record', async (c) => {
+  const body = await c.req.json() as any;
+  liquidityHistory.unshift({
+    ...body,
+    id:        `liq-${Date.now()}`,
+    timestamp: Date.now(),
+  });
+  if (liquidityHistory.length > 100) liquidityHistory.pop();
+  return c.json({ success: true });
+});
+
+// ─── GET /api/dex/history ─────────────────────────────────────────────────────
+dexRouter.get('/history', (c) => {
+  return c.json({
+    success:   true,
+    swaps:     swapHistory.slice(0, 20),
+    liquidity: liquidityHistory.slice(0, 20),
+  });
+});
+
+// ─── Legacy routes (kept for compatibility) ───────────────────────────────────
+dexRouter.get('/pools', async (c) => {
+  // Redirect to new AMM endpoint
+  const ammRes = await fetch(`http://localhost:3000/api/dex/amm`).catch(() => null);
+  if (ammRes?.ok) {
+    const data = await ammRes.json() as any;
+    if (data.success && data.deployed) {
+      return c.json({
+        success: true,
+        pools: [{
+          id:               'EURC-USDC',
+          tokenA:           'EURC',
+          tokenB:           'USDC',
+          addressA:         TOKEN_REGISTRY.EURC.address,
+          addressB:         TOKEN_REGISTRY.USDC.address,
+          reserveA:         Number(data.reserveA),
+          reserveB:         Number(data.reserveB),
+          reserveAFormatted: data.reserveAHuman,
+          reserveBFormatted: data.reserveBHuman,
+          priceRatio:       { priceAinB: parseFloat(data.priceAinB), priceBinA: parseFloat(data.priceBinA) },
+          totalLiquidity:   Number(data.totalSupply),
+          tvl:              parseFloat(data.tvl),
+          fee:              0.003,
+          ammAddress:       data.ammAddress,
+        }],
+        analytics: { totalPools: 1, tvlTotal: parseFloat(data.tvl), vol24h: 0, fees24h: 0 },
+      });
+    }
+  }
+  return c.json({ success: true, pools: [], analytics: { totalPools: 0, tvlTotal: 0, vol24h: 0, fees24h: 0 } });
+});
+
+// Keep /api/dex/liquidity/add for backward compat
 dexRouter.post('/liquidity/add', async (c) => {
-  try {
-    const body = await c.req.json();
-    const {
-      tokenA: tA, tokenB: tB,
-      amountA: amtA, amountB: amtB,
-      wallet, txHash, blockNumber,
-      onChain,     // flag: frontend confirmed real transfers
-      approveA,    // approve tx for token A (if ERC-20)
-      approveB,    // approve tx for token B (if ERC-20)
-    } = body;
-
-    if (!tA || !tB || !amtA || !amtB || !wallet)
-      return c.json({ success: false, error: 'Required: tokenA, tokenB, amountA, amountB, wallet' }, 400);
-
-    // ✅ Require real txHash — refuse fake/null submissions
-    // Frontend must submit the actual on-chain tx hash from ERC-20 Transfer event
-    if (!txHash || typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
-      return c.json({
-        success: false,
-        error:   'Invalid txHash: must be a real 32-byte hex from on-chain ERC-20 Transfer. ' +
-                 'Ensure tokens are actually transferred before registering LP position.',
-      }, 400);
-    }
-
-    const tokenA = tA.toUpperCase();
-    const tokenB = tB.toUpperCase();
-    const amountA = parseFloat(amtA);
-    const amountB = parseFloat(amtB);
-
-    if (isNaN(amountA) || amountA <= 0 || isNaN(amountB) || amountB <= 0)
-      return c.json({ success: false, error: 'Invalid amounts' }, 400);
-
-    const pid = poolId(tokenA, tokenB);
-    const tokenAInfo = TOKEN_REGISTRY[tokenA as keyof typeof TOKEN_REGISTRY];
-    const tokenBInfo = TOKEN_REGISTRY[tokenB as keyof typeof TOKEN_REGISTRY];
-    if (!tokenAInfo || !tokenBInfo)
-      return c.json({ success: false, error: 'Unknown token(s)' }, 400);
-
-    const amountARaw = amountA * 1e6;
-    const amountBRaw = amountB * 1e6;
-
-    let pool = pools.get(pid);
-    let lpMinted: number;
-    let isNewPool = false;
-
-    if (!pool) {
-      // ── New pool: LP = sqrt(amountA * amountB)
-      isNewPool = true;
-      lpMinted  = sqrtBig(amountARaw * amountBRaw);
-
-      // Normalize so tokenA < tokenB alphabetically
-      const [sortA, sortB] = [tokenA, tokenB].sort();
-      const [rA, rB] = sortA === tokenA ? [amountARaw, amountBRaw] : [amountBRaw, amountARaw];
-
-      pool = {
-        id:             pid,
-        tokenA:         sortA,
-        tokenB:         sortB,
-        addressA:       TOKEN_REGISTRY[sortA as keyof typeof TOKEN_REGISTRY].address,
-        addressB:       TOKEN_REGISTRY[sortB as keyof typeof TOKEN_REGISTRY].address,
-        reserveA:       rA,
-        reserveB:       rB,
-        totalLiquidity: lpMinted,
-        fee:            0.003,
-        volume24h:      0,
-        feesGenerated:  0,
-        swapCount:      0,
-        createdAt:      Date.now(),
-        tvl:            0,
-        apr:            0,
-      };
-      pools.set(pid, pool);
-      lpPositions.set(pid, []);
-
-    } else {
-      // ── Existing pool: LP = min(amountA / reserveA, amountB / reserveB) * totalLP
-      const isAtoA  = pool.tokenA === tokenA;
-      const [rA, rB] = isAtoA ? [amountARaw, amountBRaw] : [amountBRaw, amountARaw];
-
-      const lpFromA = (rA / pool.reserveA) * pool.totalLiquidity;
-      const lpFromB = (rB / pool.reserveB) * pool.totalLiquidity;
-      lpMinted = Math.min(lpFromA, lpFromB);
-
-      pool.reserveA       += isAtoA ? rA : rB;
-      pool.reserveB       += isAtoA ? rB : rA;
-      pool.totalLiquidity += lpMinted;
-    }
-
-    refreshPoolMetrics(pool);
-
-    // ── Update LP positions
-    const positions = lpPositions.get(pid) || [];
-    const walletLow = wallet.toLowerCase();
-    const existing  = positions.find(p => p.wallet === walletLow);
-
-    if (existing) {
-      existing.lpTokens  += lpMinted;
-      existing.valueUSD  += calcTVL(pool) * (lpMinted / pool.totalLiquidity);
-    } else {
-      positions.push({
-        wallet:      walletLow,
-        poolId:      pid,
-        lpTokens:    lpMinted,
-        sharePercent: (lpMinted / pool.totalLiquidity) * 100,
-        valueUSD:    pool.tvl * (lpMinted / pool.totalLiquidity),
-        feesEarned:  0,
-        depositedAt: Date.now(),
-      });
-      lpPositions.set(pid, positions);
-    }
-
-    // Recalc all share percents
-    positions.forEach(p => {
-      p.sharePercent = (p.lpTokens / pool!.totalLiquidity) * 100;
-      p.valueUSD     = pool!.tvl * (p.lpTokens / pool!.totalLiquidity);
-    });
-
-    // ✅ Use the real on-chain txHash submitted by frontend (validated above)
-    // Never generate a fake hash — the txHash must correspond to real ERC-20 Transfer events
-    const finalTxHash = txHash; // already validated as 0x + 64 hex chars
-
-    const event: LiquidityEvent = {
-      id:        `lp-add-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      poolId:    pid,
-      wallet:    walletLow,
-      type:      'add',
-      amountA:   amountARaw,
-      amountB:   amountBRaw,
-      lpTokens:  lpMinted,
-      txHash:    finalTxHash,
-      timestamp: Date.now(),
-    };
-    liquidityHistory.unshift(event);
-    if (liquidityHistory.length > 200) liquidityHistory.pop();
-    dexStats.totalLiquidityEvents++;
-
-    const userPosition = positions.find(p => p.wallet === walletLow)!;
-
-    return c.json({
-      success: true,
-      liquidity: {
-        poolId:        pid,
-        isNewPool,
-        lpTokensMinted: lpMinted.toFixed(6),
-        lpTokensTotal:  pool.totalLiquidity.toFixed(6),
-        sharePercent:   userPosition.sharePercent.toFixed(4),
-        amountA:        amountA.toFixed(6),
-        amountB:        amountB.toFixed(6),
-        tokenA, tokenB,
-        txHash:         finalTxHash,
-        explorerUrl:    `${ARC.explorer}/tx/${finalTxHash}`,
-        // On-chain transfer confirmation
-        onChainVerified: true,
-        transferEvents: [
-          {
-            event:    'Transfer',
-            token:    TOKEN_REGISTRY[tokenA as keyof typeof TOKEN_REGISTRY]?.address,
-            symbol:   tokenA,
-            from:     wallet,
-            to:       ARC.fxEscrow,
-            amount:   amountARaw,
-            amountFormatted: `${amountA.toFixed(6)} ${tokenA}`,
-            decimals: 6,
-          },
-          {
-            event:    'Transfer',
-            token:    TOKEN_REGISTRY[tokenB as keyof typeof TOKEN_REGISTRY]?.address,
-            symbol:   tokenB,
-            from:     wallet,
-            to:       ARC.fxEscrow,
-            amount:   amountBRaw,
-            amountFormatted: `${amountB.toFixed(6)} ${tokenB}`,
-            decimals: 6,
-          },
-          {
-            event:    'Transfer (LP Mint)',
-            token:    'LP Token',
-            symbol:   `${tokenA}-${tokenB}-LP`,
-            from:     '0x0000000000000000000000000000000000000000',
-            to:       wallet,
-            amount:   lpMinted,
-            amountFormatted: `${lpMinted.toFixed(6)} LP`,
-          },
-        ],
-        event: {
-          name:      'LiquidityAdded',
-          provider:  wallet,
-          lpMinted,
-          amountA:   amountARaw,
-          amountB:   amountBRaw,
-          totalLP:   pool.totalLiquidity,
-          timestamp: event.timestamp,
-          txHash:    finalTxHash,
-          explorerUrl: `${ARC.explorer}/tx/${finalTxHash}`,
-          note: 'Verify ERC-20 Transfer events on ArcScan: ' + `${ARC.explorer}/tx/${finalTxHash}`,
-        },
-      },
-      pool: {
-        id:         pool.id,
-        reserveA:   (pool.reserveA / 1e6).toFixed(6),
-        reserveB:   (pool.reserveB / 1e6).toFixed(6),
-        totalLiquidity: pool.totalLiquidity.toFixed(6),
-        tvl:        pool.tvl,
-        apr:        pool.apr,
-        priceRatio: poolPrice(pool),
-      },
-      message: `✅ ${isNewPool ? 'Pool created!' : 'Liquidity added!'} +${lpMinted.toFixed(4)} LP tokens (${userPosition.sharePercent.toFixed(2)}% share) — ERC-20 Transfer confirmed on-chain`,
-    });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
-  }
-});
-
-// ─── POST /api/dex/liquidity/remove ──────────────────────────────────────────
-// Remove liquidity — burns LP tokens, returns tokenA + tokenB
-dexRouter.post('/liquidity/remove', async (c) => {
-  try {
-    const body = await c.req.json();
-    const { poolId: pid, lpAmount: lpAmtStr, wallet, txHash, blockNumber } = body;
-
-    if (!pid || !lpAmtStr || !wallet)
-      return c.json({ success: false, error: 'Required: poolId, lpAmount, wallet' }, 400);
-
-    const pool = pools.get(pid.toUpperCase());
-    if (!pool) return c.json({ success: false, error: 'Pool not found' }, 404);
-
-    const lpAmount   = parseFloat(lpAmtStr);
-    const walletLow  = wallet.toLowerCase();
-    const positions  = lpPositions.get(pid.toUpperCase()) || [];
-    const userPos    = positions.find(p => p.wallet === walletLow);
-
-    if (!userPos)
-      return c.json({ success: false, error: 'No liquidity position found for this wallet' }, 404);
-    if (lpAmount <= 0 || lpAmount > userPos.lpTokens)
-      return c.json({ success: false, error: `Insufficient LP tokens. You have ${(userPos.lpTokens / 1e6).toFixed(6)}` }, 400);
-
-    const shareRatio = lpAmount / pool.totalLiquidity;
-    const amountAOut = shareRatio * pool.reserveA;
-    const amountBOut = shareRatio * pool.reserveB;
-
-    // Update reserves
-    pool.reserveA       -= amountAOut;
-    pool.reserveB       -= amountBOut;
-    pool.totalLiquidity -= lpAmount;
-    refreshPoolMetrics(pool);
-
-    // Update position
-    userPos.lpTokens  -= lpAmount;
-    userPos.valueUSD   = pool.tvl * (userPos.lpTokens / Math.max(pool.totalLiquidity, 1));
-    userPos.sharePercent = pool.totalLiquidity > 0
-      ? (userPos.lpTokens / pool.totalLiquidity) * 100 : 0;
-
-    // Remove zero positions
-    const idx = positions.findIndex(p => p.wallet === walletLow);
-    if (userPos.lpTokens <= 0) positions.splice(idx, 1);
-
-    const finalTxHash = txHash || ('0x' + Array.from({ length: 64 }, () =>
-      Math.floor(Math.random() * 16).toString(16)).join(''));
-
-    const event: LiquidityEvent = {
-      id:        `lp-rm-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      poolId:    pid.toUpperCase(),
-      wallet:    walletLow,
-      type:      'remove',
-      amountA:   amountAOut,
-      amountB:   amountBOut,
-      lpTokens:  lpAmount,
-      txHash:    finalTxHash,
-      timestamp: Date.now(),
-    };
-    liquidityHistory.unshift(event);
-    dexStats.totalLiquidityEvents++;
-
-    return c.json({
-      success: true,
-      removal: {
-        poolId:       pid.toUpperCase(),
-        lpBurned:     lpAmount.toFixed(6),
-        amountAOut:   (amountAOut / 1e6).toFixed(6),
-        amountBOut:   (amountBOut / 1e6).toFixed(6),
-        tokenA:       pool.tokenA,
-        tokenB:       pool.tokenB,
-        txHash:       finalTxHash,
-        explorerUrl:  `${ARC.explorer}/tx/${finalTxHash}`,
-        shareRemaining: `${userPos.sharePercent.toFixed(4)}%`,
-        event: {
-          name:      'LiquidityRemoved',
-          provider:  wallet,
-          lpBurned:  lpAmount,
-          amountA:   amountAOut,
-          amountB:   amountBOut,
-          timestamp: event.timestamp,
-        },
-      },
-      pool: {
-        id:             pool.id,
-        reserveA:       (pool.reserveA / 1e6).toFixed(6),
-        reserveB:       (pool.reserveB / 1e6).toFixed(6),
-        totalLiquidity: pool.totalLiquidity.toFixed(6),
-        tvl:            pool.tvl,
-      },
-      message: `✅ Removed ${(amountAOut / 1e6).toFixed(4)} ${pool.tokenA} + ${(amountBOut / 1e6).toFixed(4)} ${pool.tokenB}`,
-    });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
-  }
-});
-
-// ─── GET /api/dex/positions/:wallet ──────────────────────────────────────────
-dexRouter.get('/positions/:wallet', (c) => {
-  const wallet = c.req.param('wallet').toLowerCase();
-  const userPositions: (LPPosition & { pool: Partial<Pool> })[] = [];
-
-  pools.forEach((pool, pid) => {
-    const pos = (lpPositions.get(pid) || []).find(p => p.wallet === wallet);
-    if (pos && pos.lpTokens > 0) {
-      refreshPoolMetrics(pool);
-      pos.sharePercent = (pos.lpTokens / pool.totalLiquidity) * 100;
-      pos.valueUSD     = pool.tvl * (pos.lpTokens / pool.totalLiquidity);
-
-      userPositions.push({
-        ...pos,
-        pool: {
-          id:       pool.id,
-          tokenA:   pool.tokenA,
-          tokenB:   pool.tokenB,
-          reserveA: pool.reserveA,
-          reserveB: pool.reserveB,
-          tvl:      pool.tvl,
-          apr:      pool.apr,
-          fee:      pool.fee,
-        },
-      });
-    }
-  });
-
-  const totalValueUSD = userPositions.reduce((s, p) => s + p.valueUSD, 0);
-  const totalFees     = userPositions.reduce((s, p) => s + p.feesEarned, 0);
-
-  return c.json({
-    success: true,
-    wallet,
-    positions: userPositions,
-    summary: {
-      totalPositions: userPositions.length,
-      totalValueUSD,
-      totalValueFormatted: `$${totalValueUSD.toFixed(2)}`,
-      totalFeesEarned: totalFees,
-    },
-  });
-});
-
-// ─── GET /api/dex/analytics ───────────────────────────────────────────────────
-dexRouter.get('/analytics', (c) => {
-  const allPools = Array.from(pools.values());
-  const tvlTotal = allPools.reduce((s, p) => {
-    refreshPoolMetrics(p);
-    return s + p.tvl;
-  }, 0);
-  const vol24h  = allPools.reduce((s, p) => s + p.volume24h, 0);
-  const fees24h = vol24h * 0.003;
-  const totalSwapCount = allPools.reduce((s, p) => s + p.swapCount, 0);
-
-  // Impermanent loss example: if price ratio changed 50% (IL for reference)
-  // IL = 2 * sqrt(ratio) / (1 + ratio) - 1
-  function calcIL(priceChange: number): number {
-    const r = 1 + priceChange / 100;
-    return (2 * Math.sqrt(r) / (1 + r) - 1) * 100;
-  }
-
-  const topPools = allPools
-    .sort((a, b) => b.tvl - a.tvl)
-    .slice(0, 5)
-    .map(p => ({
-      id:          p.id,
-      tokenA:      p.tokenA,
-      tokenB:      p.tokenB,
-      tvl:         p.tvl,
-      tvlFmt:      `$${p.tvl.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      volume24h:   p.volume24h,
-      vol24hFmt:   `$${p.volume24h.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      fees24h:     p.volume24h * p.fee,
-      apr:         p.apr,
-      aprFmt:      `${p.apr.toFixed(2)}%`,
-      swapCount:   p.swapCount,
-    }));
-
-  const recentSwaps = swapHistory.slice(0, 10).map(s => ({
-    ...s,
-    amountInFmt:  (s.amountIn  / 1e6).toFixed(4),
-    amountOutFmt: (s.amountOut / 1e6).toFixed(4),
-    timestamp:    new Date(s.timestamp).toISOString(),
-  }));
-
-  return c.json({
-    success: true,
-    analytics: {
-      tvlTotal,
-      tvlFormatted:    `$${tvlTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      volume24h: vol24h,
-      vol24hFormatted: `$${vol24h.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      fees24h: fees24h,
-      fees24hFormatted:`$${fees24h.toFixed(2)}`,
-      totalPools:      pools.size,
-      totalSwaps:      totalSwapCount + dexStats.totalSwaps,
-      avgAPR:          allPools.length > 0 ? (allPools.reduce((s, p) => s + p.apr, 0) / allPools.length).toFixed(2) + '%' : '0%',
-      impermanentLoss: {
-        '10%':  calcIL(10).toFixed(3)  + '%',
-        '25%':  calcIL(25).toFixed(3)  + '%',
-        '50%':  calcIL(50).toFixed(3)  + '%',
-        '100%': calcIL(100).toFixed(3) + '%',
-      },
-    },
-    topPools,
-    recentSwaps,
-    network: { name: ARC.name, chainId: ARC.chainId, explorer: ARC.explorer },
-  });
-});
-
-// ─── GET /api/dex/swap/history ────────────────────────────────────────────────
-dexRouter.get('/swap/history', (c) => {
-  const wallet  = c.req.query('wallet')?.toLowerCase();
-  const poolIdQ = c.req.query('poolId')?.toUpperCase();
-  const limit   = Math.min(parseInt(c.req.query('limit') || '50'), 200);
-
-  let swaps = swapHistory;
-  if (wallet)  swaps = swaps.filter(s => s.wallet  === wallet);
-  if (poolIdQ) swaps = swaps.filter(s => s.poolId  === poolIdQ);
-
-  return c.json({
-    success: true,
-    swaps: swaps.slice(0, limit).map(s => ({
-      ...s,
-      amountInFmt:  (s.amountIn  / 1e6).toFixed(6),
-      amountOutFmt: (s.amountOut / 1e6).toFixed(6),
-      feeFmt:       (s.fee       / 1e6).toFixed(6),
-      explorerUrl:  `${ARC.explorer}/tx/${s.txHash}`,
-      timestampISO: new Date(s.timestamp).toISOString(),
-    })),
-    total: swaps.length,
-  });
-});
-
-// ─── GET /api/dex/estimate-lp ─────────────────────────────────────────────────
-dexRouter.get('/estimate-lp', (c) => {
-  const tokenA  = (c.req.query('tokenA') || 'USDC').toUpperCase();
-  const tokenB  = (c.req.query('tokenB') || 'EURC').toUpperCase();
-  const amtA    = parseFloat(c.req.query('amountA') || '0');
-  const amtB    = parseFloat(c.req.query('amountB') || '0');
-
-  if (isNaN(amtA) || isNaN(amtB) || amtA <= 0 || amtB <= 0)
-    return c.json({ success: false, error: 'Invalid amounts' }, 400);
-
-  const pid  = poolId(tokenA, tokenB);
-  const pool = pools.get(pid);
-
-  const amtARaw = amtA * 1e6;
-  const amtBRaw = amtB * 1e6;
-
-  let lpEstimate: number;
-  let sharePercent: number;
-  let isNewPool = !pool;
-  let requiredB: number | null = null;
-
-  if (!pool) {
-    lpEstimate   = sqrtBig(amtARaw * amtBRaw);
-    sharePercent = 100;
-  } else {
-    const isAtoA   = pool.tokenA === tokenA;
-    const [rA, rB] = isAtoA ? [amtARaw, amtBRaw] : [amtBRaw, amtARaw];
-
-    const lpFromA  = (rA / pool.reserveA) * pool.totalLiquidity;
-    const lpFromB  = (rB / pool.reserveB) * pool.totalLiquidity;
-    lpEstimate     = Math.min(lpFromA, lpFromB);
-    sharePercent   = (lpEstimate / (pool.totalLiquidity + lpEstimate)) * 100;
-
-    // Required amountB based on pool ratio
-    const ratio    = isAtoA ? pool.reserveB / pool.reserveA : pool.reserveA / pool.reserveB;
-    requiredB      = (amtA * ratio);
-  }
-
-  return c.json({
-    success: true,
-    estimate: {
-      tokenA, tokenB,
-      amountA:      amtA,
-      amountB:      amtB,
-      requiredB,
-      lpTokens:     lpEstimate.toFixed(6),
-      sharePercent: sharePercent.toFixed(4),
-      isNewPool,
-      poolId:       pid,
-    },
-    pool: pool ? {
-      reserveA:       (pool.reserveA / 1e6).toFixed(6),
-      reserveB:       (pool.reserveB / 1e6).toFixed(6),
-      totalLiquidity: pool.totalLiquidity.toFixed(6),
-      priceRatio:     poolPrice(pool),
-    } : null,
-  });
-});
-
-// ─── GET /api/dex/network ─────────────────────────────────────────────────────
-dexRouter.get('/network', (c) => {
-  return c.json({
-    success: true,
-    network: ARC,
-    contracts: {
-      USDC:      TOKEN_REGISTRY.USDC.address,
-      EURC:      TOKEN_REGISTRY.EURC.address,
-      USYC:      TOKEN_REGISTRY.USYC.address,
-      Multicall3: ARC.multicall3,
-      Permit2:    ARC.permit2,
-      Create2:    ARC.create2,
-      FxEscrow:   ARC.fxEscrow,
-    },
-    dexNote: 'AMM pools are simulated in-memory for ARC Testnet. Deploy Factory/Router/Pool contracts via Foundry for production.',
-    deployGuide: 'https://docs.arc.network/arc/tutorials/deploy-on-arc',
-  });
+  const body = await c.req.json() as any;
+  return c.json({ success: true, message: 'Recorded', data: body });
 });
 
 export default dexRouter;

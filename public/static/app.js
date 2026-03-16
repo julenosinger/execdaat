@@ -59,8 +59,14 @@ function switchTab(tab) {
     if (window.loadGuardianStatus) window.loadGuardianStatus();
     if (window.loadYieldData) window.loadYieldData();
   }
-  if (tab === 'swap' && window.loadSwap) window.loadSwap();
-  if (tab === 'liquidity' && window.dexInit) window.dexInit();
+  if (tab === 'dex') {
+    if (window.ammInit && !window._ammInitialized) {
+      window._ammInitialized = true;
+      window.ammInit();
+    } else if (window.ammRefreshAll) {
+      window.ammRefreshAll();
+    }
+  }
   if (tab === 'escrow' && window.escrowInit) window.escrowInit();
   if (tab === 'vaults' && window.loadVaultData) window.loadVaultData();
 }
