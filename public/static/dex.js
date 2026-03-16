@@ -46,6 +46,55 @@ const DEX_SEL = {
 // Replace with your deployed Factory/Router address when available.
 const DEX_ROUTER = '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8';
 
+// ─── Standard ERC-20 ABI (minimal) ──────────────────────────────────────────
+// Used with ethers.Contract to interact with USDC, EURC and USYC on Arc Testnet.
+// All three tokens implement the standard OpenZeppelin ERC-20 interface.
+const ERC20_ABI = [
+  // ── Read ──────────────────────────────────────────────────────────────────
+  'function name()                                        view returns (string)',
+  'function symbol()                                      view returns (string)',
+  'function decimals()                                    view returns (uint8)',
+  'function totalSupply()                                 view returns (uint256)',
+  'function balanceOf(address owner)                      view returns (uint256)',
+  'function allowance(address owner, address spender)     view returns (uint256)',
+  // ── Write ─────────────────────────────────────────────────────────────────
+  'function approve(address spender, uint256 amount)      returns (bool)',
+  'function transfer(address to, uint256 amount)          returns (bool)',
+  'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+  // ── Events ────────────────────────────────────────────────────────────────
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+  'event Approval(address indexed owner, address indexed spender, uint256 value)',
+];
+
+// ─── ethers.js helpers ───────────────────────────────────────────────────────
+// Returns an ethers.BrowserProvider wrapping the injected wallet.
+function dGetProvider() {
+  const w = window.walletState?.provider;
+  if (!w) throw new Error('Wallet not connected. Please connect your EVM wallet.');
+  // ethers v6: BrowserProvider; ethers v5: Web3Provider
+  if (window.ethers?.BrowserProvider) return new window.ethers.BrowserProvider(w);
+  if (window.ethers?.providers?.Web3Provider) return new window.ethers.providers.Web3Provider(w);
+  // Fallback: use raw provider for manual ABI calls (no ethers loaded)
+  return null;
+}
+
+// Returns a signer for the connected wallet.
+async function dGetSigner() {
+  const provider = dGetProvider();
+  if (!provider) throw new Error('ethers.js not available — using raw provider fallback');
+  return provider.getSigner();
+}
+
+// Instantiates an ethers.Contract for a token symbol.
+// Usage: const token = await dGetContract('EURC');
+//        await token.approve(DEX_ROUTER, amountRaw);
+async function dGetContract(symbol) {
+  const tokenInfo = DEX_TOKENS[symbol];
+  if (!tokenInfo) throw new Error(`Unknown token: ${symbol}`);
+  const signer = await dGetSigner();
+  return new window.ethers.Contract(tokenInfo.address, ERC20_ABI, signer);
+}
+
 // ─── USDC 6-decimal parseUnits (mirrors ethers.parseUnits) ───────────────────
 // USDC/EURC/USYC all use 6 decimals on Arc Testnet.
 //   dParseUnits(1)    → 1000000n
@@ -53,11 +102,18 @@ const DEX_ROUTER = '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8';
 //   dParseUnits(10)   → 10000000n
 // ⚠️  NEVER pass raw floats to contract calls — always use dParseUnits() first.
 function dParseUnits(humanAmount) {
+  // Prefer ethers.parseUnits when ethers is available
+  if (window.ethers?.parseUnits) {
+    const raw = window.ethers.parseUnits(String(humanAmount), 6);
+    console.log(`[DEX:parseUnits] ethers.parseUnits(${humanAmount}, 6) → ${raw.toString()}`);
+    return raw;
+  }
+  // Manual fallback (exact, no floating-point errors)
   const str = String(humanAmount).trim();
   const [intPart = '0', fracPart = ''] = str.split('.');
   const frac = fracPart.slice(0, 6).padEnd(6, '0');
   const result = BigInt(intPart) * 1_000_000n + BigInt(frac);
-  console.log(`[DEX:parseUnits] ${humanAmount} → ${result.toString()} (6-dec base units)`);
+  console.log(`[DEX:parseUnits] manual(${humanAmount}) → ${result.toString()} (6-dec base units)`);
   return result;
 }
 function dToHex(humanAmount) {
@@ -189,7 +245,10 @@ async function dWaitReceipt(txHash, maxAttempts = 30) {
   return { status: '0x1', txHash, blockNumber: null };
 }
 
-// ─── Read on-chain token balance ──────────────────────────────────────────────
+// ─── Read on-chain token balance via ethers.Contract.balanceOf ───────────────
+// For USDC (native on Arc): eth_getBalance.
+// For EURC/USYC: contract.balanceOf(userAddress) → standard ERC-20.
+// Validates balance before every swap/liquidity operation.
 async function dReadBalance(symbol, address) {
   const provider = window.walletState?.provider;
   if (!provider || !address) return null;
@@ -201,8 +260,13 @@ async function dReadBalance(symbol, address) {
       // USDC is native gas token on Arc — use eth_getBalance
       const hex = await provider.request({ method: 'eth_getBalance', params: [address, 'latest'] });
       rawBal = BigInt(hex);
+    } else if (window.ethers?.Contract) {
+      // ✅ Use ethers.Contract.balanceOf() — standard ERC-20 call
+      const contract = await dGetContract(symbol);
+      rawBal = await contract.balanceOf(address);
+      console.log(`[DEX:balance] ethers.Contract(${symbol}).balanceOf(${address.slice(0,10)}…) = ${rawBal.toString()}`);
     } else {
-      // ERC-20: call balanceOf(address)
+      // Fallback: manual ABI call
       const data = DEX_SEL.balanceOf + dEncAddr(address);
       const res  = await provider.request({ method: 'eth_call', params: [{ to: token.address, data }, 'latest'] });
       rawBal = BigInt(res);
@@ -216,25 +280,35 @@ async function dReadBalance(symbol, address) {
   }
 }
 
-// ─── Read allowance ───────────────────────────────────────────────────────────
+// ─── Read allowance via ethers.Contract.allowance ────────────────────────────
 async function dReadAllowance(symbol, owner, spender) {
   const provider = window.walletState?.provider;
   const token = DEX_TOKENS[symbol];
   // USDC is native on Arc — no ERC-20 allowance needed
   if (!provider || !token || token.isNative) return Infinity;
   try {
-    const data = DEX_SEL.allowance + dEncAddr(owner) + dEncAddr(spender);
-    const res  = await provider.request({ method: 'eth_call', params: [{ to: token.address, data }, 'latest'] });
-    const allowanceRaw = BigInt(res);
+    let allowanceRaw;
+    if (window.ethers?.Contract) {
+      // ✅ Use ethers.Contract.allowance() — standard ERC-20 call
+      const contract = await dGetContract(symbol);
+      allowanceRaw = await contract.allowance(owner, spender);
+      console.log(`[DEX:allowance] ethers.Contract(${symbol}).allowance(${owner.slice(0,10)}…, ${spender.slice(0,10)}…) = ${allowanceRaw.toString()}`);
+    } else {
+      // Fallback: manual ABI call
+      const data = DEX_SEL.allowance + dEncAddr(owner) + dEncAddr(spender);
+      const res  = await provider.request({ method: 'eth_call', params: [{ to: token.address, data }, 'latest'] });
+      allowanceRaw = BigInt(res);
+    }
     const human = Number(allowanceRaw) / 1e6;
     console.log(`[DEX:allowance] ${symbol} owner=${owner.slice(0,10)}… spender=${spender.slice(0,10)}… = ${allowanceRaw.toString()} = ${human.toFixed(6)}`);
     return human;
   } catch { return 0; }
 }
 
-// ─── Approve ERC-20 token (real on-chain approve) ────────────────────────────
-// Uses dParseUnits() for exact 6-decimal conversion.
-// Approves 2× amount as buffer for gas fluctuations.
+// ─── Approve ERC-20 token via ethers.Contract.approve ────────────────────────
+// Calls: await token.approve(routerAddress, amount)
+// Uses ethers.parseUnits(amount, 6) for exact 6-decimal conversion.
+// Approves 2× as buffer so the router can call transferFrom without re-approval.
 async function dApproveToken(symbol, spender, amount) {
   const token = DEX_TOKENS[symbol];
   // USDC native on Arc does not require ERC-20 approve
@@ -242,24 +316,49 @@ async function dApproveToken(symbol, spender, amount) {
     console.log(`[DEX:approve] ${symbol} is native — skipping ERC-20 approve`);
     return null;
   }
-  // ✅ Use dParseUnits for exact 6-decimal conversion
-  // e.g. 1.5 EURC → 1500000n; approve 2× for safety buffer
+  // ✅ Use dParseUnits for exact 6-decimal conversion (uses ethers.parseUnits internally)
+  // Approve 2× so router transferFrom does not need re-approval on minor fluctuations
   const amountRaw = dParseUnits(amount) * 2n;
   console.log(`[DEX:approve] ${symbol} spender=${spender.slice(0,10)}… amount=${amount} → raw=${amountRaw.toString()} (2× buffer)`);
-  const data   = DEX_SEL.approve + dEncAddr(spender) + dEncUint(amountRaw);
-  const txHash = await dSendTx(token.address, data);
-  console.log(`[DEX:approve] ✅ Approve tx submitted: ${txHash}`);
-  const receipt = await dWaitReceipt(txHash);
-  if (receipt.status !== '0x1' && receipt.status !== 1) {
-    throw new Error(`Approve failed for ${symbol} (tx: ${txHash})`);
+
+  let txHash;
+  if (window.ethers?.Contract) {
+    // ✅ ethers.Contract: token.approve(routerAddress, amount)
+    const contract = await dGetContract(symbol);
+    console.log(`[DEX:approve] ethers.Contract(${symbol}).approve(${spender.slice(0,10)}…, ${amountRaw.toString()})`);
+    const tx = await contract.approve(spender, amountRaw);
+    console.log(`[DEX:approve] ✅ Approve tx submitted: ${tx.hash}`);
+    const receipt = await tx.wait();
+    if (!receipt || (receipt.status !== undefined && receipt.status !== 1)) {
+      throw new Error(`Approve failed for ${symbol} (tx: ${tx.hash})`);
+    }
+    console.log(`[DEX:approve] ✅ Approve confirmed block=${receipt.blockNumber} — Approval event emitted`);
+    txHash = tx.hash;
+  } else {
+    // Fallback: raw manual ABI encoding
+    const data = DEX_SEL.approve + dEncAddr(spender) + dEncUint(amountRaw);
+    txHash = await dSendTx(token.address, data);
+    console.log(`[DEX:approve] ✅ Approve tx submitted (raw): ${txHash}`);
+    const receipt = await dWaitReceipt(txHash);
+    if (receipt.status !== '0x1' && receipt.status !== 1) {
+      throw new Error(`Approve failed for ${symbol} (tx: ${txHash})`);
+    }
+    console.log(`[DEX:approve] ✅ Approve confirmed block=${receipt.blockNumber}`);
   }
-  console.log(`[DEX:approve] ✅ Approve confirmed block=${receipt.blockNumber}`);
   return txHash;
 }
 
-// ─── ERC-20 transferFrom (pool pulls tokens from user) ───────────────────────
-// Used after approve: router calls transferFrom(user, pool, amount)
-// On Arc Testnet with native USDC: use eth_sendTransaction with value instead.
+// ─── ERC-20 transfer / USDC native transfer ──────────────────────────────────
+// For USDC (native): sends tx.value to router (visible on ArcScan as native transfer).
+// For ERC-20 (EURC/USYC): calls token.transfer(router, amount) via ethers.Contract
+//   which emits a standard ERC-20 Transfer event visible on ArcScan.
+//
+// Note on transferFrom vs transfer:
+//   In this custodian model the user signs directly; token.transfer(router, amount)
+//   is equivalent to a router calling transferFrom after approve.
+//   For production (deployed router contract), switch to transferFrom:
+//     await token.transferFrom(userAddress, poolAddress, amountRaw)
+//   called from within the router contract after the user approved.
 async function dTransferToken(symbol, to, amount) {
   const token = DEX_TOKENS[symbol];
   if (!token) throw new Error(`Unknown token: ${symbol}`);
@@ -267,6 +366,7 @@ async function dTransferToken(symbol, to, amount) {
   // ✅ Use dParseUnits for exact 6-decimal conversion
   const amountRaw = dParseUnits(amount);
   console.log(`[DEX:transfer] ${symbol} → ${to.slice(0,10)}… amount=${amount} → raw=${amountRaw.toString()}`);
+  console.log(`[DEX:transfer] USDC amount: ${amountRaw.toString()} (6-dec base units, as required by contract)`);
 
   let txHash;
   if (token.isNative) {
@@ -274,15 +374,35 @@ async function dTransferToken(symbol, to, amount) {
     const valueHex = '0x' + amountRaw.toString(16);
     console.log(`[DEX:transfer] USDC native → value=${valueHex}`);
     txHash = await dSendTx(to, '0x', valueHex);
+  } else if (window.ethers?.Contract) {
+    // ✅ ethers.Contract: token.transfer(to, amount) → emits ERC-20 Transfer event
+    // Pool receives real tokens; reserves update after on-chain confirmation.
+    const contract = await dGetContract(symbol);
+    console.log(`[DEX:transfer] ethers.Contract(${symbol}).transfer(${to.slice(0,10)}…, ${amountRaw.toString()})`);
+    const tx = await contract.transfer(to, amountRaw);
+    console.log(`[DEX:transfer] ✅ Transfer tx submitted: ${tx.hash} — Transfer event will be emitted`);
+    txHash = tx.hash;
+    // Wait for the Transfer event to be mined
+    const receipt = await tx.wait();
+    if (!receipt || (receipt.status !== undefined && receipt.status !== 1)) {
+      throw new Error(`ERC-20 transfer failed for ${symbol} (tx: ${tx.hash})`);
+    }
+    console.log(`[DEX:transfer] ✅ Transfer confirmed block=${receipt.blockNumber} — Transfer event emitted on ArcScan`);
+    // Log Transfer event details
+    if (receipt.logs?.length > 0) {
+      const transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+      const transferLog = receipt.logs.find(l => l.topics?.[0] === transferTopic);
+      if (transferLog) {
+        console.log(`[DEX:transfer] Transfer event: from=${transferLog.topics[1]} to=${transferLog.topics[2]} value=${BigInt(transferLog.data || '0x0').toString()}`);
+      }
+    }
   } else {
-    // ERC-20 token: call transfer(to, amount)
-    // Note: real router would call transferFrom; here we call transfer directly
-    // since the user signs — equivalent for testnet custodian model.
+    // Fallback: raw manual ABI encoding
     const data = DEX_SEL.transfer + dEncAddr(to) + dEncUint(amountRaw);
-    console.log(`[DEX:transfer] ERC-20 transfer(${to.slice(0,10)}…, ${amountRaw.toString()})`);
+    console.log(`[DEX:transfer] ERC-20 transfer raw (fallback): transfer(${to.slice(0,10)}…, ${amountRaw.toString()})`);
     txHash = await dSendTx(token.address, data);
+    console.log(`[DEX:transfer] ✅ Transfer tx submitted (raw): ${txHash}`);
   }
-  console.log(`[DEX:transfer] ✅ Transfer tx submitted: ${txHash}`);
   return txHash;
 }
 
@@ -1603,8 +1723,17 @@ window.dexInit = function() {
 };
 
 console.log('[DEX] ARC AMM DEX loaded · ChainID:', DEX_CHAIN_ID, '· Formula: x*y=k · Fee: 0.3%');
-console.log('[DEX] Real ERC-20 Transfer enforcement:');
+console.log('[DEX] ethers.js integration:');
+console.log('[DEX]   USDC  0x3600000000000000000000000000000000000000 (native, 6 dec)');
+console.log('[DEX]   EURC  0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a (ERC-20, 6 dec)');
+console.log('[DEX]   USYC  0xe9185F0c5F296Ed1797AaE4238D26CCaBEadb86C (ERC-20, 6 dec)');
+console.log('[DEX]   ERC20_ABI loaded — ethers.Contract available:', !!window.ethers?.Contract);
+console.log('[DEX] Real ERC-20 transfer flow:');
+console.log('[DEX]   1. token.balanceOf(userAddress)               → validate user has enough');
+console.log('[DEX]   2. token.approve(routerAddress, amount)        → authorize router');
+console.log('[DEX]   3. token.transfer(routerAddress, amount)       → move tokens on-chain');
+console.log('[DEX]      (production: router.transferFrom(user, pool, amount) after approve)');
 console.log('[DEX]   USDC (native)  → eth_sendTransaction value=amountRaw');
-console.log('[DEX]   EURC/USYC      → ERC-20 approve() + transfer() → emits Transfer event on ArcScan');
-console.log('[DEX]   parseUnits: 1 USDC → 1000000 base units (6 decimals)');
+console.log('[DEX]   EURC/USYC      → ethers.Contract.approve() + transfer() → Transfer event on ArcScan');
+console.log('[DEX]   parseUnits: 1 USDC → 1,000,000 · 0.5 → 500,000 · 10 → 10,000,000');
 console.log('[DEX]   Router/Custodian:', DEX_ROUTER);

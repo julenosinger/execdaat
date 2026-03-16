@@ -96,6 +96,8 @@ app.get('/', (c) => {
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+  <!-- ethers.js v6 — used for ethers.Contract, ethers.parseUnits, BrowserProvider -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- csv-upload.js handles all CSV parsing natively -->
   <link href="/static/styles.css" rel="stylesheet">
   <script src="/static/i18n.js"></script>
@@ -2846,6 +2848,22 @@ forge create src/ContractManager.sol:ContractManager \\
   <script src="/static/yield-optimizer.js"></script>
   <script src="/static/escrow.js"></script>
   <script src="/static/chat.js"></script>
+  <script>
+    // ── ethers.js availability check ──────────────────────────────────────────
+    // ethers v6 UMD exposes window.ethers
+    if (window.ethers) {
+      console.log('[ARC] ethers.js loaded · version:', window.ethers.version || '6.x');
+      console.log('[ARC] USDC contract:', '0x3600000000000000000000000000000000000000');
+      console.log('[ARC] ERC20 ABI loaded · ethers.Contract available for approve/transferFrom');
+      // Confirm parseUnits works: 1 USDC → 1000000
+      try {
+        const test = window.ethers.parseUnits('1', 6);
+        console.log('[ARC] ethers.parseUnits(1, 6) =', test.toString(), '(expected 1000000)');
+      } catch(e) { console.warn('[ARC] ethers.parseUnits test failed:', e.message); }
+    } else {
+      console.warn('[ARC] ethers.js not loaded — DEX will use raw ABI fallback (no ethers.Contract)');
+    }
+  </script>
 </body>
 </html>`)
 })
