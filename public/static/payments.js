@@ -22,7 +22,91 @@ const PAY_SELECTORS = {
   decimals:  '0x313ce567',
 };
 
-// ─── Module State ─────────────────────────────────────────────────────────────
+// ─── ERC-20 ABI (padrão completo) ─────────────────────────────────────────────
+// Usado com ethers.Contract para USDC (0x3600…) e EURC no Arc Testnet.
+const PAY_ERC20_ABI = [
+  'function balanceOf(address owner)                      view returns (uint256)',
+  'function decimals()                                    view returns (uint8)',
+  'function symbol()                                      view returns (string)',
+  'function allowance(address owner, address spender)     view returns (uint256)',
+  'function approve(address spender, uint256 amount)      returns (bool)',
+  'function transfer(address to, uint256 amount)          returns (bool)',
+  'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+  'event Approval(address indexed owner, address indexed spender, uint256 value)',
+];
+
+// ─── ethers.js helpers ────────────────────────────────────────────────────────
+// Retorna um ethers.BrowserProvider (v6) ou Web3Provider (v5) do provider injetado.
+function payGetProvider() {
+  const raw = window.walletState?.provider;
+  if (!raw) throw new Error('Wallet not connected. Please connect your EVM wallet first.');
+  if (window.ethers?.BrowserProvider)
+    return new window.ethers.BrowserProvider(raw);
+  if (window.ethers?.providers?.Web3Provider)
+    return new window.ethers.providers.Web3Provider(raw);
+  return null; // sem ethers — usa fallback raw
+}
+
+// Retorna o signer conectado para assinar transações.
+async function payGetSigner() {
+  const provider = payGetProvider();
+  if (!provider) throw new Error('ethers.js não disponível');
+  return provider.getSigner();
+}
+
+// Instancia ethers.Contract para USDC ou EURC.
+// Retorna null se ethers não estiver disponível (usa raw fallback).
+async function payGetContract(token) {
+  if (!window.ethers?.Contract) return null;
+  const addr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
+  const signer = await payGetSigner();
+  return new window.ethers.Contract(addr, PAY_ERC20_ABI, signer);
+}
+
+// Normaliza valor humano para string com no máximo 6 casas decimais.
+// ethers.parseUnits v6 EXIGE string — rejeita números com TypeError.
+function payNormaliseAmount(humanAmount) {
+  let s = String(humanAmount).trim();
+  // Trata notação científica (ex: 1e-6 → "0.000001")
+  if (/[eE]/.test(s)) s = Number(s).toFixed(6);
+  // Trunca para max 6 casas decimais
+  const dot = s.indexOf('.');
+  if (dot !== -1 && s.length - dot - 1 > 6) s = s.slice(0, dot + 7);
+  return s;
+}
+
+// Converte valor humano para BigInt com 6 decimais.
+//   payParseUnits(10)   → 10000000n
+//   payParseUnits(0.5)  → 500000n
+//   payParseUnits("1")  → 1000000n
+function payParseUnits(humanAmount) {
+  const s = payNormaliseAmount(humanAmount);
+  if (window.ethers?.parseUnits) {
+    try {
+      const raw = window.ethers.parseUnits(s, 6);
+      console.log(`[PAY:parseUnits] ethers.parseUnits("${s}", 6) → ${raw.toString()}`);
+      return raw;
+    } catch (e) {
+      console.warn(`[PAY:parseUnits] ethers falhou para "${s}":`, e.message, '— usando fallback manual');
+    }
+  }
+  // Fallback manual (sem floating-point errors)
+  const [intPart = '0', fracPart = ''] = s.split('.');
+  const frac = fracPart.slice(0, 6).padEnd(6, '0');
+  const result = BigInt(intPart) * 1_000_000n + BigInt(frac);
+  console.log(`[PAY:parseUnits] manual("${s}") → ${result.toString()}`);
+  return result;
+}
+
+// Converte base units (BigInt/string) para número humano.
+//   payFormatUnits(1000000n) → "1.000000"
+function payFormatUnits(rawAmount) {
+  if (window.ethers?.formatUnits) {
+    return window.ethers.formatUnits(rawAmount, 6);
+  }
+  return (Number(rawAmount) / 1e6).toFixed(6);
+}
 const payState = {
   token: 'USDC',
   recipientBalance: null,       // on-chain balance of recipient (preview)
@@ -74,18 +158,35 @@ async function payEnsureNetwork() {
   return true;
 }
 
-// ─── Balance reading ──────────────────────────────────────────────────────────
+// ─── Balance reading via ethers.Contract.balanceOf ───────────────────────────
+// USDC: nativo no Arc → eth_getBalance (não é ERC-20 padrão)
+// EURC: ERC-20 → contract.balanceOf(address) via ethers.Contract
+// Retorna valor humano (float), ex: 10.5 para 10.5 USDC
 async function payReadBalance(address, token = 'USDC') {
   const provider = window.walletState?.provider;
   if (!provider || !address) return null;
 
   try {
+    let rawBal;
+
     if (token === 'USDC') {
-      // USDC is native on Arc — use eth_getBalance
+      // USDC é token nativo de gas no Arc — usa eth_getBalance
       const hex = await provider.request({ method: 'eth_getBalance', params: [address, 'latest'] });
-      return Number(BigInt(hex)) / 1e6; // 6 decimals
+      rawBal = BigInt(hex);
+      const human = Number(rawBal) / 1e6;
+      console.log(`[PAY:balance] USDC @ ${address.slice(0,10)}… = ${rawBal} base = ${human.toFixed(6)} USDC`);
+      return human;
+
+    } else if (window.ethers?.Contract) {
+      // ✅ ethers.Contract.balanceOf() — padrão ERC-20
+      const contract = await payGetContract(token);
+      rawBal = await contract.balanceOf(address);
+      const human = Number(window.ethers.formatUnits(rawBal, 6));
+      console.log(`[PAY:balance] ethers.Contract(${token}).balanceOf(${address.slice(0,10)}…) = ${rawBal.toString()} = ${human.toFixed(6)} ${token}`);
+      return human;
+
     } else {
-      // EURC is ERC-20
+      // Fallback: raw eth_call para balanceOf
       const contractAddr = PAY_EURC();
       const data = PAY_SELECTORS.balanceOf + encAddr(address);
       const result = await provider.request({
@@ -93,7 +194,10 @@ async function payReadBalance(address, token = 'USDC') {
         params: [{ to: contractAddr, data }, 'latest'],
       });
       if (!result || result === '0x') return 0;
-      return Number(BigInt(result)) / 1e6;
+      rawBal = BigInt(result);
+      const human = Number(rawBal) / 1e6;
+      console.log(`[PAY:balance] ${token} raw (fallback) = ${rawBal} = ${human.toFixed(6)}`);
+      return human;
     }
   } catch (e) {
     console.warn('[PAY] Balance read error:', e.message);
@@ -262,15 +366,59 @@ function updatePayMaxHint() {
   }
 }
 
-// ─── MAX button ────────────────────────────────────────────────────────────────
-function setPayMax() {
-  const bal = payState.senderBalance[payState.token];
-  if (bal === null || bal === undefined) return;
-  // Reserve 0.01 for gas (USDC is native gas on Arc)
-  const maxSend = Math.max(0, bal - 0.01);
-  const input = payEl('pay-amount');
+// ─── MAX button — busca saldo on-chain em tempo real ─────────────────────────
+// Usa ethers.Contract.balanceOf + formatUnits para exibir valor correto.
+async function setPayMax() {
+  const input  = payEl('pay-amount');
+  const token  = payState.token;
+  const wallet = window.walletState?.address;
+
+  if (!wallet) {
+    showToast('Connect wallet first', 'warning');
+    return;
+  }
+
+  // Busca saldo on-chain diretamente (não usa cache)
+  let maxHuman;
+  try {
+    if (token === 'USDC') {
+      // USDC: nativo → eth_getBalance
+      const provider = window.walletState.provider;
+      const hex = await provider.request({ method: 'eth_getBalance', params: [wallet, 'latest'] });
+      const rawBal = BigInt(hex);
+      maxHuman = window.ethers?.formatUnits
+        ? parseFloat(window.ethers.formatUnits(rawBal, 6))
+        : Number(rawBal) / 1e6;
+      console.log(`[PAY:MAX] USDC on-chain balance = ${rawBal} base = ${maxHuman.toFixed(6)} USDC`);
+    } else if (window.ethers?.Contract) {
+      // EURC: ERC-20 → ethers.Contract.balanceOf
+      const contract = await payGetContract(token);
+      const rawBal   = await contract.balanceOf(wallet);
+      maxHuman = parseFloat(window.ethers.formatUnits(rawBal, 6));
+      console.log(`[PAY:MAX] ethers.Contract(${token}).balanceOf = ${rawBal.toString()} = ${maxHuman.toFixed(6)} ${token}`);
+    } else {
+      // Fallback: usa cache do state
+      maxHuman = payState.senderBalance[token];
+    }
+  } catch (e) {
+    console.warn('[PAY:MAX] Balance read error:', e.message);
+    maxHuman = payState.senderBalance[token];
+  }
+
+  if (maxHuman === null || maxHuman === undefined) return;
+
+  // Reserva 0.01 USDC para gas (USDC é token de gas no Arc)
+  const maxSend = token === 'USDC' ? Math.max(0, maxHuman - 0.01) : maxHuman;
+
+  // Atualiza o campo com valor formatado (6 casas decimais)
   if (input) {
-    input.value = maxSend.toFixed(6);
+    const formatted = maxSend.toFixed(6);
+    input.value = formatted;
+    console.log(`[PAY:MAX] Filled amount: ${formatted} ${token}`);
+
+    // Atualiza preview e validação imediatamente
+    document.getElementById('balance')?.innerText !== undefined
+      && (document.getElementById('balance').innerText = maxHuman.toFixed(6) + ' ' + token);
     updatePayPreview();
     validatePayForm();
   }
@@ -282,23 +430,54 @@ function isValidAddress(addr) {
 }
 
 // ─── Preview panel ────────────────────────────────────────────────────────────
+// ─── Preview panel — atualiza dinamicamente ao digitar ───────────────────────
+// Spec item 8: oninput atualiza previewAmount em tempo real.
 function updatePayPreview() {
-  const recipInput = payEl('pay-recipient');
+  const recipInput  = payEl('pay-recipient');
   const amountInput = payEl('pay-amount');
   if (!recipInput || !amountInput) return;
 
-  const recipient = recipInput.value.trim();
-  const amount = parseFloat(amountInput.value) || 0;
-  const token = payState.token;
+  const recipient   = recipInput.value.trim();
+  const amountStr   = amountInput.value.trim();
+  const amountFloat = parseFloat(amountStr) || 0;
+  const token       = payState.token;
 
-  paySet('prev-token', token);
-  paySet('prev-amount', amount > 0 ? amount.toFixed(6) : '—');
+  paySet('prev-token',     token);
+  paySet('prev-amount',    amountFloat > 0 ? amountFloat.toFixed(6) : '—');
   paySet('prev-recipient', isValidAddress(recipient) ? shortAddr(recipient) : (recipient || '—'));
-  paySet('prev-network', 'Arc Testnet (5042002)');
+  paySet('prev-network',   'Arc Testnet (5042002)');
+
+  // ✅ Atualiza #previewAmount (spec item 8)
+  const previewEl = document.getElementById('previewAmount');
+  if (previewEl) previewEl.innerText = amountFloat > 0 ? amountFloat + ' ' + token : '— ' + token;
 
   // Gas estimate display
   const gasNote = token === 'EURC' ? '~2 txs (approve + transfer)' : '~1 tx (native transfer)';
   paySet('prev-gas', gasNote);
+
+  // Mostra o parsed amount para debug (spec item 9)
+  if (amountFloat > 0) {
+    try {
+      const parsed = payParseUnits(amountStr);
+      console.log(`[PAY:preview] Input: "${amountStr}" → parseUnits → ${parsed.toString()} base units (${token} 6 dec)`);
+    } catch (_) {}
+  }
+}
+
+// Registra oninput para live preview assim que o DOM estiver pronto.
+// (Chamado também em payInitListeners abaixo.)
+function payAttachAmountListener() {
+  const amountInput = payEl('pay-amount');
+  if (!amountInput) return;
+  // Remove listener anterior para evitar duplicatas
+  amountInput.oninput = () => {
+    const v = amountInput.value.trim();
+    // ✅ Spec item 8: atualiza previewAmount ao digitar
+    const previewEl = document.getElementById('previewAmount');
+    if (previewEl) previewEl.innerText = (v && Number(v) > 0 ? v : '—') + ' ' + payState.token;
+    updatePayPreview();
+    validatePayForm();
+  };
 }
 
 // ─── Form validation → enable/disable send button ─────────────────────────────
@@ -331,6 +510,8 @@ function validatePayForm() {
 }
 
 // ─── Main payment execution ───────────────────────────────────────────────────
+// Usa ethers.Contract para EURC e native transfer para USDC.
+// Converte o valor digitado com ethers.parseUnits(amount, 6) — NUNCA envia 0.
 async function executePayment() {
   if (payState.pending) return;
 
@@ -340,17 +521,17 @@ async function executePayment() {
   const sendBtn     = payEl('pay-send-btn');
 
   const recipient   = recipInput?.value?.trim() || '';
-  const amount      = parseFloat(amountInput?.value || '0');
-  const description = descInput?.value?.trim() || `Payment of ${amount} ${payState.token}`;
+  const amountInput_val = amountInput?.value?.trim() || '';
   const token       = payState.token;
+  const description = descInput?.value?.trim() || `Payment of ${amountInput_val} ${token}`;
 
-  // ── Validation ───────────────────────────────────────────────────────────
-  if (!isValidAddress(recipient)) {
-    showPayError('Invalid recipient address. Must be a valid 0x... Ethereum address.');
+  // ── Validação da entrada ─────────────────────────────────────────────────
+  if (!amountInput_val || Number(amountInput_val) <= 0 || isNaN(Number(amountInput_val))) {
+    showPayError('Enter a valid amount greater than 0.');
     return;
   }
-  if (amount <= 0 || isNaN(amount)) {
-    showPayError('Amount must be greater than 0.');
+  if (!isValidAddress(recipient)) {
+    showPayError('Invalid recipient address. Must be a valid 0x... Ethereum address.');
     return;
   }
   if (!window.walletState?.address) {
@@ -358,9 +539,40 @@ async function executePayment() {
     return;
   }
 
+  // ── Conversão do amount com parseUnits (6 decimais) ─────────────────────
+  // ethers.parseUnits v6 EXIGE string — payNormaliseAmount garante isso.
+  // Ex: "10" → 10000000n | "0.5" → 500000n | "1.5" → 1500000n
+  let amount;
+  try {
+    amount = payParseUnits(amountInput_val);
+  } catch (e) {
+    showPayError(`Invalid amount format: ${e.message}`);
+    return;
+  }
+
+  // ── Protege contra zero ──────────────────────────────────────────────────
+  if (amount === 0n) {
+    showPayError('Transaction amount cannot be zero. Check decimals.');
+    return;
+  }
+
+  // Valor humanizado para exibição (float)
+  const amountHuman = parseFloat(payFormatUnits(amount));
+
+  // ── Debug logs obrigatórios ──────────────────────────────────────────────
+  console.log('[PAY] ─── executePayment ─────────────────────────────');
+  console.log('[PAY] Recipient:     ', recipient);
+  console.log('[PAY] Input amount:  ', amountInput_val);
+  console.log('[PAY] Parsed amount: ', amount.toString(), '(6-dec base units)');
+  console.log('[PAY] Human amount:  ', amountHuman, token);
+  console.log('[PAY] Token:         ', token);
+  console.log('[PAY] Wallet:        ', window.walletState?.address);
+  console.log('[PAY] USDC contract: ', PAY_USDC());
+  console.log('[PAY] EURC contract: ', PAY_EURC());
+
   const from = window.walletState.address;
   const bal  = payState.senderBalance[token];
-  if (bal !== null && amount > bal) {
+  if (bal !== null && amountHuman > bal) {
     showPayError(`Insufficient ${token} balance. You have ${bal?.toFixed(4)} ${token}.`);
     return;
   }
@@ -383,142 +595,212 @@ async function executePayment() {
   let gasPrice = '0x2540BE400';
 
   try {
-    // ── Step 0: Verify network ────────────────────────────────────────────
+    // ── Step 0: Verificar rede ───────────────────────────────────────────
     paySetStep(0);
     await payEnsureNetwork();
 
-    // ── Step 1: Read on-chain balance ─────────────────────────────────────
+    // ── Step 1: Ler saldo on-chain com ethers.Contract.balanceOf ─────────
     paySetStep(1);
     const currentBal = await payReadBalance(from, token);
     payState.senderBalance[token] = currentBal;
+
+    // Atualiza display de saldo (usa formatUnits para exibição correta)
+    const usdcDisplay = payState.senderBalance.USDC !== null
+      ? payFormatUnits(payParseUnits(payState.senderBalance.USDC || 0)).slice(0, -3)  // 4 casas
+      : '—';
     paySet('pay-balance-usdc', (payState.senderBalance.USDC ?? 0).toFixed(4) + ' USDC');
     paySet('pay-balance-eurc', (payState.senderBalance.EURC ?? 0).toFixed(4) + ' EURC');
 
-    if (currentBal !== null && amount > currentBal) {
-      throw new Error(`Insufficient ${token} balance: you have ${currentBal.toFixed(4)} ${token}, trying to send ${amount.toFixed(6)}.`);
+    // Atualiza elemento #balance se existir (spec item 6)
+    const balanceEl = document.getElementById('balance');
+    if (balanceEl && token === 'USDC') {
+      balanceEl.innerText = (currentBal || 0).toFixed(6) + ' USDC';
     }
 
-    const amountRaw = BigInt(Math.round(amount * 1e6));
+    if (currentBal !== null && amountHuman > currentBal) {
+      throw new Error(`Insufficient ${token} balance: you have ${currentBal.toFixed(4)} ${token}, trying to send ${amountHuman.toFixed(6)}.`);
+    }
 
     if (token === 'USDC') {
-      // ── USDC: native token on Arc — send via value field ──────────────
-      // Step 2: Skip approve (native doesn't need it)
-      paySetStep(2, 'done');  // mark approve step as N/A for USDC
+      // ── USDC: token nativo no Arc — envia via value field ────────────
+      // Não usa ERC-20 transfer; o valor em wei (base units) vai no campo value.
+      paySetStep(2, 'done');
       paySetStepLabel(2, 'Approve — N/A (native)');
 
-      // ── Step 3: Sign & send transaction ───────────────────────────────
+      // ── Step 3: Assinar e enviar transação ────────────────────────────
       paySetStep(3);
-      const valueHex = '0x' + amountRaw.toString(16);
+      const valueHex = '0x' + amount.toString(16);
       gasPrice = await payGetGasPrice();
-      const gas = await payEstimateGas({ from, to: recipient, value: valueHex, data: '0x' });
+      const gas   = await payEstimateGas({ from, to: recipient, value: valueHex, data: '0x' });
       const nonce = await payGetNonce(from);
 
+      console.log('[PAY] USDC native tx → value =', valueHex, '=', amount.toString(), 'base units');
       showToast('⏳ Check your wallet — transaction awaiting signature...', 'info');
+
       const provider = window.walletState.provider;
       txHash = await provider.request({
         method: 'eth_sendTransaction',
         params: [{ from, to: recipient, value: valueHex, gas, gasPrice, nonce }],
       });
+      console.log('[PAY] USDC tx submitted:', txHash);
 
     } else {
-      // ── EURC: ERC-20 — approve + transfer ─────────────────────────────
-      const contractAddr = PAY_EURC();
-
-      // ── Step 2: Check & execute approve if needed ─────────────────────
+      // ── EURC: ERC-20 — usa ethers.Contract ────────────────────────────
+      // Step 2: Verificar allowance e aprovar se necessário
       paySetStep(2);
-      const allowance = await payReadAllowance(from, recipient);
 
-      if (allowance < amountRaw) {
-        showToast('📝 Approve required — check your wallet...', 'info');
-        const approveData = PAY_SELECTORS.approve + encAddr(recipient) + encUint(amountRaw);
-        approveTxHash = await paySendTx(contractAddr, approveData);
-        showToast(`✅ Approve sent! Waiting confirmation...`, 'info');
+      if (window.ethers?.Contract) {
+        // ✅ ethers.Contract path
+        const contract = await payGetContract(token);
 
-        // Wait for approve receipt
-        const approveReceipt = await payWaitReceipt(approveTxHash);
-        if (approveReceipt.status !== '0x1' && approveReceipt.status !== 1) {
-          throw new Error('Approve transaction failed on-chain.');
+        const allowance = await contract.allowance(from, recipient);
+        console.log('[PAY] EURC allowance:', allowance.toString(), '| need:', amount.toString());
+
+        if (allowance < amount) {
+          showToast('📝 Approve required — check your wallet...', 'info');
+          console.log('[PAY] Requesting approve for EURC:', amount.toString(), 'base units');
+          const approveTx = await contract.approve(recipient, amount * 2n); // 2× buffer
+          approveTxHash = approveTx.hash;
+          showToast(`✅ Approve sent: ${approveTxHash.slice(0,14)}…`, 'info');
+          const approveReceipt = await approveTx.wait();
+          if (!approveReceipt || approveReceipt.status !== 1) {
+            throw new Error('Approve transaction failed on-chain.');
+          }
+          showToast('✅ Approval confirmed!', 'success');
+          console.log('[PAY] EURC approve confirmed block:', approveReceipt.blockNumber);
+        } else {
+          paySetStepLabel(2, 'Approve — Already sufficient');
+          console.log('[PAY] EURC already approved — skipping approve');
         }
-        showToast('✅ Approval confirmed!', 'success');
-      } else {
-        paySetStepLabel(2, 'Approve — Already sufficient');
-      }
 
-      // ── Step 3: Transfer ──────────────────────────────────────────────
-      paySetStep(3);
-      showToast('📝 Confirm transfer in your wallet...', 'info');
-      const transferData = PAY_SELECTORS.transfer + encAddr(recipient) + encUint(amountRaw);
-      gasPrice = await payGetGasPrice();
-      txHash = await paySendTx(contractAddr, transferData);
+        // ── Step 3: Chamar contract.transfer(recipient, amount) ──────────
+        paySetStep(3);
+        showToast('📝 Confirm EURC transfer in your wallet...', 'info');
+        console.log('[PAY] EURC transfer:', amount.toString(), 'base units →', recipient);
+
+        // ✅ Requer assinatura da carteira
+        const tx = await contract.transfer(recipient, amount);
+        txHash = tx.hash;
+        console.log('[PAY] EURC tx submitted:', txHash);
+        gasPrice = await payGetGasPrice();
+
+        showToast(`⏳ Transaction submitted: ${txHash.slice(0,14)}...`, 'info');
+        // ── Step 4: Aguardar confirmação via tx.wait() ───────────────────
+        paySetStep(4);
+        const receipt = await tx.wait();
+        if (!receipt || receipt.status !== 1) {
+          throw new Error('Transaction reverted on-chain.');
+        }
+        gasUsed = receipt.gasUsed ? receipt.gasUsed.toString() : '~21000';
+        console.log('[PAY] EURC tx confirmed block:', receipt.blockNumber, 'gasUsed:', gasUsed);
+
+        // Salta para step 5 (já confirmado)
+        paySetStep(5);
+        const durationMs = Date.now() - startTime;
+        const gasPriceNum = Number(BigInt(gasPrice));
+        let gasFeeEst = (gasPriceNum * Number(BigInt(gasUsed))) / 1e6;
+        if (isNaN(gasFeeEst)) gasFeeEst = 0.009;
+
+        const receiptData = {
+          txHash, approveTxHash: approveTxHash || null,
+          sender: from, recipient, amount: amountHuman, token, description,
+          gasFee: gasFeeEst.toFixed(6), gasUsed, network: 'Arc Testnet',
+          chainId: PAY_CHAIN_ID, timestamp: new Date().toISOString(),
+          durationMs, explorerUrl: `${PAY_EXPLORER()}/tx/${txHash}`,
+        };
+        try {
+          await fetch('/api/payments/record', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(receiptData),
+          });
+        } catch (e) { /* não crítico */ }
+
+        payState.receipt = receiptData;
+        payState.history.unshift(receiptData);
+        paySetStep(5, 'done');
+        showToast(`✅ Payment confirmed! <a href="${receiptData.explorerUrl}" target="_blank" class="underline">View ↗</a>`, 'success');
+        if (typeof showTXConfirmationBadge === 'function')
+          showTXConfirmationBadge(txHash, `${amountHuman} ${token} → ${shortAddr(recipient)}`);
+        renderPaymentReceipt(receiptData);
+        payShow('pay-receipt-panel');
+        if (amountInput) amountInput.value = '';
+        if (descInput)   descInput.value   = '';
+        await refreshPaymentBalances();
+        renderPaymentHistory();
+        if (typeof loadPayments === 'function') setTimeout(loadPayments, 1000);
+        return; // early return — EURC confirmado via tx.wait()
+
+      } else {
+        // Fallback raw para EURC (sem ethers)
+        const contractAddr = PAY_EURC();
+        const allowanceRaw = await payReadAllowance(from, recipient);
+        if (allowanceRaw < amount) {
+          showToast('📝 Approve required — check your wallet...', 'info');
+          const approveData = PAY_SELECTORS.approve + encAddr(recipient) + encUint(amount);
+          approveTxHash = await paySendTx(contractAddr, approveData);
+          const approveReceipt = await payWaitReceipt(approveTxHash);
+          if (approveReceipt.status !== '0x1' && approveReceipt.status !== 1)
+            throw new Error('Approve transaction failed on-chain.');
+          showToast('✅ Approval confirmed!', 'success');
+        } else {
+          paySetStepLabel(2, 'Approve — Already sufficient');
+        }
+        paySetStep(3);
+        showToast('📝 Confirm transfer in your wallet...', 'info');
+        const transferData = PAY_SELECTORS.transfer + encAddr(recipient) + encUint(amount);
+        gasPrice = await payGetGasPrice();
+        txHash = await paySendTx(contractAddr, transferData);
+        console.log('[PAY] EURC raw tx submitted:', txHash);
+      }
     }
 
     showToast(`⏳ Transaction submitted: ${txHash.slice(0,14)}...`, 'info');
 
-    // ── Step 4: Wait for confirmation ─────────────────────────────────────
+    // ── Step 4: Aguardar confirmação ─────────────────────────────────────
     paySetStep(4);
     const receipt = await payWaitReceipt(txHash);
 
     if (receipt.status !== '0x1' && receipt.status !== 1) {
       throw new Error('Transaction reverted on-chain.');
     }
-
     gasUsed = receipt.gasUsed ? parseInt(receipt.gasUsed, 16).toString() : '~21000';
+    console.log('[PAY] Tx confirmed — gasUsed:', gasUsed, 'txHash:', txHash);
 
-    // ── Step 5: Register on backend ───────────────────────────────────────
+    // ── Step 5: Registrar no backend ─────────────────────────────────────
     paySetStep(5);
     const durationMs = Date.now() - startTime;
     let gasFeeEst = (Number(parseInt(gasPrice, 16)) * (Number(gasUsed))) / 1e6;
     if (isNaN(gasFeeEst)) gasFeeEst = 0.009;
 
     const receiptData = {
-      txHash,
-      approveTxHash: approveTxHash || null,
-      sender: from,
-      recipient,
-      amount,
-      token,
-      description,
-      gasFee: gasFeeEst.toFixed(6),
-      gasUsed,
-      network: 'Arc Testnet',
-      chainId: PAY_CHAIN_ID,
-      timestamp: new Date().toISOString(),
-      durationMs,
-      explorerUrl: `${PAY_EXPLORER()}/tx/${txHash}`,
+      txHash, approveTxHash: approveTxHash || null,
+      sender: from, recipient, amount: amountHuman, token, description,
+      gasFee: gasFeeEst.toFixed(6), gasUsed, network: 'Arc Testnet',
+      chainId: PAY_CHAIN_ID, timestamp: new Date().toISOString(),
+      durationMs, explorerUrl: `${PAY_EXPLORER()}/tx/${txHash}`,
     };
 
-    // Save to backend
     try {
       await fetch('/api/payments/record', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(receiptData),
       });
-    } catch (e) { /* non-critical */ }
+    } catch (e) { /* não crítico */ }
 
     payState.receipt = receiptData;
     payState.history.unshift(receiptData);
 
-    // ── Done! ──────────────────────────────────────────────────────────────
     paySetStep(5, 'done');
     showToast(`✅ Payment confirmed! <a href="${receiptData.explorerUrl}" target="_blank" class="underline">View ↗</a>`, 'success');
-    if (typeof showTXConfirmationBadge === 'function') {
-      showTXConfirmationBadge(txHash, `${amount} ${token} → ${shortAddr(recipient)}`);
-    }
+    if (typeof showTXConfirmationBadge === 'function')
+      showTXConfirmationBadge(txHash, `${amountHuman} ${token} → ${shortAddr(recipient)}`);
 
-    // Show receipt
     renderPaymentReceipt(receiptData);
     payShow('pay-receipt-panel');
-
-    // Clear form
     if (amountInput) amountInput.value = '';
     if (descInput)   descInput.value   = '';
-
-    // Refresh balances
     await refreshPaymentBalances();
     renderPaymentHistory();
-
-    // Refresh queue in app.js if available
     if (typeof loadPayments === 'function') setTimeout(loadPayments, 1000);
 
   } catch (err) {
@@ -805,4 +1087,23 @@ window.addEventListener('accountsChanged', () => {
   if (window.currentTab === 'payments') refreshPaymentBalances();
 });
 
+// Registra oninput no DOMContentLoaded para garantir que o DOM existe
+document.addEventListener('DOMContentLoaded', () => {
+  payAttachAmountListener();
+});
+
+// ─── Boot log ─────────────────────────────────────────────────────────────────
 console.log('[PAY] Payments module loaded — Arc Testnet ChainID:', PAY_CHAIN_ID);
+console.log('[PAY] USDC contract:', PAY_USDC(), '(nativo, 6 dec)');
+console.log('[PAY] EURC contract:', PAY_EURC(), '(ERC-20, 6 dec)');
+console.log('[PAY] ethers.js available:', !!window.ethers);
+console.log('[PAY] ethers.Contract:', !!window.ethers?.Contract);
+console.log('[PAY] Amount conversion: 10 →', (() => { try { return payParseUnits(10).toString(); } catch(e){ return 'error: '+e.message; } })(), 'base units');
+console.log('[PAY] Fix summary:');
+console.log('[PAY]   ✅ payParseUnits(10) = 10000000 (não 10)');
+console.log('[PAY]   ✅ payReadBalance() usa ethers.Contract.balanceOf + formatUnits');
+console.log('[PAY]   ✅ setPayMax() lê saldo on-chain em tempo real');
+console.log('[PAY]   ✅ executePayment() usa ethers.parseUnits — proíbe amount=0n');
+console.log('[PAY]   ✅ EURC usa ethers.Contract.transfer(recipient, amount)');
+console.log('[PAY]   ✅ USDC usa native eth_sendTransaction value=amountHex');
+console.log('[PAY]   ✅ live preview oninput atualiza #previewAmount');
