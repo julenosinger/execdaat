@@ -97,23 +97,44 @@ async function dGetContract(symbol) {
 
 // ─── USDC 6-decimal parseUnits (mirrors ethers.parseUnits) ───────────────────
 // USDC/EURC/USYC all use 6 decimals on Arc Testnet.
-//   dParseUnits(1)    → 1000000n
-//   dParseUnits(0.5)  → 500000n
-//   dParseUnits(10)   → 10000000n
+//   dParseUnits(1)      → 1000000n
+//   dParseUnits(0.5)    → 500000n
+//   dParseUnits(10)     → 10000000n
+//   dParseUnits("1.5")  → 1500000n
+//
+// ⚠️  CRITICAL: ethers.parseUnits(v6) ONLY accepts strings, NOT numbers.
+//     Always convert to string AND trim to max 6 decimal places before calling.
+//     Passing a raw number (e.g. parseUnits(1, 6)) throws INVALID_ARGUMENT.
 // ⚠️  NEVER pass raw floats to contract calls — always use dParseUnits() first.
 function dParseUnits(humanAmount) {
+  // Normalise: convert to string, trim, limit to 6 decimal places
+  // to avoid "too many decimals" errors in ethers and float-to-string edge cases.
+  let str = String(humanAmount).trim();
+  // Handle scientific notation (e.g. 1e-6 → "0.000001")
+  if (str.includes('e') || str.includes('E')) {
+    str = Number(str).toFixed(6);
+  }
+  // Truncate to max 6 decimal places (ethers rejects more than `decimals` fractions)
+  const dotIdx = str.indexOf('.');
+  if (dotIdx !== -1 && str.length - dotIdx - 1 > 6) {
+    str = str.slice(0, dotIdx + 7); // keep at most 6 decimals
+  }
+
   // Prefer ethers.parseUnits when ethers is available
   if (window.ethers?.parseUnits) {
-    const raw = window.ethers.parseUnits(String(humanAmount), 6);
-    console.log(`[DEX:parseUnits] ethers.parseUnits(${humanAmount}, 6) → ${raw.toString()}`);
-    return raw;
+    try {
+      const raw = window.ethers.parseUnits(str, 6);
+      console.log(`[DEX:parseUnits] ethers.parseUnits("${str}", 6) → ${raw.toString()}`);
+      return raw;
+    } catch (e) {
+      console.warn(`[DEX:parseUnits] ethers failed for "${str}":`, e.message, '→ falling back to manual');
+    }
   }
   // Manual fallback (exact, no floating-point errors)
-  const str = String(humanAmount).trim();
   const [intPart = '0', fracPart = ''] = str.split('.');
   const frac = fracPart.slice(0, 6).padEnd(6, '0');
   const result = BigInt(intPart) * 1_000_000n + BigInt(frac);
-  console.log(`[DEX:parseUnits] manual(${humanAmount}) → ${result.toString()} (6-dec base units)`);
+  console.log(`[DEX:parseUnits] manual("${str}") → ${result.toString()} (6-dec base units)`);
   return result;
 }
 function dToHex(humanAmount) {
@@ -349,61 +370,71 @@ async function dApproveToken(symbol, spender, amount) {
 }
 
 // ─── ERC-20 transfer / USDC native transfer ──────────────────────────────────
-// For USDC (native): sends tx.value to router (visible on ArcScan as native transfer).
-// For ERC-20 (EURC/USYC): calls token.transfer(router, amount) via ethers.Contract
-//   which emits a standard ERC-20 Transfer event visible on ArcScan.
+// Returns { hash, receipt } — confirmation already done internally.
+// Callers must NOT call dWaitReceipt() after this — it would double-wait.
 //
-// Note on transferFrom vs transfer:
-//   In this custodian model the user signs directly; token.transfer(router, amount)
-//   is equivalent to a router calling transferFrom after approve.
-//   For production (deployed router contract), switch to transferFrom:
-//     await token.transferFrom(userAddress, poolAddress, amountRaw)
-//   called from within the router contract after the user approved.
+// For USDC (native on Arc): send tx.value → visible on ArcScan.
+// For ERC-20 (EURC/USYC via ethers.Contract):
+//   token.transfer(router, amount) → emits standard ERC-20 Transfer event on ArcScan.
+//   tx.wait() confirms and returns the receipt with Transfer log.
+// For ERC-20 (raw fallback, no ethers): manual ABI-encoded transfer().
+//
+// Production note: router contract calls transferFrom(user, pool, amount)
+// after the user approved. For custodian/testnet model, transfer() is equivalent.
 async function dTransferToken(symbol, to, amount) {
   const token = DEX_TOKENS[symbol];
   if (!token) throw new Error(`Unknown token: ${symbol}`);
 
-  // ✅ Use dParseUnits for exact 6-decimal conversion
+  // ✅ dParseUnits normalises to string and uses ethers.parseUnits(str, 6) internally
+  // e.g. 1 → "1" → 1000000n; 0.5 → "0.5" → 500000n; 10 → "10" → 10000000n
   const amountRaw = dParseUnits(amount);
-  console.log(`[DEX:transfer] ${symbol} → ${to.slice(0,10)}… amount=${amount} → raw=${amountRaw.toString()}`);
-  console.log(`[DEX:transfer] USDC amount: ${amountRaw.toString()} (6-dec base units, as required by contract)`);
+  console.log(`[DEX:transfer] ${symbol} → ${to.slice(0,10)}… amount=${amount} → raw=${amountRaw.toString()} (6-dec)`);
 
-  let txHash;
+  let txHash, receipt;
+
   if (token.isNative) {
-    // USDC is native on Arc Testnet — send as tx value (no ERC-20 transfer)
+    // USDC is native gas token on Arc — send as tx.value (no ERC-20 transfer)
     const valueHex = '0x' + amountRaw.toString(16);
     console.log(`[DEX:transfer] USDC native → value=${valueHex}`);
-    txHash = await dSendTx(to, '0x', valueHex);
+    txHash  = await dSendTx(to, '0x', valueHex);
+    receipt = await dWaitReceipt(txHash);
+    console.log(`[DEX:transfer] ✅ USDC native confirmed tx=${txHash} block=${receipt?.blockNumber}`);
+
   } else if (window.ethers?.Contract) {
-    // ✅ ethers.Contract: token.transfer(to, amount) → emits ERC-20 Transfer event
-    // Pool receives real tokens; reserves update after on-chain confirmation.
+    // ✅ ethers.Contract.transfer(to, amount) → emits ERC-20 Transfer event
     const contract = await dGetContract(symbol);
     console.log(`[DEX:transfer] ethers.Contract(${symbol}).transfer(${to.slice(0,10)}…, ${amountRaw.toString()})`);
     const tx = await contract.transfer(to, amountRaw);
-    console.log(`[DEX:transfer] ✅ Transfer tx submitted: ${tx.hash} — Transfer event will be emitted`);
-    txHash = tx.hash;
-    // Wait for the Transfer event to be mined
-    const receipt = await tx.wait();
+    txHash  = tx.hash;
+    console.log(`[DEX:transfer] Transfer tx submitted: ${txHash} — awaiting confirmation…`);
+    receipt = await tx.wait(); // blocks until mined; Transfer event emitted here
     if (!receipt || (receipt.status !== undefined && receipt.status !== 1)) {
-      throw new Error(`ERC-20 transfer failed for ${symbol} (tx: ${tx.hash})`);
+      throw new Error(`ERC-20 transfer failed for ${symbol} (tx: ${txHash})`);
     }
-    console.log(`[DEX:transfer] ✅ Transfer confirmed block=${receipt.blockNumber} — Transfer event emitted on ArcScan`);
-    // Log Transfer event details
+    console.log(`[DEX:transfer] ✅ Transfer confirmed block=${receipt.blockNumber} — Transfer event on ArcScan`);
+    // Log Transfer event from receipt
     if (receipt.logs?.length > 0) {
-      const transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-      const transferLog = receipt.logs.find(l => l.topics?.[0] === transferTopic);
-      if (transferLog) {
-        console.log(`[DEX:transfer] Transfer event: from=${transferLog.topics[1]} to=${transferLog.topics[2]} value=${BigInt(transferLog.data || '0x0').toString()}`);
+      const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+      const log = receipt.logs.find(l => l.topics?.[0] === TRANSFER_TOPIC);
+      if (log) {
+        const val = log.data ? BigInt(log.data).toString() : amountRaw.toString();
+        console.log(`[DEX:transfer] Transfer event → token=${token.address} from=…${log.topics[1]?.slice(-8)} to=…${log.topics[2]?.slice(-8)} value=${val}`);
       }
     }
+
   } else {
-    // Fallback: raw manual ABI encoding
+    // Fallback: raw ABI encoding (no ethers available)
     const data = DEX_SEL.transfer + dEncAddr(to) + dEncUint(amountRaw);
-    console.log(`[DEX:transfer] ERC-20 transfer raw (fallback): transfer(${to.slice(0,10)}…, ${amountRaw.toString()})`);
-    txHash = await dSendTx(token.address, data);
-    console.log(`[DEX:transfer] ✅ Transfer tx submitted (raw): ${txHash}`);
+    console.log(`[DEX:transfer] ERC-20 transfer raw fallback: transfer(${to.slice(0,10)}…, ${amountRaw.toString()})`);
+    txHash  = await dSendTx(token.address, data);
+    receipt = await dWaitReceipt(txHash);
+    if (receipt.status !== '0x1' && receipt.status !== 1 && receipt.status !== undefined) {
+      throw new Error(`ERC-20 transfer (raw) failed for ${symbol} (tx: ${txHash})`);
+    }
+    console.log(`[DEX:transfer] ✅ Transfer confirmed (raw) block=${receipt?.blockNumber}`);
   }
-  return txHash;
+
+  return { hash: txHash, receipt };
 }
 
 // ─── Refresh all balances ──────────────────────────────────────────────────────
@@ -864,14 +895,18 @@ window.dexExecuteSwap = async function() {
     // • EURC/USYC (ERC-20): transfer(router, amount) after approve
     dStep(4);
     showToast(`Sign swap: ${amount} ${from} → ~${q.amountOut.toFixed(4)} ${to}`, 'info');
-    txHash = await dTransferToken(from, routerAddr, amount);
+    // dTransferToken returns { hash, receipt } — already confirmed, no dWaitReceipt needed
+    const transferResult = await dTransferToken(from, routerAddr, amount);
+    txHash = transferResult.hash;
 
     showToast(`Swap tx submitted: ${txHash.slice(0, 14)}…`, 'info');
 
-    // Step 5: Wait for confirmation
+    // Step 5: Receipt already in transferResult (tx.wait() done inside dTransferToken)
     dStep(5);
-    const receipt = await dWaitReceipt(txHash);
-    blockNumber = receipt.blockNumber ? parseInt(receipt.blockNumber, 16) : null;
+    const receipt = transferResult.receipt || {};
+    blockNumber = receipt.blockNumber
+      ? (typeof receipt.blockNumber === 'string' ? parseInt(receipt.blockNumber, 16) : receipt.blockNumber)
+      : null;
 
     // Register swap on backend
     const regRes = await fetch('/api/dex/swap', {
@@ -1060,81 +1095,73 @@ window.dexAddLiquidity = async function() {
 
     // ── Step 4: Real token transfers to pool (emit Transfer events) ──────────
     // This is the critical step: tokens MUST actually move on-chain.
-    // • USDC (native on Arc): send as tx.value  → emits no ERC-20 Transfer event
-    //   but the native transfer is visible on ArcScan
-    // • ERC-20 (EURC/USYC): call transfer(router, amount) after approve
-    //   → emits ERC-20 Transfer event visible on ArcScan
-    // If both tokens are native (impossible for this DEX), only one tx needed.
+    // • USDC (native on Arc): send as tx.value  → visible on ArcScan
+    // • ERC-20 (EURC/USYC): ethers.Contract.transfer(router, amount) → emits Transfer event
+    // dTransferToken() returns { hash, receipt } — already confirmed, no dWaitReceipt needed.
     dLPStep(4);
     showToast(`Depositing ${amtA} ${ta} + ${amtB} ${tb} into pool — sign in wallet`, 'info');
 
     let depositReceipt;
 
     if (tokenAInfo.isNative && !tokenBInfo.isNative) {
-      // Case 1: Token A = USDC (native), Token B = ERC-20
-      // Send native USDC as tx.value + ERC-20 transfer already approved
+      // Case 1: Token A = USDC (native), Token B = ERC-20 (EURC or USYC)
       console.log(`[DEX:addLiquidity] Case 1: native ${ta} + ERC-20 ${tb}`);
-      finalTxHash = await dTransferToken(ta, DEX_ROUTER, amtA);
+      const resA = await dTransferToken(ta, DEX_ROUTER, amtA); // { hash, receipt }
+      finalTxHash   = resA.hash;
+      depositReceipt = resA.receipt;
       showToast(`${ta} deposited ✅ — now depositing ${tb}…`, 'info');
-      depositReceipt = await dWaitReceipt(finalTxHash);
-      if (depositReceipt.status !== '0x1' && depositReceipt.status !== 1)
-        throw new Error(`${ta} deposit tx failed (status=${depositReceipt.status})`);
-      console.log(`[DEX:addLiquidity] ${ta} deposit confirmed block=${depositReceipt.blockNumber}`);
+      console.log(`[DEX:addLiquidity] ${ta} confirmed block=${depositReceipt?.blockNumber}`);
 
-      // Deposit ERC-20 token B
-      const txB = await dTransferToken(tb, DEX_ROUTER, amtB);
-      showToast(`${tb} deposited ✅ — waiting confirmation…`, 'info');
-      const receiptB = await dWaitReceipt(txB);
-      if (receiptB.status !== '0x1' && receiptB.status !== 1)
-        throw new Error(`${tb} deposit tx failed (status=${receiptB.status})`);
-      console.log(`[DEX:addLiquidity] ${tb} deposit confirmed block=${receiptB.blockNumber}`);
-      // Use tokenB tx as final (more relevant for ERC-20 Transfer events)
-      finalTxHash = txB;
+      // ✅ Token B approve was done in Step 3 — now transfer
+      const resB = await dTransferToken(tb, DEX_ROUTER, amtB);
+      finalTxHash   = resB.hash;   // use ERC-20 tx as final (has Transfer event)
+      depositReceipt = resB.receipt;
+      showToast(`${tb} deposited ✅ — confirming…`, 'info');
+      console.log(`[DEX:addLiquidity] ${tb} confirmed block=${depositReceipt?.blockNumber}`);
 
     } else if (!tokenAInfo.isNative && tokenBInfo.isNative) {
       // Case 2: Token A = ERC-20, Token B = USDC (native)
       console.log(`[DEX:addLiquidity] Case 2: ERC-20 ${ta} + native ${tb}`);
-      const txA = await dTransferToken(ta, DEX_ROUTER, amtA);
+      const resA = await dTransferToken(ta, DEX_ROUTER, amtA);
       showToast(`${ta} deposited ✅ — now depositing ${tb}…`, 'info');
-      const receiptA = await dWaitReceipt(txA);
-      if (receiptA.status !== '0x1' && receiptA.status !== 1)
-        throw new Error(`${ta} deposit tx failed`);
-      console.log(`[DEX:addLiquidity] ${ta} deposit confirmed block=${receiptA.blockNumber}`);
+      console.log(`[DEX:addLiquidity] ${ta} confirmed block=${resA.receipt?.blockNumber}`);
 
-      finalTxHash = await dTransferToken(tb, DEX_ROUTER, amtB);
-      showToast(`${tb} deposited ✅ — waiting confirmation…`, 'info');
-      depositReceipt = await dWaitReceipt(finalTxHash);
-      if (depositReceipt.status !== '0x1' && depositReceipt.status !== 1)
-        throw new Error(`${tb} deposit tx failed`);
-      console.log(`[DEX:addLiquidity] ${tb} deposit confirmed block=${depositReceipt.blockNumber}`);
+      const resB = await dTransferToken(tb, DEX_ROUTER, amtB);
+      finalTxHash   = resB.hash;
+      depositReceipt = resB.receipt;
+      showToast(`${tb} deposited ✅ — confirming…`, 'info');
+      console.log(`[DEX:addLiquidity] ${tb} confirmed block=${depositReceipt?.blockNumber}`);
 
     } else if (!tokenAInfo.isNative && !tokenBInfo.isNative) {
       // Case 3: Both ERC-20 (EURC + USYC)
       console.log(`[DEX:addLiquidity] Case 3: ERC-20 ${ta} + ERC-20 ${tb}`);
-      const txA = await dTransferToken(ta, DEX_ROUTER, amtA);
+      const resA = await dTransferToken(ta, DEX_ROUTER, amtA);
       showToast(`${ta} deposited ✅ — now depositing ${tb}…`, 'info');
-      const receiptA = await dWaitReceipt(txA);
-      if (receiptA.status !== '0x1' && receiptA.status !== 1)
-        throw new Error(`${ta} deposit tx failed`);
+      console.log(`[DEX:addLiquidity] ${ta} confirmed block=${resA.receipt?.blockNumber}`);
 
-      finalTxHash = await dTransferToken(tb, DEX_ROUTER, amtB);
-      depositReceipt = await dWaitReceipt(finalTxHash);
-      if (depositReceipt.status !== '0x1' && depositReceipt.status !== 1)
-        throw new Error(`${tb} deposit tx failed`);
+      const resB = await dTransferToken(tb, DEX_ROUTER, amtB);
+      finalTxHash   = resB.hash;
+      depositReceipt = resB.receipt;
+      showToast(`${tb} deposited ✅ — confirming…`, 'info');
+      console.log(`[DEX:addLiquidity] ${tb} confirmed block=${depositReceipt?.blockNumber}`);
 
     } else {
-      // Case 4: Both native (should not happen — only USDC is native on Arc)
+      // Case 4: Both native (edge case — only USDC is native on Arc)
       console.log(`[DEX:addLiquidity] Case 4: both native — single native tx`);
-      finalTxHash = await dTransferToken(ta, DEX_ROUTER, amtA);
-      depositReceipt = await dWaitReceipt(finalTxHash);
+      const resA = await dTransferToken(ta, DEX_ROUTER, amtA);
+      finalTxHash   = resA.hash;
+      depositReceipt = resA.receipt;
     }
 
     showToast(`Token transfers confirmed ✅ — registering LP position…`, 'info');
 
-    // ── Step 5: Wait for deposit confirmation + register LP position ─────────
+    // ── Step 5: Register LP position on backend ──────────────────────────────
     dLPStep(5);
+    // blockNumber may be a number (ethers receipt) or hex string (raw receipt)
     const blockNumber = depositReceipt?.blockNumber
-      ? parseInt(depositReceipt.blockNumber, 16)
+      ? (typeof depositReceipt.blockNumber === 'string'
+          ? parseInt(depositReceipt.blockNumber, 16)
+          : Number(depositReceipt.blockNumber))
       : null;
 
     console.log(`[DEX:addLiquidity] Registering LP: pool=${ta}-${tb} amtA=${amtA} amtB=${amtB} tx=${finalTxHash} block=${blockNumber}`);
