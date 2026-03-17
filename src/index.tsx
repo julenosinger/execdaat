@@ -80,6 +80,31 @@ app.get('/api/status', (c) => {
   })
 })
 
+
+
+const legalLayout = (title: string, content: string) => `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title} | ARC AI Agents</title><link rel="icon" href="/static/favicon.svg"><link href="/static/styles.css" rel="stylesheet"></head>
+<body class="bg-gray-950 text-gray-100 min-h-screen"><main class="max-w-3xl mx-auto px-6 py-10"><a href="/" class="text-purple-400">← Back</a><h1 class="text-3xl font-bold mt-4 mb-6">${title}</h1><div class="space-y-4 text-gray-300">${content}</div></main></body></html>`
+
+app.get('/about', (c) => c.html(legalLayout('About', `
+  <p>ARC AI Agents is a non-custodial decentralized application built on ARC Network Testnet for testing payments, swaps, and liquidity workflows.</p>
+  <p><strong>Testnet notice:</strong> this application is experimental and intended for testnet assets only.</p>
+  <p>We never request seed phrases or private keys. Users sign transactions directly in their wallet.</p>
+`)))
+
+app.get('/privacy-policy', (c) => c.html(legalLayout('Privacy Policy', `
+  <p>We do not custody user funds and we do not store private keys or seed phrases.</p>
+  <p>We store only minimal operational data submitted by users (wallet address, tx hash, and action metadata) to render history and status.</p>
+  <p>This dApp runs on ARC Testnet and provides no financial guarantee.</p>
+`)))
+
+app.get('/terms-of-service', (c) => c.html(legalLayout('Terms of Service', `
+  <p>This is a testnet application. Do not use production funds.</p>
+  <p>All blockchain actions require explicit wallet confirmation and are irreversible once confirmed on-chain.</p>
+  <p>The service is provided "as is" without warranties, financial advice, or custody of user assets.</p>
+`)))
+
 // GET / - Interface principal
 app.get('/', (c) => {
   return c.html(`<!DOCTYPE html>
@@ -87,8 +112,10 @@ app.get('/', (c) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ARC AI Agents — Autonomous Payments &amp; Contracts</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+  <title>ARC AI Agents — Secure ARC Testnet dApp</title>
+  <meta name="description" content="Transparent non-custodial dApp on ARC Network Testnet for payments, swaps and liquidity.">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="icon" href="/static/favicon.svg">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
@@ -2333,6 +2360,23 @@ forge create src/ContractManager.sol:ContractManager \\
       </div>
     </div>
   </div>
+
+
+  <footer class="max-w-7xl mx-auto px-6 py-10 border-t border-gray-800 text-sm text-gray-400">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <p class="text-white font-semibold">ARC AI Agents · Built on ARC Network (Testnet)</p>
+        <p>Non-custodial dApp. No private key storage. No financial guarantees.</p>
+      </div>
+      <div class="flex flex-wrap gap-4">
+        <a href="/about" class="hover:text-purple-400">About</a>
+        <a href="/privacy-policy" class="hover:text-purple-400">Privacy Policy</a>
+        <a href="/terms-of-service" class="hover:text-purple-400">Terms of Service</a>
+        <a href="mailto:security@arcagents.app" class="hover:text-purple-400">security@arcagents.app</a>
+        <a href="https://github.com/arc-ai-agents/arc-ai-agents" target="_blank" class="hover:text-purple-400">GitHub</a>
+      </div>
+    </div>
+  </footer>
 
   <script src="/static/wallet.js"></script>
   <script src="/static/evm-tx.js"></script>

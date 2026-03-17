@@ -1,206 +1,89 @@
-// Rotas API para o Yield Optimizer Agent
+import { Hono } from 'hono'
+import { ARC_TESTNET } from '../types/arc'
+import { ethers } from 'ethers'
 
-import { Hono } from 'hono';
-import { YieldOptimizerAgent } from '../agents/YieldOptimizerAgent';
+const yieldRouter = new Hono()
+const provider = new ethers.JsonRpcProvider(ARC_TESTNET.rpcUrl)
 
-const yieldRouter = new Hono();
-let agent: YieldOptimizerAgent | null = null;
+type YieldPool = { id: string; token: 'USDC' | 'EURC'; contract: string; label: string }
 
-function getAgent(): YieldOptimizerAgent {
-  if (!agent) agent = new YieldOptimizerAgent();
-  return agent;
+const positions: Array<Record<string, unknown>> = []
+
+function configuredPools(): YieldPool[] {
+  const pools: YieldPool[] = []
+  if (process.env.ARC_USDC_VAULT_ADDRESS) {
+    pools.push({ id: 'usdc-vault', token: 'USDC', contract: process.env.ARC_USDC_VAULT_ADDRESS, label: 'ARC USDC Vault' })
+  }
+  if (process.env.ARC_EURC_VAULT_ADDRESS) {
+    pools.push({ id: 'eurc-vault', token: 'EURC', contract: process.env.ARC_EURC_VAULT_ADDRESS, label: 'ARC EURC Vault' })
+  }
+  return pools
 }
 
-// ─── Status ───────────────────────────────────────────────────────────────
 yieldRouter.get('/status', (c) => {
-  const a = getAgent();
-  const rawStats = a.getStats();
-  const pools = a.getPools();
-  const rebalances = a.getRebalanceHistory(1000);
+  const pools = configuredPools()
   return c.json({
     success: true,
-    agent: {
-      id: 'yield-optimizer-01',
-      name: 'ARC Yield Optimizer v1.0',
-      capabilities: ['pool_discovery', 'apy_tracking', 'auto_rebalance', 'portfolio_analysis', 'yield_compounding'],
-      status: rawStats.agentStatus,
-    },
-    stats: {
-      ...rawStats,
-      totalPools: pools.length,
-      totalRebalances: rawStats.rebalances,
-      bestApy: rawStats.bestApy,
-    },
-    strategies: a.getStrategies(),
-    network: { name: 'Arc Testnet', chainId: 5042002, rpcUrl: 'https://rpc.testnet.arc.network' },
-  });
-});
+    configured: pools.length > 0,
+    poolCount: pools.length,
+    mode: 'on-chain-only',
+    message: pools.length > 0 ? 'Pools on-chain configurados.' : 'Configure ARC_USDC_VAULT_ADDRESS / ARC_EURC_VAULT_ADDRESS.',
+  })
+})
 
-// ─── Get all pools ─────────────────────────────────────────────────────────
 yieldRouter.get('/pools', (c) => {
-  const token = c.req.query('token') as 'USDC' | 'EURC' | undefined;
-  const a = getAgent();
-  const pools = a.getPools(token);
-  return c.json({
-    success: true,
-    pools,
-    bestUsdc: a.getBestPool('USDC', 'balanced'),
-    bestEurc: a.getBestPool('EURC', 'balanced'),
-    updatedAt: new Date().toISOString(),
-  });
-});
+  const pools = configuredPools()
+  return c.json({ success: true, pools })
+})
 
-// ─── Get best pool for token + strategy ───────────────────────────────────
 yieldRouter.get('/pools/best', (c) => {
-  const token = (c.req.query('token') || 'USDC') as 'USDC' | 'EURC';
-  const strategy = (c.req.query('strategy') || 'balanced') as any;
-  const a = getAgent();
-  const best = a.getBestPool(token, strategy);
-  return c.json({ success: true, pool: best, strategy });
-});
+  const token = (c.req.query('token') || 'USDC').toUpperCase()
+  const pool = configuredPools().find((p) => p.token === token)
+  if (!pool) return c.json({ success: false, error: 'Nenhum pool configurado para este token.' }, 404)
+  return c.json({ success: true, pool })
+})
 
-// ─── Open position ─────────────────────────────────────────────────────────
 yieldRouter.post('/positions/open', async (c) => {
   try {
-    const body = await c.req.json();
-    const { walletAddress, poolId, amount, strategy = 'balanced', txHash } = body;
-
-    if (!walletAddress || !poolId || !amount) {
-      return c.json({ success: false, error: 'Required: walletAddress, poolId, amount' }, 400);
-    }
-    if (!txHash) {
-      return c.json({ success: false, error: 'txHash required — transaction must be signed on Arc Testnet first' }, 400);
+    const { walletAddress, txHash, poolId, amount } = await c.req.json()
+    if (!walletAddress || !txHash || !poolId || !amount) {
+      return c.json({ success: false, error: 'Parâmetros obrigatórios ausentes.' }, 400)
     }
 
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      return c.json({ success: false, error: 'Invalid amount' }, 400);
+    const pool = configuredPools().find((p) => p.id === poolId)
+    if (!pool) return c.json({ success: false, error: 'Pool não configurado.' }, 400)
+
+    const tx = await provider.getTransaction(txHash)
+    const receipt = await provider.getTransactionReceipt(txHash)
+    if (!tx || !receipt || receipt.status !== 1) {
+      return c.json({ success: false, error: 'Transação não confirmada.' }, 400)
+    }
+    if (tx.from.toLowerCase() !== walletAddress.toLowerCase() || tx.to?.toLowerCase() !== pool.contract.toLowerCase()) {
+      return c.json({ success: false, error: 'txHash não corresponde ao pool/carteira.' }, 400)
     }
 
-    const a = getAgent();
-    const position = await a.openPosition({
+    const position = {
+      id: `yield-${Date.now()}`,
       walletAddress,
-      poolId,
-      amount: amountNum * 1e6,
-      strategy,
       txHash,
-    });
-
-    return c.json({
-      success: true,
-      position,
-      message: `Position opened in pool. Earning yield at ${position.entryApy}% APY.`,
-      explorer: `https://testnet.arcscan.app/tx/${txHash}`,
-    });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
-  }
-});
-
-// ─── Close position ────────────────────────────────────────────────────────
-yieldRouter.post('/positions/:id/close', async (c) => {
-  try {
-    const posId = c.req.param('id');
-    const body = await c.req.json();
-    const { txHash } = body;
-    if (!txHash) {
-      return c.json({ success: false, error: 'txHash required — sign the withdrawal on Arc Testnet' }, 400);
+      poolId,
+      amount,
+      blockNumber: receipt.blockNumber,
+      explorerUrl: `${ARC_TESTNET.explorerUrl}/tx/${txHash}`,
+      status: 'active',
+      openedAt: new Date().toISOString(),
     }
-
-    const a = getAgent();
-    const position = await a.closePosition(posId, txHash);
-    return c.json({
-      success: true,
-      position,
-      yieldEarned: (position.yieldEarned / 1e6).toFixed(6),
-      totalReceived: ((position.currentValue) / 1e6).toFixed(6),
-      explorer: `https://testnet.arcscan.app/tx/${txHash}`,
-    });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
+    positions.unshift(position)
+    return c.json({ success: true, position })
+  } catch (error) {
+    return c.json({ success: false, error: (error as Error).message }, 500)
   }
-});
+})
 
-// ─── Get positions ─────────────────────────────────────────────────────────
-yieldRouter.get('/positions', (c) => {
-  const walletAddress = c.req.query('wallet');
-  const a = getAgent();
-  const positions = a.getPositions(walletAddress);
-  return c.json({ success: true, positions, total: positions.length });
-});
+yieldRouter.get('/positions', (c) => c.json({ success: true, positions }))
 
-// ─── Analyze portfolio ─────────────────────────────────────────────────────
-yieldRouter.get('/analyze/:wallet', (c) => {
-  const wallet = c.req.param('wallet');
-  const a = getAgent();
-  const analysis = a.analyzePortfolio(wallet);
-  return c.json({ success: true, ...analysis, wallet });
-});
+yieldRouter.post('/positions/:id/close', (c) => c.json({ success: false, error: 'Fechamento via API desabilitado. Use a wallet e registre txHash.' }, 501))
+yieldRouter.post('/positions/:id/rebalance', (c) => c.json({ success: false, error: 'Rebalance automático desabilitado sem estratégia auditada.' }, 501))
+yieldRouter.get('/project', (c) => c.json({ success: false, error: 'Projeções APY removidas para evitar dados simulados.' }, 501))
 
-// ─── Auto-rebalance position ───────────────────────────────────────────────
-yieldRouter.post('/positions/:id/rebalance', async (c) => {
-  try {
-    const posId = c.req.param('id');
-    const a = getAgent();
-    const action = await a.autoRebalance(posId);
-    return c.json({
-      success: true,
-      rebalance: action,
-      message: action.status === 'executed'
-        ? `Rebalanced: moved to ${action.toPool} (+${action.expectedGain}% APY gain)`
-        : `No rebalance needed: ${action.reason}`,
-    });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
-  }
-});
-
-// ─── Rebalance history ─────────────────────────────────────────────────────
-yieldRouter.get('/rebalances', (c) => {
-  const limit = parseInt(c.req.query('limit') || '20');
-  const a = getAgent();
-  return c.json({
-    success: true,
-    rebalances: a.getRebalanceHistory(limit),
-    stats: a.getStats(),
-  });
-});
-
-// ─── Strategies ────────────────────────────────────────────────────────────
-yieldRouter.get('/strategies', (c) => {
-  const a = getAgent();
-  return c.json({ success: true, strategies: a.getStrategies() });
-});
-
-// ─── APY projections for amount ───────────────────────────────────────────
-yieldRouter.get('/project', (c) => {
-  const amountStr = c.req.query('amount') || '1000';
-  const token = (c.req.query('token') || 'USDC') as 'USDC' | 'EURC';
-  const strategy = (c.req.query('strategy') || 'balanced') as any;
-  const amount = parseFloat(amountStr);
-
-  const a = getAgent();
-  const best = a.getBestPool(token, strategy);
-  const apy = best?.apy ?? 5.0;
-
-  const project = (days: number) => parseFloat((amount * Math.pow(1 + apy / 100 / 365, days)).toFixed(4));
-
-  return c.json({
-    success: true,
-    amount,
-    token,
-    strategy,
-    bestPool: best,
-    projections: {
-      '7d': { value: project(7), yield: parseFloat((project(7) - amount).toFixed(4)) },
-      '30d': { value: project(30), yield: parseFloat((project(30) - amount).toFixed(4)) },
-      '90d': { value: project(90), yield: parseFloat((project(90) - amount).toFixed(4)) },
-      '180d': { value: project(180), yield: parseFloat((project(180) - amount).toFixed(4)) },
-      '365d': { value: project(365), yield: parseFloat((project(365) - amount).toFixed(4)) },
-    },
-    apy,
-    gasCostPerRebalance: 0.009,
-  });
-});
-
-export default yieldRouter;
+export default yieldRouter
