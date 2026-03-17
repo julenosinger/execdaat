@@ -42,7 +42,178 @@ app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
 app.route('/api/escrow', escrowRouter)
 
-// GET /api/status - Status geral do sistema
+// ─── Legal / Trust Pages ──────────────────────────────────────────────────────
+const LEGAL_STYLE = `
+  <style>
+    body{background:#030712;color:#e5e7eb;font-family:system-ui,sans-serif;margin:0;padding:0}
+    .wrap{max-width:800px;margin:0 auto;padding:40px 24px 80px}
+    h1{color:#fff;font-size:1.8rem;font-weight:700;margin-bottom:8px}
+    h2{color:#c4b5fd;font-size:1.1rem;font-weight:600;margin:32px 0 8px;border-bottom:1px solid #374151;padding-bottom:6px}
+    p,li{color:#9ca3af;font-size:.95rem;line-height:1.7;margin-bottom:12px}
+    ul{padding-left:20px}
+    a{color:#818cf8;text-decoration:none}a:hover{text-decoration:underline}
+    .badge{display:inline-flex;align-items:center;gap:6px;background:#451a03;border:1px solid #92400e;color:#fcd34d;padding:6px 14px;border-radius:999px;font-size:.8rem;font-weight:600;margin-bottom:24px}
+    .nav{background:#111827;border-bottom:1px solid #1f2937;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+    .nav-brand{color:#fff;font-weight:700;font-size:.95rem;text-decoration:none;display:flex;align-items:center;gap:8px}
+    .nav-links{display:flex;gap:20px}
+    .nav-links a{color:#6b7280;font-size:.85rem}
+    footer{border-top:1px solid #1f2937;padding:20px 24px;text-align:center;color:#4b5563;font-size:.8rem}
+  </style>
+`;
+
+const LEGAL_NAV = `
+  <nav class="nav">
+    <a href="/" class="nav-brand">⚡ ARC AI Agents</a>
+    <div class="nav-links">
+      <a href="/about">About</a>
+      <a href="/privacy-policy">Privacy</a>
+      <a href="/terms-of-service">Terms</a>
+    </div>
+  </nav>
+`;
+const LEGAL_FOOTER = `<footer>© 2025 ARC AI Agents — Open Source · MIT License · <a href="https://github.com/julenosinger/Agentes-de-IA">GitHub</a></footer>`;
+
+app.get('/about', (c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>About — ARC AI Agents</title>${LEGAL_STYLE}</head><body>
+${LEGAL_NAV}
+<div class="wrap">
+  <div class="badge">🧪 Testnet Application</div>
+  <h1>About ARC AI Agents</h1>
+  <p>ARC AI Agents is an <strong style="color:#fff">open-source, non-custodial testnet dApp</strong> built on <a href="https://arc.network" target="_blank">Arc Network</a>. It is designed for developers and users to explore autonomous Web3 interactions in a safe testnet environment.</p>
+
+  <h2>What This App Does</h2>
+  <ul>
+    <li><strong style="color:#e5e7eb">Payments</strong> — Send USDC and EURC tokens on Arc Testnet using ERC-20 transfers via MetaMask or compatible wallets.</li>
+    <li><strong style="color:#e5e7eb">ARC Swap</strong> — Swap EURC ↔ USDC using a real on-chain Automated Market Maker (AMM) with the x·y=k constant-product formula.</li>
+    <li><strong style="color:#e5e7eb">Liquidity</strong> — Add or remove liquidity from the EURC/USDC pool and earn LP tokens representing your share.</li>
+    <li><strong style="color:#e5e7eb">Contracts</strong> — Deploy and interact with smart contracts on Arc Testnet.</li>
+    <li><strong style="color:#e5e7eb">Escrow</strong> — Create escrow agreements with on-chain enforcement.</li>
+  </ul>
+
+  <h2>Security & Transparency</h2>
+  <ul>
+    <li>This application is <strong style="color:#e5e7eb">100% open source</strong>. View the source code on <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank">GitHub</a>.</li>
+    <li>We <strong style="color:#e5e7eb">never request, store, or transmit private keys or seed phrases</strong>. All signing happens exclusively in your wallet (MetaMask or compatible).</li>
+    <li>All transactions require <strong style="color:#e5e7eb">explicit user confirmation</strong> via the connected wallet. No automatic or hidden transactions occur.</li>
+    <li>Smart contracts are deployed on Arc Testnet and verifiable on <a href="https://testnet.arcscan.app" target="_blank">ArcScan Explorer</a>.</li>
+    <li>No real funds are at risk. This is a testnet application using test tokens only.</li>
+  </ul>
+
+  <h2>Smart Contracts</h2>
+  <ul>
+    <li>SimpleAMM: <a href="https://testnet.arcscan.app/address/0x3148E2807F172D1cC354F35fB4fC4104e8b6b561" target="_blank">0x3148E2807F172D1cC354F35fB4fC4104e8b6b561</a></li>
+    <li>USDC (ERC-20): 0x3600000000000000000000000000000000000000</li>
+    <li>EURC (ERC-20): 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a</li>
+  </ul>
+
+  <h2>Network Information</h2>
+  <ul>
+    <li>Network: Arc Testnet</li>
+    <li>Chain ID: 5042002</li>
+    <li>RPC: https://rpc.testnet.arc.network</li>
+    <li>Explorer: <a href="https://testnet.arcscan.app" target="_blank">testnet.arcscan.app</a></li>
+    <li>Faucet: <a href="https://faucet.circle.com" target="_blank">faucet.circle.com</a></li>
+  </ul>
+
+  <h2>Contact & Support</h2>
+  <p>This is a community open-source project. For questions or bug reports, please open an issue on <a href="https://github.com/julenosinger/Agentes-de-IA/issues" target="_blank">GitHub</a>.</p>
+</div>
+${LEGAL_FOOTER}
+</body></html>`));
+
+app.get('/privacy-policy', (c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy Policy — ARC AI Agents</title>${LEGAL_STYLE}</head><body>
+${LEGAL_NAV}
+<div class="wrap">
+  <div class="badge">🔒 Privacy Policy</div>
+  <h1>Privacy Policy</h1>
+  <p><em>Last updated: March 2025</em></p>
+  <p>ARC AI Agents ("we", "the app") is an open-source testnet application. This policy explains what data, if any, is collected and how it is handled.</p>
+
+  <h2>Data We Do NOT Collect</h2>
+  <ul>
+    <li>We do <strong style="color:#fff">not</strong> collect, store, or transmit private keys, seed phrases, or wallet passwords.</li>
+    <li>We do <strong style="color:#fff">not</strong> collect personal information such as names, email addresses, or phone numbers.</li>
+    <li>We do <strong style="color:#fff">not</strong> use tracking cookies or advertising pixels.</li>
+    <li>We do <strong style="color:#fff">not</strong> sell or share any user data with third parties.</li>
+    <li>We do <strong style="color:#fff">not</strong> store wallet addresses on our servers beyond the duration of your session.</li>
+  </ul>
+
+  <h2>Blockchain Data</h2>
+  <p>When you connect a wallet and perform transactions, your wallet address and transaction details are broadcast to the Arc Testnet blockchain. This data is public by the nature of blockchain technology and is not stored by us.</p>
+
+  <h2>Local Storage</h2>
+  <p>The app may use your browser's localStorage to save preferences (e.g., language settings, UI state). This data never leaves your device.</p>
+
+  <h2>Third-Party Services</h2>
+  <ul>
+    <li><strong style="color:#e5e7eb">Cloudflare Pages</strong> — hosting provider. May collect basic access logs. See <a href="https://www.cloudflare.com/privacypolicy/" target="_blank">Cloudflare's Privacy Policy</a>.</li>
+    <li><strong style="color:#e5e7eb">CDN Libraries</strong> — ethers.js, Tailwind CSS, Font Awesome loaded via jsDelivr CDN. Standard CDN access logs may apply.</li>
+    <li><strong style="color:#e5e7eb">Arc Network RPC</strong> — blockchain read/write calls go to Arc Testnet RPC endpoints. No personal data is transmitted.</li>
+  </ul>
+
+  <h2>Security</h2>
+  <p>All communications are encrypted via HTTPS/TLS. Security headers including Content-Security-Policy, X-Frame-Options, and HSTS are applied to all responses.</p>
+
+  <h2>Changes</h2>
+  <p>This policy may be updated. Changes will be reflected in the "last updated" date above.</p>
+
+  <h2>Contact</h2>
+  <p>For privacy concerns, open an issue at <a href="https://github.com/julenosinger/Agentes-de-IA/issues" target="_blank">github.com/julenosinger/Agentes-de-IA</a>.</p>
+</div>
+${LEGAL_FOOTER}
+</body></html>`));
+
+app.get('/terms-of-service', (c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Terms of Service — ARC AI Agents</title>${LEGAL_STYLE}</head><body>
+${LEGAL_NAV}
+<div class="wrap">
+  <div class="badge">📄 Terms of Service</div>
+  <h1>Terms of Service</h1>
+  <p><em>Last updated: March 2025</em></p>
+  <p>By using ARC AI Agents ("the App"), you agree to the following terms.</p>
+
+  <h2>1. Testnet Only</h2>
+  <p>This application operates exclusively on <strong style="color:#fff">Arc Testnet</strong>. All tokens used are testnet tokens with no real monetary value. Do not attempt to use mainnet assets with this application.</p>
+
+  <h2>2. No Financial Advice</h2>
+  <p>Nothing in this application constitutes financial, investment, or legal advice. Use at your own risk. This is an experimental testnet application for educational and development purposes only.</p>
+
+  <h2>3. No Custody of Funds</h2>
+  <p>ARC AI Agents is a <strong style="color:#fff">non-custodial</strong> application. We do not hold, control, or have access to your funds at any time. Your wallet and private keys remain solely in your possession.</p>
+
+  <h2>4. No Guarantees</h2>
+  <p>The App is provided "as is" without warranties of any kind. We do not guarantee:</p>
+  <ul>
+    <li>Continuous availability or uptime</li>
+    <li>Accuracy of on-chain data displayed</li>
+    <li>That testnet smart contracts are bug-free</li>
+  </ul>
+
+  <h2>5. User Responsibilities</h2>
+  <ul>
+    <li>You are responsible for the security of your own wallet and private keys.</li>
+    <li>You must not use this app for any illegal activity.</li>
+    <li>You acknowledge this is a testnet environment and no real value is at stake.</li>
+  </ul>
+
+  <h2>6. Smart Contracts</h2>
+  <p>Smart contracts deployed by this project are open source and available for review. However, they have not been formally audited. Use with caution even on testnet.</p>
+
+  <h2>7. Limitation of Liability</h2>
+  <p>To the maximum extent permitted by law, ARC AI Agents and its contributors shall not be liable for any loss or damage resulting from use of this application.</p>
+
+  <h2>8. Changes</h2>
+  <p>These terms may be updated at any time. Continued use of the App constitutes acceptance of updated terms.</p>
+
+  <h2>9. Contact</h2>
+  <p>Questions? Open an issue on <a href="https://github.com/julenosinger/Agentes-de-IA/issues" target="_blank">GitHub</a>.</p>
+</div>
+${LEGAL_FOOTER}
+</body></html>`));
+
+
+// ─── 404 Page ─────────────────────────────────────────────────────────────────
+app.notFound((c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>404 — Page Not Found | ARC AI Agents</title>${LEGAL_STYLE}<style>.hero{text-align:center;padding:80px 24px}.code{font-size:6rem;font-weight:900;background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1}.msg{color:#9ca3af;margin:16px 0 32px;font-size:1.1rem}.btn{display:inline-flex;align-items:center;gap:8px;background:#6366f1;color:#fff;padding:12px 28px;border-radius:12px;text-decoration:none;font-weight:600;transition:background .2s}.btn:hover{background:#4f46e5;text-decoration:none}</style></head><body>${LEGAL_NAV}<div class="wrap"><div class="hero"><div class="code">404</div><p class="msg">Page not found — this route doesn't exist.</p><a href="/" class="btn">⚡ Back to ARC AI Agents</a></div></div>${LEGAL_FOOTER}</body></html>`, 404));
+
+
 app.get('/api/status', (c) => {
   return c.json({
     status: 'online',
@@ -91,18 +262,78 @@ app.get('/', (c) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ARC AI Agents — Autonomous Payments &amp; Contracts</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+  <title>ARC AI Agents — Testnet dApp | Payments, Swap &amp; Contracts on Arc Network</title>
+
+  <!-- ── SEO & Trust Meta Tags ─────────────────────────────────────────── -->
+  <meta name="description" content="ARC AI Agents is an open-source testnet dApp on Arc Network. Explore autonomous payments, token swaps, smart contracts, and liquidity pools — all on testnet. No real funds involved.">
+  <meta name="keywords" content="ARC Network, testnet, dApp, USDC, EURC, swap, AMM, Web3, blockchain, open source">
+  <meta name="author" content="ARC AI Agents — Open Source Project">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#1e1b4b">
+
+  <!-- ── Open Graph (Facebook/LinkedIn) ──────────────────────────────── -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://arc-ai-agents.pages.dev/">
+  <meta property="og:title" content="ARC AI Agents — Testnet dApp">
+  <meta property="og:description" content="Open-source testnet application on Arc Network. Autonomous payments, token swaps, AMM liquidity pools. No real funds — testnet only.">
+  <meta property="og:site_name" content="ARC AI Agents">
+
+  <!-- ── Twitter Card ─────────────────────────────────────────────────── -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="ARC AI Agents — Testnet dApp">
+  <meta name="twitter:description" content="Open-source testnet dApp on Arc Network. No real funds involved.">
+
+  <!-- ── Security & Anti-Phishing ─────────────────────────────────────── -->
+  <meta name="application-name" content="ARC AI Agents">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+
+  <!-- ── Favicon ──────────────────────────────────────────────────────── -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%237c3aed'/><text y='72' x='50' text-anchor='middle' font-size='58' font-family='sans-serif'>⚡</text></svg>">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%237c3aed'/><text y='72' x='50' text-anchor='middle' font-size='58'>⚡</text></svg>">
+
+  <!-- ── Canonical ────────────────────────────────────────────────────── -->
+  <link rel="canonical" href="https://arc-ai-agents.pages.dev/">
+
+  <!-- ── Schema.org structured data ──────────────────────────────────── -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "ARC AI Agents",
+    "description": "Open-source testnet dApp on Arc Network for autonomous payments, token swaps and smart contracts.",
+    "url": "https://arc-ai-agents.pages.dev",
+    "applicationCategory": "FinanceApplication",
+    "operatingSystem": "Web Browser",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Organization", "name": "ARC AI Agents Open Source" }
+  }
+  </script>
+
+  <!-- ── Stylesheets & Libraries ──────────────────────────────────────── -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
   <!-- ethers.js v6 — used for ethers.Contract, ethers.parseUnits, BrowserProvider -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
-  <!-- csv-upload.js handles all CSV parsing natively -->
   <link href="/static/styles.css" rel="stylesheet">
   <script src="/static/i18n.js"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
+
+  <!-- ── TESTNET DISCLAIMER BANNER ──────────────────────────────────────── -->
+  <div id="testnet-banner" class="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 text-center text-xs text-amber-300 flex items-center justify-center gap-3">
+    <i class="fas fa-flask text-amber-400"></i>
+    <span>
+      <strong class="text-amber-400">TESTNET ONLY</strong> — This application runs exclusively on Arc Testnet.
+      No real funds are used. Do not send mainnet assets.
+    </span>
+    <a href="/about" class="underline hover:text-amber-200 transition-colors hidden sm:inline">Learn more</a>
+    <button onclick="document.getElementById('testnet-banner').remove()" class="ml-2 text-amber-500 hover:text-amber-300 transition-colors">
+      <i class="fas fa-times text-xs"></i>
+    </button>
+  </div>
+
   <!-- Header -->
   <header class="bg-gray-900 border-b border-purple-800/40 px-6 py-4 sticky top-0 z-50 backdrop-blur-sm">
     <div class="max-w-7xl mx-auto flex items-center justify-between">
@@ -1357,21 +1588,40 @@ forge create src/ContractManager.sol:ContractManager \\
     <div id="tab-content-dex" class="tab-content hidden">
 
       <!-- ── Page Header ─────────────────────────────────────────────────────── -->
-      <div class="flex items-center justify-between mb-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <h2 class="text-2xl font-bold text-white flex items-center gap-2">
-            <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-base shadow-lg shadow-cyan-900/40">
+          <h2 class="text-2xl font-bold text-white flex items-center gap-3">
+            <span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-cyan-900/40">
               <i class="fas fa-exchange-alt"></i>
             </span>
             ARC Swap
+            <span class="text-xs font-normal bg-amber-500/10 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-full">
+              <i class="fas fa-flask mr-1 text-[10px]"></i>Testnet
+            </span>
           </h2>
-          <p class="text-gray-500 text-xs mt-1 ml-11">EURC / USDC · x·y=k · 0.3% fee · Arc Testnet</p>
+          <p class="text-gray-500 text-xs mt-1.5 ml-13">EURC / USDC · Constant Product AMM (x·y=k) · 0.3% fee · Arc Testnet</p>
         </div>
-        <!-- Status badge -->
-        <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-900/60 border border-gray-700/50 rounded-full text-xs">
-          <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span id="amm-status" class="text-gray-300">Loading…</span>
+        <!-- Status + refresh -->
+        <div class="flex items-center gap-2">
+          <button onclick="ammRefreshAll()" class="text-xs text-gray-500 hover:text-cyan-400 transition-colors bg-gray-800/60 border border-gray-700/40 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+            <i class="fas fa-sync-alt text-[10px]"></i> Refresh
+          </button>
+          <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-900/60 border border-gray-700/50 rounded-full text-xs">
+            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span id="amm-status" class="text-gray-300">Loading…</span>
+          </div>
         </div>
+      </div>
+
+      <!-- ── Anti-phishing notice ───────────────────────────────────────────── -->
+      <div class="mb-5 bg-blue-900/10 border border-blue-700/30 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3 text-xs">
+        <i class="fas fa-shield-alt text-blue-400 text-base"></i>
+        <span class="text-gray-400">
+          <strong class="text-blue-300">Security notice:</strong>
+          This dApp never asks for your private key. All transactions are signed
+          exclusively in your wallet (MetaMask). No automatic or hidden transactions occur.
+        </span>
+        <a href="/about" class="ml-auto text-blue-400 hover:text-blue-300 underline whitespace-nowrap">Learn more ↗</a>
       </div>
 
       <!-- ── Main 2-column layout ────────────────────────────────────────────── -->
@@ -1459,41 +1709,71 @@ forge create src/ContractManager.sol:ContractManager \\
                 </div>
               </div>
 
-              <!-- Slippage -->
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-gray-500 font-semibold">Slippage: <span id="amm-slip-label" class="text-gray-300">0.5%</span></span>
-                <div class="flex gap-1.5">
+              <!-- Slippage tolerance -->
+              <div class="bg-gray-800/30 rounded-xl px-3 py-2.5 flex items-center justify-between">
+                <div class="flex items-center gap-1.5 text-xs text-gray-500">
+                  <i class="fas fa-sliders-h text-gray-600"></i>
+                  <span>Slippage:</span>
+                  <span id="amm-slip-label" class="text-cyan-400 font-semibold">0.5%</span>
+                </div>
+                <div class="flex gap-1">
                   <button id="amm-slip-01" onclick="ammSetSlippage(0.1)"
-                    class="px-3 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all">0.1%</button>
+                    class="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all">0.1%</button>
                   <button id="amm-slip-05" onclick="ammSetSlippage(0.5)"
-                    class="px-3 py-1 rounded-lg text-xs font-bold bg-cyan-600 text-white transition-all">0.5%</button>
+                    class="px-2.5 py-1 rounded-lg text-xs font-bold bg-cyan-600/80 text-white transition-all ring-1 ring-cyan-500/50">0.5%</button>
                   <button id="amm-slip-10" onclick="ammSetSlippage(1.0)"
-                    class="px-3 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all">1.0%</button>
+                    class="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all">1.0%</button>
                 </div>
               </div>
 
               <!-- Swap Button -->
               <button id="amm-swap-btn" onclick="ammExecuteSwap()" disabled
-                class="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-base transition-all shadow-lg shadow-cyan-900/40 mt-1">
-                Enter Amount
+                class="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-base transition-all shadow-lg shadow-cyan-900/40 mt-1 relative overflow-hidden group">
+                <span class="relative z-10 flex items-center justify-center gap-2">
+                  <i class="fas fa-exchange-alt"></i>
+                  <span id="amm-swap-btn-text">Enter Amount</span>
+                </span>
+                <div class="absolute inset-0 bg-gradient-to-r from-cyan-400/20 to-blue-400/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               </button>
 
+              <!-- Wallet not connected hint -->
+              <div id="amm-no-wallet-hint" class="text-center text-xs text-gray-600 flex items-center justify-center gap-1.5">
+                <i class="fas fa-wallet text-gray-700"></i>
+                Connect wallet to execute swaps
+              </div>
+
               <!-- Result / Error -->
-              <div id="amm-swap-result" class="hidden bg-green-900/20 border border-green-700/40 rounded-xl p-4 text-sm">
-                <div class="flex items-center gap-2 text-green-400 font-semibold mb-2">
-                  <i class="fas fa-check-circle"></i>Swap Confirmed!
+              <div id="amm-swap-result" class="hidden bg-green-900/20 border border-green-700/40 rounded-xl p-4">
+                <div class="flex items-center gap-2 text-green-400 font-semibold mb-3 text-sm">
+                  <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <i class="fas fa-check text-xs"></i>
+                  </div>
+                  Swap Confirmed!
                 </div>
-                <div class="grid grid-cols-2 gap-1.5 text-xs text-gray-300">
-                  <span class="text-gray-500">Sent:</span>     <span id="amm-result-in" class="font-mono">—</span>
-                  <span class="text-gray-500">Received:</span> <span id="amm-result-out" class="font-mono text-green-300">—</span>
-                  <span class="text-gray-500">Tx:</span>
-                  <a id="amm-result-hash-link" href="#" target="_blank" class="font-mono text-cyan-400 underline truncate">
-                    <span id="amm-result-hash">—</span>
-                  </a>
+                <div class="space-y-1.5 text-xs">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Sent</span>
+                    <span id="amm-result-in" class="font-mono text-white">—</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">Received</span>
+                    <span id="amm-result-out" class="font-mono text-green-300 font-bold">—</span>
+                  </div>
+                  <div class="flex justify-between items-center pt-1 border-t border-gray-700/40">
+                    <span class="text-gray-500">Transaction</span>
+                    <a id="amm-result-hash-link" href="#" target="_blank" rel="noopener noreferrer"
+                      class="font-mono text-cyan-400 hover:text-cyan-300 underline truncate max-w-[160px] flex items-center gap-1">
+                      <span id="amm-result-hash">—</span>
+                      <i class="fas fa-external-link-alt text-[9px]"></i>
+                    </a>
+                  </div>
                 </div>
               </div>
               <div id="amm-swap-error" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-xs text-red-300">
-                <i class="fas fa-times-circle mr-2"></i><span id="amm-swap-error-msg">—</span>
+                <div class="flex items-start gap-2">
+                  <i class="fas fa-exclamation-triangle mt-0.5 flex-shrink-0"></i>
+                  <span id="amm-swap-error-msg">—</span>
+                </div>
               </div>
 
             </div>
@@ -1641,97 +1921,175 @@ forge create src/ContractManager.sol:ContractManager \\
         <div class="xl:col-span-2 space-y-4">
 
           <!-- Pool Stats Card -->
-          <div class="bg-gray-900/80 border border-cyan-700/20 rounded-2xl p-4 space-y-4 shadow-xl">
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-gray-400 font-bold uppercase tracking-widest">Pool Status</span>
+          <div class="bg-gray-900/80 border border-cyan-700/20 rounded-2xl overflow-hidden shadow-xl">
+            <!-- Card header -->
+            <div class="px-4 pt-4 pb-3 flex items-center justify-between border-b border-gray-800/60">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded-lg bg-cyan-600/20 flex items-center justify-center">
+                  <i class="fas fa-chart-bar text-cyan-400 text-xs"></i>
+                </div>
+                <span class="text-xs text-gray-300 font-bold uppercase tracking-widest">Pool Status</span>
+              </div>
               <a href="https://testnet.arcscan.app/address/0x3148E2807F172D1cC354F35fB4fC4104e8b6b561"
-                target="_blank"
-                class="text-xs text-cyan-500 hover:text-cyan-400 transition-all flex items-center gap-1">
-                ArcScan <i class="fas fa-external-link-alt text-[10px]"></i>
+                target="_blank" rel="noopener noreferrer"
+                class="text-xs text-cyan-500 hover:text-cyan-400 transition-all flex items-center gap-1 bg-cyan-900/20 hover:bg-cyan-900/30 border border-cyan-700/30 rounded-lg px-2 py-1">
+                <i class="fas fa-external-link-alt text-[9px]"></i> ArcScan
               </a>
             </div>
 
-            <!-- TVL highlight -->
-            <div class="bg-gradient-to-br from-cyan-900/30 to-blue-900/20 border border-cyan-700/20 rounded-xl p-4 text-center">
-              <div class="text-xs text-gray-500 mb-1">Total Value Locked</div>
-              <div class="text-3xl font-bold text-white" id="amm-tvl">—</div>
-              <div class="text-xs text-cyan-500 mt-1">EURC/USDC Pool</div>
-            </div>
-
-            <!-- Reserves -->
-            <div class="space-y-2">
-              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
-                <div class="flex items-center gap-2">
-                  <span class="text-base">💶</span>
-                  <span class="text-xs text-gray-400 font-semibold">EURC Reserve</span>
+            <div class="p-4 space-y-4">
+              <!-- TVL highlight -->
+              <div class="bg-gradient-to-br from-cyan-900/30 to-blue-900/20 border border-cyan-700/20 rounded-xl p-4 text-center relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-blue-500/5 pointer-events-none"></div>
+                <div class="text-xs text-gray-500 mb-1 font-semibold uppercase tracking-wider">Total Value Locked</div>
+                <div class="text-3xl font-bold text-white" id="amm-tvl">—</div>
+                <div class="text-xs text-cyan-500 mt-1.5 flex items-center justify-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
+                  EURC / USDC Pool
                 </div>
-                <span class="text-white font-mono font-bold text-sm" id="amm-reserve-a">—</span>
               </div>
-              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
-                <div class="flex items-center gap-2">
-                  <span class="text-base">💵</span>
-                  <span class="text-xs text-gray-400 font-semibold">USDC Reserve</span>
+
+              <!-- Reserves -->
+              <div class="space-y-2">
+                <div class="text-xs text-gray-600 font-semibold uppercase tracking-wide">Reserves</div>
+                <div class="flex items-center justify-between bg-gray-800/50 hover:bg-gray-800/70 rounded-xl px-3 py-2.5 transition-colors">
+                  <div class="flex items-center gap-2">
+                    <span class="text-base">💶</span>
+                    <div>
+                      <div class="text-xs text-gray-400 font-semibold">EURC</div>
+                      <div class="text-[10px] text-gray-600 font-mono">0x89B5…D72a</div>
+                    </div>
+                  </div>
+                  <span class="text-white font-mono font-bold text-sm" id="amm-reserve-a">—</span>
                 </div>
-                <span class="text-white font-mono font-bold text-sm" id="amm-reserve-b">—</span>
+                <div class="flex items-center justify-between bg-gray-800/50 hover:bg-gray-800/70 rounded-xl px-3 py-2.5 transition-colors">
+                  <div class="flex items-center gap-2">
+                    <span class="text-base">💵</span>
+                    <div>
+                      <div class="text-xs text-gray-400 font-semibold">USDC</div>
+                      <div class="text-[10px] text-gray-600 font-mono">0x3600…0000</div>
+                    </div>
+                  </div>
+                  <span class="text-white font-mono font-bold text-sm" id="amm-reserve-b">—</span>
+                </div>
               </div>
-            </div>
 
-            <!-- Prices -->
-            <div class="space-y-2">
-              <div class="text-xs text-gray-500 font-semibold uppercase tracking-wide">Live Prices</div>
-              <div class="bg-gray-800/50 rounded-xl px-3 py-2.5">
-                <div class="text-xs text-gray-500 mb-0.5">1 EURC =</div>
-                <div class="text-cyan-400 font-mono font-bold" id="amm-price-a">—</div>
+              <!-- Live Prices -->
+              <div class="space-y-2">
+                <div class="text-xs text-gray-600 font-semibold uppercase tracking-wide flex items-center gap-1.5">
+                  <i class="fas fa-circle text-green-500 text-[6px] animate-pulse"></i>
+                  Live Prices
+                </div>
+                <div class="grid grid-cols-1 gap-2">
+                  <div class="bg-gray-800/50 rounded-xl px-3 py-2.5 flex items-center justify-between">
+                    <div class="text-xs text-gray-500">
+                      1 <span class="text-cyan-400 font-semibold">EURC</span> =
+                    </div>
+                    <div class="text-cyan-400 font-mono font-bold text-sm" id="amm-price-a">—</div>
+                  </div>
+                  <div class="bg-gray-800/50 rounded-xl px-3 py-2.5 flex items-center justify-between">
+                    <div class="text-xs text-gray-500">
+                      1 <span class="text-purple-400 font-semibold">USDC</span> =
+                    </div>
+                    <div class="text-purple-400 font-mono font-bold text-sm" id="amm-price-b">—</div>
+                  </div>
+                </div>
               </div>
-              <div class="bg-gray-800/50 rounded-xl px-3 py-2.5">
-                <div class="text-xs text-gray-500 mb-0.5">1 USDC =</div>
-                <div class="text-purple-400 font-mono font-bold" id="amm-price-b">—</div>
-              </div>
-            </div>
 
-            <!-- Contract address -->
-            <div class="border-t border-gray-700/40 pt-3">
-              <div class="text-xs text-gray-600 mb-1">Contract</div>
-              <div class="text-xs font-mono text-gray-500 truncate" id="amm-addr-display">—</div>
+              <!-- Pool info row -->
+              <div class="bg-gray-800/30 rounded-xl px-3 py-2 flex items-center justify-between text-xs">
+                <span class="text-gray-600 flex items-center gap-1">
+                  <i class="fas fa-percent text-gray-700"></i> Fee
+                </span>
+                <span class="text-green-400 font-semibold">0.30%</span>
+              </div>
+
+              <!-- Contract address -->
+              <div class="border-t border-gray-800/60 pt-3 space-y-1">
+                <div class="text-xs text-gray-600 uppercase tracking-wider font-semibold">SimpleAMM Contract</div>
+                <div class="flex items-center justify-between gap-2">
+                  <code class="text-[10px] font-mono text-gray-500 truncate" id="amm-addr-display">—</code>
+                  <button onclick="navigator.clipboard.writeText(document.getElementById('amm-addr-display')?.textContent || '')" 
+                    class="text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0" title="Copy address">
+                    <i class="fas fa-copy text-xs"></i>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Your Balances Card -->
-          <div class="bg-gray-900/80 border border-gray-700/40 rounded-2xl p-4 shadow-xl">
-            <div class="text-xs text-gray-400 font-bold uppercase tracking-widest mb-3">Your Balances</div>
-            <div class="space-y-2">
+          <div class="bg-gray-900/80 border border-gray-700/40 rounded-2xl overflow-hidden shadow-xl">
+            <div class="px-4 pt-4 pb-3 flex items-center justify-between border-b border-gray-800/60">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded-lg bg-purple-600/20 flex items-center justify-center">
+                  <i class="fas fa-wallet text-purple-400 text-xs"></i>
+                </div>
+                <span class="text-xs text-gray-300 font-bold uppercase tracking-widest">Your Balances</span>
+              </div>
+              <button onclick="ammRefreshAll()" class="text-gray-600 hover:text-purple-400 transition-colors" title="Refresh balances">
+                <i class="fas fa-sync-alt text-xs"></i>
+              </button>
+            </div>
+            <div class="p-4 space-y-2">
               <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
                 <div class="flex items-center gap-2">
-                  <span>💶</span><span class="text-xs text-gray-400 font-semibold">EURC</span>
+                  <span>💶</span>
+                  <div>
+                    <div class="text-xs text-gray-400 font-semibold">EURC</div>
+                    <div class="text-[10px] text-gray-600">Euro Coin</div>
+                  </div>
                 </div>
                 <span class="text-blue-300 font-mono font-bold text-sm" id="amm-bal-eurc">—</span>
               </div>
               <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
                 <div class="flex items-center gap-2">
-                  <span>💵</span><span class="text-xs text-gray-400 font-semibold">USDC</span>
+                  <span>💵</span>
+                  <div>
+                    <div class="text-xs text-gray-400 font-semibold">USDC</div>
+                    <div class="text-[10px] text-gray-600">USD Coin</div>
+                  </div>
                 </div>
                 <span class="text-green-300 font-mono font-bold text-sm" id="amm-bal-usdc">—</span>
               </div>
               <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
                 <div class="flex items-center gap-2">
-                  <span>🏊</span><span class="text-xs text-gray-400 font-semibold">LP Token</span>
+                  <span>🏊</span>
+                  <div>
+                    <div class="text-xs text-gray-400 font-semibold">LP Token</div>
+                    <div class="text-[10px] text-gray-600">ARC-LP-EURC-USDC</div>
+                  </div>
                 </div>
                 <span class="text-cyan-300 font-mono font-bold text-sm" id="amm-bal-lp">—</span>
+              </div>
+
+              <!-- Get tokens link -->
+              <div class="pt-1">
+                <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer"
+                  class="flex items-center justify-center gap-2 text-xs text-blue-400 hover:text-blue-300 bg-blue-900/10 hover:bg-blue-900/20 border border-blue-700/20 rounded-xl py-2.5 transition-all">
+                  <i class="fas fa-faucet"></i>
+                  Get testnet tokens from Circle Faucet
+                  <i class="fas fa-external-link-alt text-[9px]"></i>
+                </a>
               </div>
             </div>
           </div>
 
-          <!-- Deploy Notice -->
-          <div id="amm-deploy-notice" class="hidden bg-yellow-900/20 border border-yellow-600/30 rounded-2xl p-4 text-sm text-yellow-300">
-            <p class="font-bold mb-1.5">⚠️ Contract not deployed</p>
-            <p class="text-xs text-yellow-400 mb-3">Deploy SimpleAMM to enable real swaps.</p>
-            <div class="flex gap-2">
-              <input type="password" id="amm-pk-input" placeholder="0x… private key"
-                class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 outline-none" />
-              <button onclick="ammDeployContract()"
-                class="px-3 py-2 bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold rounded-lg transition-all">
-                Deploy
-              </button>
+          <!-- Deploy Notice (hidden by default, shown if not deployed) -->
+          <div id="amm-deploy-notice" class="hidden bg-yellow-900/20 border border-yellow-600/30 rounded-2xl overflow-hidden">
+            <div class="px-4 py-3 border-b border-yellow-700/20 flex items-center gap-2">
+              <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+              <span class="text-xs font-bold text-yellow-300 uppercase tracking-wide">Contract Not Deployed</span>
+            </div>
+            <div class="p-4 space-y-3">
+              <p class="text-xs text-yellow-400">The SimpleAMM contract needs to be deployed to Arc Testnet via CLI. No private keys should be entered in the browser.</p>
+              <code class="text-xs bg-black/40 rounded-lg px-3 py-2 block font-mono text-green-300 break-all">
+                node contracts/script/deployAMM.cjs &lt;PRIVATE_KEY&gt;
+              </code>
+              <p class="text-xs text-gray-600 flex items-center gap-1.5">
+                <i class="fas fa-shield-alt text-green-500"></i>
+                Deploy via CLI only — never input private keys in the browser.
+              </p>
             </div>
           </div>
 
@@ -1739,7 +2097,6 @@ forge create src/ContractManager.sol:ContractManager \\
 
       </div><!-- end grid -->
 
-    </div>
     <!-- ════════════════════════════════════════════════════════════════ -->
 
 
@@ -2535,8 +2892,129 @@ forge create src/ContractManager.sol:ContractManager \\
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SITE FOOTER — Institutional, Legal & Transparency
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <footer class="mt-16 border-t border-gray-800/60 bg-gray-950/90">
+
+    <!-- Main footer content -->
+    <div class="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+
+      <!-- Brand column -->
+      <div class="space-y-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+            <i class="fas fa-bolt text-white text-sm"></i>
+          </div>
+          <span class="font-bold text-white text-sm">ARC AI Agents</span>
+        </div>
+        <p class="text-xs text-gray-500 leading-relaxed">
+          Open-source testnet dApp built on Arc Network. Explore autonomous payments, AMM swaps, and smart contracts — safely, on testnet.
+        </p>
+        <div class="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded-lg w-fit">
+          <i class="fas fa-flask text-amber-400 text-xs"></i>
+          <span class="text-amber-300 text-xs font-semibold">TESTNET ONLY</span>
+        </div>
+      </div>
+
+      <!-- Network Info -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Arc Network</h3>
+        <ul class="space-y-2 text-xs text-gray-500">
+          <li class="flex items-center gap-2">
+            <i class="fas fa-circle text-green-400 text-[8px]"></i>
+            Arc Testnet · ChainID 5042002
+          </li>
+          <li>
+            <a href="https://testnet.arcscan.app" target="_blank" rel="noopener noreferrer"
+              class="flex items-center gap-1.5 hover:text-purple-400 transition-colors">
+              <i class="fas fa-external-link-alt text-[10px]"></i>ArcScan Explorer
+            </a>
+          </li>
+          <li>
+            <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer"
+              class="flex items-center gap-1.5 hover:text-blue-400 transition-colors">
+              <i class="fas fa-faucet text-[10px]"></i>Testnet Faucet
+            </a>
+          </li>
+          <li>
+            <a href="https://testnet.arcscan.app/address/0x3148E2807F172D1cC354F35fB4fC4104e8b6b561"
+              target="_blank" rel="noopener noreferrer"
+              class="flex items-center gap-1.5 hover:text-cyan-400 transition-colors">
+              <i class="fas fa-file-contract text-[10px]"></i>SimpleAMM Contract
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Resources -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Resources</h3>
+        <ul class="space-y-2 text-xs text-gray-500">
+          <li>
+            <a href="/about" class="flex items-center gap-1.5 hover:text-white transition-colors">
+              <i class="fas fa-info-circle text-[10px]"></i>About this App
+            </a>
+          </li>
+          <li>
+            <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener noreferrer"
+              class="flex items-center gap-1.5 hover:text-white transition-colors">
+              <i class="fab fa-github text-[10px]"></i>Source Code (GitHub)
+            </a>
+          </li>
+          <li>
+            <a href="https://arc.network" target="_blank" rel="noopener noreferrer"
+              class="flex items-center gap-1.5 hover:text-white transition-colors">
+              <i class="fas fa-globe text-[10px]"></i>Arc Network Official
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Legal -->
+      <div class="space-y-3">
+        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Legal</h3>
+        <ul class="space-y-2 text-xs text-gray-500">
+          <li>
+            <a href="/privacy-policy" class="flex items-center gap-1.5 hover:text-white transition-colors">
+              <i class="fas fa-shield-alt text-[10px]"></i>Privacy Policy
+            </a>
+          </li>
+          <li>
+            <a href="/terms-of-service" class="flex items-center gap-1.5 hover:text-white transition-colors">
+              <i class="fas fa-file-alt text-[10px]"></i>Terms of Service
+            </a>
+          </li>
+          <li class="text-gray-600 pt-1 leading-relaxed">
+            This app does not custody funds, store private keys, or execute transactions without explicit user confirmation.
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Bottom bar -->
+    <div class="border-t border-gray-800/60 px-6 py-4">
+      <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-600">
+        <span>© 2025 ARC AI Agents — Open Source Project · MIT License</span>
+        <div class="flex items-center gap-4">
+          <span class="flex items-center gap-1.5">
+            <i class="fas fa-lock text-green-500 text-[10px]"></i>
+            No private keys stored
+          </span>
+          <span class="flex items-center gap-1.5">
+            <i class="fas fa-flask text-amber-400 text-[10px]"></i>
+            Testnet only
+          </span>
+          <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener noreferrer"
+            class="flex items-center gap-1.5 hover:text-gray-400 transition-colors">
+            <i class="fab fa-github"></i>Open Source
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
   <script src="/static/wallet.js"></script>
-  <script src="/static/evm-tx.js"></script>
   <script src="/static/csv-upload.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/payments.js"></script>

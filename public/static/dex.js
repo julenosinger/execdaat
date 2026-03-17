@@ -229,7 +229,7 @@ function ammUpdatePoolUI(data) {
     setText('amm-reserve-b', '—');
     setText('amm-price-a',   '—');
     setText('amm-price-b',   '—');
-    setText('amm-tvl',       '—');
+    setText('amm-tvl',       '$0.00');
     setText('amm-status',    '⚠️ Pool not deployed');
     show('amm-deploy-notice');
     return;
@@ -238,13 +238,17 @@ function ammUpdatePoolUI(data) {
   const rA = parseFloat(data.reserveAHuman);
   const rB = parseFloat(data.reserveBHuman);
   const hasLiq = rA > 0 && rB > 0;
-  setText('amm-reserve-a',   hasLiq ? rA.toFixed(4) + ' EURC' : 'Empty — add liquidity');
-  setText('amm-reserve-b',   hasLiq ? rB.toFixed(4) + ' USDC' : 'Empty — add liquidity');
+  setText('amm-reserve-a',   hasLiq ? rA.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4}) + ' EURC' : 'Empty');
+  setText('amm-reserve-b',   hasLiq ? rB.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4}) + ' USDC' : 'Empty');
   setText('amm-price-a',     hasLiq ? parseFloat(data.priceAinB).toFixed(6) + ' USDC' : '—');
   setText('amm-price-b',     hasLiq ? parseFloat(data.priceBinA).toFixed(6) + ' EURC' : '—');
-  setText('amm-tvl',         hasLiq ? '$' + parseFloat(data.tvl).toLocaleString(undefined, {maximumFractionDigits: 2}) : '$0.00');
-  setText('amm-status',      hasLiq ? '✅ Active · 0.3% fee' : '⚡ Deployed · awaiting liquidity');
-  setText('amm-addr-display', data.ammAddress ? data.ammAddress.slice(0,10)+'…'+data.ammAddress.slice(-6) : '');
+  const tvl = hasLiq ? parseFloat(data.tvl) : 0;
+  setText('amm-tvl',         '$' + tvl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+  setText('amm-status',      hasLiq ? '✅ Active · 0.3% fee' : '⚡ Deployed · Add liquidity');
+  // Full address for the new improved display
+  if (data.ammAddress) {
+    setText('amm-addr-display', data.ammAddress);
+  }
 }
 
 // ─── Swap quote (live, pure computation) ──────────────────────────────────────
@@ -309,30 +313,48 @@ function ammComputeSwapQuote() {
 }
 
 function ammUpdateSwapBtn() {
-  const btn = $('amm-swap-btn');
+  const btn     = $('amm-swap-btn');
+  const btnText = $('amm-swap-btn-text');
+  const hint    = $('amm-no-wallet-hint');
   if (!btn) return;
+
+  const setLabel = (txt) => {
+    if (btnText) btnText.textContent = txt;
+    else btn.textContent = txt;
+  };
+
   if (!window.walletState?.address) {
-    btn.textContent = 'Connect Wallet';
-    btn.disabled    = true;
+    setLabel('Connect Wallet to Swap');
+    btn.disabled = true;
+    if (hint) hint.classList.remove('hidden');
     return;
   }
+  if (hint) hint.classList.add('hidden');
+
   if (!ammState.deployed) {
-    btn.textContent = 'Pool Empty — Add Liquidity';
-    btn.disabled    = true;
+    setLabel('Pool Empty — Add Liquidity First');
+    btn.disabled = true;
     return;
   }
   if (!ammState.quote) {
-    btn.textContent = 'Enter Amount';
-    btn.disabled    = true;
+    setLabel('Enter Amount');
+    btn.disabled = true;
     return;
   }
   if (ammState.pending) {
-    btn.textContent = '⏳ Processing…';
-    btn.disabled    = true;
+    setLabel('⏳ Waiting for wallet confirmation…');
+    btn.disabled = true;
     return;
   }
-  btn.textContent = `Swap ${ammState.swapFrom} → ${ammState.swapTo}`;
-  btn.disabled    = false;
+  // Check balance
+  const balRaw = ammState.swapFrom === 'EURC' ? ammState.balances.EURC : ammState.balances.USDC;
+  if (ammState.quote.amountIn > balRaw) {
+    setLabel(`Insufficient ${ammState.swapFrom} balance`);
+    btn.disabled = true;
+    return;
+  }
+  setLabel(`Swap ${ammState.swapFrom} → ${ammState.swapTo}`);
+  btn.disabled = false;
 }
 
 // ─── Tab switch ───────────────────────────────────────────────────────────────
@@ -342,9 +364,11 @@ window.ammSwitchTab = function(tab) {
     const btn    = $('amm-tab-' + t);
     const panel  = $('amm-panel-' + t);
     if (btn) {
-      btn.className = t === tab
-        ? 'flex-1 py-3 px-4 text-sm font-semibold rounded-lg bg-cyan-600 text-white transition-all'
-        : 'flex-1 py-3 px-4 text-sm font-semibold rounded-lg text-gray-400 hover:text-white transition-all';
+      if (t === tab) {
+        btn.className = 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/30 transition-all';
+      } else {
+        btn.className = 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all';
+      }
     }
     if (panel) {
       panel.classList.toggle('hidden', t !== tab);
