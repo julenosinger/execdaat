@@ -16,6 +16,7 @@ let unreadCount = 0;
 function toggleChat() {
   const widget = document.getElementById('chat-widget');
   const fabIcon = document.getElementById('chat-fab-icon');
+  const fabLabel = document.getElementById('chat-fab-label');
   if (!widget) return;
 
   chatOpen = !chatOpen;
@@ -29,10 +30,8 @@ function toggleChat() {
       widget.style.opacity = '1';
       widget.style.transform = 'translateY(0) scale(1)';
     });
-    if (fabIcon) {
-      fabIcon.classList.remove('fa-robot');
-      fabIcon.classList.add('fa-times');
-    }
+    if (fabIcon) { fabIcon.classList.remove('fa-robot'); fabIcon.classList.add('fa-times'); }
+    if (fabLabel) { fabLabel.classList.add('hidden'); }
     // Clear unread
     unreadCount = 0;
     const badge = document.getElementById('chat-unread');
@@ -50,10 +49,8 @@ function toggleChat() {
     widget.style.opacity = '0';
     widget.style.transform = 'translateY(20px) scale(0.95)';
     setTimeout(() => widget.classList.add('hidden'), 250);
-    if (fabIcon) {
-      fabIcon.classList.remove('fa-times');
-      fabIcon.classList.add('fa-robot');
-    }
+    if (fabIcon) { fabIcon.classList.remove('fa-times'); fabIcon.classList.add('fa-robot'); }
+    if (fabLabel) { fabLabel.classList.remove('hidden'); fabLabel.textContent = 'Ask me'; }
   }
 }
 

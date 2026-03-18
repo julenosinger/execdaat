@@ -54,6 +54,12 @@ function switchTab(tab) {
   if (tab === 'dashboard') loadDashboard();
   if (tab === 'payments') { loadPayments(); if (window.initPayments) window.initPayments(); }
   if (tab === 'contracts') { cfWalletGateUpdate(); cfLoadContracts(); }
+  if (tab === 'multisend') { if (window.msInit) window.msInit(); }
+  // Show/hide multisend wallet gate
+  if (tab === 'multisend') {
+    const gate = document.getElementById('ms-wallet-gate');
+    if (gate) gate.classList.toggle('hidden', !!window.walletState?.connected);
+  }
   if (tab === 'agents') {
     loadAgentsDetails();
     if (window.loadGuardianStatus) window.loadGuardianStatus();
@@ -614,11 +620,34 @@ function getMilestoneColor(status) {
 }
 
 // ============================================================
+// LANDING / APP SHELL NAVIGATION
+// ============================================================
+function enterApp() {
+  const landing  = document.getElementById('landing-page');
+  const appShell = document.getElementById('app-shell');
+  if (landing)  landing.classList.add('hidden');
+  if (appShell) appShell.classList.remove('hidden');
+  // Load dashboard data when entering the app
+  loadDashboard();
+}
+
+function showLanding() {
+  const landing  = document.getElementById('landing-page');
+  const appShell = document.getElementById('app-shell');
+  if (appShell) appShell.classList.add('hidden');
+  if (landing)  landing.classList.remove('hidden');
+}
+
+// Auto-enter app if wallet is already connected (e.g. page refresh with persisted wallet)
+function checkAutoEnter() {
+  if (window.walletState?.connected) enterApp();
+}
+
+// ============================================================
 // INIT
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
-  loadDashboard();
-  
+  // Don't auto-load dashboard — wait until user enters the app
   // Auto-refresh a cada 30 segundos
   setInterval(() => {
     if (currentTab === 'dashboard') loadDashboard();
@@ -635,6 +664,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Ouvir evento de wallet conectada
   window.addEventListener('walletConnected', (e) => {
     const { address, shortAddress, onArcNetwork, usdcBalance } = e.detail;
+
+    // Auto-enter app when wallet connects
+    enterApp();
 
     // Atualizar avatar no header
     const avatar = document.getElementById('wallet-avatar');
@@ -660,6 +692,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const cfGate = document.getElementById('cf-wallet-gate');
     if (cfGate) cfGate.style.display = 'none';
     if (currentTab === 'contracts') cfLoadContracts();
+
+    // Atualizar wallet gate de multisend
+    const msGate = document.getElementById('ms-wallet-gate');
+    if (msGate) msGate.classList.add('hidden');
 
     addLog(`[WALLET] ✅ ${shortAddress} conectada${onArcNetwork ? ' na Arc Testnet' : ' (rede incorreta)'}`, 'success');
   });
@@ -700,6 +736,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Atualizar wallet gate de contratos
     const cfGate2 = document.getElementById('cf-wallet-gate');
     if (cfGate2) cfGate2.style.display = '';
+
+    // Mostrar wallet gate de multisend
+    const msGate2 = document.getElementById('ms-wallet-gate');
+    if (msGate2) msGate2.classList.remove('hidden');
 
     addLog('[WALLET] Wallet disconnected', 'warning');
   });

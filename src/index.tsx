@@ -314,31 +314,29 @@ app.get('/', (c) => {
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
 
-  <!-- ── TESTNET DISCLAIMER BANNER ──────────────────────────────────────── -->
-  <div id="testnet-banner" class="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 text-center text-xs text-amber-300 flex items-center justify-center gap-3">
-    <i class="fas fa-flask text-amber-400"></i>
-    <span>
-      <strong class="text-amber-400">TESTNET ONLY</strong> — This application runs exclusively on Arc Testnet.
-      No real funds are used. Do not send mainnet assets.
-    </span>
-    <a href="/about" class="underline hover:text-amber-200 transition-colors hidden sm:inline">Learn more</a>
-    <button onclick="document.getElementById('testnet-banner').remove()" class="ml-2 text-amber-500 hover:text-amber-300 transition-colors">
-      <i class="fas fa-times text-xs"></i>
-    </button>
+  <!-- ══════════════════════════════════════════════════════════════════════
+       PERSISTENT TESTNET WARNING — always visible, non-dismissible
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="bg-amber-500 text-black text-center text-xs font-bold py-2 px-4 flex items-center justify-center gap-2 sticky top-0 z-[100]">
+    <i class="fas fa-flask"></i>
+    ⚠️ TESTNET APPLICATION — No real funds. Arc Testnet only. Do not send mainnet assets.
+    <a href="/about" class="underline ml-2 opacity-70 hover:opacity-100 hidden sm:inline">Learn more</a>
   </div>
 
-  <!-- Header -->
-  <header class="bg-gray-900 border-b border-purple-800/40 px-6 py-4 sticky top-0 z-50 backdrop-blur-sm">
+  <!-- ══════════════════════════════════════════════════════════════════════
+       HEADER — always visible
+       ══════════════════════════════════════════════════════════════════════ -->
+  <header class="bg-gray-900/95 border-b border-purple-800/30 px-6 py-3 sticky top-[32px] z-50 backdrop-blur-sm">
     <div class="max-w-7xl mx-auto flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-          <i class="fas fa-robot text-white text-lg"></i>
+      <button onclick="showLanding()" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
+          <i class="fas fa-robot text-white text-base"></i>
         </div>
-        <div>
-          <h1 class="font-bold text-lg text-white" data-i18n="app_name">ARC AI Agents</h1>
-          <p class="text-xs text-purple-400" data-i18n="app_subtitle">Autonomous Payments &amp; Contracts</p>
+        <div class="text-left">
+          <div class="font-bold text-base text-white leading-none">ARC AI Agents</div>
+          <div class="text-[10px] text-purple-400 leading-none mt-0.5">Autonomous Payments &amp; Contracts</div>
         </div>
-      </div>
+      </button>
       <div class="flex items-center gap-2 sm:gap-3">
         <!-- Language Selector -->
         <div id="lang-selector" class="relative">
@@ -348,38 +346,29 @@ app.get('/', (c) => {
             <span id="lang-toggle-label" class="hidden sm:inline">🇺🇸 English <i class="fas fa-chevron-down text-xs ml-1 text-gray-500"></i></span>
           </button>
           <div id="lang-dropdown" class="hidden absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 min-w-[160px] overflow-hidden">
-            <button onclick="setLang('en')" data-lang="en" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all">
-              <span class="text-base">🇺🇸</span> English
-            </button>
-            <button onclick="setLang('pt')" data-lang="pt" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all">
-              <span class="text-base">🇧🇷</span> Português
-            </button>
-            <button onclick="setLang('es')" data-lang="es" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all">
-              <span class="text-base">🇪🇸</span> Español
-            </button>
-            <button onclick="setLang('zh')" data-lang="zh" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all">
-              <span class="text-base">🇨🇳</span> 中文
-            </button>
-            <button onclick="setLang('ko')" data-lang="ko" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all">
-              <span class="text-base">🇰🇷</span> 한국어
-            </button>
+            <button onclick="setLang('en')" data-lang="en" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇺🇸</span> English</button>
+            <button onclick="setLang('pt')" data-lang="pt" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇧🇷</span> Português</button>
+            <button onclick="setLang('es')" data-lang="es" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇪🇸</span> Español</button>
+            <button onclick="setLang('zh')" data-lang="zh" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇨🇳</span> 中文</button>
+            <button onclick="setLang('ko')" data-lang="ko" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇰🇷</span> 한국어</button>
           </div>
         </div>
 
         <!-- Arc Network badge -->
-        <div class="hidden sm:flex items-center gap-2 bg-green-900/40 border border-green-700/50 rounded-full px-3 py-1.5">
-          <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+        <div class="hidden sm:flex items-center gap-1.5 bg-green-900/30 border border-green-700/40 rounded-full px-3 py-1.5">
+          <div class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
           <span class="text-xs text-green-400 font-medium">Arc Testnet</span>
         </div>
-        <!-- Quick links -->
-        <a href="https://testnet.arcscan.app" target="_blank" class="hidden md:block text-xs text-gray-400 hover:text-purple-400 transition-colors">
-          <i class="fas fa-external-link-alt mr-1"></i><span data-i18n="explorer">Explorer</span>
+
+        <!-- Explorer / Faucet quick links -->
+        <a href="https://testnet.arcscan.app" target="_blank" class="hidden lg:block text-xs text-gray-400 hover:text-purple-400 transition-colors">
+          <i class="fas fa-external-link-alt mr-1"></i>Explorer
         </a>
-        <a href="https://faucet.circle.com" target="_blank" class="hidden md:block text-xs text-gray-400 hover:text-blue-400 transition-colors">
-          <i class="fas fa-faucet mr-1"></i><span data-i18n="faucet">Faucet</span>
+        <a href="https://faucet.circle.com" target="_blank" class="hidden lg:block text-xs text-gray-400 hover:text-blue-400 transition-colors">
+          <i class="fas fa-faucet mr-1"></i>Faucet
         </a>
 
-        <!-- Wallet info (quando conectada) -->
+        <!-- Wallet info (when connected) -->
         <div id="wallet-info" class="hidden items-center gap-2 bg-gray-800/80 border border-gray-700/50 rounded-xl px-3 py-2 cursor-pointer hover:border-purple-600/50 transition-all" onclick="openWalletModal()">
           <div class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" id="wallet-avatar">??</div>
           <div class="hidden sm:block">
@@ -389,40 +378,306 @@ app.get('/', (c) => {
           <div id="wallet-balance-display" class="hidden text-xs text-blue-400 font-medium bg-blue-900/30 px-2 py-0.5 rounded-full"></div>
         </div>
 
-        <!-- Settings button -->
-        <button onclick="openSettingsModal()"
-          id="settings-btn"
-          class="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-500 rounded-xl text-gray-400 hover:text-white transition-all relative"
-          title="Settings">
+        <!-- Settings -->
+        <button onclick="openSettingsModal()" id="settings-btn"
+          class="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-500 rounded-xl text-gray-400 hover:text-white transition-all relative" title="Settings">
           <i class="fas fa-cog text-sm"></i>
           <span id="settings-dot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full border-2 border-gray-900"></span>
         </button>
 
-        <!-- Profile button -->
-        <button onclick="openProfileModal()"
-          id="profile-btn"
-          class="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-purple-700 to-blue-700 hover:from-purple-600 hover:to-blue-600 border border-purple-600/40 rounded-xl text-white font-bold text-xs transition-all"
-          title="Profile">
+        <!-- Profile -->
+        <button onclick="openProfileModal()" id="profile-btn"
+          class="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-purple-700 to-blue-700 hover:from-purple-600 hover:to-blue-600 border border-purple-600/40 rounded-xl text-white font-bold text-xs transition-all" title="Profile">
           <span id="profile-avatar-btn">👤</span>
         </button>
 
-        <!-- Botão conectar wallet -->
+        <!-- Connect Wallet Button -->
         <button id="wallet-connect-btn" onclick="openWalletModal()"
           class="wallet-connect-pulse flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-lg shadow-purple-900/30">
           <i class="fas fa-wallet"></i>
           <span class="hidden sm:inline" data-i18n="btn_connect">Connect</span>
         </button>
-
-        <!-- Badge de wallet conectada (mobile) -->
         <div id="wallet-badge" class="hidden sm:hidden w-2 h-2 rounded-full bg-green-400"></div>
       </div>
     </div>
   </header>
 
+  <!-- ══════════════════════════════════════════════════════════════════════
+       LANDING PAGE — shown by default, hidden after "Enter App"
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div id="landing-page">
+
+    <!-- HERO SECTION -->
+    <section class="relative overflow-hidden bg-gradient-to-b from-gray-950 via-purple-950/20 to-gray-950 py-20 px-6">
+      <!-- Background grid -->
+      <div class="absolute inset-0 opacity-5" style="background-image:radial-gradient(circle at 1px 1px, rgba(139,92,246,.6) 1px, transparent 0);background-size:32px 32px;"></div>
+      <!-- Glow -->
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-600/5 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="relative max-w-4xl mx-auto text-center">
+        <!-- Testnet pill -->
+        <div class="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-full px-4 py-1.5 text-xs text-amber-400 font-semibold mb-6">
+          <i class="fas fa-flask"></i>
+          Testnet Application — No real funds involved
+        </div>
+
+        <!-- Title -->
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white mb-5 leading-tight tracking-tight">
+          ARC <span class="bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">AI Agents</span>
+        </h1>
+
+        <!-- Subtitle -->
+        <p class="text-lg sm:text-xl text-gray-300 font-medium mb-3">
+          Autonomous Payments &amp; Smart Contracts on Arc Network (Testnet)
+        </p>
+
+        <!-- Description -->
+        <p class="text-gray-400 text-base max-w-2xl mx-auto mb-10 leading-relaxed">
+          A decentralized platform that allows users and organizations to automate financial operations using smart contracts and AI agents on the Arc Network.
+          Built entirely open-source — no private keys ever leave your wallet.
+        </p>
+
+        <!-- CTA Buttons -->
+        <div class="flex flex-col sm:flex-row gap-3 justify-center items-center mb-12">
+          <button onclick="enterApp()"
+            class="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold rounded-2xl px-8 py-3.5 text-base shadow-lg shadow-purple-900/40 transition-all hover:scale-105 active:scale-95">
+            <i class="fas fa-rocket"></i>
+            Launch App
+          </button>
+          <button onclick="openWalletModal()"
+            class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-purple-500 text-white font-semibold rounded-2xl px-8 py-3.5 text-base transition-all">
+            <i class="fas fa-wallet text-purple-400"></i>
+            Connect Wallet
+          </button>
+          <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener"
+            class="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors">
+            <i class="fab fa-github"></i>
+            View Source
+          </a>
+        </div>
+
+        <!-- Trust signals row -->
+        <div class="flex flex-wrap justify-center gap-4 text-xs text-gray-500">
+          <span class="flex items-center gap-1.5"><i class="fas fa-shield-alt text-green-400"></i>Open Source</span>
+          <span class="flex items-center gap-1.5"><i class="fas fa-key text-purple-400"></i>No Private Keys Stored</span>
+          <span class="flex items-center gap-1.5"><i class="fas fa-eye text-cyan-400"></i>Fully Verifiable On-Chain</span>
+          <span class="flex items-center gap-1.5"><i class="fas fa-code text-blue-400"></i>Testnet Only</span>
+          <a href="https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A" target="_blank" rel="noopener"
+            class="flex items-center gap-1.5 text-gray-500 hover:text-blue-400 transition-colors">
+            <i class="fas fa-external-link-alt"></i>Verified Contracts on ArcScan
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- WHAT IS THIS SECTION -->
+    <section class="py-16 px-6 border-t border-gray-800/60">
+      <div class="max-w-4xl mx-auto">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+          <div>
+            <div class="text-xs text-purple-400 font-semibold uppercase tracking-wider mb-2">What is this?</div>
+            <h2 class="text-2xl font-bold text-white mb-4">A trustless financial automation platform</h2>
+            <p class="text-gray-400 leading-relaxed mb-4">
+              ARC AI Agents is a decentralized testnet application that lets you explore autonomous financial operations
+              on the Arc Network. Connect your EVM wallet to interact with smart contracts,
+              send batch payments, swap tokens, and manage on-chain escrow — all without custodians.
+            </p>
+            <p class="text-gray-500 text-sm leading-relaxed">
+              This is a <strong class="text-amber-400">testnet-only</strong> application. All tokens are test tokens with no real value.
+              No real funds are at risk. Smart contracts are deployed on Arc Testnet and verifiable on ArcScan.
+            </p>
+            <div class="mt-6 flex flex-wrap gap-3">
+              <a href="https://testnet.arcscan.app" target="_blank" rel="noopener"
+                class="flex items-center gap-2 text-xs text-gray-400 hover:text-cyan-400 border border-gray-700 hover:border-cyan-700 rounded-lg px-3 py-2 transition-all">
+                <i class="fas fa-search text-cyan-500"></i>ArcScan Explorer
+              </a>
+              <a href="https://faucet.circle.com" target="_blank" rel="noopener"
+                class="flex items-center gap-2 text-xs text-gray-400 hover:text-blue-400 border border-gray-700 hover:border-blue-700 rounded-lg px-3 py-2 transition-all">
+                <i class="fas fa-faucet text-blue-500"></i>Get Test USDC
+              </a>
+              <a href="/about" class="flex items-center gap-2 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg px-3 py-2 transition-all">
+                <i class="fas fa-info-circle"></i>About / Legal
+              </a>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="bg-gray-900/60 border border-green-700/20 rounded-xl p-4 flex items-start gap-3">
+              <i class="fas fa-shield-alt text-green-400 text-lg mt-0.5 flex-shrink-0"></i>
+              <div>
+                <div class="text-white text-sm font-semibold mb-0.5">We never request your private key</div>
+                <div class="text-gray-500 text-xs">All signing happens exclusively in your wallet (MetaMask or compatible). We have zero access to your funds.</div>
+              </div>
+            </div>
+            <div class="bg-gray-900/60 border border-purple-700/20 rounded-xl p-4 flex items-start gap-3">
+              <i class="fas fa-code text-purple-400 text-lg mt-0.5 flex-shrink-0"></i>
+              <div>
+                <div class="text-white text-sm font-semibold mb-0.5">100% Open Source</div>
+                <div class="text-xs text-gray-500">All smart contracts and frontend code are public and verifiable on GitHub and ArcScan.</div>
+              </div>
+            </div>
+            <div class="bg-gray-900/60 border border-cyan-700/20 rounded-xl p-4 flex items-start gap-3">
+              <i class="fas fa-flask text-amber-400 text-lg mt-0.5 flex-shrink-0"></i>
+              <div>
+                <div class="text-white text-sm font-semibold mb-0.5">Testnet only — no real value</div>
+                <div class="text-xs text-gray-500">USDC and EURC shown here are testnet tokens. They have no monetary value and cannot be withdrawn.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES SECTION -->
+    <section class="py-16 px-6 bg-gray-900/30 border-t border-gray-800/60">
+      <div class="max-w-5xl mx-auto">
+        <div class="text-center mb-10">
+          <div class="text-xs text-cyan-400 font-semibold uppercase tracking-wider mb-2">Platform Features</div>
+          <h2 class="text-2xl font-bold text-white">Everything you need to explore Web3 finance</h2>
+          <p class="text-gray-500 text-sm mt-2">All features run on Arc Testnet. Safe to explore.</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-purple-600/40 transition-colors">
+            <div class="w-10 h-10 rounded-xl bg-purple-900/40 border border-purple-700/30 flex items-center justify-center mb-3">
+              <i class="fas fa-dollar-sign text-purple-400"></i>
+            </div>
+            <h3 class="text-white font-semibold mb-1.5 text-sm">Automated Payments</h3>
+            <p class="text-gray-500 text-xs leading-relaxed">P2P, corporate, or batch payments in USDC/EURC. AI agents analyze and execute on-chain transfers with full transaction history.</p>
+          </div>
+
+          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-cyan-600/40 transition-colors">
+            <div class="w-10 h-10 rounded-xl bg-cyan-900/40 border border-cyan-700/30 flex items-center justify-center mb-3">
+              <i class="fas fa-paper-plane text-cyan-400"></i>
+            </div>
+            <h3 class="text-white font-semibold mb-1.5 text-sm">MultiSend / Batch</h3>
+            <p class="text-gray-500 text-xs leading-relaxed">Send USDC to hundreds of recipients in a single batch. Upload a CSV, review, sign once, and download your receipt.</p>
+          </div>
+
+          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-green-600/40 transition-colors">
+            <div class="w-10 h-10 rounded-xl bg-green-900/40 border border-green-700/30 flex items-center justify-center mb-3">
+              <i class="fas fa-file-contract text-green-400"></i>
+            </div>
+            <h3 class="text-white font-semibold mb-1.5 text-sm">Smart Contracts</h3>
+            <p class="text-gray-500 text-xs leading-relaxed">Create on-chain work contracts with milestone-based USDC escrow. Fully trustless via ContractFactory on Arc Testnet.</p>
+          </div>
+
+          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-blue-600/40 transition-colors">
+            <div class="w-10 h-10 rounded-xl bg-blue-900/40 border border-blue-700/30 flex items-center justify-center mb-3">
+              <i class="fas fa-exchange-alt text-blue-400"></i>
+            </div>
+            <h3 class="text-white font-semibold mb-1.5 text-sm">DEX / Token Swap</h3>
+            <p class="text-gray-500 text-xs leading-relaxed">Swap USDC ↔ EURC using the on-chain AMM (x·y=k formula, 0.3% fee). Real liquidity pool deployed on Arc Testnet.</p>
+          </div>
+
+          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-orange-600/40 transition-colors">
+            <div class="w-10 h-10 rounded-xl bg-orange-900/40 border border-orange-700/30 flex items-center justify-center mb-3">
+              <i class="fas fa-shield-alt text-orange-400"></i>
+            </div>
+            <h3 class="text-white font-semibold mb-1.5 text-sm">On-Chain Escrow</h3>
+            <p class="text-gray-500 text-xs leading-relaxed">Lock USDC in an escrow contract and release on conditions. Transparent, verifiable, and non-custodial.</p>
+          </div>
+
+          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-pink-600/40 transition-colors">
+            <div class="w-10 h-10 rounded-xl bg-pink-900/40 border border-pink-700/30 flex items-center justify-center mb-3">
+              <i class="fas fa-brain text-pink-400"></i>
+            </div>
+            <h3 class="text-white font-semibold mb-1.5 text-sm">AI Agents</h3>
+            <p class="text-gray-500 text-xs leading-relaxed">AI-driven agents analyze transactions, assess risk, and assist with contract operations. Ask the chatbot anything about the platform.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- NETWORK INFO SECTION -->
+    <section class="py-14 px-6 border-t border-gray-800/60">
+      <div class="max-w-4xl mx-auto">
+        <div class="text-center mb-8">
+          <div class="text-xs text-green-400 font-semibold uppercase tracking-wider mb-2">Network Configuration</div>
+          <h2 class="text-xl font-bold text-white">Arc Testnet — All addresses are public</h2>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div class="bg-gray-900/60 border border-gray-700/30 rounded-xl p-3 flex items-center justify-between">
+            <span class="text-gray-400 text-xs">Chain ID</span>
+            <span class="font-mono text-white text-xs bg-gray-800 px-2 py-0.5 rounded">5042002</span>
+          </div>
+          <div class="bg-gray-900/60 border border-gray-700/30 rounded-xl p-3 flex items-center justify-between">
+            <span class="text-gray-400 text-xs">Gas Token</span>
+            <span class="text-green-400 text-xs font-semibold">USDC (native)</span>
+          </div>
+          <div class="bg-gray-900/60 border border-gray-700/30 rounded-xl p-3 flex items-center justify-between">
+            <span class="text-gray-400 text-xs">Gas per tx</span>
+            <span class="text-yellow-400 text-xs">~$0.009 USDC</span>
+          </div>
+          <div class="bg-gray-900/60 border border-gray-700/30 rounded-xl p-3 flex items-center justify-between">
+            <span class="text-gray-400 text-xs">RPC</span>
+            <a href="https://rpc.testnet.arc.network" target="_blank" class="text-purple-400 text-xs font-mono hover:underline">rpc.testnet.arc.network</a>
+          </div>
+          <div class="bg-gray-900/60 border border-gray-700/30 rounded-xl p-3 flex items-center justify-between">
+            <span class="text-gray-400 text-xs">USDC</span>
+            <a href="https://testnet.arcscan.app/address/0x3600000000000000000000000000000000000000" target="_blank" class="text-blue-400 text-xs font-mono hover:underline">0x3600…0000</a>
+          </div>
+          <div class="bg-gray-900/60 border border-gray-700/30 rounded-xl p-3 flex items-center justify-between">
+            <span class="text-gray-400 text-xs">ContractFactory</span>
+            <a href="https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A" target="_blank" class="text-cyan-400 text-xs font-mono hover:underline">0xbbC9…aF2A</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="py-16 px-6 text-center border-t border-gray-800/60">
+      <div class="max-w-2xl mx-auto">
+        <h2 class="text-2xl font-bold text-white mb-3">Ready to explore?</h2>
+        <p class="text-gray-400 mb-6 text-sm">Connect your wallet and start interacting with the Arc Testnet. Everything is free — just get test USDC from the faucet.</p>
+        <div class="flex flex-col sm:flex-row gap-3 justify-center">
+          <button onclick="enterApp()"
+            class="flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold rounded-2xl px-8 py-3.5 text-sm shadow-lg transition-all hover:scale-105">
+            <i class="fas fa-rocket"></i>Launch App — No wallet required
+          </button>
+          <a href="https://faucet.circle.com" target="_blank" rel="noopener"
+            class="flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 rounded-2xl px-8 py-3.5 text-sm transition-all">
+            <i class="fas fa-faucet text-blue-400"></i>Get Test USDC
+          </a>
+        </div>
+        <p class="text-xs text-gray-600 mt-6">
+          <i class="fas fa-lock mr-1"></i>
+          This app never stores your private keys. Source code:
+          <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener" class="text-gray-500 hover:text-white underline">GitHub</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="border-t border-gray-800/60 py-8 px-6">
+      <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-600">
+        <div class="flex items-center gap-3">
+          <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+            <i class="fas fa-robot text-white text-[10px]"></i>
+          </div>
+          <span>ARC AI Agents — Open Source Testnet dApp</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <a href="/about" class="hover:text-gray-400 transition-colors">About</a>
+          <a href="/privacy-policy" class="hover:text-gray-400 transition-colors">Privacy</a>
+          <a href="/terms-of-service" class="hover:text-gray-400 transition-colors">Terms</a>
+          <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener" class="hover:text-gray-400 transition-colors">GitHub</a>
+          <a href="https://testnet.arcscan.app" target="_blank" rel="noopener" class="hover:text-gray-400 transition-colors">ArcScan</a>
+        </div>
+      </div>
+    </footer>
+  </div>
+  <!-- END LANDING PAGE -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       APP SHELL — hidden until user clicks "Enter App" or connects wallet
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div id="app-shell" class="hidden">
+
   <!-- Tabs -->
-  <div class="bg-gray-900/60 border-b border-gray-800">
-    <div class="max-w-7xl mx-auto px-6">
-      <div class="flex gap-0">
+  <div class="bg-gray-900/60 border-b border-gray-800 sticky top-[32px] z-40">
+    <div class="max-w-7xl mx-auto px-4 overflow-x-auto">
+      <div class="flex gap-0 min-w-max">
         <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn active px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
           <i class="fas fa-chart-line mr-2"></i><span data-i18n="tab_dashboard">Dashboard</span>
         </button>
@@ -437,6 +692,9 @@ app.get('/', (c) => {
         </button>
         <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-exchange-alt mr-2"></i><span>DEX</span>
+        </button>
+        <button onclick="switchTab('multisend')" id="tab-multisend" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
+          <i class="fas fa-paper-plane mr-2"></i><span>MultiSend</span>
         </button>
         <button onclick="switchTab('escrow')" id="tab-escrow" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all relative">
           <i class="fas fa-shield-alt mr-2"></i><span>Escrow</span>
@@ -1098,6 +1356,202 @@ app.get('/', (c) => {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- MULTISEND TAB -->
+    <div id="tab-content-multisend" class="tab-content hidden">
+      <div class="max-w-5xl mx-auto">
+
+        <!-- Wallet Gate -->
+        <div id="ms-wallet-gate" class="hidden mb-6 bg-gray-900/60 border border-gray-700/40 rounded-2xl p-8 text-center">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-700/30 to-blue-700/30 border border-cyan-700/30 flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-wallet text-cyan-400 text-2xl"></i>
+          </div>
+          <h3 class="text-white font-semibold text-lg mb-2">Connect wallet to send</h3>
+          <p class="text-gray-500 text-sm mb-4">MultiSend executes real ERC-20 transfers on Arc Testnet. A wallet connection is required to sign transactions.</p>
+          <button onclick="openWalletModal()"
+            class="inline-flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-xl px-6 py-2.5 transition-all">
+            <i class="fas fa-wallet"></i>Connect Wallet
+          </button>
+        </div>
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-2xl font-bold text-white flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-600 flex items-center justify-center">
+                <i class="fas fa-paper-plane text-white text-base"></i>
+              </div>
+              MultiSend — Batch Payments
+            </h2>
+            <p class="text-gray-400 text-sm mt-1">Send USDC to multiple recipients in one batch transaction on Arc Testnet</p>
+          </div>
+          <div class="flex items-center gap-2 bg-amber-900/20 border border-amber-700/30 rounded-xl px-3 py-2">
+            <i class="fas fa-flask text-amber-400 text-xs"></i>
+            <span class="text-xs text-amber-400 font-medium">Testnet — No real funds</span>
+          </div>
+        </div>
+
+        <!-- Stats bar -->
+        <div class="grid grid-cols-3 gap-3 mb-6">
+          <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-3 text-center">
+            <div class="text-lg font-bold text-white" id="ms-stat-recipients">0</div>
+            <div class="text-xs text-gray-500 mt-0.5">Recipients</div>
+          </div>
+          <div class="bg-cyan-900/20 border border-cyan-700/30 rounded-xl p-3 text-center">
+            <div class="text-lg font-bold text-cyan-400" id="ms-stat-total">$0.00</div>
+            <div class="text-xs text-gray-500 mt-0.5">Total USDC</div>
+          </div>
+          <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-3 text-center">
+            <div class="text-lg font-bold text-purple-400" id="ms-stat-batches">0</div>
+            <div class="text-xs text-gray-500 mt-0.5">Batches Sent</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          <!-- LEFT: Recipient table -->
+          <div class="lg:col-span-2 bg-gray-900/60 border border-gray-700/40 rounded-2xl overflow-hidden">
+
+            <!-- Table Header -->
+            <div class="flex items-center justify-between px-5 py-3 border-b border-gray-700/40 bg-gray-800/30">
+              <div class="flex items-center gap-3">
+                <span class="text-sm font-semibold text-white">Recipients</span>
+                <span class="text-xs text-gray-500 bg-gray-800 rounded-full px-2 py-0.5" id="ms-row-count">0 rows</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <input id="ms-csv-input" type="file" accept=".csv,.txt" class="hidden" onchange="msHandleCSV(this.files[0])">
+                <button onclick="document.getElementById('ms-csv-input').click()"
+                  ondragover="event.preventDefault(); this.classList.add('border-cyan-400','bg-cyan-900/20')"
+                  ondragleave="this.classList.remove('border-cyan-400','bg-cyan-900/20')"
+                  ondrop="event.preventDefault(); this.classList.remove('border-cyan-400','bg-cyan-900/20'); msHandleCSV(event.dataTransfer.files[0])"
+                  class="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-cyan-500 text-gray-300 rounded-lg px-3 py-1.5 transition-all">
+                  <i class="fas fa-upload text-cyan-400"></i>CSV Upload
+                </button>
+                <button onclick="msDownloadTemplate()" title="Download CSV template"
+                  class="w-7 h-7 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 rounded-lg transition-all text-xs">
+                  <i class="fas fa-download"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Column headers -->
+            <div class="grid grid-cols-12 gap-2 px-5 py-2 bg-gray-800/20 border-b border-gray-700/30 text-[11px] text-gray-500 uppercase tracking-wider">
+              <div class="col-span-5">Recipient Address</div>
+              <div class="col-span-3">Amount (USDC)</div>
+              <div class="col-span-3">Note</div>
+              <div class="col-span-1"></div>
+            </div>
+
+            <div id="ms-error-banner" class="hidden px-5 py-2 bg-red-900/20 border-b border-red-700/30 flex items-center gap-2">
+              <i class="fas fa-exclamation-circle text-red-400 text-xs"></i>
+              <span id="ms-error-text" class="text-xs text-red-300"></span>
+            </div>
+
+            <!-- Rows container -->
+            <div id="ms-rows" class="divide-y divide-gray-800/60 min-h-[120px]"></div>
+
+            <!-- Add row -->
+            <div class="px-5 py-3 border-t border-gray-700/30">
+              <button onclick="msAddRow()"
+                class="w-full flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-medium py-1.5 transition-colors border border-dashed border-gray-700 hover:border-cyan-600 rounded-xl">
+                <i class="fas fa-plus text-xs"></i>Add Recipient
+              </button>
+            </div>
+
+            <!-- Sender + Priority -->
+            <div class="px-5 py-3 border-t border-gray-700/30 bg-gray-800/20 space-y-3">
+              <div>
+                <label class="text-xs text-gray-500 mb-1 block uppercase tracking-wider">From (Sender Wallet)</label>
+                <input type="text" id="ms-from" placeholder="0x… (auto-filled from connected wallet)"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none font-mono">
+              </div>
+              <div class="flex items-center gap-3 flex-wrap">
+                <div class="flex items-center gap-2">
+                  <label class="text-xs text-gray-500">Priority:</label>
+                  <select id="ms-priority"
+                    class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-cyan-500 focus:outline-none">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: Actions + Receipt -->
+          <div class="space-y-4">
+
+            <!-- Send panel -->
+            <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-4">
+              <h3 class="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+                <i class="fas fa-paper-plane text-cyan-400"></i>Execute Batch
+              </h3>
+              <div class="space-y-2 mb-4">
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">Recipients</span>
+                  <span class="text-white font-medium" id="ms-summary-count">—</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">Total amount</span>
+                  <span class="text-cyan-400 font-bold text-sm" id="ms-summary-total">$0.00 USDC</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">Network</span>
+                  <span class="text-green-400">Arc Testnet</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-gray-500">Gas token</span>
+                  <span class="text-white">USDC</span>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <button onclick="msAnalyze()"
+                  class="w-full flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl px-4 py-2 text-sm font-medium transition-all">
+                  <i class="fas fa-brain text-purple-400"></i>AI Analysis
+                </button>
+                <button onclick="msSubmit()" id="ms-send-btn"
+                  class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl px-4 py-2.5 text-sm font-bold transition-all shadow-lg shadow-cyan-900/30">
+                  <i class="fas fa-paper-plane"></i>Send All
+                </button>
+              </div>
+            </div>
+
+            <!-- CSV format hint -->
+            <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3">
+              <p class="text-xs text-gray-500 font-medium mb-1.5"><i class="fas fa-info-circle text-cyan-600 mr-1"></i>CSV Format</p>
+              <p class="text-xs text-gray-600">Columns: <code class="text-cyan-500 bg-gray-800 px-1 rounded">address</code>, <code class="text-cyan-500 bg-gray-800 px-1 rounded">amount</code>, <code class="text-gray-400 bg-gray-800 px-1 rounded">note</code> (optional)</p>
+              <p class="text-xs text-gray-600 mt-1">Max 500 rows · Max $10,000 per row</p>
+            </div>
+
+            <!-- AI Analysis result -->
+            <div id="ms-analysis-result" class="hidden bg-gray-900/60 border border-purple-700/30 rounded-xl p-4">
+              <p class="text-xs text-purple-400 font-semibold mb-2 uppercase tracking-wide"><i class="fas fa-brain mr-1"></i>AI Analysis</p>
+              <div id="ms-analysis-content" class="text-xs text-gray-300"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Receipt History -->
+        <div class="mt-6">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-white font-semibold text-sm flex items-center gap-2">
+              <i class="fas fa-receipt text-green-400 text-base"></i>
+              Batch Receipts
+            </h3>
+            <span class="text-xs text-gray-500" id="ms-receipts-count">0 receipts</span>
+          </div>
+          <div id="ms-receipts-list">
+            <div class="flex flex-col items-center gap-3 py-10 text-center text-gray-600">
+              <i class="fas fa-inbox text-2xl"></i>
+              <p class="text-sm">No batch receipts yet. Send a batch to generate a receipt.</p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -2155,8 +2609,9 @@ forge create src/ContractManager.sol:ContractManager \\
   <!-- Floating Action Button -->
   <button id="chat-fab"
     onclick="toggleChat()"
-    class="fixed bottom-5 right-5 z-[90] w-12 h-12 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 flex items-center justify-center transition-all hover:scale-110 active:scale-95">
-    <i class="fas fa-robot text-white text-lg" id="chat-fab-icon"></i>
+    class="fixed bottom-5 right-5 z-[90] flex items-center gap-2 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 px-4 py-3 transition-all hover:scale-105 active:scale-95 group">
+    <i class="fas fa-robot text-white text-base" id="chat-fab-icon"></i>
+    <span id="chat-fab-label" class="text-white text-sm font-medium">Ask me</span>
     <span id="chat-unread" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center leading-none"></span>
   </button>
 
@@ -2739,6 +3194,7 @@ forge create src/ContractManager.sol:ContractManager \\
   <script src="/static/settings.js"></script>
   <script src="/static/swap.js"></script>
   <script src="/static/dex.js"></script>
+  <script src="/static/multisend.js"></script>
   <script src="/static/guardian.js"></script>
   <script src="/static/yield-optimizer.js"></script>
   <script src="/static/escrow.js"></script>
