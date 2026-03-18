@@ -1,222 +1,371 @@
 // ============================================================
-// HISTORY MODULE — ARC AI Agents
-// Real on-chain transaction history via ethers.js + RPC
-// Arc Testnet (chainId 5042002)
+// HISTORY MODULE — ARC AI Agents  v2 (Real On-Chain)
+// Fetches real transaction history from Arc Testnet via RPC
+// Arc Testnet (chainId 5042002) | ethers.js v6
 // ============================================================
 'use strict';
 
-const HIST_EXPLORER  = 'https://testnet.arcscan.app';
-const HIST_RPC       = 'https://rpc.testnet.arc.network';
-const HIST_CHAIN_ID  = 5042002;
-const HIST_USDC_ADDR = '0x3600000000000000000000000000000000000000';
-const HIST_EURC_ADDR = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
-const HIST_CF_ADDR   = '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A';
-const HIST_AMM_ADDR  = '0x3148E2807F172D1cC354F35fB4fC4104e8b6b561';
+const HIST_EXPLORER   = 'https://testnet.arcscan.app';
+const HIST_RPC        = 'https://rpc.testnet.arc.network';
+const HIST_CHAIN_ID   = 5042002;
+const HIST_USDC_ADDR  = '0x3600000000000000000000000000000000000000';
+const HIST_EURC_ADDR  = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
+const HIST_CF_ADDR    = '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A';
+const HIST_AMM_ADDR   = '0x3148E2807F172D1cC354F35fB4fC4104e8b6b561';
 
-// Transfer event topic (ERC-20 Transfer)
-const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-// Swap event topic (AMM)
-const SWAP_TOPIC     = ethers?.id ? ethers.id('Swap(address,bool,uint256,uint256,uint256,uint256)') : null;
+// ERC-20 Transfer topic keccak256
+const HIST_TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+
+// Block range to scan (keep small to avoid RPC timeouts)
+const HIST_BLOCK_RANGE = 10000;   // ~10k blocks per query
+const HIST_MAX_BLOCKS  = 50000;   // total lookback window
+
+// Polling interval in ms (0 = no polling)
+const HIST_POLL_MS = 30000; // 30 seconds
 
 let histState = {
-  items: [],       // all fetched items
-  filter: 'all',   // current filter
-  page:   1,
-  perPage: 30,
-  loading: false,
-  wallet: null,
+  items:       [],
+  filter:      'all',
+  page:        1,
+  perPage:     30,
+  loading:     false,
+  wallet:      null,
+  lastBlock:   0,
+  pollTimer:   null,
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-function histEl(id) { return document.getElementById(id); }
-function histShort(h) { return h ? h.slice(0,10) + '…' + h.slice(-6) : '—'; }
+function histEl(id)  { return document.getElementById(id); }
+
+function histShort(h, front = 8, back = 6) {
+  if (!h) return '—';
+  if (h.length <= front + back + 1) return h;
+  return h.slice(0, front) + '…' + h.slice(-back);
+}
+
 function histFmt(ts) {
   if (!ts) return '—';
   return new Date(ts * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
+
 function histFmtUsdc(n, decimals = 6) {
   try {
-    const v = Number(ethers.formatUnits(BigInt(n), decimals));
-    return v.toFixed(v >= 1000 ? 0 : v >= 1 ? 2 : 4);
+    const v = Number(window.ethers.formatUnits(BigInt(n.toString()), decimals));
+    if (v === 0)       return '0';
+    if (v >= 10000)    return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (v >= 1)        return v.toFixed(2);
+    return v.toFixed(4);
   } catch { return '?'; }
 }
 
-// ─── Type metadata ───────────────────────────────────────────────────────────
+function histAddr(a) { return (a || '').toLowerCase(); }
+
+// ─── Type metadata ─────────────────────────────────────────────────────────
+const HIST_TYPE_META = {
+  payment:   { icon: 'fa-dollar-sign',   color: 'text-purple-400', bg: 'bg-purple-900/30', border: 'border-purple-700/30', label: 'Payment'   },
+  multisend: { icon: 'fa-paper-plane',   color: 'text-cyan-400',   bg: 'bg-cyan-900/30',   border: 'border-cyan-700/30',   label: 'MultiSend' },
+  swap:      { icon: 'fa-exchange-alt',  color: 'text-green-400',  bg: 'bg-green-900/30',  border: 'border-green-700/30',  label: 'Swap'      },
+  contract:  { icon: 'fa-file-contract', color: 'text-yellow-400', bg: 'bg-yellow-900/30', border: 'border-yellow-700/30', label: 'Contract'  },
+  receive:   { icon: 'fa-arrow-down',    color: 'text-blue-400',   bg: 'bg-blue-900/30',   border: 'border-blue-700/30',   label: 'Received'  },
+  send:      { icon: 'fa-arrow-up',      color: 'text-orange-400', bg: 'bg-orange-900/30', border: 'border-orange-700/30', label: 'Sent'      },
+};
+
 function histTypeMeta(type) {
-  const map = {
-    payment:   { icon: 'fa-dollar-sign',    color: 'text-purple-400', bg: 'bg-purple-900/30', border: 'border-purple-700/30', label: 'Payment'   },
-    multisend: { icon: 'fa-paper-plane',    color: 'text-cyan-400',   bg: 'bg-cyan-900/30',   border: 'border-cyan-700/30',   label: 'MultiSend' },
-    swap:      { icon: 'fa-exchange-alt',   color: 'text-green-400',  bg: 'bg-green-900/30',  border: 'border-green-700/30',  label: 'Swap'      },
-    contract:  { icon: 'fa-file-contract',  color: 'text-yellow-400', bg: 'bg-yellow-900/30', border: 'border-yellow-700/30', label: 'Contract'  },
-    receive:   { icon: 'fa-arrow-down',     color: 'text-blue-400',   bg: 'bg-blue-900/30',   border: 'border-blue-700/30',   label: 'Received'  },
-    send:      { icon: 'fa-arrow-up',       color: 'text-orange-400', bg: 'bg-orange-900/30', border: 'border-orange-700/30', label: 'Sent'      },
-  };
-  return map[type] || map.send;
+  return HIST_TYPE_META[type] || HIST_TYPE_META.send;
 }
 
 function histStatusBadge(status) {
-  if (status === 'confirmed') return '<span class="text-xs px-2 py-0.5 rounded-full bg-green-900/30 border border-green-700/40 text-green-400">✓ Confirmed</span>';
-  if (status === 'failed')    return '<span class="text-xs px-2 py-0.5 rounded-full bg-red-900/30 border border-red-700/40 text-red-400">✗ Failed</span>';
-  if (status === 'pending')   return '<span class="text-xs px-2 py-0.5 rounded-full bg-yellow-900/30 border border-yellow-700/40 text-yellow-400">⏳ Pending</span>';
-  return '<span class="text-xs px-2 py-0.5 rounded-full bg-gray-700/40 border border-gray-600/40 text-gray-400">—</span>';
+  const map = {
+    confirmed: 'bg-green-900/30 border-green-700/40 text-green-400',
+    failed:    'bg-red-900/30 border-red-700/40 text-red-400',
+    pending:   'bg-yellow-900/30 border-yellow-700/40 text-yellow-400',
+    partial:   'bg-orange-900/30 border-orange-700/40 text-orange-400',
+  };
+  const icons = { confirmed: '✓', failed: '✗', pending: '⏳', partial: '~' };
+  const cls = map[status] || 'bg-gray-700/40 border-gray-600/40 text-gray-400';
+  const ico = icons[status] || '—';
+  const lbl = status ? status.charAt(0).toUpperCase() + status.slice(1) : '—';
+  return `<span class="text-xs px-2 py-0.5 rounded-full border ${cls}">${ico} ${lbl}</span>`;
 }
 
-// ─── Fetch on-chain transfers for wallet ────────────────────────────────────
-async function histFetchTransfers(wallet, provider) {
-  const items = [];
-  const usdcContract = new ethers.Contract(
-    HIST_USDC_ADDR,
-    ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-    provider
-  );
-  const eurcContract = new ethers.Contract(
-    HIST_EURC_ADDR,
-    ['event Transfer(address indexed from, address indexed to, uint256 value)'],
-    provider
-  );
+// ─── Classify a transfer event ─────────────────────────────────────────────
+function histClassifyTransfer(from, to, wallet) {
+  const f = histAddr(from);
+  const t = histAddr(to);
+  const w = histAddr(wallet);
 
-  try {
-    const latestBlock = await provider.getBlockNumber();
-    const fromBlock   = Math.max(0, latestBlock - 50000); // ~last 50k blocks
+  if (t === histAddr(HIST_AMM_ADDR) || f === histAddr(HIST_AMM_ADDR)) return 'swap';
+  if (t === histAddr(HIST_CF_ADDR))                                    return 'contract';
+  if (f === w)                                                          return 'send';
+  if (t === w)                                                          return 'receive';
+  return 'send';
+}
 
-    // USDC sent by wallet
-    const usdcSent = await usdcContract.queryFilter(
-      usdcContract.filters.Transfer(wallet, null),
-      fromBlock, latestBlock
-    );
-    // USDC received
-    const usdcRcvd = await usdcContract.queryFilter(
-      usdcContract.filters.Transfer(null, wallet),
-      fromBlock, latestBlock
-    );
-    // EURC sent
-    const eurcSent = await eurcContract.queryFilter(
-      eurcContract.filters.Transfer(wallet, null),
-      fromBlock, latestBlock
-    );
-    // EURC received
-    const eurcRcvd = await eurcContract.queryFilter(
-      eurcContract.filters.Transfer(null, wallet),
-      fromBlock, latestBlock
-    );
+// ─── Fetch ERC-20 Transfer logs in chunks ─────────────────────────────────
+async function histFetchLogsChunked(provider, tokenAddr, wallet, latestBlock) {
+  const fromBlock = Math.max(0, latestBlock - HIST_MAX_BLOCKS);
+  const items     = [];
 
-    const allTx = [...usdcSent, ...usdcRcvd, ...eurcSent, ...eurcRcvd];
+  // We scan in chunks to avoid RPC range limits
+  for (let start = fromBlock; start <= latestBlock; start += HIST_BLOCK_RANGE) {
+    const end = Math.min(start + HIST_BLOCK_RANGE - 1, latestBlock);
+    const walletTopic = '0x' + wallet.slice(2).toLowerCase().padStart(64, '0');
 
-    // Fetch block timestamps in batches
-    const blockNums = [...new Set(allTx.map(e => e.blockNumber))];
-    const blockTs   = {};
-    for (let i = 0; i < blockNums.length; i += 20) {
-      const batch = blockNums.slice(i, i + 20);
-      await Promise.all(batch.map(async bn => {
-        try {
-          const blk = await provider.getBlock(bn);
-          if (blk) blockTs[bn] = blk.timestamp;
-        } catch {}
-      }));
+    // Sent logs
+    try {
+      const sentLogs = await provider.getLogs({
+        address:   tokenAddr,
+        topics:    [HIST_TRANSFER_TOPIC, walletTopic, null],
+        fromBlock: start,
+        toBlock:   end,
+      });
+      items.push(...sentLogs);
+    } catch (e) {
+      console.warn(`[HISTORY] getLogs sent chunk ${start}-${end} failed:`, e.message);
     }
 
-    // Build items
-    allTx.forEach(ev => {
-      const isUSDC = ev.address.toLowerCase() === HIST_USDC_ADDR.toLowerCase();
-      const token  = isUSDC ? 'USDC' : 'EURC';
-      const decs   = 6;
-      const from   = ev.args[0].toLowerCase();
-      const to     = ev.args[1].toLowerCase();
-      const value  = ev.args[2];
-      const isSend = from === wallet.toLowerCase();
-      const amtHuman = histFmtUsdc(value, decs);
-
-      // Classify type
-      let type = isSend ? 'send' : 'receive';
-      if (to.toLowerCase() === HIST_CF_ADDR.toLowerCase())  type = 'contract';
-      if (to.toLowerCase() === HIST_AMM_ADDR.toLowerCase()) type = 'swap';
-      if (from.toLowerCase() === HIST_AMM_ADDR.toLowerCase()) type = 'swap';
-
-      items.push({
-        id:        ev.transactionHash + '_' + ev.index,
-        txHash:    ev.transactionHash,
-        blockNum:  ev.blockNumber,
-        ts:        blockTs[ev.blockNumber] || 0,
-        type,
-        token,
-        amount:    amtHuman,
-        from:      ev.args[0],
-        to:        ev.args[1],
-        status:    'confirmed',
-        raw:       ev,
+    // Received logs
+    try {
+      const rcvdLogs = await provider.getLogs({
+        address:   tokenAddr,
+        topics:    [HIST_TRANSFER_TOPIC, null, walletTopic],
+        fromBlock: start,
+        toBlock:   end,
       });
-    });
-
-  } catch (err) {
-    console.warn('[HISTORY] queryFilter error:', err.message);
+      items.push(...rcvdLogs);
+    } catch (e) {
+      console.warn(`[HISTORY] getLogs rcvd chunk ${start}-${end} failed:`, e.message);
+    }
   }
 
   return items;
 }
 
-// ─── Fetch AMM swap events ─────────────────────────────────────────────────
-async function histFetchSwaps(wallet, provider) {
-  const items = [];
+// ─── Decode a Transfer log ─────────────────────────────────────────────────
+function histDecodeTransferLog(log, token, wallet) {
   try {
-    const ammContract = new ethers.Contract(
-      HIST_AMM_ADDR,
-      ['event Swap(address indexed user, bool usdcToEurc, uint256 amountIn, uint256 amountOut, uint256 fee, uint256 timestamp)'],
-      provider
-    );
-    const latestBlock = await provider.getBlockNumber();
-    const fromBlock   = Math.max(0, latestBlock - 50000);
+    const from  = '0x' + log.topics[1].slice(26);
+    const to    = '0x' + log.topics[2].slice(26);
+    const value = BigInt(log.data);
+    const amt   = histFmtUsdc(value, 6);
+    const type  = histClassifyTransfer(from, to, wallet);
 
-    const swaps = await ammContract.queryFilter(
-      ammContract.filters.Swap(wallet),
-      fromBlock, latestBlock
-    );
+    return {
+      id:       log.transactionHash + '_' + log.logIndex,
+      txHash:   log.transactionHash,
+      blockNum: typeof log.blockNumber === 'number' ? log.blockNumber : parseInt(log.blockNumber, 16),
+      ts:       0,  // filled later from block
+      type,
+      token,
+      tokenAddr: log.address,
+      amount:   amt,
+      amountRaw: value.toString(),
+      from,
+      to,
+      status:   'confirmed',
+    };
+  } catch (e) {
+    console.warn('[HISTORY] Decode error:', e.message, log);
+    return null;
+  }
+}
 
-    for (const ev of swaps) {
-      const dir      = ev.args[1]; // usdcToEurc
-      const amtIn    = histFmtUsdc(ev.args[2], 6);
-      const amtOut   = histFmtUsdc(ev.args[3], 6);
-      const blk      = await provider.getBlock(ev.blockNumber).catch(() => null);
-      items.push({
-        id:        ev.transactionHash + '_swap_' + ev.index,
-        txHash:    ev.transactionHash,
-        blockNum:  ev.blockNumber,
-        ts:        blk?.timestamp || 0,
-        type:      'swap',
-        token:     dir ? 'USDC→EURC' : 'EURC→USDC',
-        amount:    `${amtIn} → ${amtOut}`,
-        from:      wallet,
-        to:        HIST_AMM_ADDR,
-        status:    'confirmed',
-      });
+// ─── Fetch block timestamps in batches ─────────────────────────────────────
+async function histFetchBlockTimestamps(provider, blockNums) {
+  const ts = {};
+  const unique = [...new Set(blockNums)].filter(Boolean);
+
+  // Batch in groups of 10
+  for (let i = 0; i < unique.length; i += 10) {
+    const batch = unique.slice(i, i + 10);
+    await Promise.all(batch.map(async bn => {
+      try {
+        const blk = await provider.getBlock(bn);
+        if (blk) ts[bn] = blk.timestamp;
+      } catch (_) {}
+    }));
+  }
+  return ts;
+}
+
+// ─── Fetch Transfer events for wallet (USDC + EURC) ───────────────────────
+async function histFetchTransfers(wallet, provider, latestBlock) {
+  const items = [];
+  const tokens = [
+    { addr: HIST_USDC_ADDR, symbol: 'USDC' },
+    { addr: HIST_EURC_ADDR, symbol: 'EURC' },
+  ];
+
+  for (const tok of tokens) {
+    const logs = await histFetchLogsChunked(provider, tok.addr, wallet, latestBlock);
+    for (const log of logs) {
+      const item = histDecodeTransferLog(log, tok.symbol, wallet);
+      if (item) items.push(item);
     }
+  }
+
+  // Fill timestamps
+  const blockNums = [...new Set(items.map(i => i.blockNum))];
+  const ts        = await histFetchBlockTimestamps(provider, blockNums);
+  items.forEach(item => { if (ts[item.blockNum]) item.ts = ts[item.blockNum]; });
+
+  return items;
+}
+
+// ─── Fetch AMM Swap events ─────────────────────────────────────────────────
+async function histFetchSwaps(wallet, provider, latestBlock) {
+  const items     = [];
+  const fromBlock = Math.max(0, latestBlock - HIST_MAX_BLOCKS);
+
+  // Try event-based first
+  try {
+    const ammInterface = new window.ethers.Interface([
+      'event Swap(address indexed user, bool usdcToEurc, uint256 amountIn, uint256 amountOut, uint256 fee, uint256 timestamp)',
+    ]);
+    const walletTopic  = '0x' + wallet.slice(2).toLowerCase().padStart(64, '0');
+
+    for (let start = fromBlock; start <= latestBlock; start += HIST_BLOCK_RANGE) {
+      const end = Math.min(start + HIST_BLOCK_RANGE - 1, latestBlock);
+      try {
+        const logs = await provider.getLogs({
+          address:   HIST_AMM_ADDR,
+          topics:    [window.ethers.id('Swap(address,bool,uint256,uint256,uint256,uint256)'), walletTopic],
+          fromBlock: start,
+          toBlock:   end,
+        });
+
+        for (const log of logs) {
+          try {
+            const decoded = ammInterface.parseLog(log);
+            if (!decoded) continue;
+            const dir    = decoded.args[1]; // usdcToEurc
+            const amtIn  = histFmtUsdc(decoded.args[2], 6);
+            const amtOut = histFmtUsdc(decoded.args[3], 6);
+            const blk    = typeof log.blockNumber === 'number' ? log.blockNumber : parseInt(log.blockNumber, 16);
+
+            items.push({
+              id:       log.transactionHash + '_swap_' + log.logIndex,
+              txHash:   log.transactionHash,
+              blockNum: blk,
+              ts:       0,
+              type:     'swap',
+              token:    dir ? 'USDC→EURC' : 'EURC→USDC',
+              amount:   `${amtIn} → ${amtOut}`,
+              amountIn,
+              amountOut,
+              from:     wallet,
+              to:       HIST_AMM_ADDR,
+              status:   'confirmed',
+            });
+          } catch (_) {}
+        }
+      } catch (e) {
+        console.warn('[HISTORY] AMM logs chunk error:', e.message);
+      }
+    }
+
+    // Fill timestamps
+    const blockNums = [...new Set(items.map(i => i.blockNum))];
+    const ts        = await histFetchBlockTimestamps(provider, blockNums);
+    items.forEach(item => { if (ts[item.blockNum]) item.ts = ts[item.blockNum]; });
   } catch (err) {
     console.warn('[HISTORY] Swap fetch error:', err.message);
   }
+
   return items;
 }
 
-// ─── Merge session receipts (multisend) ─────────────────────────────────────
+// ─── Merge in-memory multisend receipts ───────────────────────────────────
 function histMergeReceipts() {
-  const items = [];
-  if (!window.msReceipts) return items;
-  window.msReceipts.forEach(r => {
-    items.push({
-      id:       r.id,
-      txHash:   r.txHash,
-      blockNum: 0,
-      ts:       Math.floor(new Date(r.timestamp).getTime() / 1000),
-      type:     'multisend',
-      token:    r.token || 'USDC',
-      amount:   `$${r.totalAmount} (${r.count} recipients)`,
-      from:     r.from,
-      to:       `${r.count} recipients`,
-      status:   r.status === 'confirmed' ? 'confirmed' : 'partial',
-    });
-  });
+  if (!window.msReceipts || !window.msReceipts.length) return [];
+  return window.msReceipts.map(r => ({
+    id:           r.id,
+    txHash:       r.txHash,
+    blockNum:     0,
+    ts:           Math.floor(new Date(r.timestamp).getTime() / 1000),
+    type:         'multisend',
+    token:        r.token || 'USDC',
+    amount:       `$${r.totalAmount} (${r.count} recipients)`,
+    from:         r.from,
+    to:           `${r.count} recipients`,
+    status:       r.status === 'confirmed' ? 'confirmed' : 'partial',
+    batchDetails: r,   // carry full receipt for expansion
+  }));
+}
+
+// ─── Group consecutive sends to same batch (multisend detection) ───────────
+function histGroupMultisend(items) {
+  // Look for wallet transfers where >2 outgoing sends happen within ~30s
+  // and the fee wallet (MS_FEE_WALLET) received a transfer in the same ~30s window
+  const sends = items.filter(i => i.type === 'send' && i.token === 'USDC');
+  if (sends.length < 3) return items;
+
+  // Sort by ts
+  const sorted = [...sends].sort((a, b) => (a.ts || 0) - (b.ts || 0));
+
+  // Sliding window: group sends within 60s of each other
+  const groups = [];
+  let group    = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    const diff = Math.abs((curr.ts || 0) - (prev.ts || 0));
+    if (diff <= 60) {
+      group.push(curr);
+    } else {
+      if (group.length > 0) groups.push(group);
+      group = [curr];
+    }
+  }
+  if (group.length > 0) groups.push(group);
+
+  // For groups of 3+ sends with a fee-wallet send, mark as multisend
+  const multisendIds = new Set();
+  for (const grp of groups) {
+    if (grp.length >= 3) {
+      const minTs = Math.min(...grp.map(i => i.ts || Infinity));
+      const maxTs = Math.max(...grp.map(i => i.ts || 0));
+      // Check if there's a fee-wallet transfer in this window
+      const hasFee = items.some(it =>
+        it.type === 'send' &&
+        histAddr(it.to) === histAddr(HIST_CF_ADDR) &&
+        (it.ts || 0) >= minTs - 10 &&
+        (it.ts || 0) <= maxTs + 10
+      );
+      if (hasFee) {
+        grp.forEach(i => multisendIds.add(i.id));
+        // Add a synthetic multisend summary
+        const totalRaw = grp.reduce((s, i) => {
+          const v = parseFloat(i.amount) || 0;
+          return s + v;
+        }, 0);
+        items.push({
+          id:       'ms-grp-' + grp[0].txHash,
+          txHash:   grp[0].txHash,
+          blockNum: grp[0].blockNum,
+          ts:       grp[0].ts,
+          type:     'multisend',
+          token:    'USDC',
+          amount:   `$${totalRaw.toFixed(2)} (${grp.length} recipients)`,
+          from:     grp[0].from,
+          to:       `${grp.length} recipients`,
+          status:   'confirmed',
+          children: grp,
+        });
+      }
+    }
+  }
+
+  // Filter out individual sends that are part of a multisend group
+  // but only if we found actual multisend groups
+  if (multisendIds.size > 0) {
+    return items.filter(i => !multisendIds.has(i.id));
+  }
   return items;
 }
 
-// ─── Load all history ────────────────────────────────────────────────────────
+// ─── Main load ───────────────────────────────────────────────────────────────
 async function historyInit() {
   const wallet = window.walletState?.address;
 
@@ -228,15 +377,18 @@ async function historyInit() {
 
   if (!wallet) {
     if (gateEl)  gateEl.classList.remove('hidden');
+    if (loadEl)  loadEl.classList.add('hidden');
     if (listEl)  listEl.innerHTML = '';
     if (emptyEl) emptyEl.classList.add('hidden');
     return;
   }
 
-  if (gateEl) gateEl.classList.add('hidden');
-  if (loadEl) loadEl.classList.remove('hidden');
-  if (listEl) listEl.innerHTML = '';
-  if (emptyEl) emptyEl.classList.add('hidden');
+  if (histState.loading) return;  // prevent concurrent loads
+
+  if (gateEl)     gateEl.classList.add('hidden');
+  if (loadEl)     loadEl.classList.remove('hidden');
+  if (listEl)     listEl.innerHTML = '';
+  if (emptyEl)    emptyEl.classList.add('hidden');
   if (loadMoreEl) loadMoreEl.classList.add('hidden');
 
   histState.wallet  = wallet;
@@ -248,23 +400,30 @@ async function historyInit() {
     const ethersLib = window.ethers;
     if (!ethersLib) throw new Error('ethers.js not loaded');
 
-    const provider = new ethersLib.JsonRpcProvider(HIST_RPC);
+    const provider   = new ethersLib.JsonRpcProvider(HIST_RPC);
+    const latestBlock = await provider.getBlockNumber();
+    histState.lastBlock = latestBlock;
 
-    // Fetch in parallel
-    const [transfers, swaps, receipts] = await Promise.all([
-      histFetchTransfers(wallet, provider),
-      histFetchSwaps(wallet, provider),
-      Promise.resolve(histMergeReceipts()),
+    // Fetch transfers and swaps in parallel
+    const [transfers, swaps] = await Promise.all([
+      histFetchTransfers(wallet, provider, latestBlock),
+      histFetchSwaps(wallet, provider, latestBlock),
     ]);
 
-    // Merge and deduplicate by txHash+index
+    // In-memory receipts from session
+    const receipts = histMergeReceipts();
+
+    // Merge, deduplicate
     const seen = new Set();
-    const all  = [...transfers, ...swaps, ...receipts].filter(item => {
-      const key = item.id || item.txHash;
+    let all    = [...transfers, ...swaps, ...receipts].filter(item => {
+      const key = item.id || (item.txHash + '_' + item.type);
       if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
     });
+
+    // Try to detect multisend groups from on-chain sends
+    all = histGroupMultisend(all);
 
     // Sort newest first
     all.sort((a, b) => (b.ts || 0) - (a.ts || 0));
@@ -272,13 +431,100 @@ async function historyInit() {
 
   } catch (err) {
     console.error('[HISTORY] Load error:', err);
-    showToast('History load error: ' + (err.message || err), 'error');
+    const msg = err.message || String(err);
+    // Show partial results if any were loaded
+    if (histState.items.length === 0) {
+      showToast('History load error: ' + msg, 'error');
+    } else {
+      showToast('Partial history loaded. Some items may be missing.', 'warning');
+    }
+  } finally {
+    histState.loading = false;
+    if (loadEl) loadEl.classList.add('hidden');
+    histRender();
+    histStartPolling();
   }
+}
 
-  histState.loading = false;
-  if (loadEl) loadEl.classList.add('hidden');
+// ─── Incremental refresh (new blocks only) ────────────────────────────────
+async function histRefreshNew() {
+  const wallet = histState.wallet;
+  if (!wallet || histState.loading) return;
 
-  histRender();
+  try {
+    const ethersLib = window.ethers;
+    if (!ethersLib) return;
+
+    const provider    = new ethersLib.JsonRpcProvider(HIST_RPC);
+    const latestBlock = await provider.getBlockNumber();
+
+    if (latestBlock <= histState.lastBlock) return; // no new blocks
+
+    const fromBlock = histState.lastBlock + 1;
+    histState.lastBlock = latestBlock;
+
+    // Only fetch new range
+    const tokens = [
+      { addr: HIST_USDC_ADDR, symbol: 'USDC' },
+      { addr: HIST_EURC_ADDR, symbol: 'EURC' },
+    ];
+    const newItems = [];
+
+    for (const tok of tokens) {
+      try {
+        const walletTopic = '0x' + wallet.slice(2).toLowerCase().padStart(64, '0');
+        const [sentLogs, rcvdLogs] = await Promise.all([
+          provider.getLogs({ address: tok.addr, topics: [HIST_TRANSFER_TOPIC, walletTopic, null], fromBlock, toBlock: latestBlock }),
+          provider.getLogs({ address: tok.addr, topics: [HIST_TRANSFER_TOPIC, null, walletTopic], fromBlock, toBlock: latestBlock }),
+        ]);
+        for (const log of [...sentLogs, ...rcvdLogs]) {
+          const item = histDecodeTransferLog(log, tok.symbol, wallet);
+          if (item) newItems.push(item);
+        }
+      } catch (_) {}
+    }
+
+    if (!newItems.length) return;
+
+    // Fill timestamps
+    const blockNums = [...new Set(newItems.map(i => i.blockNum))];
+    const ts        = await histFetchBlockTimestamps(provider, blockNums);
+    newItems.forEach(item => { if (ts[item.blockNum]) item.ts = ts[item.blockNum]; });
+
+    // Deduplicate and prepend
+    const existingIds = new Set(histState.items.map(i => i.id));
+    const fresh = newItems.filter(i => !existingIds.has(i.id));
+    if (!fresh.length) return;
+
+    histState.items = [...fresh, ...histState.items];
+    histState.items.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    histRender();
+    showToast(`${fresh.length} new transaction${fresh.length > 1 ? 's' : ''} found.`, 'info');
+  } catch (e) {
+    console.warn('[HISTORY] Refresh error:', e.message);
+  }
+}
+
+// ─── Polling ─────────────────────────────────────────────────────────────────
+function histStartPolling() {
+  histStopPolling();
+  if (HIST_POLL_MS <= 0) return;
+  const badge = document.getElementById('history-poll-badge');
+  if (badge) badge.classList.remove('hidden');
+  histState.pollTimer = setInterval(() => {
+    if (document.getElementById('tab-content-history')?.classList.contains('hidden') === false) {
+      histRefreshNew();
+    }
+  }, HIST_POLL_MS);
+}
+
+function histStopPolling() {
+  if (histState.pollTimer) {
+    clearInterval(histState.pollTimer);
+    histState.pollTimer = null;
+  }
+  const badge = document.getElementById('history-poll-badge');
+  if (badge) badge.classList.add('hidden');
 }
 
 // ─── Filter ───────────────────────────────────────────────────────────────────
@@ -307,14 +553,99 @@ function historyLoadMore() {
   histRender();
 }
 
-// ─── Render ───────────────────────────────────────────────────────────────────
+// ─── Render row for a single transaction ─────────────────────────────────────
+function histRenderRow(item, wallet) {
+  const meta   = histTypeMeta(item.type);
+  const isSelf = histAddr(item.from) === histAddr(wallet || '');
+  const dir    = isSelf ? '↑' : '↓';
+  const dirCls = isSelf ? 'text-orange-400' : 'text-blue-400';
+
+  // Children (multisend group) expandable
+  const childrenHtml = item.children?.length ? `
+    <details class="mt-2 col-span-full">
+      <summary class="text-xs text-gray-600 hover:text-gray-400 cursor-pointer select-none flex items-center gap-1">
+        <i class="fas fa-users text-[10px]"></i>
+        ${item.children.length} individual transfers — expand
+        <i class="fas fa-chevron-down text-[9px] ml-1"></i>
+      </summary>
+      <div class="mt-1.5 space-y-1 max-h-48 overflow-y-auto pl-2">
+        ${item.children.map(c => `
+          <div class="flex items-center gap-2 text-[11px] py-1 border-b border-gray-700/20 last:border-0">
+            <span class="font-mono text-gray-500">${histShort(c.to)}</span>
+            <span class="text-cyan-400 ml-auto">$${c.amount}</span>
+            ${c.txHash ? `<a href="${HIST_EXPLORER}/tx/${c.txHash}" target="_blank" class="text-blue-400 hover:underline text-[10px]"><i class="fas fa-external-link-alt"></i></a>` : ''}
+          </div>`).join('')}
+      </div>
+    </details>` : '';
+
+  // Batch details (in-memory multisend receipt)
+  const batchHtml = item.batchDetails ? `
+    <details class="mt-2 col-span-full">
+      <summary class="text-xs text-gray-600 hover:text-gray-400 cursor-pointer select-none flex items-center gap-1">
+        <i class="fas fa-list-ul text-[10px]"></i>
+        ${item.batchDetails.count} recipients · batch ${item.batchDetails.batchId} — expand
+        <i class="fas fa-chevron-down text-[9px] ml-1"></i>
+      </summary>
+      <div class="mt-1.5 space-y-1 max-h-48 overflow-y-auto pl-2">
+        ${(item.batchDetails.recipients || []).map(p => `
+          <div class="flex items-center gap-2 text-[11px] py-1 border-b border-gray-700/20 last:border-0">
+            <span class="font-mono text-gray-500">${histShort(p.address)}</span>
+            <span class="text-cyan-400">$${p.amount}</span>
+            <span class="${p.status === 'confirmed' ? 'text-green-400' : p.status === 'failed' ? 'text-red-400' : 'text-yellow-400'} text-[10px]">${p.status}</span>
+            ${p.txHash ? `<a href="${HIST_EXPLORER}/tx/${p.txHash}" target="_blank" class="text-blue-400 hover:underline text-[10px] ml-auto"><i class="fas fa-external-link-alt"></i></a>` : ''}
+          </div>`).join('')}
+      </div>
+    </details>` : '';
+
+  return `
+  <div class="history-tx-row bg-gray-900/60 border border-gray-700/40 rounded-xl px-4 py-3 hover:bg-gray-900/80 transition-colors">
+    <div class="flex flex-wrap sm:flex-nowrap items-start gap-3">
+      <!-- Icon -->
+      <div class="w-9 h-9 rounded-xl ${meta.bg} border ${meta.border} flex items-center justify-center flex-shrink-0 mt-0.5">
+        <i class="fas ${meta.icon} ${meta.color} text-sm"></i>
+      </div>
+
+      <!-- Info -->
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap mb-0.5">
+          <span class="text-white font-semibold text-sm">${meta.label}</span>
+          <span class="text-xs font-mono ${meta.color}">${item.token}</span>
+          ${histStatusBadge(item.status)}
+        </div>
+        <div class="text-xs text-gray-500 flex items-center gap-1.5 flex-wrap">
+          <span class="${dirCls}">${dir}</span>
+          <span class="font-mono">${histShort(item.from)}</span>
+          <span class="text-gray-700">→</span>
+          <span class="font-mono">${histShort(item.to)}</span>
+          ${item.ts ? `<span class="text-gray-600">· ${histFmt(item.ts)}</span>` : ''}
+          ${item.blockNum ? `<span class="text-gray-700">· #${item.blockNum}</span>` : ''}
+        </div>
+        ${childrenHtml}
+        ${batchHtml}
+      </div>
+
+      <!-- Amount + Tx -->
+      <div class="text-right flex-shrink-0 min-w-[80px]">
+        <div class="text-white font-bold text-sm mb-0.5">${item.amount}</div>
+        ${item.txHash ? `
+        <a href="${HIST_EXPLORER}/tx/${item.txHash}" target="_blank" rel="noopener"
+          class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline font-mono flex items-center gap-1 justify-end">
+          ${item.txHash.slice(0, 10)}… <i class="fas fa-external-link-alt text-[9px]"></i>
+        </a>` : '<div class="text-xs text-gray-600">—</div>'}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─── Render all ──────────────────────────────────────────────────────────────
 function histRender() {
-  const listEl    = histEl('history-list');
-  const emptyEl   = histEl('history-empty');
-  const loadMoreEl= histEl('history-load-more');
+  const listEl     = histEl('history-list');
+  const emptyEl    = histEl('history-empty');
+  const loadMoreEl = histEl('history-load-more');
+  const countEl    = histEl('history-count');
   if (!listEl) return;
 
-  const wallet   = histState.wallet?.toLowerCase();
+  const wallet   = histState.wallet;
   const allItems = histState.items;
   const filter   = histState.filter;
 
@@ -328,7 +659,9 @@ function histRender() {
     return true;
   });
 
-  if (filtered.length === 0) {
+  if (countEl) countEl.textContent = filtered.length + ' transaction' + (filtered.length !== 1 ? 's' : '');
+
+  if (!filtered.length) {
     if (emptyEl)    emptyEl.classList.remove('hidden');
     if (loadMoreEl) loadMoreEl.classList.add('hidden');
     listEl.innerHTML = '';
@@ -343,61 +676,35 @@ function histRender() {
 
   if (loadMoreEl) loadMoreEl.classList.toggle('hidden', !hasMore);
 
-  listEl.innerHTML = visible.map(item => {
-    const meta   = histTypeMeta(item.type);
-    const isSelf = item.from?.toLowerCase() === wallet;
-    const dir    = isSelf ? '→' : '←';
-
-    return `
-    <div class="history-tx-row bg-gray-900/60 border border-gray-700/40 rounded-xl px-4 py-3 flex flex-wrap sm:flex-nowrap items-center gap-3">
-      <!-- Icon -->
-      <div class="w-9 h-9 rounded-xl ${meta.bg} border ${meta.border} flex items-center justify-center flex-shrink-0">
-        <i class="fas ${meta.icon} ${meta.color} text-sm"></i>
-      </div>
-      <!-- Info -->
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="text-white font-semibold text-sm">${meta.label}</span>
-          <span class="text-xs text-gray-500 ${meta.color}">${item.token}</span>
-          ${histStatusBadge(item.status)}
-        </div>
-        <div class="text-xs text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
-          <span class="font-mono">${histShort(item.from)} ${dir} ${histShort(item.to)}</span>
-          ${item.ts ? `<span>· ${histFmt(item.ts)}</span>` : ''}
-          ${item.blockNum ? `<span>· Block #${item.blockNum}</span>` : ''}
-        </div>
-      </div>
-      <!-- Amount + Tx link -->
-      <div class="text-right flex-shrink-0">
-        <div class="text-white font-bold text-sm">${item.amount}</div>
-        ${item.txHash ? `
-        <a href="${HIST_EXPLORER}/tx/${item.txHash}" target="_blank" rel="noopener"
-          class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline font-mono flex items-center gap-1 justify-end mt-0.5">
-          ${item.txHash.slice(0,10)}… <i class="fas fa-external-link-alt text-[9px]"></i>
-        </a>` : '<div class="text-xs text-gray-600">No tx hash</div>'}
-      </div>
-    </div>`;
-  }).join('');
+  listEl.innerHTML = visible.map(item => histRenderRow(item, wallet)).join('');
 }
 
 // ─── Wallet events ───────────────────────────────────────────────────────────
 window.addEventListener('walletConnected', () => {
-  if (document.getElementById('tab-content-history')?.classList.contains('hidden') === false) {
+  // Only refresh if the history tab is currently visible
+  if (histEl('tab-content-history')?.classList.contains('hidden') === false) {
     historyInit();
   }
 });
+
 window.addEventListener('walletDisconnected', () => {
+  histStopPolling();
   histState.items  = [];
   histState.wallet = null;
+  histState.page   = 1;
+
   const gateEl = histEl('history-wallet-gate');
   const listEl = histEl('history-list');
-  if (gateEl) gateEl.classList.remove('hidden');
-  if (listEl) listEl.innerHTML = '';
+  const emptyEl= histEl('history-empty');
+  if (gateEl)  gateEl.classList.remove('hidden');
+  if (listEl)  listEl.innerHTML = '';
+  if (emptyEl) emptyEl.classList.add('hidden');
 });
 
 // ─── Expose globals ───────────────────────────────────────────────────────────
 window.historyInit     = historyInit;
 window.historyFilter   = historyFilter;
 window.historyLoadMore = historyLoadMore;
+window.histRefreshNew  = histRefreshNew;
 
-console.log('[HISTORY] Module loaded — Arc Testnet', HIST_CHAIN_ID);
+console.log('[HISTORY] Module v2 loaded — Arc Testnet', HIST_CHAIN_ID, '| RPC:', HIST_RPC);

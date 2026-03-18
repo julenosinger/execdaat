@@ -2041,12 +2041,20 @@ app.get('/', (c) => {
               </span>
               Transaction History
             </h2>
-            <p class="text-gray-500 text-xs mt-1 ml-13">All on-chain activity · Arc Testnet · Real blockchain data</p>
+            <p class="text-gray-500 text-xs mt-1 ml-13">
+              All on-chain activity · Arc Testnet · Real blockchain data
+              <span id="history-count" class="ml-2 text-gray-600"></span>
+            </p>
           </div>
-          <button onclick="if(window.historyInit) window.historyInit()"
-            class="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-600/40 rounded-lg px-3 py-1.5 transition">
-            <i class="fas fa-sync text-[10px]"></i>Refresh
-          </button>
+          <div class="flex items-center gap-2">
+            <span id="history-poll-badge" class="hidden text-[10px] text-green-500 flex items-center gap-1">
+              <i class="fas fa-circle text-[8px] animate-pulse"></i>Live
+            </span>
+            <button onclick="if(window.historyInit) window.historyInit()"
+              class="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-600/40 rounded-lg px-3 py-1.5 transition">
+              <i class="fas fa-sync text-[10px]"></i>Refresh
+            </button>
+          </div>
         </div>
 
         <!-- Filters -->

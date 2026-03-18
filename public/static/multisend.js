@@ -1,45 +1,68 @@
 // ============================================================
-// MULTISEND MODULE — ARC AI Agents  (3-Step Flow)
+// MULTISEND MODULE — ARC AI Agents  v3 (Real On-Chain)
 // Step 1: Build recipient list
 // Step 2: Review & confirm
 // Step 3: Pay single platform fee → send all transfers
-// Arc Testnet (chainId 5042002) | USDC native gas token
+// Arc Testnet (chainId 5042002) | USDC ERC-20 (6 decimals)
 // ============================================================
 'use strict';
 
-const MS_MAX_ROWS       = 500;
-const MS_MAX_AMOUNT_ROW = 10000;
-const MS_USDC_ADDR      = '0x3600000000000000000000000000000000000000';
-const MS_EXPLORER       = 'https://testnet.arcscan.app';
-const MS_CHAIN_ID       = 5042002;
+const MS_MAX_ROWS        = 500;
+const MS_MAX_AMOUNT_ROW  = 10000;
+const MS_USDC_ADDR       = '0x3600000000000000000000000000000000000000';
+const MS_EXPLORER        = 'https://testnet.arcscan.app';
+const MS_CHAIN_ID        = 5042002;
+const MS_CHAIN_HEX       = '0x' + MS_CHAIN_ID.toString(16); // '0x4CE612'
+
 // Platform fee wallet (receives the single fee payment)
-const MS_FEE_WALLET     = '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A';
+const MS_FEE_WALLET      = '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A';
 // Fee tiers: 1% base, -0.1% per 10 recipients beyond 10 (min 0.3%)
-const MS_FEE_BASE       = 0.01;   // 1%
-const MS_FEE_MIN        = 0.003;  // 0.3%
-const MS_FEE_DISCOUNT   = 0.001;  // 0.1% per 10 extra recipients
+const MS_FEE_BASE        = 0.01;    // 1%
+const MS_FEE_MIN         = 0.003;   // 0.3%
+const MS_FEE_DISCOUNT    = 0.001;   // 0.1% per 10 extra recipients
+const MS_USDC_DECIMALS   = 6;
 
-let msRowCounter  = 0;
-let msBatchesSent = 0;
-const msReceipts  = [];
-let msCurrentStep = 1;
-let msValidatedRows = [];  // set when proceeding to step 2
+// Minimal ERC-20 ABI needed for Multisend
+const MS_ERC20_ABI = [
+  'function balanceOf(address owner) view returns (uint256)',
+  'function transfer(address to, uint256 amount) returns (bool)',
+  'function decimals() view returns (uint8)',
+];
 
-// ─── Fee calculator ───────────────────────────────────────────────────────────
+let msRowCounter    = 0;
+let msBatchesSent   = 0;
+const msReceipts    = [];
+let msCurrentStep   = 1;
+let msValidatedRows = [];   // set when proceeding to step 2
+
+// ─── Fee calculator (integer-safe) ────────────────────────────────────────────
 function msCalcFee(total, count) {
   if (!count || !total) return 0;
-  const discount = Math.floor(Math.max(0, count - 10) / 10) * MS_FEE_DISCOUNT;
-  const rate     = Math.max(MS_FEE_MIN, MS_FEE_BASE - discount);
-  return +(total * rate).toFixed(6);
+  const discountSteps = Math.floor(Math.max(0, count - 10) / 10);
+  const rateRaw = MS_FEE_BASE - discountSteps * MS_FEE_DISCOUNT;
+  const rate    = Math.max(MS_FEE_MIN, rateRaw);
+  // Use integer math to avoid float precision errors
+  const feeRaw  = Math.round(total * rate * 1_000_000) / 1_000_000;
+  return +feeRaw.toFixed(6);
+}
+
+function msCalcFeeRate(count) {
+  const discountSteps = Math.floor(Math.max(0, count - 10) / 10);
+  return Math.max(MS_FEE_MIN, MS_FEE_BASE - discountSteps * MS_FEE_DISCOUNT);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function msEl(id)       { return document.getElementById(id); }
-function msIsAddr(addr) { return /^0x[0-9a-fA-F]{40}$/.test(String(addr || '').trim()); }
-function msFmt2(n)      { return Number(n || 0).toFixed(2); }
-function msFmt4(n)      { return Number(n || 0).toFixed(4); }
-function msShort(h)     { return h ? h.slice(0, 12) + '…' + h.slice(-8) : '—'; }
-function msNow()        { return new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+function msEl(id)          { return document.getElementById(id); }
+function msIsAddr(addr)    { return /^0x[0-9a-fA-F]{40}$/.test(String(addr || '').trim()); }
+function msFmt2(n)         { return Number(n || 0).toFixed(2); }
+function msFmt6(n)         { return Number(n || 0).toFixed(6); }
+function msShort(h)        { return h ? h.slice(0, 12) + '…' + h.slice(-8) : '—'; }
+function msNow()           { return new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+function msBigUsdc(n)      { return window.ethers.parseUnits(Number(n).toFixed(MS_USDC_DECIMALS), MS_USDC_DECIMALS); }
+function msFmtUsdc(bigint) {
+  try { return Number(window.ethers.formatUnits(bigint, MS_USDC_DECIMALS)).toFixed(2); }
+  catch { return '?'; }
+}
 
 // ─── Step bar UI ──────────────────────────────────────────────────────────────
 function msSetStep(step) {
@@ -54,20 +77,16 @@ function msSetStep(step) {
 
     if (!numEl) return;
     if (s < step) {
-      // Done
       numEl.className = 'w-9 h-9 rounded-full border-2 border-green-500 bg-green-900/30 flex items-center justify-center font-bold text-green-400 text-sm transition-all';
       numEl.innerHTML = '<i class="fas fa-check text-xs"></i>';
       if (lblEl) lblEl.className = 'text-xs text-green-400 font-medium';
-      // line after done
       const line = msEl(`ms-bar-line${s}`);
       if (line) line.className = 'flex-1 h-0.5 bg-green-600 mx-1 transition-all';
     } else if (s === step) {
-      // Active
       numEl.className = 'w-9 h-9 rounded-full border-2 border-cyan-500 bg-cyan-900/30 flex items-center justify-center font-bold text-cyan-400 text-sm transition-all';
       numEl.textContent = s;
       if (lblEl) lblEl.className = 'text-xs text-cyan-400 font-medium';
     } else {
-      // Future
       numEl.className = 'w-9 h-9 rounded-full border-2 border-gray-600 bg-gray-800/40 flex items-center justify-center font-bold text-gray-500 text-sm transition-all';
       numEl.textContent = s;
       if (lblEl) lblEl.className = 'text-xs text-gray-500 font-medium';
@@ -79,9 +98,9 @@ function msSetStep(step) {
 
 // ─── Tx lifecycle step helpers ─────────────────────────────────────────────────
 function msTxStep(n, state, detail) {
-  const row     = msEl(`ms-txstep-${n}`);
-  const icon    = msEl(`ms-txstep-${n}-icon`);
-  const status  = msEl(`ms-txstep-${n}-status`);
+  const row    = msEl(`ms-txstep-${n}`);
+  const icon   = msEl(`ms-txstep-${n}-icon`);
+  const status = msEl(`ms-txstep-${n}-status`);
   if (!row) return;
 
   row.className = 'ms-tx-step flex items-center gap-3 p-3 rounded-xl border ' + (
@@ -98,25 +117,24 @@ function msTxStep(n, state, detail) {
       state === 'error'  ? 'border-red-500 text-red-400' :
       'border-gray-600 text-gray-500'
     );
-    icon.innerHTML = state === 'done' ? '<i class="fas fa-check text-[10px]"></i>' :
-                     state === 'error' ? '<i class="fas fa-times text-[10px]"></i>' :
+    icon.innerHTML = state === 'done'   ? '<i class="fas fa-check text-[10px]"></i>' :
+                     state === 'error'  ? '<i class="fas fa-times text-[10px]"></i>' :
                      state === 'active' ? '<i class="fas fa-spinner fa-spin text-[10px]"></i>' : n;
   }
 
   if (status) {
-    status.textContent = detail || (state === 'active' ? 'In progress…' : state === 'done' ? 'Done' : state === 'error' ? 'Failed' : 'Waiting…');
-    status.className   = 'text-xs ms-txstep-status ' + (
-      state === 'done'  ? 'text-green-400' :
-      state === 'error' ? 'text-red-400' :
-      state === 'active'? 'text-cyan-400' :
+    status.innerHTML = detail || (state === 'active' ? 'In progress…' : state === 'done' ? 'Done' : state === 'error' ? 'Failed' : 'Waiting…');
+    status.className = 'text-xs ms-txstep-status ' + (
+      state === 'done'   ? 'text-green-400' :
+      state === 'error'  ? 'text-red-400' :
+      state === 'active' ? 'text-cyan-400' :
       'text-gray-600'
     );
   }
 }
 
-// Reset tx steps to waiting
 function msTxStepsReset() {
-  [1,2,3].forEach(n => msTxStep(n, 'wait'));
+  [1, 2, 3].forEach(n => msTxStep(n, 'wait'));
   const fin = msEl('ms-final-result');
   if (fin) { fin.classList.add('hidden'); fin.innerHTML = ''; }
 }
@@ -131,11 +149,13 @@ function msUpdateStats() {
     if (msIsAddr(addr) && amt > 0) valid.push({ addr, amt });
   });
 
-  const total    = valid.reduce((s, r) => s + r.amt, 0);
-  const count    = valid.length;
-  const rowCount = rows.length;
-  const fee      = msCalcFee(total, count);
-  const feePct   = count > 0 ? Math.max(MS_FEE_MIN, MS_FEE_BASE - Math.floor(Math.max(0,count-10)/10)*MS_FEE_DISCOUNT) : MS_FEE_BASE;
+  // Use integer sum to avoid float issues
+  const totalMicro = valid.reduce((s, r) => s + Math.round(r.amt * 1_000_000), 0);
+  const total      = totalMicro / 1_000_000;
+  const count      = valid.length;
+  const rowCount   = rows.length;
+  const fee        = msCalcFee(total, count);
+  const feePct     = count > 0 ? msCalcFeeRate(count) : MS_FEE_BASE;
 
   const statR = msEl('ms-stat-recipients'); if (statR) statR.textContent = count;
   const statT = msEl('ms-stat-total');      if (statT) statT.textContent = '$' + msFmt2(total);
@@ -146,7 +166,7 @@ function msUpdateStats() {
   const sumC  = msEl('ms-summary-count');  if (sumC) sumC.textContent = count + ' recipient' + (count !== 1 ? 's' : '');
   const sumT  = msEl('ms-summary-total');  if (sumT) sumT.textContent = '$' + msFmt2(total) + ' USDC';
   const sumF  = msEl('ms-summary-fee');    if (sumF) sumF.textContent = '$' + msFmt2(fee) + ' USDC';
-  const sumFP = msEl('ms-fee-pct');        if (sumFP) sumFP.textContent = '(' + (feePct*100).toFixed(1) + '%)';
+  const sumFP = msEl('ms-fee-pct');        if (sumFP) sumFP.textContent = '(' + (feePct * 100).toFixed(1) + '%)';
   const sumG  = msEl('ms-summary-grand');  if (sumG) sumG.textContent = '$' + msFmt2(total + fee) + ' USDC';
 }
 
@@ -169,7 +189,7 @@ function msAddRow(address = '', amount = '', note = '') {
     <div class="col-span-3">
       <input type="number"
         class="ms-amt w-full bg-gray-800/80 border border-gray-700 hover:border-gray-600 focus:border-cyan-500 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none transition-colors"
-        placeholder="0.00" step="0.01" min="0" max="${MS_MAX_AMOUNT_ROW}"
+        placeholder="0.00" step="0.000001" min="0.000001" max="${MS_MAX_AMOUNT_ROW}"
         value="${amount}"
         oninput="msUpdateStats()">
     </div>
@@ -200,27 +220,35 @@ function msValidateAddr(input) {
   }
 }
 
-// ─── Collect valid rows ────────────────────────────────────────────────────────
+// ─── Collect valid rows (with duplicate detection) ────────────────────────────
 function msCollectRows() {
   const rows   = document.querySelectorAll('.ms-row');
   const valid  = [];
   const errors = [];
+  const seen   = new Set();
   const from   = msEl('ms-from')?.value?.trim();
 
   rows.forEach((row, i) => {
     const addr = row.querySelector('.ms-addr')?.value?.trim();
-    const amt  = parseFloat(row.querySelector('.ms-amt')?.value || '0');
+    const raw  = row.querySelector('.ms-amt')?.value || '';
+    const amt  = parseFloat(raw);
     const note = row.querySelector('.ms-note')?.value?.trim() || '';
 
-    if (!addr && !amt) return;
+    if (!addr && !raw) return; // skip completely empty rows
+
     const errs = [];
     if (!addr)              errs.push('Address required');
     else if (!msIsAddr(addr)) errs.push('Invalid EVM address');
-    if (!amt || amt <= 0)   errs.push('Amount must be > 0');
-    else if (amt > MS_MAX_AMOUNT_ROW) errs.push(`Amount exceeds max $${MS_MAX_AMOUNT_ROW}`);
+    else if (seen.has(addr.toLowerCase())) errs.push('Duplicate address');
+    if (isNaN(amt) || amt <= 0) errs.push('Amount must be > 0');
+    else if (amt > MS_MAX_AMOUNT_ROW)    errs.push(`Amount exceeds max $${MS_MAX_AMOUNT_ROW}`);
 
-    if (errs.length) errors.push(`Row ${i + 1}: ${errs.join(', ')}`);
-    else valid.push({ address: addr, amount: amt, note, from });
+    if (errs.length) {
+      errors.push(`Row ${i + 1}: ${errs.join(', ')}`);
+    } else {
+      seen.add(addr.toLowerCase());
+      valid.push({ address: addr, amount: amt, note, from });
+    }
   });
 
   return { valid, errors, from };
@@ -230,9 +258,9 @@ function msCollectRows() {
 function msProceedToReview() {
   const { valid, errors, from } = msCollectRows();
 
-  if (errors.length)  { showToast(errors[0], 'warning'); return; }
-  if (!valid.length)  { showToast('Add at least one valid recipient.', 'warning'); return; }
-  if (!from || !msIsAddr(from)) { showToast('Sender wallet address not valid.', 'warning'); return; }
+  if (errors.length)              { showToast(errors[0], 'warning'); return; }
+  if (!valid.length)              { showToast('Add at least one valid recipient.', 'warning'); return; }
+  if (!from || !msIsAddr(from))   { showToast('Sender wallet address not valid.', 'warning'); return; }
 
   if (!window.walletState?.connected) {
     showToast('Please connect your wallet first.', 'warning');
@@ -241,10 +269,13 @@ function msProceedToReview() {
   }
 
   msValidatedRows = valid;
-  const total = valid.reduce((s, r) => s + r.amount, 0);
-  const fee   = msCalcFee(total, valid.length);
-  const grand = total + fee;
-  const feePct = Math.max(MS_FEE_MIN, MS_FEE_BASE - Math.floor(Math.max(0,valid.length-10)/10)*MS_FEE_DISCOUNT);
+
+  // Integer-safe totals
+  const totalMicro = valid.reduce((s, r) => s + Math.round(r.amount * 1_000_000), 0);
+  const total      = totalMicro / 1_000_000;
+  const fee        = msCalcFee(total, valid.length);
+  const grand      = total + fee;
+  const feePct     = msCalcFeeRate(valid.length);
 
   // Populate review table
   const tbl = msEl('ms-review-table');
@@ -260,7 +291,7 @@ function msProceedToReview() {
 
   const rC = msEl('ms-review-count'); if (rC) rC.textContent = valid.length;
   const rT = msEl('ms-review-total'); if (rT) rT.textContent = '$' + msFmt2(total) + ' USDC';
-  const rF = msEl('ms-review-fee');   if (rF) rF.textContent = '$' + msFmt2(fee) + ' USDC (' + (feePct*100).toFixed(1) + '%)';
+  const rF = msEl('ms-review-fee');   if (rF) rF.textContent = '$' + msFmt2(fee) + ' USDC (' + (feePct * 100).toFixed(1) + '%)';
   const rG = msEl('ms-review-grand'); if (rG) rG.textContent = '$' + msFmt2(grand) + ' USDC';
 
   msSetStep(2);
@@ -269,7 +300,6 @@ function msProceedToReview() {
 // ─── Step 2 → Step 3 ──────────────────────────────────────────────────────────
 function msProceedToSend() {
   msTxStepsReset();
-  const total = msValidatedRows.reduce((s, r) => s + r.amount, 0);
   const label = msEl('ms-txstep-3-label');
   if (label) label.textContent = `Send Transfers (0 / ${msValidatedRows.length})`;
 
@@ -291,12 +321,12 @@ function msGoBack() {
 function msParseCSV(text) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   if (lines.length < 2) return [];
-  const sep  = lines[0].includes(';') ? ';' : ',';
+  const sep = lines[0].includes(';') ? ';' : ',';
   function splitLine(line) {
     const r = []; let c = ''; let q = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
-      if (ch === '"') { if (q && line[i+1] === '"') { c += '"'; i++; } else q = !q; }
+      if (ch === '"') { if (q && line[i + 1] === '"') { c += '"'; i++; } else q = !q; }
       else if (ch === sep && !q) { r.push(c.trim()); c = ''; }
       else c += ch;
     }
@@ -308,7 +338,7 @@ function msParseCSV(text) {
     const line = lines[i].trim();
     if (!line) continue;
     const cells = splitLine(line);
-    const obj = {};
+    const obj   = {};
     headers.forEach((h, idx) => { obj[h] = (cells[idx] || '').trim(); });
     rows.push(obj);
   }
@@ -316,9 +346,9 @@ function msParseCSV(text) {
 }
 
 function msNormalizeRow(raw) {
-  const addrKeys = ['address','to','to_address','wallet','recipient','destination','endereco'];
-  const amtKeys  = ['amount','value','usdc','quantidade','valor'];
-  const noteKeys = ['note','description','memo','notes','observacao'];
+  const addrKeys = ['address', 'to', 'to_address', 'wallet', 'recipient', 'destination', 'endereco'];
+  const amtKeys  = ['amount', 'value', 'usdc', 'quantidade', 'valor'];
+  const noteKeys = ['note', 'description', 'memo', 'notes', 'observacao'];
   const find = (keys) => { for (const k of keys) if (raw[k] !== undefined) return raw[k]; return ''; };
   return { address: find(addrKeys), amount: find(amtKeys).replace(',', '.'), note: find(noteKeys) };
 }
@@ -332,21 +362,21 @@ function msHandleCSV(file) {
   reader.onload = (e) => {
     try {
       const rawRows = msParseCSV(e.target.result);
-      if (!rawRows.length) { showToast('CSV has no data rows', 'warning'); return; }
+      if (!rawRows.length)              { showToast('CSV has no data rows', 'warning'); return; }
       if (rawRows.length > MS_MAX_ROWS) { showToast(`Too many rows: ${rawRows.length} (max ${MS_MAX_ROWS})`, 'error'); return; }
 
       const container = msEl('ms-rows');
       if (container) { container.innerHTML = ''; msRowCounter = 0; }
 
-      let valid = 0, invalid = 0;
+      let validCount = 0, invalidCount = 0;
       rawRows.forEach(raw => {
         const r   = msNormalizeRow(raw);
         const amt = parseFloat(r.amount);
         if (r.address && msIsAddr(r.address) && amt > 0 && amt <= MS_MAX_AMOUNT_ROW) {
           msAddRow(r.address, msFmt2(amt), r.note);
-          valid++;
+          validCount++;
         } else {
-          invalid++;
+          invalidCount++;
         }
       });
 
@@ -355,7 +385,7 @@ function msHandleCSV(file) {
       if (fromEl && !fromEl.value && wallet) fromEl.value = wallet;
 
       msUpdateStats();
-      showToast(`✅ ${valid} rows loaded${invalid ? ` · ${invalid} skipped` : ''}`, invalid ? 'warning' : 'success');
+      showToast(`✅ ${validCount} rows loaded${invalidCount ? ` · ${invalidCount} skipped` : ''}`, invalidCount ? 'warning' : 'success');
       const inp = msEl('ms-csv-input');
       if (inp) inp.value = '';
     } catch (err) {
@@ -377,15 +407,44 @@ function msDownloadTemplate() {
   a.click(); URL.revokeObjectURL(url);
 }
 
+// ─── Network switch helper ────────────────────────────────────────────────────
+async function msSwitchToArc() {
+  try {
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: MS_CHAIN_HEX }],
+    });
+    return true;
+  } catch (switchErr) {
+    if (switchErr.code === 4902) {
+      // Chain not added — attempt to add it
+      try {
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: MS_CHAIN_HEX,
+            chainName: 'Arc Testnet',
+            nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+            rpcUrls: ['https://rpc.testnet.arc.network'],
+            blockExplorerUrls: ['https://testnet.arcscan.app'],
+          }],
+        });
+        return true;
+      } catch { return false; }
+    }
+    return false;
+  }
+}
+
 // ─── Execute: Step 3 — Pay fee then send all transfers ────────────────────────
 async function msExecute() {
-  const execBtn  = msEl('ms-execute-btn');
-  const backBtn  = msEl('ms-step3-back');
-  const finEl    = msEl('ms-final-result');
-  const from     = msEl('ms-from')?.value?.trim();
+  const execBtn = msEl('ms-execute-btn');
+  const backBtn = msEl('ms-step3-back');
+  const finEl   = msEl('ms-final-result');
+  const from    = msEl('ms-from')?.value?.trim();
 
-  if (!msValidatedRows.length) { showToast('No validated recipients.', 'warning'); return; }
-  if (!window.ethereum)        { showToast('Wallet not detected.', 'error'); return; }
+  if (!msValidatedRows.length)       { showToast('No validated recipients.', 'warning'); return; }
+  if (!window.ethereum)              { showToast('Wallet not detected. Install MetaMask.', 'error'); return; }
   if (!window.walletState?.connected) {
     showToast('Connect your wallet first.', 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
@@ -396,101 +455,145 @@ async function msExecute() {
   if (backBtn) backBtn.disabled = true;
   if (finEl)   { finEl.classList.add('hidden'); finEl.innerHTML = ''; }
 
-  const total    = msValidatedRows.reduce((s, r) => s + r.amount, 0);
-  const fee      = msCalcFee(total, msValidatedRows.length);
-  const grand    = total + fee;
-  const decimals = 6;
-  const batchId  = `BATCH-${Date.now().toString(36).toUpperCase()}`;
+  // Integer-safe totals
+  const totalMicro = msValidatedRows.reduce((s, r) => s + Math.round(r.amount * 1_000_000), 0);
+  const total      = totalMicro / 1_000_000;
+  const fee        = msCalcFee(total, msValidatedRows.length);
+  const grand      = total + fee;
+  const batchId    = `BATCH-${Date.now().toString(36).toUpperCase()}`;
 
   try {
     const ethers = window.ethers;
     if (!ethers) throw new Error('ethers.js not loaded');
 
-    // ── Step 1: Verify network + balance ─────────────────────────────────────
+    // ── Step 1: Verify network + USDC balance ─────────────────────────────────
     msTxStep(1, 'active', 'Checking Arc Testnet and USDC balance…');
 
     const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
-    if (parseInt(chainHex, 16) !== MS_CHAIN_ID) {
-      msTxStep(1, 'error', `Wrong network (got chainId ${parseInt(chainHex,16)}). Expected Arc Testnet 5042002.`);
-      showToast('Wrong network. Switching to Arc Testnet…', 'error');
-      try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x4CE612' }] }); }
-      catch (e) { /* user declined */ }
-      if (execBtn) { execBtn.disabled = false; execBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Pay Fee &amp; Send All'; }
-      if (backBtn) backBtn.disabled = false;
-      return;
+    const chainId  = parseInt(chainHex, 16);
+    if (chainId !== MS_CHAIN_ID) {
+      msTxStep(1, 'active', `Wrong network (chain ${chainId}). Switching to Arc Testnet…`);
+      const switched = await msSwitchToArc();
+      if (!switched) {
+        msTxStep(1, 'error', 'Could not switch to Arc Testnet. Please switch manually.');
+        showToast('Please switch to Arc Testnet (chainId 5042002)', 'error');
+        if (execBtn) { execBtn.disabled = false; execBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Pay Fee &amp; Send All'; }
+        if (backBtn) backBtn.disabled = false;
+        return;
+      }
+      // Small delay to let wallet update
+      await new Promise(r => setTimeout(r, 800));
     }
 
     const provider = new ethers.BrowserProvider(window.ethereum);
     const signer   = await provider.getSigner();
-    const ERC20_ABI = [
-      'function balanceOf(address) view returns (uint256)',
-      'function transfer(address to, uint256 amount) returns (bool)',
-    ];
-    const usdc = new ethers.Contract(MS_USDC_ADDR, ERC20_ABI, signer);
+    const usdc     = new ethers.Contract(MS_USDC_ADDR, MS_ERC20_ABI, signer);
 
-    const bal      = await usdc.balanceOf(from);
-    const required = ethers.parseUnits(grand.toFixed(decimals), decimals);
+    // Read on-chain decimals to confirm (sanity check)
+    let onChainDecimals = MS_USDC_DECIMALS;
+    try {
+      onChainDecimals = Number(await usdc.decimals());
+    } catch (_) { /* use default 6 */ }
 
-    if (bal < required) {
-      const have = Number(ethers.formatUnits(bal, decimals)).toFixed(2);
-      msTxStep(1, 'error', `Insufficient USDC. Have $${have}, need $${msFmt2(grand)}.`);
-      showToast(`Insufficient USDC. Have $${have}, need $${msFmt2(grand)}.`, 'error');
+    if (onChainDecimals !== MS_USDC_DECIMALS) {
+      msTxStep(1, 'error', `Unexpected USDC decimals: ${onChainDecimals} (expected 6)`);
+      showToast(`Unexpected USDC decimals: ${onChainDecimals}`, 'error');
       if (execBtn) { execBtn.disabled = false; execBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Pay Fee &amp; Send All'; }
       if (backBtn) backBtn.disabled = false;
       return;
     }
 
-    msTxStep(1, 'done', `Balance OK · $${Number(ethers.formatUnits(bal, decimals)).toFixed(2)} USDC`);
+    // Fetch live balance
+    const balBig      = await usdc.balanceOf(from);
+    const grandBig    = ethers.parseUnits(grand.toFixed(onChainDecimals), onChainDecimals);
+    const balHuman    = Number(ethers.formatUnits(balBig, onChainDecimals)).toFixed(2);
+
+    if (balBig < grandBig) {
+      msTxStep(1, 'error', `Insufficient USDC · Have $${balHuman} · Need $${msFmt2(grand)}`);
+      showToast(`Insufficient USDC. Have $${balHuman}, need $${msFmt2(grand)}.`, 'error');
+      if (execBtn) { execBtn.disabled = false; execBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Pay Fee &amp; Send All'; }
+      if (backBtn) backBtn.disabled = false;
+      return;
+    }
+
+    msTxStep(1, 'done', `Balance OK · $${balHuman} USDC available`);
 
     // ── Step 2: Pay single platform fee ──────────────────────────────────────
     let feeTxHash = null;
     if (fee > 0) {
-      msTxStep(2, 'active', `Sending fee $${msFmt2(fee)} USDC to platform…`);
-      const feeAmt = ethers.parseUnits(fee.toFixed(decimals), decimals);
-      const feeTx  = await usdc.transfer(MS_FEE_WALLET, feeAmt);
-      msTxStep(2, 'active', `Waiting for confirmation · tx ${feeTx.hash.slice(0,12)}…`);
-      const feeRcpt = await feeTx.wait(1);
+      msTxStep(2, 'active', `Sending platform fee $${msFmt2(fee)} USDC…`);
+      const feeAmt = ethers.parseUnits(fee.toFixed(onChainDecimals), onChainDecimals);
+
+      // Estimate gas first
+      let gasEstimate;
+      try {
+        gasEstimate = await usdc.transfer.estimateGas(MS_FEE_WALLET, feeAmt);
+      } catch (_) { gasEstimate = BigInt(65000); }
+
+      const feeOptions = { gasLimit: gasEstimate + BigInt(10000) };
+      const feeTx      = await usdc.transfer(MS_FEE_WALLET, feeAmt, feeOptions);
+      msTxStep(2, 'active', `Confirming fee tx · <span class="font-mono">${feeTx.hash.slice(0, 14)}…</span>`);
+      await feeTx.wait(1);
       feeTxHash = feeTx.hash;
-      msTxStep(2, 'done', `Fee confirmed · <a href="${MS_EXPLORER}/tx/${feeTx.hash}" target="_blank" class="underline text-blue-400">view on ArcScan</a>`);
+      msTxStep(2, 'done', `Fee confirmed · <a href="${MS_EXPLORER}/tx/${feeTx.hash}" target="_blank" class="underline text-blue-400 font-mono">${feeTx.hash.slice(0, 12)}…</a>`);
     } else {
-      msTxStep(2, 'done', 'No fee for this batch.');
+      msTxStep(2, 'done', 'No platform fee for this batch.');
     }
 
     // ── Step 3: Send individual transfers ──────────────────────────────────
     const label = msEl('ms-txstep-3-label');
-    msTxStep(3, 'active', `Sending transfers 0 / ${msValidatedRows.length}…`);
+    msTxStep(3, 'active', `Sending 0 / ${msValidatedRows.length} transfers…`);
     if (label) label.textContent = `Send Transfers (0 / ${msValidatedRows.length})`;
 
     const hashes  = [];
     const results = [];
+    let   userAborted = false;
 
     for (let i = 0; i < msValidatedRows.length; i++) {
+      if (userAborted) {
+        results.push({ ...msValidatedRows[i], txHash: null, status: 'skipped' });
+        continue;
+      }
       const p = msValidatedRows[i];
       if (label) label.textContent = `Send Transfers (${i + 1} / ${msValidatedRows.length})`;
-      msTxStep(3, 'active', `Sending ${i + 1}/${msValidatedRows.length} → ${msShort(p.address)} $${msFmt2(p.amount)} USDC`);
+      msTxStep(3, 'active', `Sending ${i + 1}/${msValidatedRows.length} → <span class="font-mono">${msShort(p.address)}</span> $${msFmt2(p.amount)} USDC`);
 
       try {
-        const amt    = ethers.parseUnits(Number(p.amount).toFixed(decimals), decimals);
-        const tx     = await usdc.transfer(p.address, amt);
-        const receipt= await tx.wait(1);
+        // Use parseUnits for exact 6-decimal precision
+        const amtBig = ethers.parseUnits(Number(p.amount).toFixed(onChainDecimals), onChainDecimals);
+
+        // Estimate gas per transfer
+        let gasEst;
+        try {
+          gasEst = await usdc.transfer.estimateGas(p.address, amtBig);
+        } catch (_) { gasEst = BigInt(65000); }
+
+        const txOpts = { gasLimit: gasEst + BigInt(10000) };
+        const tx     = await usdc.transfer(p.address, amtBig, txOpts);
+        const rcpt   = await tx.wait(1);
+        const gasUsed = rcpt.gasUsed ? rcpt.gasUsed.toString() : 'N/A';
+
         hashes.push(tx.hash);
-        results.push({ address: p.address, amount: p.amount, note: p.note||'', txHash: tx.hash, status: 'confirmed' });
-        if (typeof addLog === 'function') addLog(`[MULTISEND] ✅ ${i+1}/${msValidatedRows.length} → ${p.address.slice(0,10)}… $${msFmt2(p.amount)} USDC · ${tx.hash.slice(0,12)}…`, 'success');
+        results.push({ address: p.address, amount: p.amount, note: p.note || '', txHash: tx.hash, status: 'confirmed', gasUsed });
+        if (typeof addLog === 'function') addLog(`[MULTISEND] ✅ ${i + 1}/${msValidatedRows.length} → ${p.address.slice(0, 10)}… $${msFmt2(p.amount)} USDC · ${tx.hash.slice(0, 12)}…`, 'success');
       } catch (e) {
         const errMsg = e.reason || e.message || 'Transaction failed';
-        if (e.code === 4001 || errMsg.includes('rejected') || errMsg.includes('denied')) {
-          showToast(`Transaction ${i + 1} rejected by user. Stopping batch.`, 'warning');
-          results.push({ address: p.address, amount: p.amount, note: p.note||'', txHash: null, status: 'rejected' });
-          break;
+        if (e.code === 4001 || errMsg.includes('rejected') || errMsg.includes('denied') || errMsg.includes('user rejected')) {
+          userAborted = true;
+          showToast(`Transaction ${i + 1} rejected. Remaining skipped.`, 'warning');
+          results.push({ address: p.address, amount: p.amount, note: p.note || '', txHash: null, status: 'rejected' });
+        } else {
+          results.push({ address: p.address, amount: p.amount, note: p.note || '', txHash: null, status: 'failed', error: errMsg });
+          if (typeof addLog === 'function') addLog(`[MULTISEND] ❌ ${i + 1}/${msValidatedRows.length} → ${p.address.slice(0, 10)}… failed: ${errMsg}`, 'error');
         }
-        results.push({ address: p.address, amount: p.amount, note: p.note||'', txHash: null, status: 'failed', error: errMsg });
-        if (typeof addLog === 'function') addLog(`[MULTISEND] ❌ ${i+1}/${msValidatedRows.length} → ${p.address.slice(0,10)}… failed: ${errMsg}`, 'error');
       }
     }
 
-    const confirmedCount  = results.filter(r => r.status === 'confirmed').length;
-    const confirmedAmount = results.filter(r => r.status === 'confirmed').reduce((s, r) => s + r.amount, 0);
-    const allOk           = confirmedCount === msValidatedRows.length;
+    const confirmedResults = results.filter(r => r.status === 'confirmed');
+    const confirmedCount   = confirmedResults.length;
+    const confirmedMicro   = confirmedResults.reduce((s, r) => s + Math.round(r.amount * 1_000_000), 0);
+    const confirmedAmount  = confirmedMicro / 1_000_000;
+    const allOk            = confirmedCount === msValidatedRows.length;
 
     if (label) label.textContent = `Send Transfers (${confirmedCount} / ${msValidatedRows.length} confirmed)`;
     msTxStep(3, allOk ? 'done' : 'error',
@@ -498,47 +601,47 @@ async function msExecute() {
 
     msBatchesSent++;
 
-    // ── Build receipt ─────────────────────────────────────────────────────────
+    // ── Build receipt ──────────────────────────────────────────────────────────
     const receiptObj = {
-      id:           `ms-${Date.now()}`,
+      id:            `ms-${Date.now()}`,
       batchId,
-      timestamp:    new Date().toISOString(),
+      timestamp:     new Date().toISOString(),
       from,
-      network:      'Arc Testnet',
-      chainId:      MS_CHAIN_ID,
-      token:        'USDC',
-      count:        confirmedCount,
-      totalAmount:  msFmt2(confirmedAmount),
-      fee:          msFmt2(fee),
-      feeTxHash:    feeTxHash,
-      grandTotal:   msFmt2(confirmedAmount + fee),
-      governmentFee:'—',
-      recipients:   results,
-      txHash:       hashes[0] || null,
-      explorerUrl:  hashes[0] ? `${MS_EXPLORER}/tx/${hashes[0]}` : MS_EXPLORER,
-      status:       allOk ? 'confirmed' : 'partial',
-      allHashes:    hashes,
+      network:       'Arc Testnet',
+      chainId:       MS_CHAIN_ID,
+      token:         'USDC',
+      count:         confirmedCount,
+      totalAmount:   msFmt2(confirmedAmount),
+      fee:           msFmt2(fee),
+      feeTxHash,
+      grandTotal:    msFmt2(confirmedAmount + fee),
+      governmentFee: '—',
+      recipients:    results,
+      txHash:        hashes[0] || null,
+      explorerUrl:   hashes[0] ? `${MS_EXPLORER}/tx/${hashes[0]}` : MS_EXPLORER,
+      status:        allOk ? 'confirmed' : 'partial',
+      allHashes:     hashes,
     };
     msReceipts.unshift(receiptObj);
     msRenderReceipts();
 
-    // ── Final result banner ───────────────────────────────────────────────────
+    // ── Final result banner ────────────────────────────────────────────────────
     if (finEl) {
       finEl.classList.remove('hidden');
       finEl.className = `rounded-xl p-4 mb-4 ${allOk ? 'bg-green-900/20 border border-green-700/30' : 'bg-yellow-900/20 border border-yellow-700/30'}`;
       finEl.innerHTML = `
         <div class="flex items-start gap-3">
           <i class="fas ${allOk ? 'fa-check-circle text-green-400' : 'fa-exclamation-triangle text-yellow-400'} text-xl mt-0.5"></i>
-          <div>
-            <div class="font-semibold ${allOk ? 'text-green-300' : 'text-yellow-300'} mb-1">
+          <div class="flex-1">
+            <div class="font-semibold ${allOk ? 'text-green-300' : 'text-yellow-300'} mb-2">
               ${allOk ? `✅ Batch complete! ${confirmedCount} transfers confirmed.` : `⚠️ Partial: ${confirmedCount}/${msValidatedRows.length} confirmed.`}
             </div>
-            <div class="text-xs text-gray-400 space-y-0.5">
+            <div class="text-xs text-gray-400 space-y-1">
               <div>Amount sent: <span class="text-white font-medium">$${msFmt2(confirmedAmount)} USDC</span></div>
               <div>Platform fee paid: <span class="text-yellow-300">$${msFmt2(fee)} USDC</span></div>
               <div>Government fee: <span class="text-gray-500">—</span></div>
-              ${hashes[0] ? `<div>First tx: <a href="${MS_EXPLORER}/tx/${hashes[0]}" target="_blank" class="text-blue-400 hover:underline font-mono">${hashes[0].slice(0,18)}…</a></div>` : ''}
-              ${feeTxHash ? `<div>Fee tx: <a href="${MS_EXPLORER}/tx/${feeTxHash}" target="_blank" class="text-yellow-400 hover:underline font-mono">${feeTxHash.slice(0,18)}…</a></div>` : ''}
+              ${hashes[0] ? `<div>First tx: <a href="${MS_EXPLORER}/tx/${hashes[0]}" target="_blank" class="text-blue-400 hover:underline font-mono">${hashes[0].slice(0, 20)}…</a></div>` : ''}
+              ${feeTxHash ? `<div>Fee tx: <a href="${MS_EXPLORER}/tx/${feeTxHash}" target="_blank" class="text-yellow-400 hover:underline font-mono">${feeTxHash.slice(0, 20)}…</a></div>` : ''}
             </div>
           </div>
         </div>`;
@@ -546,18 +649,22 @@ async function msExecute() {
 
     showToast(
       allOk
-        ? `✅ ${confirmedCount} transfers confirmed · $${msFmt2(confirmedAmount)} USDC · Fee $${msFmt2(fee)}`
+        ? `✅ ${confirmedCount} transfers confirmed · $${msFmt2(confirmedAmount)} USDC`
         : `⚠️ ${confirmedCount}/${msValidatedRows.length} confirmed · $${msFmt2(confirmedAmount)} USDC`,
       allOk ? 'success' : 'warning'
     );
 
+    // Reset on full success; on partial keep data so user can retry
     if (allOk) {
       msInitRows();
       msValidatedRows = [];
     }
 
     const statB = msEl('ms-stat-batches'); if (statB) statB.textContent = msBatchesSent;
-    if (typeof loadDashboard === 'function') setTimeout(loadDashboard, 1500);
+
+    // Trigger history refresh
+    if (typeof historyInit === 'function') setTimeout(() => historyInit(), 3000);
+    if (typeof loadDashboard === 'function') setTimeout(loadDashboard, 2000);
 
   } catch (e) {
     const msg = e.reason || e.message || 'Unknown error';
@@ -589,15 +696,13 @@ function msRenderReceipts() {
   container.innerHTML = msReceipts.map(r => `
     <div class="bg-gray-800/40 border border-gray-700/40 rounded-2xl p-4 mb-3">
       <div class="flex items-start justify-between mb-3">
-        <div>
-          <div class="flex items-center gap-2">
-            <div class="w-7 h-7 rounded-lg bg-green-900/30 border border-green-700/30 flex items-center justify-center">
-              <i class="fas fa-check text-green-400 text-xs"></i>
-            </div>
-            <div>
-              <div class="text-white font-semibold text-sm">${r.batchId}</div>
-              <div class="text-gray-500 text-xs">${new Date(r.timestamp).toLocaleString()}</div>
-            </div>
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg ${r.status === 'confirmed' ? 'bg-green-900/30 border-green-700/30' : 'bg-yellow-900/30 border-yellow-700/30'} border flex items-center justify-center">
+            <i class="fas ${r.status === 'confirmed' ? 'fa-check text-green-400' : 'fa-exclamation text-yellow-400'} text-xs"></i>
+          </div>
+          <div>
+            <div class="text-white font-semibold text-sm">${r.batchId}</div>
+            <div class="text-gray-500 text-xs">${new Date(r.timestamp).toLocaleString()}</div>
           </div>
         </div>
         <div class="text-right">
@@ -624,34 +729,36 @@ function msRenderReceipts() {
         </div>
       </div>
       ${r.txHash ? `
-      <div class="text-xs text-gray-500 mb-2 font-mono bg-gray-900/30 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
-        <span class="text-gray-600">Primary Tx</span>
-        <a href="${r.explorerUrl}" target="_blank" rel="noopener" class="text-blue-400 hover:underline">${msShort(r.txHash)} <i class="fas fa-external-link-alt text-[10px]"></i></a>
-      </div>
-      ${r.feeTxHash ? `<div class="text-xs text-gray-500 mb-2 font-mono bg-gray-900/30 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
-        <span class="text-gray-600">Fee Tx</span>
-        <a href="${MS_EXPLORER}/tx/${r.feeTxHash}" target="_blank" rel="noopener" class="text-yellow-400 hover:underline">${msShort(r.feeTxHash)} <i class="fas fa-external-link-alt text-[10px]"></i></a>
-      </div>` : ''}` : ''}
-      <details class="mb-2">
-        <summary class="text-xs text-gray-500 hover:text-gray-400 cursor-pointer select-none flex items-center gap-1">
-          <i class="fas fa-users text-[10px]"></i>Recipients (${r.recipients?.length || 0})
-          <span class="ml-auto text-[10px]">▼</span>
+      <div class="text-xs text-gray-500 mb-1.5 font-mono bg-gray-900/30 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+        <span class="text-gray-600 flex-shrink-0">First Tx</span>
+        <a href="${r.explorerUrl}" target="_blank" rel="noopener" class="text-blue-400 hover:underline ml-2 truncate">${r.txHash.slice(0, 20)}… <i class="fas fa-external-link-alt text-[10px]"></i></a>
+      </div>` : ''}
+      ${r.feeTxHash ? `
+      <div class="text-xs text-gray-500 mb-1.5 font-mono bg-gray-900/30 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+        <span class="text-gray-600 flex-shrink-0">Fee Tx</span>
+        <a href="${MS_EXPLORER}/tx/${r.feeTxHash}" target="_blank" rel="noopener" class="text-yellow-400 hover:underline ml-2 truncate">${r.feeTxHash.slice(0, 20)}… <i class="fas fa-external-link-alt text-[10px]"></i></a>
+      </div>` : ''}
+      <details class="mb-2 mt-1">
+        <summary class="text-xs text-gray-500 hover:text-gray-400 cursor-pointer select-none flex items-center gap-1.5 py-1">
+          <i class="fas fa-users text-[10px]"></i>
+          <span>Recipients (${r.recipients?.length || 0}) — click to expand</span>
+          <i class="fas fa-chevron-down text-[9px] ml-auto"></i>
         </summary>
-        <div class="mt-2 space-y-1 max-h-40 overflow-y-auto">
+        <div class="mt-2 space-y-1 max-h-48 overflow-y-auto">
           ${(r.recipients || []).map(p => `
-            <div class="flex items-center justify-between text-[11px] py-1.5 border-b border-gray-700/20 last:border-0 gap-1">
-              <span class="font-mono text-gray-400">${msShort(p.address)}</span>
-              <span class="text-cyan-400">$${msFmt2(p.amount)}</span>
-              <span class="${p.status === 'confirmed' ? 'text-green-400' : p.status === 'rejected' ? 'text-yellow-400' : 'text-red-400'} text-[10px]">${p.status || '—'}</span>
-              ${p.txHash ? `<a href="${MS_EXPLORER}/tx/${p.txHash}" target="_blank" class="text-blue-400 hover:underline text-[10px]"><i class="fas fa-external-link-alt"></i></a>` : ''}
-              ${p.note ? `<span class="text-gray-600">${p.note}</span>` : ''}
+            <div class="flex items-center gap-1.5 text-[11px] py-1.5 border-b border-gray-700/20 last:border-0">
+              <span class="font-mono text-gray-400 flex-1 truncate">${msShort(p.address)}</span>
+              <span class="text-cyan-400 flex-shrink-0">$${msFmt2(p.amount)}</span>
+              <span class="flex-shrink-0 ${p.status === 'confirmed' ? 'text-green-400' : p.status === 'rejected' ? 'text-yellow-400' : p.status === 'skipped' ? 'text-gray-500' : 'text-red-400'}">${p.status || '—'}</span>
+              ${p.txHash ? `<a href="${MS_EXPLORER}/tx/${p.txHash}" target="_blank" class="text-blue-400 hover:underline text-[10px] flex-shrink-0"><i class="fas fa-external-link-alt"></i></a>` : ''}
+              ${p.note ? `<span class="text-gray-600 max-w-[60px] truncate">${p.note}</span>` : ''}
             </div>`).join('')}
         </div>
       </details>
-      <div class="flex gap-2">
+      <div class="flex gap-2 mt-2">
         <button onclick="msDownloadReceipt('${r.id}')"
           class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/40 hover:bg-gray-700/60 border border-gray-600/40 text-gray-400 hover:text-white text-xs rounded-xl transition">
-          <i class="fas fa-download text-xs"></i>Download Receipt
+          <i class="fas fa-download text-xs"></i>JSON Receipt
         </button>
         ${r.txHash ? `
         <a href="${r.explorerUrl}" target="_blank" rel="noopener"
@@ -668,35 +775,39 @@ function msDownloadReceipt(receiptId) {
   if (!r) { showToast('Receipt not found.', 'error'); return; }
 
   const doc = {
-    receiptType:     'ARC_MULTISEND_BATCH_RECEIPT',
-    version:         '2.0',
-    generatedAt:     new Date().toISOString(),
-    batchId:         r.batchId,
-    timestamp:       r.timestamp,
+    receiptType:      'ARC_MULTISEND_BATCH_RECEIPT',
+    version:          '3.0',
+    generatedAt:      new Date().toISOString(),
+    batchId:          r.batchId,
+    timestamp:        r.timestamp,
     network: {
-      name:          r.network,
-      chainId:       r.chainId,
-      explorer:      MS_EXPLORER,
-      gasToken:      'USDC',
+      name:           r.network,
+      chainId:        r.chainId,
+      explorer:       MS_EXPLORER,
+      rpc:            'https://rpc.testnet.arc.network',
+      gasToken:       'USDC',
     },
-    sender:          r.from,
-    token:           r.token,
-    totalAmountSent: r.totalAmount,
-    platformFee:     r.fee || '0.00',
-    governmentFee:   r.governmentFee || '—',
-    grandTotal:      r.grandTotal || r.totalAmount,
-    recipientCount:  r.count,
-    txHash:          r.txHash || null,
-    feeTxHash:       r.feeTxHash || null,
-    allTxHashes:     r.allHashes || [],
-    explorerUrl:     r.explorerUrl,
-    status:          r.status,
-    recipients:      r.recipients.map(p => ({
-      address: p.address,
-      amount:  msFmt2(p.amount),
-      note:    p.note || '',
-      txHash:  p.txHash || null,
-      status:  p.status || 'unknown',
+    sender:           r.from,
+    token:            r.token,
+    tokenAddress:     MS_USDC_ADDR,
+    tokenDecimals:    MS_USDC_DECIMALS,
+    totalAmountSent:  r.totalAmount,
+    platformFee:      r.fee || '0.00',
+    governmentFee:    r.governmentFee || '—',
+    grandTotal:       r.grandTotal || r.totalAmount,
+    recipientCount:   r.count,
+    txHash:           r.txHash || null,
+    feeTxHash:        r.feeTxHash || null,
+    allTxHashes:      r.allHashes || [],
+    explorerUrl:      r.explorerUrl,
+    status:           r.status,
+    recipients:       r.recipients.map(p => ({
+      address:  p.address,
+      amount:   msFmt2(p.amount),
+      note:     p.note || '',
+      txHash:   p.txHash || null,
+      status:   p.status || 'unknown',
+      gasUsed:  p.gasUsed || null,
     })),
   };
 
@@ -705,7 +816,7 @@ function msDownloadReceipt(receiptId) {
   const a    = Object.assign(document.createElement('a'), { href: url, download: `arc_multisend_receipt_${r.batchId}.json` });
   a.click();
   URL.revokeObjectURL(url);
-  showToast('Receipt downloaded as JSON.', 'success');
+  showToast('Receipt downloaded.', 'success');
 }
 
 // ─── Init rows ────────────────────────────────────────────────────────────────
@@ -755,24 +866,24 @@ window.addEventListener('walletDisconnected', () => {
   if (gate) gate.classList.remove('hidden');
 });
 
-// ─── Expose globals ────────────────────────────────────────────────────────────
-window.msInit              = msInit;
-window.msAddRow            = msAddRow;
-window.msSubmit            = msExecute;   // legacy alias
-window.msHandleCSV         = msHandleCSV;
-window.msDownloadTemplate  = msDownloadTemplate;
-window.msDownloadReceipt   = msDownloadReceipt;
-window.msUpdateStats       = msUpdateStats;
-window.msValidateAddr      = msValidateAddr;
-window.msProceedToReview   = msProceedToReview;
-window.msProceedToSend     = msProceedToSend;
-window.msExecute           = msExecute;
-window.msGoBack            = msGoBack;
-window.msReceipts          = msReceipts;
+// ─── Expose globals ─────────────────────────────────────────────────────────
+window.msInit             = msInit;
+window.msAddRow           = msAddRow;
+window.msSubmit           = msExecute;   // legacy alias
+window.msHandleCSV        = msHandleCSV;
+window.msDownloadTemplate = msDownloadTemplate;
+window.msDownloadReceipt  = msDownloadReceipt;
+window.msUpdateStats      = msUpdateStats;
+window.msValidateAddr     = msValidateAddr;
+window.msProceedToReview  = msProceedToReview;
+window.msProceedToSend    = msProceedToSend;
+window.msExecute          = msExecute;
+window.msGoBack           = msGoBack;
+window.msReceipts         = msReceipts;
 
 // Legacy compat
 window.addMultisendRow      = (a, b, c) => msAddRow(a, b, c);
 window.updateMultisendTotal = msUpdateStats;
 window.submitMultisend      = () => { if (typeof msProceedToReview === 'function') msProceedToReview(); };
 
-console.log('[MULTISEND] Module loaded v2 (3-step flow) — Arc Testnet', MS_CHAIN_ID);
+console.log('[MULTISEND] Module v3 loaded — Arc Testnet', MS_CHAIN_ID, '| USDC', MS_USDC_ADDR, '| 6 decimals');
