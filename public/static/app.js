@@ -68,7 +68,7 @@ function switchTab(tab) {
     }
   }
   if (tab === 'escrow' && window.escrowInit) window.escrowInit();
-  if (tab === 'vaults' && window.loadVaultData) window.loadVaultData();
+
 }
 
 // ============================================================
@@ -689,11 +689,12 @@ document.addEventListener('DOMContentLoaded', () => {
       payFrom.dataset.autoFilled = 'false';
       payFrom.classList.remove('border-purple-500/60');
     }
-    const ctClient = document.getElementById('ct-client');
-    if (ctClient && ctClient.dataset.autoFilled === 'true') {
-      ctClient.value = '';
-      ctClient.dataset.autoFilled = 'false';
-      ctClient.classList.remove('border-green-500/60');
+    // cf-contractor field auto-fill reset
+    const cfContractor = document.getElementById('cf-contractor');
+    if (cfContractor && cfContractor.dataset.autoFilled === 'true') {
+      cfContractor.value = '';
+      cfContractor.dataset.autoFilled = 'false';
+      cfContractor.classList.remove('border-green-500/60');
     }
 
     // Atualizar wallet gate de contratos
