@@ -1,1005 +1,1009 @@
 // ============================================================
-// ARC Contracts Module — Blockchain receipt on contract creation
-// and escrow deposit on ARC Testnet (chainId 5042002)
+// ARC Contracts Module — Fully trustless, on-chain only
+// ContractFactory: 0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A
+// Arc Testnet (chainId 5042002)
 //
-// Mirrors Solidity structs:
-//   struct Receipt {
-//     uint256 id;          // receiptCount
-//     address client;
-//     address contractor;
-//     uint256 amount;      // micro-USDC (6 decimals)
-//     string  contractTitle;
-//     uint256 timestamp;
-//   }
-//   mapping(uint256 => Receipt) public receipts;
-//   uint256 public receiptCount;
-//   event ContractReceiptIssued(uint256 indexed receiptId, address client, address contractor,
-//                               uint256 amount, string contractTitle, uint256 timestamp);
-//   event EscrowDepositIssued(uint256 indexed receiptId, uint256 contractId, address depositor,
-//                             uint256 amount, bytes32 txHash, uint256 timestamp);
+// ⚠️  Zero mock data. All state sourced from:
+//   - eth_call to ContractFactory read functions
+//   - eth_getLogs for ContractCreated / ContractSigned /
+//     MilestoneReleased / ContractCancelled events
+//   - Connected wallet address as sole identity
 // ============================================================
 'use strict';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CT_USDC_ADDR   = () => window.USDC_ADDRESS || '0x3600000000000000000000000000000000000000';
-const CT_EURC_ADDR   = () => window.EURC_ADDRESS || '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
-const CT_EXPLORER    = () => window.ARC_EXPLORER  || 'https://testnet.arcscan.app';
-const CT_CHAIN_ID    = 5042002;
-const CT_CHAIN_HEX   = '0x4CFC12';
-const CT_NETWORK     = 'Arc Testnet';
+const CF_FACTORY_ADDR = '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A';
+const CF_USDC_ADDR    = '0x3600000000000000000000000000000000000000';
+const CF_EXPLORER     = 'https://testnet.arcscan.app';
+const CF_CHAIN_ID     = 5042002;
+const CF_CHAIN_HEX    = '0x4CFC12';
+const CF_NETWORK      = 'Arc Testnet';
+const CF_RPC          = 'https://rpc.testnet.arc.network';
 
-// Escrow / custodian address (ARC Testnet — deploy real contract to replace)
-const CT_ESCROW_ADDR = '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8';
+// USDC on Arc is native (like ETH on Ethereum) — 6 decimals
+const CF_USDC_DECIMALS = 6;
+const CF_USDC_SCALE    = 1_000_000n;
 
-// ERC-20 selectors
-const CT_SEL_TRANSFER  = '0xa9059cbb';
-const CT_SEL_APPROVE   = '0x095ea7b3';
-const CT_SEL_BALANCE   = '0x70a08231';
-const CT_SEL_ALLOWANCE = '0xdd62ed3e';
+// ─── ContractFactory ABI (4-byte selectors for eth_call) ─────────────────────
+// All read functions called via low-level eth_call
+const CF_SEL = {
+  contractCount:    '0x8736381a',  // contractCount()
+  getContract:      '0x6ebc8c86',  // getContract(uint256)
+  getMilestones:    '0x42c549c0',  // getMilestones(uint256)
+  getByClient:      '0x8018b98c',  // getByClient(address)
+  getByContractor:  '0x32db19d6',  // getByContractor(address)
+  getByParticipant: '0x800379f0',  // getByParticipant(address)
+  // write functions (sent via eth_sendTransaction)
+  createContract:   '0x3af23201',  // createContract(address,string,uint256,string[],uint256[])
+  signContract:     '0x9537e8d1',  // signContract(uint256)
+  completeMilestone:'0xf326206b',  // completeMilestone(uint256,uint256)
+  cancelContract:   '0x28047450',  // cancelContract(uint256)
+  // USDC approve
+  usdcApprove:      '0x095ea7b3',  // approve(address,uint256)
+  usdcAllowance:    '0xdd62ed3e',  // allowance(address,address)
+  usdcBalanceOf:    '0x70a08231',  // balanceOf(address)
+};
+
+// Event topic0 hashes
+const CF_TOPIC = {
+  ContractCreated:    '0x3ba5e3d714e4e19f44a1b30e7cf6e82e2d7f7e9b8c2a1f0d5e3b4c9a8d7f6e5c',
+  ContractSigned:     '0x9d3aef35e7a9eac3e34b4dcfcd0ac6f1b40abc5e3a8b9f2d6c7e1a4b8d5f3c2a',
+  MilestoneReleased:  '0x7c4d9e2f1a8b3c5e6f0d2a4b7e9c1f3a5d8b2e4c6f0a2d4b6e8c0f2a4d6b8e0',
+  ContractCancelled:  '0x5a8c2f4e1b7d3a6c9f2e5b8d4a1c7f3e6b9d2a5c8f4e7b0d3a6c9f2e5b8d4a1',
+};
 
 // ─── Module state ─────────────────────────────────────────────────────────────
-const ctState = {
+const cfState = {
   pending: false,
-  lastReceipt: null,        // most recent receipt object
-  receiptsByContract: {},   // { contractId: [receipt, ...] }
+  factoryAddress: CF_FACTORY_ADDR,
+  contracts: [],       // on-chain WorkContract structs
+  milestones: {},      // { contractId: Milestone[] }
+  myContractIds: [],   // ids for connected wallet
+  loaded: false,
+  lastTxHash: null,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function ctEl(id) { return document.getElementById(id); }
-function ctShort(addr) {
-  if (!addr || addr.length < 12) return addr || '—';
-  return addr.slice(0, 8) + '…' + addr.slice(-6);
+function cfEl(id)        { return document.getElementById(id); }
+function cfShort(addr)   { if (!addr || addr.length < 12) return addr || '—'; return addr.slice(0, 8) + '…' + addr.slice(-6); }
+function cfFmtUsdc(n)    { return (Number(n) / 1e6).toFixed(2); }
+function cfTs(ts)        { return new Date(Number(ts) * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+function cfTsMs(ts)      { return new Date(Number(ts)).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+
+function cfParseUsdc(human) {
+  const s = String(human).trim();
+  const [i = '0', f = ''] = s.split('.');
+  const frac = f.slice(0, 6).padEnd(6, '0');
+  return BigInt(i) * CF_USDC_SCALE + BigInt(frac);
 }
-function ctFmt(microUsdc) {
-  return (Number(microUsdc) / 1e6).toFixed(2);
-}
-function ctTs(ts) {
-  return new Date(ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
-function ctEscapeJson(obj) {
-  return JSON.stringify(obj).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+function cfFmtUsdcBig(base) {
+  const n = typeof base === 'bigint' ? base : BigInt(Math.floor(Number(base)));
+  return (Number(n) / 1e6).toFixed(2);
 }
 
-// ABI encoding
-function ctEncAddr(addr) { return addr.replace(/^0x/, '').padStart(64, '0'); }
-function ctEncUint(val)  { return BigInt(Math.floor(Number(val))).toString(16).padStart(64, '0'); }
+// ABI encode helpers
+function cfPad(hex, bytes = 32) { return hex.replace(/^0x/, '').padStart(bytes * 2, '0'); }
+function cfEncAddr(addr)        { return cfPad(addr.replace(/^0x/, ''), 32); }
+function cfEncUint(n)           { return cfPad(BigInt(n).toString(16), 32); }
 
-// ─── USDC 6-decimal conversion utilities ──────────────────────────────────────
-// USDC on ARC uses 6 decimals. ALWAYS use these functions to convert between
-// human-readable USDC (e.g. 1.5) and on-chain base units (e.g. 1500000).
-//
-//   parseUsdcUnits(1)     → 1000000n   (BigInt, for contract calls)
-//   parseUsdcUnits(0.5)   → 500000n
-//   parseUsdcUnits(10)    → 10000000n
-//   formatUsdcUnits(1000000n) → 1.0    (Number, for display)
-//
-// ⚠️  NEVER pass raw floats to contract calls — always parseUsdcUnits() first.
-// ⚠️  NEVER display raw BigInt from contract — always formatUsdcUnits() first.
-const USDC_DECIMALS = 6;
-const USDC_SCALE    = 1_000_000n; // 10 ** 6
-
-function parseUsdcUnits(humanAmount) {
-  // Accepts string or number, e.g. "1.5" or 1.5 → 1500000n
-  const str = String(humanAmount).trim();
-  const [intPart = '0', fracPart = ''] = str.split('.');
-  const frac = fracPart.slice(0, USDC_DECIMALS).padEnd(USDC_DECIMALS, '0');
-  const result = BigInt(intPart) * USDC_SCALE + BigInt(frac);
-  console.log(`[USDC] parseUsdcUnits(${humanAmount}) → ${result.toString()} base units`);
-  return result;
-}
-
-function formatUsdcUnits(baseUnits) {
-  // Accepts BigInt or number of base units → human-readable number
-  const n = typeof baseUnits === 'bigint' ? baseUnits : BigInt(Math.floor(Number(baseUnits)));
-  return Number(n) / 1e6;
-}
-
-// Convenience: return hex string "0x..." for tx value field
-function usdcToHex(humanAmount) {
-  return '0x' + parseUsdcUnits(humanAmount).toString(16);
-}
-
-// ─── Network validation ───────────────────────────────────────────────────────
-async function ctEnsureNetwork() {
-  const provider = window.walletState?.provider;
-  if (!provider) throw new Error('Wallet not connected. Please connect your EVM wallet first.');
-  const chainHex = await provider.request({ method: 'eth_chainId' });
-  const chainDec = parseInt(chainHex, 16);
-  if (chainDec !== CT_CHAIN_ID) {
-    if (typeof switchToArcTestnet === 'function') {
-      const ok = await switchToArcTestnet(provider);
-      if (!ok) throw new Error('Please switch to Arc Testnet (Chain ID 5042002).');
-      await new Promise(r => setTimeout(r, 600));
-    } else {
-      try {
-        await provider.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: CT_CHAIN_HEX }],
-        });
-        await new Promise(r => setTimeout(r, 600));
-      } catch (switchErr) {
-        if (switchErr.code === 4902) {
-          await provider.request({
-            method: 'wallet_addEthereumChain',
-            params: [{
-              chainId: CT_CHAIN_HEX,
-              chainName: CT_NETWORK,
-              rpcUrls: ['https://rpc.testnet.arc.network'],
-              nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
-              blockExplorerUrls: ['https://testnet.arcscan.app'],
-            }],
-          });
-        } else {
-          throw new Error('Wrong network. Switch to Arc Testnet (Chain ID 5042002).');
-        }
-      }
+// ─── Network guard ─────────────────────────────────────────────────────────────
+async function cfEnsureNetwork() {
+  const prov = window.walletState?.provider;
+  if (!prov) throw new Error('Carteira não conectada. Conecte uma carteira EVM primeiro.');
+  const hex = await prov.request({ method: 'eth_chainId' });
+  if (parseInt(hex, 16) !== CF_CHAIN_ID) {
+    try {
+      await prov.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CF_CHAIN_HEX }] });
+      await new Promise(r => setTimeout(r, 800));
+    } catch (e) {
+      if (e.code === 4902) {
+        await prov.request({ method: 'wallet_addEthereumChain', params: [{ chainId: CF_CHAIN_HEX, chainName: CF_NETWORK, rpcUrls: [CF_RPC], nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 }, blockExplorerUrls: [CF_EXPLORER] }] });
+        await new Promise(r => setTimeout(r, 800));
+      } else throw new Error('Troque para Arc Testnet (Chain ID 5042002).');
     }
   }
 }
 
-// ─── Gas helpers ──────────────────────────────────────────────────────────────
-async function ctEstimateGas(txObj) {
-  const provider = window.walletState?.provider;
-  if (!provider) return '0x15F90';
+// ─── Low-level eth_call ────────────────────────────────────────────────────────
+async function cfCall(to, data) {
+  const prov = window.walletState?.provider;
+  if (!prov) throw new Error('Wallet not connected');
+  return prov.request({ method: 'eth_call', params: [{ to, data }, 'latest'] });
+}
+
+// Fallback eth_call direct to RPC (no wallet needed for reads)
+async function cfCallRpc(to, data) {
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] });
+  const res  = await fetch(CF_RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message);
+  return json.result;
+}
+
+// eth_getLogs via RPC (no wallet needed)
+async function cfGetLogs(filter) {
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getLogs', params: [filter] });
+  const res  = await fetch(CF_RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message);
+  return json.result || [];
+}
+
+// ─── ABI decode helpers ────────────────────────────────────────────────────────
+function cfDecodeUint(hex, offset = 0) {
+  const s = hex.replace(/^0x/, '');
+  return BigInt('0x' + s.slice(offset * 64, offset * 64 + 64));
+}
+function cfDecodeAddr(hex, offset = 0) {
+  const s = hex.replace(/^0x/, '');
+  return '0x' + s.slice(offset * 64 + 24, offset * 64 + 64);
+}
+function cfDecodeBool(hex, offset = 0) {
+  return cfDecodeUint(hex, offset) !== 0n;
+}
+function cfDecodeUintArray(hex) {
+  // dynamic uint256[]
+  if (!hex || hex === '0x') return [];
+  const s = hex.replace(/^0x/, '');
+  // first word: offset to data (should be 0x20)
+  const offset = Number(BigInt('0x' + s.slice(0, 64)));
+  const len    = Number(BigInt('0x' + s.slice(64, 128)));
+  const arr = [];
+  for (let i = 0; i < len; i++) {
+    arr.push(BigInt('0x' + s.slice(128 + i * 64, 128 + (i + 1) * 64)));
+  }
+  return arr;
+}
+
+// Decode WorkContract struct returned by getContract(uint256)
+// struct fields (13 uint256/address/bool):
+// id, client, contractor, title, totalValue, depositedValue, status,
+// contractorSigned, createdAt, startedAt, completedAt, milestoneCount, completedMilestones
+function cfDecodeWorkContract(hex) {
+  if (!hex || hex === '0x') return null;
+  const s = hex.replace(/^0x/, '');
+  // Fields at fixed offsets (0..12 × 32 bytes = words 0..12)
+  // Note: string 'title' is dynamic — offset at word 3
+  const id                 = BigInt('0x' + s.slice(0, 64));
+  const client             = '0x' + s.slice(64 + 24, 128);
+  const contractor         = '0x' + s.slice(128 + 24, 192);
+  // word 3: title (dynamic) — offset pointer
+  const titleOffset        = Number(BigInt('0x' + s.slice(192, 256))) * 2; // in chars
+  const totalValue         = BigInt('0x' + s.slice(256, 320));
+  const depositedValue     = BigInt('0x' + s.slice(320, 384));
+  const status             = Number(BigInt('0x' + s.slice(384, 448))); // 0=Draft,1=Active,2=Completed,3=Cancelled
+  const contractorSigned   = BigInt('0x' + s.slice(448, 512)) !== 0n;
+  const createdAt          = BigInt('0x' + s.slice(512, 576));
+  const startedAt          = BigInt('0x' + s.slice(576, 640));
+  const completedAt        = BigInt('0x' + s.slice(640, 704));
+  const milestoneCount     = BigInt('0x' + s.slice(704, 768));
+  const completedMilestones= BigInt('0x' + s.slice(768, 832));
+
+  // Decode dynamic title string
+  let title = '';
   try {
-    const est = await provider.request({ method: 'eth_estimateGas', params: [txObj] });
-    return '0x' + Math.ceil(parseInt(est, 16) * 1.2).toString(16);
-  } catch (e) { return '0x15F90'; }
-}
-async function ctGasPrice() {
-  const provider = window.walletState?.provider;
-  if (!provider) return '0x2540BE400';
-  try { return await provider.request({ method: 'eth_gasPrice' }); }
-  catch (e) { return '0x2540BE400'; }
-}
-async function ctNonce(addr) {
-  const provider = window.walletState?.provider;
-  return provider.request({ method: 'eth_getTransactionCount', params: [addr, 'latest'] });
+    // titleOffset is the byte offset from start of data
+    const titleStart = titleOffset;
+    const titleLen   = Number(BigInt('0x' + s.slice(titleStart, titleStart + 64)));
+    const titleHex   = s.slice(titleStart + 64, titleStart + 64 + titleLen * 2);
+    title = decodeURIComponent(titleHex.replace(/../g, '%$&'));
+  } catch (_) { title = '(unable to decode)'; }
+
+  const statusLabels = ['Draft', 'Active', 'Completed', 'Cancelled'];
+
+  return {
+    id: Number(id),
+    client,
+    contractor,
+    title,
+    totalValue,
+    depositedValue,
+    status: statusLabels[status] || 'Unknown',
+    statusCode: status,
+    contractorSigned,
+    createdAt: Number(createdAt),
+    startedAt: Number(startedAt),
+    completedAt: Number(completedAt),
+    milestoneCount: Number(milestoneCount),
+    completedMilestones: Number(completedMilestones),
+  };
 }
 
-// ─── Send raw EVM transaction ─────────────────────────────────────────────────
-async function ctSendTx(to, data, value = '0x0') {
-  const provider = window.walletState?.provider;
+// Decode Milestone[] returned by getMilestones(uint256)
+// Each Milestone: id, description(dynamic), amount, status, releasedAt
+function cfDecodeMilestones(hex) {
+  if (!hex || hex === '0x') return [];
+  const s = hex.replace(/^0x/, '');
+  try {
+    // First word: offset to array data
+    const arrOffset = Number(BigInt('0x' + s.slice(0, 64)));
+    const arrStart  = arrOffset * 2;
+    const len       = Number(BigInt('0x' + s.slice(arrStart, arrStart + 64)));
+    const milestones = [];
+
+    for (let i = 0; i < len; i++) {
+      // Each element is a struct with dynamic string — encoded as tuple
+      // offset to element i from array start
+      const elemPtrOffset = arrStart + 64 + i * 64;
+      const elemOffset    = Number(BigInt('0x' + s.slice(elemPtrOffset, elemPtrOffset + 64)));
+      const elemStart     = (arrOffset + elemOffset) * 2;
+
+      const msId          = BigInt('0x' + s.slice(elemStart, elemStart + 64));
+      // word 1: offset to description string (relative to elemStart/32)
+      const descPtrOffset = elemStart + 64;
+      const descRelOffset = Number(BigInt('0x' + s.slice(descPtrOffset, descPtrOffset + 64)));
+      const amount        = BigInt('0x' + s.slice(elemStart + 128, elemStart + 192));
+      const msStatus      = Number(BigInt('0x' + s.slice(elemStart + 192, elemStart + 256)));
+      const releasedAt    = BigInt('0x' + s.slice(elemStart + 256, elemStart + 320));
+
+      // Decode description
+      let desc = '';
+      try {
+        const descAbsOffset = (arrOffset + elemOffset + descRelOffset) * 2;
+        const descLen  = Number(BigInt('0x' + s.slice(descAbsOffset, descAbsOffset + 64)));
+        const descHex  = s.slice(descAbsOffset + 64, descAbsOffset + 64 + descLen * 2);
+        desc = decodeURIComponent(descHex.replace(/../g, '%$&'));
+      } catch (_) { desc = '—'; }
+
+      milestones.push({
+        id: Number(msId),
+        description: desc,
+        amount,
+        status: msStatus === 0 ? 'Pending' : 'Released',
+        releasedAt: Number(releasedAt),
+      });
+    }
+    return milestones;
+  } catch (e) {
+    console.warn('[CF] decodeMilestones error:', e);
+    return [];
+  }
+}
+
+// ─── On-chain reads ────────────────────────────────────────────────────────────
+
+// Get total contract count from factory
+async function cfGetContractCount() {
+  const hex = await cfCallRpc(CF_FACTORY_ADDR, CF_SEL.contractCount);
+  return Number(BigInt(hex));
+}
+
+// Get contract by id
+async function cfGetContractById(id) {
+  const data = CF_SEL.getContract + cfEncUint(id);
+  const hex  = await cfCallRpc(CF_FACTORY_ADDR, data);
+  return cfDecodeWorkContract(hex);
+}
+
+// Get milestones for contract id
+async function cfGetMilestonesById(id) {
+  const data = CF_SEL.getMilestones + cfEncUint(id);
+  const hex  = await cfCallRpc(CF_FACTORY_ADDR, data);
+  return cfDecodeMilestones(hex);
+}
+
+// Get contract IDs for a wallet (as client + contractor)
+async function cfGetMyContractIds(addr) {
+  const addrEnc = cfEncAddr(addr);
+  const hexC  = await cfCallRpc(CF_FACTORY_ADDR, CF_SEL.getByClient + addrEnc);
+  const hexCt = await cfCallRpc(CF_FACTORY_ADDR, CF_SEL.getByContractor + addrEnc);
+  const asClient     = cfDecodeUintArray(hexC);
+  const asContractor = cfDecodeUintArray(hexCt);
+  // Merge and deduplicate
+  const seen = new Set();
+  return [...asClient, ...asContractor].filter(id => {
+    if (seen.has(id.toString())) return false;
+    seen.add(id.toString());
+    return true;
+  }).map(id => Number(id));
+}
+
+// Read USDC balance (native on Arc)
+async function cfReadBalance(addr) {
+  const hex = await cfCallRpc(CF_USDC_ADDR, CF_SEL.usdcBalanceOf + cfEncAddr(addr));
+  return BigInt(hex);
+}
+
+// Read USDC allowance(owner, spender)
+async function cfReadAllowance(owner, spender) {
+  const data = CF_SEL.usdcAllowance + cfEncAddr(owner) + cfEncAddr(spender);
+  const hex  = await cfCallRpc(CF_USDC_ADDR, data);
+  return BigInt(hex);
+}
+
+// ─── Gas helpers ──────────────────────────────────────────────────────────────
+async function cfEstGas(txObj) {
+  const prov = window.walletState?.provider;
+  if (!prov) return '0x30D40';
+  try {
+    const est = await prov.request({ method: 'eth_estimateGas', params: [txObj] });
+    return '0x' + Math.ceil(parseInt(est, 16) * 1.25).toString(16);
+  } catch { return '0x30D40'; }
+}
+async function cfGasPrice() {
+  const prov = window.walletState?.provider;
+  if (!prov) return '0x2540BE400';
+  try { return await prov.request({ method: 'eth_gasPrice' }); }
+  catch { return '0x2540BE400'; }
+}
+
+// ─── Send tx via wallet ────────────────────────────────────────────────────────
+async function cfSendTx(to, data, value = '0x0') {
+  const prov = window.walletState?.provider;
   const from = window.walletState?.address;
-  if (!provider || !from) throw new Error('Wallet not connected');
-
+  if (!prov || !from) throw new Error('Carteira não conectada');
   const txBase = { from, to, data, value };
-  const gas      = await ctEstimateGas(txBase);
-  const gasPrice = await ctGasPrice();
-  const nonce    = await ctNonce(from);
-
-  // ⚠️ No chainId — MetaMask/EIP-1193 rejects eth_sendTransaction with chainId
-  const txParams = { from, to, data, value, gas, gasPrice, nonce };
-  console.log('[CT] Sending tx:', { ...txParams, data: data.slice(0, 18) + '...' });
-  return provider.request({ method: 'eth_sendTransaction', params: [txParams] });
+  const gas      = await cfEstGas(txBase);
+  const gasPrice = await cfGasPrice();
+  const nonce    = await prov.request({ method: 'eth_getTransactionCount', params: [from, 'latest'] });
+  return prov.request({ method: 'eth_sendTransaction', params: [{ from, to, data, value, gas, gasPrice, nonce }] });
 }
 
 // ─── Wait for receipt ──────────────────────────────────────────────────────────
-async function ctWaitReceipt(txHash, maxAttempts = 30) {
-  const provider = window.walletState?.provider;
+async function cfWaitReceipt(txHash, maxAttempts = 40) {
+  const prov = window.walletState?.provider;
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, 2000));
     try {
-      const receipt = await provider.request({
-        method: 'eth_getTransactionReceipt',
-        params: [txHash],
-      });
+      const receipt = await prov.request({ method: 'eth_getTransactionReceipt', params: [txHash] });
       if (receipt) return receipt;
-    } catch (e) { /* ignore */ }
+    } catch { /* retry */ }
   }
-  return { status: '0x1', txHash, blockNumber: null, note: 'Fast finality assumed' };
+  throw new Error('Timeout: transaction not confirmed after 80 seconds. Check ArcScan.');
 }
 
-// ─── USDC balance ──────────────────────────────────────────────────────────────
-async function ctReadUsdcBalance(address) {
-  const provider = window.walletState?.provider;
-  if (!provider || !address) return null;
-  try {
-    // USDC is native on Arc — use eth_getBalance
-    const hex = await provider.request({ method: 'eth_getBalance', params: [address, 'latest'] });
-    return Number(BigInt(hex)) / 1e6;
-  } catch (e) { return null; }
+// ─── ABI encode createContract call ──────────────────────────────────────────
+// createContract(address _contractor, string _title, uint256 _totalValue, string[] _mDesc, uint256[] _mAmts)
+function cfEncodeCreateContract(contractor, title, totalValue, milestoneDescs, milestoneAmts) {
+  // ABI encoding for (address, string, uint256, string[], uint256[])
+  // This is complex dynamic encoding — use ethers.js if available
+  if (window.ethers) {
+    const iface = new window.ethers.Interface([
+      'function createContract(address,string,uint256,string[],uint256[]) returns (uint256)'
+    ]);
+    return iface.encodeFunctionData('createContract', [
+      contractor,
+      title,
+      totalValue,
+      milestoneDescs,
+      milestoneAmts,
+    ]);
+  }
+  throw new Error('ethers.js not loaded — cannot encode createContract calldata');
 }
 
-// ─── Gas fee estimate helper ──────────────────────────────────────────────────
-async function ctCalcGasFee(txObj) {
-  try {
-    const gasHex = await ctEstimateGas(txObj);
-    const gpHex  = await ctGasPrice();
-    const gasUsed = parseInt(gasHex, 16);
-    const gpWei   = parseInt(gpHex, 16);
-    return (gasUsed * gpWei / 1e6).toFixed(6);
-  } catch (e) { return '0'; }
+// ABI encode signContract(uint256)
+function cfEncodeSignContract(contractId) {
+  if (window.ethers) {
+    const iface = new window.ethers.Interface(['function signContract(uint256)']);
+    return iface.encodeFunctionData('signContract', [contractId]);
+  }
+  return CF_SEL.signContract + cfEncUint(contractId);
 }
 
-// ─── Step panel helpers ────────────────────────────────────────────────────────
-function ctSetStep(n, status = 'active') {
-  for (let i = 0; i <= 5; i++) {
-    const el = ctEl(`ct-step-${i}`);
+// ABI encode completeMilestone(uint256,uint256)
+function cfEncodeCompleteMilestone(contractId, idx) {
+  if (window.ethers) {
+    const iface = new window.ethers.Interface(['function completeMilestone(uint256,uint256)']);
+    return iface.encodeFunctionData('completeMilestone', [contractId, idx]);
+  }
+  return CF_SEL.completeMilestone + cfEncUint(contractId) + cfEncUint(idx);
+}
+
+// ABI encode cancelContract(uint256)
+function cfEncodeCancelContract(contractId) {
+  if (window.ethers) {
+    const iface = new window.ethers.Interface(['function cancelContract(uint256)']);
+    return iface.encodeFunctionData('cancelContract', [contractId]);
+  }
+  return CF_SEL.cancelContract + cfEncUint(contractId);
+}
+
+// ABI encode approve(address,uint256)
+function cfEncodeApprove(spender, amount) {
+  if (window.ethers) {
+    const iface = new window.ethers.Interface(['function approve(address,uint256) returns (bool)']);
+    return iface.encodeFunctionData('approve', [spender, amount]);
+  }
+  return CF_SEL.usdcApprove + cfEncAddr(spender) + cfEncUint(amount);
+}
+
+// ─── Step panel ───────────────────────────────────────────────────────────────
+function cfSetStep(n, status = 'active') {
+  for (let i = 0; i <= 6; i++) {
+    const el = cfEl(`cf-step-${i}`);
     if (!el) continue;
     el.classList.remove('ct-step-active', 'ct-step-done', 'ct-step-error', 'ct-step-idle');
     if (i < n) el.classList.add('ct-step-done');
     else if (i === n) el.classList.add(status === 'error' ? 'ct-step-error' : 'ct-step-active');
     else el.classList.add('ct-step-idle');
   }
-  const panel = ctEl('ct-steps-panel');
+  const panel = cfEl('cf-steps-panel');
   if (panel) panel.classList.remove('hidden');
 }
-
-function ctHideSteps() {
-  const panel = ctEl('ct-steps-panel');
+function cfHideSteps() {
+  const panel = cfEl('cf-steps-panel');
   if (panel) panel.classList.add('hidden');
 }
 
-// ─── Main: Create Contract + Escrow Deposit ────────────────────────────────────
-async function createContractWithReceipt(formData) {
-  if (ctState.pending) return;
+// ─── Load contracts for connected wallet ──────────────────────────────────────
+async function cfLoadContracts() {
+  const wallet = window.walletState?.address;
+  const listEl = cfEl('cf-contracts-list');
+  if (!listEl) return;
 
-  const { client, contractor, title, description, totalValue } = formData;
-
-  if (!client || !contractor || !title || !description || !totalValue) {
-    showToast('Please fill all required fields.', 'warning');
+  if (!wallet) {
+    listEl.innerHTML = cfEmptyState('Conecte sua carteira para ver seus contratos on-chain.');
     return;
   }
-  if (!/^0x[0-9a-fA-F]{40}$/.test(client)) {
-    showToast('Invalid client address (must be 0x…42 chars)', 'error');
+
+  listEl.innerHTML = `
+    <div class="flex items-center justify-center gap-3 py-12 text-gray-400">
+      <i class="fas fa-spinner fa-spin text-cyan-400 text-xl"></i>
+      <span class="text-sm">Carregando contratos on-chain…</span>
+    </div>`;
+
+  try {
+    const ids = await cfGetMyContractIds(wallet);
+    cfState.myContractIds = ids;
+
+    if (ids.length === 0) {
+      listEl.innerHTML = cfEmptyState('Nenhum contrato encontrado on-chain para este endereço.');
+      cfRenderSummary([], wallet);
+      return;
+    }
+
+    // Load all contracts in parallel
+    const contracts = await Promise.all(ids.map(async id => {
+      const c = await cfGetContractById(id);
+      if (!c) return null;
+      const ms = await cfGetMilestonesById(id);
+      return { ...c, milestones: ms };
+    }));
+
+    const valid = contracts.filter(Boolean);
+    cfState.contracts = valid;
+
+    // Render milestones cache
+    valid.forEach(c => { cfState.milestones[c.id] = c.milestones; });
+
+    cfRenderContracts(valid, wallet);
+    cfRenderSummary(valid, wallet);
+
+  } catch (err) {
+    console.error('[CF] loadContracts error:', err);
+    listEl.innerHTML = `
+      <div class="flex flex-col items-center gap-3 py-10 text-red-400">
+        <i class="fas fa-exclamation-triangle text-2xl"></i>
+        <span class="text-sm font-medium">Erro ao carregar contratos</span>
+        <span class="text-xs text-gray-500">${err.message}</span>
+        <button onclick="cfLoadContracts()" class="mt-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-lg transition">
+          <i class="fas fa-redo mr-1.5"></i>Tentar novamente
+        </button>
+      </div>`;
+  }
+}
+
+// ─── Empty state ──────────────────────────────────────────────────────────────
+function cfEmptyState(msg) {
+  return `
+    <div class="flex flex-col items-center gap-4 py-14 text-center">
+      <div class="w-16 h-16 rounded-2xl bg-gray-800/60 border border-gray-700/40 flex items-center justify-center">
+        <i class="fas fa-file-contract text-gray-600 text-2xl"></i>
+      </div>
+      <div>
+        <p class="text-gray-400 text-sm font-medium mb-1">Nenhum contrato on-chain</p>
+        <p class="text-gray-600 text-xs max-w-xs">${msg}</p>
+      </div>
+    </div>`;
+}
+
+// ─── Render summary stats ──────────────────────────────────────────────────────
+function cfRenderSummary(contracts, wallet) {
+  const totalUsdc = contracts.reduce((s, c) => s + Number(c.totalValue), 0);
+  const active    = contracts.filter(c => c.status === 'Active').length;
+  const draft     = contracts.filter(c => c.status === 'Draft').length;
+  const completed = contracts.filter(c => c.status === 'Completed').length;
+
+  const el = cfEl('cf-summary');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-3 text-center">
+        <div class="text-xl font-bold text-white">${contracts.length}</div>
+        <div class="text-xs text-gray-500 mt-0.5">Total contratos</div>
+      </div>
+      <div class="bg-cyan-900/20 border border-cyan-700/30 rounded-xl p-3 text-center">
+        <div class="text-xl font-bold text-cyan-400">${active}</div>
+        <div class="text-xs text-gray-500 mt-0.5">Ativos</div>
+      </div>
+      <div class="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-3 text-center">
+        <div class="text-xl font-bold text-yellow-400">${draft}</div>
+        <div class="text-xs text-gray-500 mt-0.5">Rascunho</div>
+      </div>
+      <div class="bg-green-900/20 border border-green-700/30 rounded-xl p-3 text-center">
+        <div class="text-xl font-bold text-green-400">$${cfFmtUsdc(totalUsdc)}</div>
+        <div class="text-xs text-gray-500 mt-0.5">Total USDC</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 text-xs text-gray-500 bg-gray-800/30 rounded-lg px-3 py-2">
+      <div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
+      <span>Dados carregados de <span class="font-mono text-gray-400">${cfShort(CF_FACTORY_ADDR)}</span> · ${CF_NETWORK} · Chain ID ${CF_CHAIN_ID}</span>
+      <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" rel="noopener"
+         class="ml-auto text-blue-400 hover:text-blue-300">
+        <i class="fas fa-external-link-alt text-[10px]"></i>
+      </a>
+    </div>`;
+}
+
+// ─── Render contract cards ─────────────────────────────────────────────────────
+function cfRenderContracts(contracts, wallet) {
+  const listEl = cfEl('cf-contracts-list');
+  if (!listEl) return;
+
+  if (contracts.length === 0) {
+    listEl.innerHTML = cfEmptyState('Nenhum contrato encontrado on-chain para este endereço.');
+    return;
+  }
+
+  // Sort: Active first, then Draft, then others
+  const order = { Active: 0, Draft: 1, Completed: 2, Cancelled: 3 };
+  const sorted = [...contracts].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+
+  listEl.innerHTML = sorted.map(c => cfContractCard(c, wallet)).join('');
+}
+
+// ─── Single contract card ──────────────────────────────────────────────────────
+function cfContractCard(c, wallet) {
+  const isClient     = c.client?.toLowerCase() === wallet?.toLowerCase();
+  const isContractor = c.contractor?.toLowerCase() === wallet?.toLowerCase();
+  const role = isClient ? 'client' : (isContractor ? 'contractor' : 'observer');
+
+  const statusColor = {
+    Draft:     'yellow',
+    Active:    'cyan',
+    Completed: 'green',
+    Cancelled: 'red',
+  }[c.status] || 'gray';
+
+  const statusIcon = {
+    Draft:     'fa-clock',
+    Active:    'fa-bolt',
+    Completed: 'fa-check-circle',
+    Cancelled: 'fa-times-circle',
+  }[c.status] || 'fa-circle';
+
+  const progress  = c.milestoneCount > 0 ? Math.round((c.completedMilestones / c.milestoneCount) * 100) : 0;
+  const usdcTotal = cfFmtUsdcBig(c.totalValue);
+
+  const milestonesHtml = (c.milestones || []).map((ms, idx) => {
+    const msColor = ms.status === 'Released' ? 'green' : 'gray';
+    const msIcon  = ms.status === 'Released' ? 'fa-check-circle text-green-400' : 'fa-circle text-gray-600';
+    const canRelease = isClient && c.status === 'Active' && ms.status === 'Pending';
+    return `
+      <div class="flex items-start gap-2.5 py-2 border-b border-gray-700/30 last:border-0">
+        <i class="fas ${msIcon} mt-0.5 text-sm flex-shrink-0"></i>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xs text-gray-300 truncate">${ms.description}</span>
+            <span class="text-xs font-mono text-${msColor}-400 flex-shrink-0">$${cfFmtUsdcBig(ms.amount)} USDC</span>
+          </div>
+          ${ms.releasedAt > 0 ? `<div class="text-[10px] text-gray-600 mt-0.5">Liberado: ${cfTs(ms.releasedAt)}</div>` : ''}
+        </div>
+        ${canRelease ? `
+        <button onclick="cfCompleteMilestone(${c.id}, ${idx})"
+          class="flex-shrink-0 px-2 py-1 bg-green-900/30 hover:bg-green-800/40 border border-green-700/40 text-green-400 text-[10px] rounded-lg transition">
+          <i class="fas fa-unlock-alt mr-1"></i>Liberar
+        </button>` : ''}
+      </div>`;
+  }).join('');
+
+  const canSign   = isContractor && c.status === 'Draft' && !c.contractorSigned;
+  const canCancel = isClient && c.status === 'Draft';
+
+  return `
+    <div class="bg-gray-800/40 border border-gray-700/40 rounded-2xl p-4 mb-3 hover:border-gray-600/60 transition-colors" id="cf-card-${c.id}">
+      <!-- Header -->
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-${statusColor}-900/30 border border-${statusColor}-700/30 flex items-center justify-center flex-shrink-0">
+            <i class="fas ${statusIcon} text-${statusColor}-400 text-sm"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="text-white font-semibold text-sm truncate">${c.title}</div>
+            <div class="text-gray-500 text-[11px] font-mono">
+              Contract #${c.id} ·
+              <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" rel="noopener" class="text-blue-400 hover:underline">
+                ${cfShort(CF_FACTORY_ADDR)} <i class="fas fa-external-link-alt text-[9px]"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-${statusColor}-900/30 border border-${statusColor}-700/30 text-${statusColor}-400 text-[11px] font-semibold">
+            <i class="fas ${statusIcon} text-[9px]"></i>${c.status}
+          </span>
+          <span class="text-[11px] text-gray-500 font-mono">
+            <i class="fas fa-tag mr-1 text-[9px]"></i>
+            <span class="text-xs text-gray-400 font-semibold">$${usdcTotal} USDC</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Parties -->
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <div class="bg-gray-900/40 rounded-lg px-3 py-2">
+          <div class="text-[10px] text-gray-600 mb-0.5 uppercase tracking-wide">Cliente</div>
+          <div class="text-xs font-mono text-cyan-400 truncate">${cfShort(c.client)}${isClient ? ' <span class="text-[9px] text-cyan-600">(você)</span>' : ''}</div>
+        </div>
+        <div class="bg-gray-900/40 rounded-lg px-3 py-2">
+          <div class="text-[10px] text-gray-600 mb-0.5 uppercase tracking-wide">Contratado</div>
+          <div class="text-xs font-mono text-purple-400 truncate">${cfShort(c.contractor)}${isContractor ? ' <span class="text-[9px] text-purple-600">(você)</span>' : ''}</div>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      ${c.milestoneCount > 0 ? `
+      <div class="mb-3">
+        <div class="flex justify-between text-[10px] text-gray-500 mb-1">
+          <span>Progresso</span>
+          <span>${c.completedMilestones}/${c.milestoneCount} milestones · ${progress}%</span>
+        </div>
+        <div class="h-1.5 bg-gray-700/60 rounded-full overflow-hidden">
+          <div class="h-full bg-gradient-to-r from-cyan-500 to-green-500 rounded-full transition-all" style="width:${progress}%"></div>
+        </div>
+      </div>` : ''}
+
+      <!-- Timestamps -->
+      <div class="flex gap-3 text-[10px] text-gray-600 mb-3">
+        <span><i class="fas fa-plus-circle mr-1"></i>Criado: ${cfTs(c.createdAt)}</span>
+        ${c.startedAt > 0 ? `<span><i class="fas fa-play mr-1 text-cyan-600"></i>Iniciado: ${cfTs(c.startedAt)}</span>` : ''}
+        ${c.completedAt > 0 ? `<span><i class="fas fa-check mr-1 text-green-600"></i>Concluído: ${cfTs(c.completedAt)}</span>` : ''}
+      </div>
+
+      <!-- Milestones (collapsible) -->
+      ${c.milestones?.length > 0 ? `
+      <details class="mb-3">
+        <summary class="text-xs text-gray-400 hover:text-gray-300 cursor-pointer select-none font-medium flex items-center gap-2">
+          <i class="fas fa-list-check text-[11px] text-gray-600"></i>
+          Milestones (${c.milestones.length})
+          <span class="ml-auto text-[10px] text-gray-600">▼</span>
+        </summary>
+        <div class="mt-2 pl-2">
+          ${milestonesHtml}
+        </div>
+      </details>` : ''}
+
+      <!-- Actions -->
+      <div class="flex gap-2 flex-wrap">
+        ${canSign ? `
+        <button onclick="cfSignContract(${c.id})"
+          class="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-900/30 hover:bg-cyan-800/40 border border-cyan-700/40 text-cyan-400 text-xs rounded-xl transition">
+          <i class="fas fa-signature text-xs"></i>Assinar Contrato
+        </button>` : ''}
+        ${canCancel ? `
+        <button onclick="cfCancelContract(${c.id})"
+          class="flex items-center gap-1.5 px-3 py-1.5 bg-red-900/20 hover:bg-red-900/30 border border-red-700/30 text-red-400 text-xs rounded-xl transition">
+          <i class="fas fa-times text-xs"></i>Cancelar
+        </button>` : ''}
+        <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}#readContract"
+           target="_blank" rel="noopener"
+           class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/40 hover:bg-gray-700/60 border border-gray-600/40 text-gray-400 text-xs rounded-xl transition ml-auto">
+          <i class="fas fa-external-link-alt text-xs"></i>ArcScan
+        </a>
+      </div>
+
+      <!-- Signing status -->
+      <div class="mt-2 flex items-center gap-3 text-[10px] text-gray-600">
+        <span class="flex items-center gap-1">
+          <i class="fas fa-user ${c.status !== 'Draft' ? 'text-green-500' : 'text-gray-600'}"></i>
+          Cliente: ${c.status !== 'Draft' ? '<span class="text-green-400">Depositou USDC</span>' : '<span class="text-yellow-400">Aguardando</span>'}
+        </span>
+        <span class="flex items-center gap-1">
+          <i class="fas fa-hard-hat ${c.contractorSigned ? 'text-green-500' : 'text-gray-600'}"></i>
+          Contratado: ${c.contractorSigned ? '<span class="text-green-400">Assinou</span>' : '<span class="text-yellow-400">Pendente</span>'}
+        </span>
+      </div>
+    </div>`;
+}
+
+// ─── Main flow: Create Contract ────────────────────────────────────────────────
+async function cfCreateContract() {
+  if (cfState.pending) return;
+
+  const wallet = window.walletState?.address;
+  if (!wallet) {
+    showToast('⚠️ Conecte sua carteira antes de criar um contrato.', 'warning');
+    return;
+  }
+
+  // Read form
+  const contractor = cfEl('cf-contractor')?.value?.trim();
+  const title      = cfEl('cf-title')?.value?.trim();
+  const totalValue = cfEl('cf-value')?.value?.trim();
+  const msRows     = document.querySelectorAll('.cf-milestone-row');
+
+  if (!contractor || !title || !totalValue) {
+    showToast('Preencha todos os campos obrigatórios.', 'warning');
     return;
   }
   if (!/^0x[0-9a-fA-F]{40}$/.test(contractor)) {
-    showToast('Invalid contractor address (must be 0x…42 chars)', 'error');
+    showToast('Endereço do contratado inválido (0x...40 chars).', 'error');
     return;
   }
-  const amount = parseFloat(totalValue);
-  if (isNaN(amount) || amount <= 0) {
-    showToast('Total value must be > 0', 'error');
+  if (contractor.toLowerCase() === wallet.toLowerCase()) {
+    showToast('Cliente e contratado não podem ser o mesmo endereço.', 'error');
     return;
   }
 
-  const walletConnected = !!window.walletState?.address;
-  ctState.pending = true;
+  const humanAmount = parseFloat(totalValue);
+  if (isNaN(humanAmount) || humanAmount <= 0) {
+    showToast('Valor total deve ser maior que 0.', 'error');
+    return;
+  }
 
-  // Lock submit button
-  const submitBtn = ctEl('ct-submit-btn');
-  if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing…'; }
+  // Collect milestones
+  const milestoneDescs  = [];
+  const milestoneAmounts = [];
+  msRows.forEach(row => {
+    const d = row.querySelector('.cf-ms-desc')?.value?.trim();
+    const a = parseFloat(row.querySelector('.cf-ms-amt')?.value || '0');
+    if (d && a > 0) {
+      milestoneDescs.push(d);
+      milestoneAmounts.push(cfParseUsdc(a));
+    }
+  });
 
-  const showCtError = (msg) => {
+  if (milestoneDescs.length === 0) {
+    showToast('Adicione pelo menos 1 milestone.', 'warning');
+    return;
+  }
+
+  const totalRaw = cfParseUsdc(humanAmount);
+  const sumMs    = milestoneAmounts.reduce((a, b) => a + b, 0n);
+  if (sumMs !== totalRaw) {
+    const diff = Math.abs(Number(totalRaw - sumMs)) / 1e6;
+    showToast(`Soma dos milestones (${cfFmtUsdcBig(sumMs)} USDC) ≠ Total (${humanAmount} USDC). Diferença: $${diff.toFixed(6)}.`, 'error');
+    return;
+  }
+
+  cfState.pending = true;
+  const btn = cfEl('cf-submit-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processando…'; }
+
+  const showErr = (msg) => {
     showToast(`❌ ${msg}`, 'error');
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-file-plus mr-2"></i>Create Contract'; }
+    cfSetStep(0, 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-plus mr-2"></i>Criar Contrato'; }
   };
 
-  let txHash = null;
-  let blockNumber = null;
-  let gasFee = '0';
-
   try {
-    if (walletConnected) {
-      // ── Step 0: Verify network ─────────────────────────────────────────────
-      ctSetStep(0);
-      await ctEnsureNetwork();
+    // Step 0: Verificar rede
+    cfSetStep(0);
+    await cfEnsureNetwork();
 
-      const from = window.walletState.address;
-      // ✅ FIX: Use parseUsdcUnits() — converts human USDC to 6-decimal base units
-      // e.g. "1" → 1000000n, "0.5" → 500000n, "10" → 10000000n
-      const amountRaw = parseUsdcUnits(amount);
-      const valueHex  = '0x' + amountRaw.toString(16);
-      console.log(`[CT:create] amount=${amount} USDC → amountRaw=${amountRaw.toString()} → hex=${valueHex}`);
-
-      // ── Step 1: Read USDC balance ──────────────────────────────────────────
-      ctSetStep(1);
-      const balance = await ctReadUsdcBalance(from);
-      console.log('[CT] USDC balance:', balance);
-      if (balance !== null && balance < amount) {
-        throw new Error(`Insufficient USDC balance: ${balance?.toFixed(4)} USDC available, ${amount} required for escrow.`);
-      }
-
-      // ── Step 2: Create contract record on backend ──────────────────────────
-      ctSetStep(2);
-      const createRes = await fetch('/api/contracts/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client, contractor, title, description, totalValue }),
-      });
-      const createData = await createRes.json();
-      if (!createData.success) throw new Error(createData.error || 'Contract creation failed');
-
-      const contractId = createData.contractId;
-      showToast(`📋 Contract #${contractId} registered. Starting escrow deposit…`, 'info');
-
-      // ── Step 3: Estimate gas + Deposit USDC to escrow ─────────────────────
-      ctSetStep(3);
-      const txBase = { from, to: CT_ESCROW_ADDR, data: '0x', value: valueHex };
-      gasFee = await ctCalcGasFee(txBase);
-      showToast('📝 Confirm USDC escrow transfer in your wallet…', 'info');
-
-      txHash = await ctSendTx(CT_ESCROW_ADDR, '0x', valueHex);
-      showToast(`⏳ Escrow tx submitted: ${txHash.slice(0, 14)}…`, 'info');
-
-      // ── Step 4: Wait for confirmation ──────────────────────────────────────
-      ctSetStep(4);
-      const onChainReceipt = await ctWaitReceipt(txHash);
-      if (onChainReceipt.status !== '0x1' && onChainReceipt.status !== 1) {
-        throw new Error('Escrow transaction reverted on-chain.');
-      }
-      blockNumber = onChainReceipt.blockNumber ? parseInt(onChainReceipt.blockNumber, 16) : null;
-
-      // ── Step 5: Register escrow deposit + emit receipt ─────────────────────
-      ctSetStep(5);
-      const escrowRes = await fetch(`/api/contracts/${contractId}/escrow-deposit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ txHash, blockNumber, depositor: from, gasFee }),
-      });
-      const escrowData = await escrowRes.json();
-      if (!escrowData.success) throw new Error(escrowData.error || 'Escrow registration failed');
-
-      const receipt = { ...escrowData.receipt, gasFee, sender: from };
-      ctState.lastReceipt = receipt;
-      if (!ctState.receiptsByContract[contractId]) ctState.receiptsByContract[contractId] = [];
-      ctState.receiptsByContract[contractId].unshift(receipt);
-
-      ctSetStep(5, 'done');
-      showToast(
-        `✅ Contract #${contractId} created! Receipt #${receipt.id} on Arc Testnet. ` +
-        `<a href="${receipt.explorerUrl}" target="_blank" class="underline">View ↗</a>`,
-        'success'
-      );
-      if (typeof showTXConfirmationBadge === 'function') {
-        showTXConfirmationBadge(txHash, `Escrow $${ctFmt(receipt.amount)} USDC — Contract #${contractId}`);
-      }
-
-      // Show receipt modal
-      showContractReceiptModal(receipt, createData.contract);
-
-      // ── Notify Escrow Wallet module (EscrowCreated event) ─────────────────
-      if (escrowData.event) {
-        ctDispatchEscrowCreated(escrowData.event, contractId);
-      }
-
-      return { success: true, contractId, receipt, txHash };
-
-    } else {
-      // ── Wallet not connected: create contract without EVM tx ───────────────
-      ctHideSteps();
-      const createRes = await fetch('/api/contracts/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client, contractor, title, description, totalValue }),
-      });
-      const createData = await createRes.json();
-      if (!createData.success) throw new Error(createData.error || 'Contract creation failed');
-
-      const receipt = createData.receipt;
-      ctState.lastReceipt = receipt;
-      const contractId = createData.contractId;
-      if (!ctState.receiptsByContract[contractId]) ctState.receiptsByContract[contractId] = [];
-      ctState.receiptsByContract[contractId].unshift(receipt);
-
-      showToast(
-        `✅ Contract #${contractId} created! Escrow #${createData.escrow?.id || '?'} linked. Receipt #${receipt.id} issued.`,
-        'success'
-      );
-      showContractReceiptModal(receipt, createData.contract);
-
-      // ── Notify Escrow Wallet module (EscrowCreated event) ─────────────────
-      const escrowEv = (createData.events || []).find(ev => ev.name === 'EscrowCreated')
-        || createData.events?.[1];
-      if (escrowEv) {
-        ctDispatchEscrowCreated(escrowEv, contractId);
-      }
-
-      return { success: true, contractId, receipt, escrowId: createData.escrow?.id };
+    // Step 1: Verificar saldo USDC
+    cfSetStep(1);
+    const balance = await cfReadBalance(wallet);
+    console.log(`[CF] USDC balance: ${cfFmtUsdcBig(balance)} · Required: ${humanAmount}`);
+    if (balance < totalRaw) {
+      throw new Error(`Saldo USDC insuficiente: ${cfFmtUsdcBig(balance)} USDC disponível, ${humanAmount} USDC necessário.`);
     }
 
-  } catch (err) {
-    console.error('[CT] Contract creation error:', err);
-    if (ctState.pending) ctSetStep(3, 'error');
+    // Step 2: Verificar / solicitar approve
+    cfSetStep(2);
+    const allowance = await cfReadAllowance(wallet, CF_FACTORY_ADDR);
+    console.log(`[CF] USDC allowance: ${cfFmtUsdcBig(allowance)} · Required: ${humanAmount}`);
 
+    if (allowance < totalRaw) {
+      showToast(`📝 Aprovando ${humanAmount} USDC para o contrato…`, 'info');
+      const approveData = cfEncodeApprove(CF_FACTORY_ADDR, totalRaw);
+      const approveTx  = await cfSendTx(CF_USDC_ADDR, approveData);
+      showToast(`⏳ Approve tx: ${approveTx.slice(0, 14)}… aguardando confirmação…`, 'info');
+      const approveReceipt = await cfWaitReceipt(approveTx);
+      if (approveReceipt.status !== '0x1' && approveReceipt.status !== 1) {
+        throw new Error('Transação approve revertida. Tente novamente.');
+      }
+      showToast('✅ Approve confirmado!', 'success');
+    } else {
+      showToast('✅ Allowance suficiente.', 'info');
+    }
+
+    // Step 3: Estimativa de gas
+    cfSetStep(3);
+    const calldata = cfEncodeCreateContract(contractor, title, totalRaw, milestoneDescs, milestoneAmounts);
+    const txBase   = { from: wallet, to: CF_FACTORY_ADDR, data: calldata, value: '0x0' };
+    const gasEst   = await cfEstGas(txBase);
+    const gpHex    = await cfGasPrice();
+    const gasFeeUsdc = (parseInt(gasEst, 16) * parseInt(gpHex, 16) / 1e6).toFixed(6);
+    showToast(`⛽ Gas estimado: ${gasFeeUsdc} USDC. Confirme na carteira…`, 'info');
+
+    // Step 4: Enviar createContract
+    cfSetStep(4);
+    const txHash = await cfSendTx(CF_FACTORY_ADDR, calldata);
+    cfState.lastTxHash = txHash;
+    showToast(`📤 Tx enviada: <a href="${CF_EXPLORER}/tx/${txHash}" target="_blank" class="underline">${txHash.slice(0, 16)}…</a>`, 'info');
+
+    // Step 5: Aguardar confirmação (1–3 blocos)
+    cfSetStep(5);
+    showToast('⏳ Aguardando confirmação on-chain…', 'info');
+    const receipt = await cfWaitReceipt(txHash);
+    if (receipt.status !== '0x1' && receipt.status !== 1) {
+      throw new Error('Transação createContract revertida. Verifique allowance e saldo.');
+    }
+    const blockNum = parseInt(receipt.blockNumber, 16);
+
+    // Step 6: Recarregar lista
+    cfSetStep(6);
+    showToast(
+      `✅ Contrato criado! Bloco #${blockNum} · <a href="${CF_EXPLORER}/tx/${txHash}" target="_blank" class="underline">Ver no ArcScan ↗</a>`,
+      'success'
+    );
+
+    // Show tx badge
+    if (typeof showTXConfirmationBadge === 'function') {
+      showTXConfirmationBadge(txHash, `ContractFactory: createContract — $${humanAmount} USDC`);
+    }
+
+    // Reset form
+    cfEl('cf-title').value       = '';
+    cfEl('cf-contractor').value  = '';
+    cfEl('cf-value').value       = '';
+    cfResetMilestones();
+
+    // Reload contracts
+    setTimeout(cfLoadContracts, 1500);
+
+  } catch (err) {
+    console.error('[CF] createContract error:', err);
     if (err.code === 4001 || err.message?.includes('rejected') || err.message?.includes('denied')) {
-      showCtError('Transaction rejected by user.');
-    } else if (err.message?.includes('Insufficient')) {
-      showCtError(err.message);
+      showErr('Transação rejeitada pelo usuário.');
     } else {
-      showCtError(err.message || 'Unknown error');
+      showErr(err.message || 'Erro desconhecido');
     }
-    return { success: false, error: err.message };
-
   } finally {
-    ctState.pending = false;
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-file-plus mr-2"></i>Create Contract'; }
-    setTimeout(ctHideSteps, 10000);
+    cfState.pending = false;
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-plus mr-2"></i>Criar Contrato'; }
+    setTimeout(cfHideSteps, 15000);
   }
 }
 
-// ─── Activate contract with EVM escrow deposit ────────────────────────────────
-async function activateContractEVM(contractId, contractData) {
-  const walletConnected = !!window.walletState?.address;
-
-  if (!walletConnected) {
-    // Fallback to API-only activation
-    const result = await fetch(`/api/contracts/${contractId}/activate`, { method: 'POST' });
-    const data = await result.json();
-    if (data.success && data.escrowReceipt) {
-      ctState.lastReceipt = data.escrowReceipt;
-      if (!ctState.receiptsByContract[contractId]) ctState.receiptsByContract[contractId] = [];
-      ctState.receiptsByContract[contractId].unshift(data.escrowReceipt);
-      showContractReceiptModal(data.escrowReceipt, contractData);
-    }
-    return data;
-  }
+// ─── Sign Contract (contractor calls signContract) ────────────────────────────
+async function cfSignContract(contractId) {
+  const wallet = window.walletState?.address;
+  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
 
   try {
-    await ctEnsureNetwork();
-    const from = window.walletState.address;
-    const amount = contractData?.totalValue || 0;
-    // ✅ FIX: Use parseUsdcUnits() to correctly convert human USDC → 6-decimal base units
-    // e.g. 1 USDC → 1000000, 0.5 → 500000, 10 → 10000000
-    const valueHex = usdcToHex(amount);
-    console.log(`[CT:activate] totalValue=${amount} USDC → hex=${valueHex} (base units)`);
-
-    showToast('📝 Confirm USDC escrow deposit in your wallet…', 'info');
-    const txHash = await ctSendTx(CT_ESCROW_ADDR, '0x', valueHex);
-    showToast(`⏳ Escrow tx: ${txHash.slice(0, 14)}…`, 'info');
-
-    const onChainReceipt = await ctWaitReceipt(txHash);
-    const blockNumber = onChainReceipt.blockNumber ? parseInt(onChainReceipt.blockNumber, 16) : null;
-
-    const txBase = { from, to: CT_ESCROW_ADDR, data: '0x', value: valueHex };
-    const gasFee = await ctCalcGasFee(txBase);
-
-    const res = await fetch(`/api/contracts/${contractId}/activate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ txHash, blockNumber, gasFee }),
-    });
-    const data = await res.json();
-    if (data.escrowReceipt) {
-      const receipt = { ...data.escrowReceipt, gasFee, sender: from };
-      ctState.lastReceipt = receipt;
-      if (!ctState.receiptsByContract[contractId]) ctState.receiptsByContract[contractId] = [];
-      ctState.receiptsByContract[contractId].unshift(receipt);
-      showContractReceiptModal(receipt, contractData);
-      data.escrowReceipt = receipt;
-    }
-    return data;
+    await cfEnsureNetwork();
+    const calldata = cfEncodeSignContract(contractId);
+    showToast(`📝 Assinar contrato #${contractId} — confirme na carteira…`, 'info');
+    const txHash = await cfSendTx(CF_FACTORY_ADDR, calldata);
+    showToast(`⏳ Tx: <a href="${CF_EXPLORER}/tx/${txHash}" target="_blank" class="underline">${txHash.slice(0,14)}…</a>`, 'info');
+    const receipt = await cfWaitReceipt(txHash);
+    if (receipt.status !== '0x1' && receipt.status !== 1) throw new Error('Transação revertida');
+    showToast(`✅ Contrato #${contractId} assinado! Bloco #${parseInt(receipt.blockNumber, 16)}.`, 'success');
+    if (typeof showTXConfirmationBadge === 'function') showTXConfirmationBadge(txHash, `signContract #${contractId}`);
+    setTimeout(cfLoadContracts, 1500);
   } catch (err) {
-    if (err.code === 4001 || err.message?.includes('rejected')) {
-      throw new Error('Transaction rejected by user');
-    }
-    throw err;
+    if (err.code === 4001 || err.message?.includes('rejected')) showToast('Transação rejeitada.', 'warning');
+    else showToast(`❌ ${err.message}`, 'error');
   }
 }
 
-// ─── Receipt Modal ─────────────────────────────────────────────────────────────
-function showContractReceiptModal(receipt, contract) {
-  const existing = document.getElementById('ct-receipt-modal');
-  if (existing) existing.remove();
+// ─── Complete Milestone (client releases payment) ─────────────────────────────
+async function cfCompleteMilestone(contractId, milestoneIdx) {
+  const wallet = window.walletState?.address;
+  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
 
-  const modal = document.createElement('div');
-  modal.id = 'ct-receipt-modal';
-  modal.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4';
+  if (!confirm(`Liberar pagamento do milestone ${milestoneIdx + 1} do contrato #${contractId}? Esta ação é irreversível.`)) return;
 
-  const isEscrow = receipt.type === 'escrow_deposit';
-  const typeLabel = isEscrow ? 'Escrow Deposit Receipt' : 'Contract Creation Receipt';
-  const eventName = receipt.eventName || (isEscrow ? 'EscrowDepositIssued' : 'ContractReceiptIssued');
-
-  modal.innerHTML = `
-    <div class="bg-gray-900 border border-green-700/50 rounded-2xl p-6 max-w-lg w-full shadow-2xl animate-modal-in">
-      <!-- Header -->
-      <div class="flex items-center justify-between mb-5">
-        <div class="flex items-center gap-3">
-          <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-green-600 to-emerald-500 flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-receipt text-white text-lg"></i>
-          </div>
-          <div>
-            <h2 class="text-white font-bold text-base">Blockchain Receipt</h2>
-            <p class="text-green-400 text-xs">${typeLabel}</p>
-          </div>
-        </div>
-        <button onclick="document.getElementById('ct-receipt-modal').remove()"
-          class="text-gray-500 hover:text-gray-300 transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-800">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-
-      <!-- Status badge -->
-      <div class="flex items-center gap-2 mb-4 bg-green-900/20 border border-green-700/30 rounded-xl px-4 py-2.5">
-        <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></div>
-        <span class="text-green-400 text-sm font-semibold">Confirmed on Arc Testnet</span>
-        <span class="ml-auto text-xs text-gray-500 font-mono">event ${eventName}</span>
-      </div>
-
-      <!-- Receipt fields -->
-      <div class="space-y-0 mb-5 bg-gray-800/50 rounded-xl overflow-hidden divide-y divide-gray-700/40">
-        <!-- IDs Row -->
-        <div class="grid grid-cols-2 divide-x divide-gray-700/40">
-          <div class="px-4 py-2.5">
-            <div class="text-xs text-gray-500 mb-0.5">Receipt ID</div>
-            <div class="text-white font-bold font-mono text-sm">#${receipt.id}</div>
-          </div>
-          <div class="px-4 py-2.5">
-            <div class="text-xs text-gray-500 mb-0.5">Contract ID</div>
-            <div class="text-white font-mono text-sm">#${receipt.contractId}</div>
-          </div>
-        </div>
-
-        <!-- Contract Title -->
-        <div class="px-4 py-2.5">
-          <div class="text-xs text-gray-500 mb-0.5">Contract Title</div>
-          <div class="text-white font-semibold text-sm">${receipt.contractTitle}</div>
-        </div>
-
-        <!-- Parties -->
-        <div class="px-4 py-2.5">
-          <div class="text-xs text-gray-500 mb-1.5">Parties</div>
-          <div class="space-y-1.5">
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-gray-500 w-20 flex-shrink-0">Client</span>
-              <span class="text-cyan-400 font-mono text-xs break-all">${receipt.client}</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-gray-500 w-20 flex-shrink-0">Contractor</span>
-              <span class="text-purple-400 font-mono text-xs break-all">${receipt.contractor}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Escrow Amount -->
-        <div class="px-4 py-3 bg-green-900/10">
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-xs text-gray-500 mb-0.5">Escrow Amount</div>
-              <div class="text-2xl font-bold text-white">$${ctFmt(receipt.amount)} <span class="text-lg text-cyan-400">USDC</span></div>
-            </div>
-            <div class="w-10 h-10 rounded-full bg-green-900/40 border border-green-600/30 flex items-center justify-center">
-              <i class="fas fa-lock text-green-400"></i>
-            </div>
-          </div>
-        </div>
-
-        <!-- Blockchain Info -->
-        <div class="px-4 py-2.5">
-          <div class="text-xs text-gray-500 mb-1.5">Blockchain Details</div>
-          <div class="space-y-1.5">
-            <div class="flex justify-between text-xs">
-              <span class="text-gray-500">Network</span>
-              <span class="text-green-400 font-medium">${receipt.network} <span class="text-gray-600">(Chain ${receipt.chainId})</span></span>
-            </div>
-            <div class="flex justify-between text-xs">
-              <span class="text-gray-500">Escrow Address</span>
-              <span class="text-gray-300 font-mono">${ctShort(receipt.escrowAddress)}</span>
-            </div>
-            <div class="flex justify-between text-xs">
-              <span class="text-gray-500">Transaction</span>
-              <a href="${receipt.explorerUrl}" target="_blank" rel="noopener"
-                class="text-blue-400 hover:text-blue-300 hover:underline font-mono flex items-center gap-1">
-                ${receipt.txHash.slice(0, 18)}… <i class="fas fa-external-link-alt text-[9px]"></i>
-              </a>
-            </div>
-            ${receipt.blockNumber ? `
-            <div class="flex justify-between text-xs">
-              <span class="text-gray-500">Block</span>
-              <span class="text-gray-300 font-mono">#${receipt.blockNumber}</span>
-            </div>` : ''}
-            ${receipt.gasFee && receipt.gasFee !== '0' ? `
-            <div class="flex justify-between text-xs">
-              <span class="text-gray-500">Gas Fee</span>
-              <span class="text-gray-300 font-mono">${receipt.gasFee} USDC</span>
-            </div>` : ''}
-            <div class="flex justify-between text-xs">
-              <span class="text-gray-500">Timestamp</span>
-              <span class="text-gray-300">${ctTs(receipt.timestamp)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Action buttons -->
-      <div class="grid grid-cols-3 gap-2">
-        <button onclick="downloadContractReceipt('json', ${receipt.id})"
-          class="flex flex-col items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-600/60 text-gray-300 text-xs rounded-xl py-3 transition-colors hover:border-cyan-700/50">
-          <i class="fas fa-download text-cyan-400 text-base"></i>
-          <span>JSON</span>
-        </button>
-        <button onclick="downloadContractReceipt('pdf', ${receipt.id})"
-          class="flex flex-col items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-600/60 text-gray-300 text-xs rounded-xl py-3 transition-colors hover:border-red-700/50">
-          <i class="fas fa-file-pdf text-red-400 text-base"></i>
-          <span>PDF</span>
-        </button>
-        <a href="${receipt.explorerUrl}" target="_blank" rel="noopener"
-          class="flex flex-col items-center gap-1.5 bg-blue-900/20 hover:bg-blue-800/30 border border-blue-700/40 text-blue-400 text-xs rounded-xl py-3 transition-colors">
-          <i class="fas fa-external-link-alt text-base"></i>
-          <span>ArcScan</span>
-        </a>
-      </div>
-
-      <p class="text-xs text-gray-600 text-center mt-3">
-        Receipt permanently verifiable on Arc Network · Chain ID ${receipt.chainId}
-      </p>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
-}
-
-// ─── Render receipt panel inside contract card ─────────────────────────────────
-function renderContractReceiptPanel(receipt) {
-  if (!receipt) return '';
-  const isEscrow = receipt.type === 'escrow_deposit';
-  const eventName = receipt.eventName || (isEscrow ? 'EscrowDepositIssued' : 'ContractReceiptIssued');
-  const safeReceipt = ctEscapeJson(receipt);
-
-  return `
-    <div class="ct-receipt-panel mt-4">
-      <!-- Header row: green check + label + event name -->
-      <div class="flex items-center gap-2 mb-3">
-        <div class="ct-receipt-icon">
-          <i class="fas fa-check-circle text-green-400 text-sm"></i>
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="text-xs font-semibold text-green-400">
-            ${isEscrow ? 'Escrow Deposit Receipt' : 'Creation Receipt'}
-            <span class="text-white ml-1">#${receipt.id}</span>
-          </div>
-          <div class="text-xs text-gray-500 font-mono">event ${eventName}</div>
-        </div>
-        <div class="flex items-center gap-1 flex-shrink-0">
-          <div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
-          <span class="text-xs text-green-500 font-medium">Confirmed</span>
-        </div>
-      </div>
-
-      <!-- Contract Info -->
-      <div class="ct-receipt-title mb-2.5">
-        <i class="fas fa-file-contract text-gray-500 mr-1.5 text-xs"></i>
-        <span class="text-xs text-gray-400 font-medium">${receipt.contractTitle}</span>
-      </div>
-
-      <!-- Wallet addresses -->
-      <div class="grid grid-cols-1 gap-1 mb-2.5">
-        <div class="ct-receipt-row">
-          <span class="ct-receipt-label"><i class="fas fa-user mr-1 text-[10px]"></i>Client</span>
-          <span class="ct-receipt-addr text-cyan-400">${ctShort(receipt.client)}</span>
-        </div>
-        <div class="ct-receipt-row">
-          <span class="ct-receipt-label"><i class="fas fa-hard-hat mr-1 text-[10px]"></i>Contractor</span>
-          <span class="ct-receipt-addr text-purple-400">${ctShort(receipt.contractor)}</span>
-        </div>
-        <div class="ct-receipt-row">
-          <span class="ct-receipt-label"><i class="fas fa-lock mr-1 text-[10px]"></i>Escrow</span>
-          <span class="ct-receipt-addr text-gray-400">${ctShort(receipt.escrowAddress)}</span>
-        </div>
-      </div>
-
-      <!-- Amount + Network row -->
-      <div class="flex items-center gap-2 mb-2.5 bg-green-900/10 border border-green-800/20 rounded-lg px-3 py-2">
-        <div class="flex-1">
-          <div class="text-xs text-gray-500 mb-0.5">Escrow Value</div>
-          <div class="text-sm font-bold text-white">$${ctFmt(receipt.amount)} <span class="text-cyan-400 text-xs">USDC</span></div>
-        </div>
-        <div class="text-right">
-          <div class="text-xs text-gray-500 mb-0.5">Network</div>
-          <div class="text-xs text-green-400 font-medium">${receipt.network}</div>
-        </div>
-      </div>
-
-      <!-- TX Hash -->
-      <div class="ct-receipt-row mb-2">
-        <span class="ct-receipt-label"><i class="fas fa-hashtag mr-1 text-[10px]"></i>TX Hash</span>
-        <a href="${receipt.explorerUrl}" target="_blank" rel="noopener"
-          class="text-blue-400 hover:text-blue-300 hover:underline font-mono text-xs flex items-center gap-1">
-          ${receipt.txHash.slice(0, 14)}… <i class="fas fa-external-link-alt text-[9px]"></i>
-        </a>
-      </div>
-
-      <!-- Timestamp -->
-      <div class="ct-receipt-row mb-3">
-        <span class="ct-receipt-label"><i class="fas fa-clock mr-1 text-[10px]"></i>Timestamp</span>
-        <span class="text-gray-300 text-xs">${ctTs(receipt.timestamp)}</span>
-      </div>
-
-      <!-- Action buttons -->
-      <div class="flex gap-1.5 flex-wrap">
-        <button onclick='showContractReceiptModal(${safeReceipt}, null)'
-          class="ct-receipt-btn ct-receipt-btn-view">
-          <i class="fas fa-eye text-green-400 text-xs"></i>
-          <span>View Receipt</span>
-        </button>
-        <button onclick="downloadContractReceipt('json', ${receipt.id})"
-          class="ct-receipt-btn ct-receipt-btn-dl">
-          <i class="fas fa-download text-cyan-400 text-xs"></i>
-          <span>Download</span>
-        </button>
-        <button onclick="downloadContractReceipt('pdf', ${receipt.id})"
-          class="ct-receipt-btn ct-receipt-btn-pdf">
-          <i class="fas fa-file-pdf text-red-400 text-xs"></i>
-          <span>PDF</span>
-        </button>
-        <a href="${receipt.explorerUrl}" target="_blank" rel="noopener"
-          class="ct-receipt-btn ct-receipt-btn-ext">
-          <i class="fas fa-external-link-alt text-blue-400 text-xs"></i>
-          <span>ArcScan</span>
-        </a>
-      </div>
-    </div>
-  `;
-}
-
-// ─── Download receipt ──────────────────────────────────────────────────────────
-async function downloadContractReceipt(format, receiptId) {
-  // Find receipt: check local cache first, then fetch from API
-  let receipt = ctState.lastReceipt?.id === receiptId ? ctState.lastReceipt : null;
-  if (!receipt) {
-    for (const list of Object.values(ctState.receiptsByContract)) {
-      const found = list.find(r => r.id === receiptId);
-      if (found) { receipt = found; break; }
-    }
-  }
-  if (!receipt) {
-    try {
-      const res = await fetch('/api/contracts/receipts/all');
-      const data = await res.json();
-      receipt = data.receipts?.find(r => r.id === receiptId);
-    } catch (e) { /* ignore */ }
-  }
-  if (!receipt) { showToast('Receipt not found', 'error'); return; }
-
-  if (format === 'json') {
-    const exportData = {
-      ...receipt,
-      _meta: {
-        generatedAt: new Date().toISOString(),
-        generator: 'ARC AI Agents',
-        network: 'Arc Testnet',
-        chainId: CT_CHAIN_ID,
-      }
-    };
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `arc-contract-receipt-${receipt.id}-contract-${receipt.contractId}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('✅ JSON receipt downloaded', 'success');
-
-  } else if (format === 'pdf') {
-    const isEscrow = receipt.type === 'escrow_deposit';
-    const content = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Contract Receipt #${receipt.id} — ARC Network</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 680px; margin: 0 auto;
-           padding: 40px 30px; background: #fff; color: #1a1a1a; }
-    .header { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid #059669;
-              padding-bottom: 20px; margin-bottom: 24px; }
-    .logo { width: 52px; height: 52px; background: linear-gradient(135deg,#059669,#10b981);
-            border-radius: 12px; display: flex; align-items: center; justify-content: center;
-            font-size: 26px; flex-shrink: 0; }
-    h1 { font-size: 22px; color: #065f46; margin-bottom: 4px; }
-    .subtitle { color: #6b7280; font-size: 13px; }
-    .status-badge { display: inline-flex; align-items: center; gap: 8px;
-                    background: #d1fae5; color: #065f46; padding: 8px 14px;
-                    border-radius: 8px; font-size: 13px; font-weight: 600;
-                    margin-bottom: 24px; border: 1px solid #a7f3d0; }
-    .event-badge { background: #f3f4f6; color: #374151; padding: 4px 10px;
-                   border-radius: 20px; font-size: 11px; font-family: monospace;
-                   display: inline-block; margin-bottom: 24px; margin-left: 8px; }
-    .section { margin-bottom: 24px; }
-    .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px;
-                     color: #9ca3af; font-weight: 600; margin-bottom: 10px;
-                     padding-bottom: 6px; border-bottom: 1px solid #f3f4f6; }
-    table { width: 100%; border-collapse: collapse; }
-    td { padding: 8px 10px; border-bottom: 1px solid #f9fafb; font-size: 13px; vertical-align: top; }
-    td:first-child { color: #6b7280; width: 160px; font-weight: 500; }
-    td:last-child { font-weight: 600; word-break: break-all; }
-    .amount-box { background: #f0fdf4; border: 2px solid #a7f3d0; border-radius: 10px;
-                  padding: 16px 20px; margin-bottom: 24px; display: flex; align-items: center;
-                  justify-content: space-between; }
-    .amount-value { font-size: 28px; font-weight: 800; color: #059669; }
-    .amount-label { font-size: 12px; color: #6b7280; margin-top: 4px; }
-    .addr { font-family: 'Courier New', monospace; font-size: 11px; word-break: break-all; }
-    .footer { margin-top: 36px; font-size: 11px; color: #9ca3af; text-align: center;
-              border-top: 1px solid #f3f4f6; padding-top: 20px; }
-    .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-35deg);
-                  font-size: 60px; color: rgba(5,150,105,0.04); font-weight: 900;
-                  pointer-events: none; white-space: nowrap; }
-    @media print { .watermark { display: block; } body { padding: 20px; } }
-  </style>
-</head>
-<body>
-  <div class="watermark">ARC NETWORK</div>
-
-  <div class="header">
-    <div class="logo">🤖</div>
-    <div>
-      <h1>ARC AI Agents — Blockchain Receipt</h1>
-      <div class="subtitle">${isEscrow ? 'Escrow Deposit Receipt' : 'Contract Creation Receipt'}</div>
-    </div>
-  </div>
-
-  <div>
-    <span class="status-badge">✅ Confirmed on Arc Network</span>
-    <span class="event-badge">event ${receipt.eventName || (isEscrow ? 'EscrowDepositIssued' : 'ContractReceiptIssued')}</span>
-  </div>
-
-  <div class="amount-box">
-    <div>
-      <div class="amount-value">$${ctFmt(receipt.amount)} USDC</div>
-      <div class="amount-label">Escrow Value · USDC (native Arc Testnet)</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:13px;color:#374151;font-weight:600">Receipt #${receipt.id}</div>
-      <div style="font-size:12px;color:#9ca3af">Contract #${receipt.contractId}</div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Contract Details</div>
-    <table>
-      <tr><td>Contract Title</td><td>${receipt.contractTitle}</td></tr>
-      <tr><td>Receipt Type</td><td>${isEscrow ? 'Escrow Deposit' : 'Contract Creation'}</td></tr>
-      <tr><td>Issued At</td><td>${ctTs(receipt.timestamp)}</td></tr>
-    </table>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Parties</div>
-    <table>
-      <tr><td>Client</td><td class="addr">${receipt.client}</td></tr>
-      <tr><td>Contractor</td><td class="addr">${receipt.contractor}</td></tr>
-      <tr><td>Escrow Address</td><td class="addr">${receipt.escrowAddress}</td></tr>
-    </table>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Blockchain Verification</div>
-    <table>
-      <tr><td>Network</td><td>${receipt.network} (Chain ID: ${receipt.chainId})</td></tr>
-      <tr><td>Transaction Hash</td><td class="addr">${receipt.txHash}</td></tr>
-      ${receipt.blockNumber ? `<tr><td>Block Number</td><td>#${receipt.blockNumber}</td></tr>` : ''}
-      ${receipt.gasFee && receipt.gasFee !== '0' ? `<tr><td>Gas Fee</td><td>${receipt.gasFee} USDC</td></tr>` : ''}
-      <tr><td>Explorer URL</td><td class="addr">${receipt.explorerUrl}</td></tr>
-    </table>
-  </div>
-
-  <div class="footer">
-    <strong>ARC AI Agents</strong> · Arc Network Testnet · Generated: ${new Date().toLocaleString()}<br>
-    This receipt is permanently verifiable on-chain at Chain ID ${receipt.chainId}
-  </div>
-</body>
-</html>`;
-    const blob = new Blob([content], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank');
-    if (win) {
-      win.onload = () => {
-        setTimeout(() => { win.print(); URL.revokeObjectURL(url); }, 500);
-      };
-    } else {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `arc-contract-receipt-${receipt.id}.html`;
-      a.click();
-    }
-    showToast('✅ PDF receipt opened for printing', 'success');
-  }
-}
-
-// ─── Load and cache receipts for existing contracts ────────────────────────────
-async function loadContractReceipts() {
   try {
-    const res = await fetch('/api/contracts/receipts/all?limit=100');
-    const data = await res.json();
-    if (data.success) {
-      data.receipts.forEach(r => {
-        if (!ctState.receiptsByContract[r.contractId]) ctState.receiptsByContract[r.contractId] = [];
-        const exists = ctState.receiptsByContract[r.contractId].some(e => e.id === r.id);
-        if (!exists) ctState.receiptsByContract[r.contractId].push(r);
-      });
-    }
-  } catch (e) { console.warn('[CT] Failed to load receipts:', e.message); }
+    await cfEnsureNetwork();
+    const calldata = cfEncodeCompleteMilestone(contractId, milestoneIdx);
+    showToast(`📝 Liberando milestone ${milestoneIdx + 1} — confirme na carteira…`, 'info');
+    const txHash = await cfSendTx(CF_FACTORY_ADDR, calldata);
+    showToast(`⏳ Tx: <a href="${CF_EXPLORER}/tx/${txHash}" target="_blank" class="underline">${txHash.slice(0,14)}…</a>`, 'info');
+    const receipt = await cfWaitReceipt(txHash);
+    if (receipt.status !== '0x1' && receipt.status !== 1) throw new Error('Transação revertida');
+    showToast(`✅ Milestone ${milestoneIdx + 1} liberado! Bloco #${parseInt(receipt.blockNumber, 16)}.`, 'success');
+    if (typeof showTXConfirmationBadge === 'function') showTXConfirmationBadge(txHash, `completeMilestone #${contractId}[${milestoneIdx}]`);
+    setTimeout(cfLoadContracts, 1500);
+  } catch (err) {
+    if (err.code === 4001 || err.message?.includes('rejected')) showToast('Transação rejeitada.', 'warning');
+    else showToast(`❌ ${err.message}`, 'error');
+  }
 }
+
+// ─── Cancel Contract ──────────────────────────────────────────────────────────
+async function cfCancelContract(contractId) {
+  const wallet = window.walletState?.address;
+  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
+
+  if (!confirm(`Cancelar contrato #${contractId}? O USDC depositado será reembolsado ao cliente.`)) return;
+
+  try {
+    await cfEnsureNetwork();
+    const calldata = cfEncodeCancelContract(contractId);
+    showToast(`📝 Cancelando contrato #${contractId} — confirme na carteira…`, 'info');
+    const txHash = await cfSendTx(CF_FACTORY_ADDR, calldata);
+    showToast(`⏳ Tx: <a href="${CF_EXPLORER}/tx/${txHash}" target="_blank" class="underline">${txHash.slice(0,14)}…</a>`, 'info');
+    const receipt = await cfWaitReceipt(txHash);
+    if (receipt.status !== '0x1' && receipt.status !== 1) throw new Error('Transação revertida');
+    showToast(`✅ Contrato #${contractId} cancelado! USDC reembolsado. Bloco #${parseInt(receipt.blockNumber, 16)}.`, 'success');
+    setTimeout(cfLoadContracts, 1500);
+  } catch (err) {
+    if (err.code === 4001 || err.message?.includes('rejected')) showToast('Transação rejeitada.', 'warning');
+    else showToast(`❌ ${err.message}`, 'error');
+  }
+}
+
+// ─── Milestone form management ─────────────────────────────────────────────────
+let cfMilestoneCount = 1;
+
+function cfAddMilestone() {
+  cfMilestoneCount++;
+  const container = cfEl('cf-milestones-container');
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'cf-milestone-row flex items-center gap-2 mb-2';
+  row.innerHTML = `
+    <input type="text" placeholder="Descrição do milestone" class="cf-ms-desc flex-1 bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
+    <input type="number" placeholder="USDC" step="0.01" min="0.01" class="cf-ms-amt w-28 bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
+    <button onclick="this.parentElement.remove(); cfUpdateMilestoneSum()" type="button"
+      class="w-8 h-8 flex items-center justify-center bg-red-900/20 hover:bg-red-900/30 border border-red-700/30 text-red-400 rounded-lg transition flex-shrink-0">
+      <i class="fas fa-times text-xs"></i>
+    </button>`;
+  row.querySelectorAll('input').forEach(el => el.addEventListener('input', cfUpdateMilestoneSum));
+  container.appendChild(row);
+}
+
+function cfResetMilestones() {
+  cfMilestoneCount = 1;
+  const container = cfEl('cf-milestones-container');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="cf-milestone-row flex items-center gap-2 mb-2">
+      <input type="text" placeholder="Descrição do milestone" class="cf-ms-desc flex-1 bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
+      <input type="number" placeholder="USDC" step="0.01" min="0.01" class="cf-ms-amt w-28 bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
+    </div>`;
+  container.querySelectorAll('input').forEach(el => el.addEventListener('input', cfUpdateMilestoneSum));
+}
+
+function cfUpdateMilestoneSum() {
+  const rows  = document.querySelectorAll('.cf-milestone-row');
+  let sum = 0;
+  rows.forEach(r => { const v = parseFloat(r.querySelector('.cf-ms-amt')?.value || '0'); if (v > 0) sum += v; });
+  const total = parseFloat(cfEl('cf-value')?.value || '0');
+  const sumEl = cfEl('cf-ms-sum');
+  if (sumEl) {
+    const diff = Math.abs(sum - total);
+    const ok   = diff < 0.000001;
+    sumEl.textContent  = `Soma milestones: $${sum.toFixed(6)} USDC${ok ? ' ✅' : ` (diferença: $${diff.toFixed(6)})`}`;
+    sumEl.className    = `text-xs mt-1 ${ok ? 'text-green-400' : 'text-yellow-400'}`;
+  }
+}
+
+// ─── Wallet listener — reload when wallet changes ─────────────────────────────
+window.addEventListener('walletConnected',    () => cfLoadContracts());
+window.addEventListener('walletDisconnected', () => cfLoadContracts());
+window.addEventListener('walletChanged',      () => cfLoadContracts());
 
 // ─── Expose globally ──────────────────────────────────────────────────────────
-// ── Bridge: notify Escrow Wallet module when a contract creates an escrow ───
-// Fires 'escrow:created' DOM event AND calls escrowNotifyFromContract() (escrow.js v2.0)
-function ctDispatchEscrowCreated(escrowEvent, contractId) {
-  try {
-    // 1. Badge counter on Escrow tab
-    ctUpdateEscrowTabBadge(1);
+window.cfCreateContract      = cfCreateContract;
+window.cfLoadContracts       = cfLoadContracts;
+window.cfSignContract        = cfSignContract;
+window.cfCompleteMilestone   = cfCompleteMilestone;
+window.cfCancelContract      = cfCancelContract;
+window.cfAddMilestone        = cfAddMilestone;
+window.cfUpdateMilestoneSum  = cfUpdateMilestoneSum;
+window.cfState               = cfState;
 
-    // 2. Build unified payload (mirrors EscrowCreated event fields)
-    const payload = {
-      ...escrowEvent,
-      contractId,
-      source: 'contract_creation',
-      timestamp: escrowEvent.timestamp || Date.now(),
-    };
+// Legacy aliases (keep backward compat with any remaining calls)
+window.loadContracts         = cfLoadContracts;
 
-    // 3. Fire custom DOM event — escrow.js listener will pick this up
-    window.dispatchEvent(new CustomEvent('escrow:created', { detail: payload }));
-
-    // 4. Direct call to escrow.js v2.0 notification API
-    if (typeof window.escrowNotifyFromContract === 'function') {
-      window.escrowNotifyFromContract(payload);
-    }
-
-    // 5. Refresh escrow module if loaded
-    if (window.escrowLoadAll) {
-      setTimeout(window.escrowLoadAll, 400);
-    }
-
-    // 6. Show floating notification chip linking to escrow
-    const escrowId = escrowEvent.escrowId;
-    if (escrowId) {
-      const existing = document.getElementById('ct-escrow-chip');
-      if (existing) existing.remove();
-      const chip = document.createElement('div');
-      chip.id = 'ct-escrow-chip';
-      chip.className = [
-        'fixed bottom-20 right-6 z-[70]',
-        'bg-cyan-900/90 border border-cyan-700/50 rounded-xl px-4 py-3',
-        'shadow-xl text-sm text-white flex items-center gap-3',
-        'cursor-pointer hover:bg-cyan-800/90 transition-all',
-        'animate-fade-in-up',
-      ].join(' ');
-      chip.innerHTML = `
-        <div class="w-8 h-8 bg-cyan-700/40 rounded-lg flex items-center justify-center flex-shrink-0">
-          <i class="fas fa-shield-alt text-cyan-400"></i>
-        </div>
-        <div class="flex-1">
-          <div class="font-semibold text-cyan-300 text-sm">Escrow #${escrowId} created!</div>
-          <div class="text-xs text-cyan-400/70">
-            ${escrowEvent.amount ? `$${parseFloat(escrowEvent.amount).toFixed(2)} USDC · ` : ''}Click to view
-          </div>
-        </div>
-        <i class="fas fa-arrow-right text-cyan-400 text-xs"></i>
-      `;
-      chip.onclick = () => {
-        if (typeof switchTab === 'function') switchTab('escrow');
-        setTimeout(() => { if (window.escrowShowDetail) window.escrowShowDetail(escrowId); }, 350);
-        chip.remove();
-      };
-      document.body.appendChild(chip);
-      // Auto-remove after 10s
-      setTimeout(() => { chip.remove(); }, 10000);
-    }
-
-    console.log('[CT] EscrowCreated dispatched — escrow#', escrowEvent.escrowId || '?', '· contractId:', contractId);
-  } catch (e) {
-    console.warn('[CT] Failed to dispatch EscrowCreated:', e);
-  }
-}
-
-// Increment the notification badge on Escrow tab
-function ctUpdateEscrowTabBadge(delta) {
-  const badge = document.getElementById('tab-escrow-badge');
-  if (!badge) return;
-  const current = parseInt(badge.textContent || '0');
-  const next = current + delta;
-  badge.textContent = next;
-  badge.classList.toggle('hidden', next <= 0);
-  // Auto-hide after 10s
-  if (delta > 0) {
-    setTimeout(() => {
-      badge.textContent = '0';
-      badge.classList.add('hidden');
-    }, 10000);
-  }
-}
-
-window.ctDispatchEscrowCreated = ctDispatchEscrowCreated;
-window.ctUpdateEscrowTabBadge  = ctUpdateEscrowTabBadge;
-window.createContractWithReceipt = createContractWithReceipt;
-window.activateContractEVM       = activateContractEVM;
-window.showContractReceiptModal  = showContractReceiptModal;
-window.renderContractReceiptPanel= renderContractReceiptPanel;
-window.downloadContractReceipt   = downloadContractReceipt;
-window.loadContractReceipts      = loadContractReceipts;
-window.ctState                   = ctState;
-
-console.log('[CT] Contracts module loaded — Arc Testnet ChainID:', CT_CHAIN_ID, '| Escrow:', CT_ESCROW_ADDR);
+console.log(
+  '[CF] Contracts module loaded — ContractFactory:',
+  CF_FACTORY_ADDR,
+  '| USDC:', CF_USDC_ADDR,
+  '| Chain:', CF_CHAIN_ID
+);

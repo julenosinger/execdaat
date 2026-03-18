@@ -972,81 +972,152 @@ app.get('/', (c) => {
 
     <!-- CONTRACTS TAB -->
     <div id="tab-content-contracts" class="tab-content hidden">
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Form de contrato -->
-        <div class="lg:col-span-1">
-          <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-6">
-            <h3 class="text-white font-semibold mb-4 flex items-center gap-2">
-              <i class="fas fa-plus text-green-400"></i>
-              <span data-i18n="new_contract">New Contract</span>
-            </h3>
-            <form id="contract-form" class="space-y-3">
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block" data-i18n="ct_title_label">Title</label>
-                <input type="text" id="ct-title" data-i18n-placeholder="ct_title_placeholder" placeholder="Contract name" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500 focus:outline-none">
-              </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block" data-i18n="ct_client_label">Client (0x...)</label>
-                <input type="text" id="ct-client" placeholder="0x..." class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500 focus:outline-none font-mono">
-              </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block" data-i18n="ct_contractor_label">Contractor (0x...)</label>
-                <input type="text" id="ct-contractor" placeholder="0x..." class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500 focus:outline-none font-mono">
-              </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block" data-i18n="ct_value_label">Total Value (USDC)</label>
-                <input type="number" id="ct-value" placeholder="0.00" step="0.01" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500 focus:outline-none">
-              </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block" data-i18n="ct_desc_label">Description</label>
-                <textarea id="ct-description" data-i18n-placeholder="ct_desc_placeholder" placeholder="Describe the work to be performed..." rows="3" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500 focus:outline-none resize-none"></textarea>
-              </div>
-              <button type="submit" id="ct-submit-btn" class="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
-                <i class="fas fa-file-plus mr-2"></i><span data-i18n="btn_create_contract">Create Contract</span>
-              </button>
-            </form>
 
-            <!-- Contract creation steps panel -->
-            <div id="ct-steps-panel" class="hidden mt-4 space-y-2 bg-gray-800/60 border border-gray-700/40 rounded-xl p-4">
-              <p class="text-xs text-gray-400 uppercase tracking-wider mb-3">Transaction Progress</p>
-              <div id="ct-step-0" class="ct-step ct-step-idle flex items-center gap-3">
+      <!-- ── Wallet gate ──────────────────────────────────────────────────────── -->
+      <div id="cf-wallet-gate" class="mb-6 bg-yellow-900/20 border border-yellow-700/30 rounded-2xl p-5 flex items-center gap-4">
+        <div class="w-10 h-10 rounded-xl bg-yellow-900/40 border border-yellow-700/30 flex items-center justify-center flex-shrink-0">
+          <i class="fas fa-wallet text-yellow-400"></i>
+        </div>
+        <div class="flex-1">
+          <p class="text-yellow-300 font-semibold text-sm">Carteira necessária</p>
+          <p class="text-yellow-400/70 text-xs mt-0.5">Conecte sua carteira EVM para ver e criar contratos on-chain. Seu endereço é a sua identidade — nenhum dado é simulado.</p>
+        </div>
+        <button onclick="openWalletModal()"
+          class="flex-shrink-0 flex items-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 text-sm font-semibold transition">
+          <i class="fas fa-plug"></i>Conectar
+        </button>
+      </div>
+
+      <!-- ── Factory info bar ────────────────────────────────────────────────── -->
+      <div class="mb-5 flex flex-wrap items-center gap-3 text-xs text-gray-500 bg-gray-800/30 border border-gray-700/30 rounded-xl px-4 py-3">
+        <div class="flex items-center gap-2">
+          <div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
+          <span class="text-gray-400 font-medium">ContractFactory</span>
+        </div>
+        <span class="font-mono text-gray-400">0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A</span>
+        <a href="https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A"
+           target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300">
+          <i class="fas fa-external-link-alt mr-1"></i>ArcScan
+        </a>
+        <span class="ml-auto text-gray-600">Arc Testnet · Chain ID 5042002</span>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+        <!-- ── LEFT: Create Contract Form ────────────────────────────────────── -->
+        <div class="lg:col-span-2">
+          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5">
+            <h3 class="text-white font-semibold mb-4 flex items-center gap-2 text-sm">
+              <i class="fas fa-file-plus text-green-400"></i>
+              Novo Contrato On-Chain
+            </h3>
+
+            <!-- ⚠️ anti-phishing notice -->
+            <div class="mb-4 bg-red-900/20 border border-red-700/30 rounded-xl px-3 py-2.5 flex items-start gap-2">
+              <i class="fas fa-shield-alt text-red-400 mt-0.5 flex-shrink-0 text-xs"></i>
+              <p class="text-[11px] text-red-300/80">Esta interface nunca solicita chave privada ou seed phrase. Toda interação usa aprovação na carteira.</p>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Título do contrato</label>
+                <input type="text" id="cf-title" placeholder="Ex: Desenvolvimento de dApp DeFi"
+                  class="w-full bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Endereço do contratado (0x…)</label>
+                <input type="text" id="cf-contractor" placeholder="0x..."
+                  class="w-full bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white font-mono placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-400 mb-1 block">Total USDC (depositado no contrato)</label>
+                <input type="number" id="cf-value" placeholder="0.00" step="0.01" min="0.01"
+                  oninput="cfUpdateMilestoneSum()"
+                  class="w-full bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
+              </div>
+
+              <!-- Milestones -->
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="text-xs text-gray-400">Milestones (máx. 10)</label>
+                  <button type="button" onclick="cfAddMilestone()"
+                    class="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1">
+                    <i class="fas fa-plus text-[10px]"></i>Adicionar
+                  </button>
+                </div>
+                <div id="cf-milestones-container" class="space-y-2">
+                  <div class="cf-milestone-row flex items-center gap-2">
+                    <input type="text" placeholder="Descrição do milestone" class="cf-ms-desc flex-1 bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" oninput="cfUpdateMilestoneSum()" />
+                    <input type="number" placeholder="USDC" step="0.01" min="0.01" class="cf-ms-amt w-28 bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" oninput="cfUpdateMilestoneSum()" />
+                  </div>
+                </div>
+                <div id="cf-ms-sum" class="text-xs mt-1 text-gray-600">Soma milestones: $0.00 USDC</div>
+              </div>
+
+              <button type="button" id="cf-submit-btn" onclick="cfCreateContract()"
+                class="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl py-2.5 text-sm font-semibold transition-all flex items-center justify-center gap-2">
+                <i class="fas fa-file-plus"></i>Criar Contrato
+              </button>
+            </div>
+
+            <!-- Transaction steps panel -->
+            <div id="cf-steps-panel" class="hidden mt-4 space-y-1.5 bg-gray-800/60 border border-gray-700/40 rounded-xl p-4">
+              <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-3 font-semibold">Progresso da transação</p>
+              <div id="cf-step-0" class="ct-step ct-step-idle flex items-center gap-2.5">
                 <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-network-wired"></i></div>
-                <span class="text-xs">Verify Arc Testnet network</span>
+                <span class="text-xs">Verificar rede Arc Testnet</span>
               </div>
-              <div id="ct-step-1" class="ct-step ct-step-idle flex items-center gap-3">
+              <div id="cf-step-1" class="ct-step ct-step-idle flex items-center gap-2.5">
                 <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-coins"></i></div>
-                <span class="text-xs">Read USDC balance</span>
+                <span class="text-xs">Verificar saldo USDC</span>
               </div>
-              <div id="ct-step-2" class="ct-step ct-step-idle flex items-center gap-3">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-file-alt"></i></div>
-                <span class="text-xs">Register contract on-chain</span>
+              <div id="cf-step-2" class="ct-step ct-step-idle flex items-center gap-2.5">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-check-double"></i></div>
+                <span class="text-xs">Approve USDC para ContractFactory</span>
               </div>
-              <div id="ct-step-3" class="ct-step ct-step-idle flex items-center gap-3">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-lock"></i></div>
-                <span class="text-xs">Deposit USDC to escrow (wallet signature)</span>
+              <div id="cf-step-3" class="ct-step ct-step-idle flex items-center gap-2.5">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-gas-pump"></i></div>
+                <span class="text-xs">Estimar gas</span>
               </div>
-              <div id="ct-step-4" class="ct-step ct-step-idle flex items-center gap-3">
+              <div id="cf-step-4" class="ct-step ct-step-idle flex items-center gap-2.5">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-paper-plane"></i></div>
+                <span class="text-xs">Enviar createContract (assinar na carteira)</span>
+              </div>
+              <div id="cf-step-5" class="ct-step ct-step-idle flex items-center gap-2.5">
                 <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-hourglass-half"></i></div>
-                <span class="text-xs">Wait for on-chain confirmation</span>
+                <span class="text-xs">Aguardar confirmação on-chain (1–3 blocos)</span>
               </div>
-              <div id="ct-step-5" class="ct-step ct-step-idle flex items-center gap-3">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-receipt"></i></div>
-                <span class="text-xs">Emit ContractReceiptIssued event</span>
+              <div id="cf-step-6" class="ct-step ct-step-idle flex items-center gap-2.5">
+                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-list-check"></i></div>
+                <span class="text-xs">Recarregar lista de contratos</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Lista de contratos -->
-        <div class="lg:col-span-2">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-white font-semibold" data-i18n="contracts_list">Contracts List</h3>
-            <button onclick="loadContracts()" class="text-xs text-green-400 hover:text-green-300">
-              <i class="fas fa-sync mr-1"></i><span data-i18n="btn_update">Update</span>
+        <!-- ── RIGHT: Contracts list ──────────────────────────────────────────── -->
+        <div class="lg:col-span-3">
+          <!-- Summary stats -->
+          <div id="cf-summary" class="mb-4"></div>
+
+          <!-- Header -->
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-white font-semibold text-sm flex items-center gap-2">
+              <i class="fas fa-file-contract text-cyan-400 text-base"></i>
+              Meus Contratos On-Chain
+            </h3>
+            <button onclick="cfLoadContracts()"
+              class="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-600/40 rounded-lg px-3 py-1.5 transition">
+              <i class="fas fa-sync text-[10px]"></i>Atualizar
             </button>
           </div>
-          <div id="contracts-list" class="space-y-4">
-            <div class="text-gray-500 text-sm text-center py-8" data-i18n="loading_contracts">Loading contracts...</div>
+
+          <!-- Contracts list -->
+          <div id="cf-contracts-list">
+            <div class="flex items-center justify-center gap-3 py-12 text-gray-500">
+              <i class="fas fa-wallet text-gray-600 text-xl"></i>
+              <span class="text-sm">Conecte sua carteira para carregar contratos on-chain.</span>
+            </div>
           </div>
         </div>
       </div>

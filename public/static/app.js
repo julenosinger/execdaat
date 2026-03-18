@@ -53,7 +53,7 @@ function switchTab(tab) {
   // Load data for the tab
   if (tab === 'dashboard') loadDashboard();
   if (tab === 'payments') { loadPayments(); if (window.initPayments) window.initPayments(); }
-  if (tab === 'contracts') { loadContracts(); if (window.loadContractReceipts) window.loadContractReceipts(); }
+  if (tab === 'contracts') { cfWalletGateUpdate(); cfLoadContracts(); }
   if (tab === 'agents') {
     loadAgentsDetails();
     if (window.loadGuardianStatus) window.loadGuardianStatus();
@@ -170,11 +170,17 @@ async function loadDashboard() {
     
     // Recent activity - load processed payments and contracts
     const queueData = await API.get('/api/payments/queue');
-    const contractsList = await API.get('/api/contracts');
+    // Contracts list now comes from on-chain; use count only for dashboard
+    let recentContracts = [];
+    try {
+      const contractsList = await API.get('/api/contracts/count');
+      // Show factory stats instead of contract list in dashboard
+      recentContracts = [];
+    } catch { recentContracts = []; }
     
     const activity = document.getElementById('recent-activity');
     const recentPayments = queueData.processed.slice(-3);
-    const recentContracts = contractsList.contracts.slice(0, 2);
+    // recentContracts already defined above
     
     let activityHtml = '';
     
@@ -318,41 +324,32 @@ async function processPayments() {
 // payment-form removido — usar submitMultisend() de csv-upload.js
 
 // ============================================================
-// CONTRACTS
+// CONTRACTS — delegate to contracts.js (cfLoadContracts)
 // ============================================================
 async function loadContracts() {
-  try {
-    // Pre-load receipts into ctState before rendering
-    if (window.loadContractReceipts) await window.loadContractReceipts();
-    const data = await API.get('/api/contracts');
-    // Merge server-side receipts into ctState
-    if (window.ctState && data.contracts) {
-      data.contracts.forEach(ct => {
-        if (!window.ctState.receiptsByContract[ct.id]) window.ctState.receiptsByContract[ct.id] = [];
-        if (ct.receipt) {
-          const exists = window.ctState.receiptsByContract[ct.id].some(r => r.id === ct.receipt.id);
-          if (!exists) window.ctState.receiptsByContract[ct.id].unshift(ct.receipt);
-        }
-        if (ct.escrowReceipt) {
-          const exists = window.ctState.receiptsByContract[ct.id].some(r => r.id === ct.escrowReceipt.id);
-          if (!exists) window.ctState.receiptsByContract[ct.id].unshift(ct.escrowReceipt);
-        }
-      });
-    }
-    renderContractsList(data.contracts);
-  } catch (err) {
-    showToast(t('toast_error_load_contracts'), 'error');
+  // Delegate to on-chain contracts module
+  if (typeof window.cfLoadContracts === 'function') {
+    await window.cfLoadContracts();
   }
 }
 
+// Show/hide wallet gate based on connection
+function cfWalletGateUpdate() {
+  const gate = document.getElementById('cf-wallet-gate');
+  if (!gate) return;
+  gate.style.display = window.walletState?.address ? 'none' : '';
+}
+
+// renderContractsList kept for backward compat — now handled by contracts.js
 function renderContractsList(contracts) {
-  const list = document.getElementById('contracts-list');
-  
-  if (!contracts || contracts.length === 0) {
+  // No-op: contracts.js handles rendering via cfRenderContracts
+  // Only called if cfLoadContracts is not available
+  const list = document.getElementById('cf-contracts-list') || document.getElementById('contracts-list');
+  if (!list || !contracts) return;
+  if (contracts.length === 0) {
     list.innerHTML = `<div class="text-gray-500 text-sm text-center py-8">${t('no_contracts')}</div>`;
     return;
   }
-  
   list.innerHTML = contracts.map(ct => {
     const completedMilestones = ct.milestones.filter(m => m.status === 'Completed').length;
     const progressPct = ct.milestones.length > 0 ? (completedMilestones / ct.milestones.length * 100) : 0;
@@ -464,124 +461,31 @@ function renderContractsList(contracts) {
   }).join('');
 }
 
+// analyzeContract / activateContract / completeMilestone / disputeContract
+// now delegated to contracts.js trustless functions (cfSignContract, cfCompleteMilestone, etc.)
 async function analyzeContract(contractId) {
-  try {
-    addLog(`[AGENT:CTR] Analyzing contract #${contractId}...`, 'agent');
-    const result = await API.post(`/api/contracts/${contractId}/analyze`, {});
-    
-    const colors = { low: 'green', medium: 'yellow', high: 'orange', critical: 'red' };
-    const color = colors[result.decision.riskLevel] || 'gray';
-    
-    showToast(`Analysis #${contractId}: ${result.decision.action.toUpperCase()} (${result.decision.confidence}% conf)`, 
-              result.decision.action === 'approve' ? 'success' : 'warning');
-    addLog(`[AGENT:CTR] Contract #${contractId}: ${result.decision.action} - ${result.decision.reason.substring(0, 80)}...`, 'success');
-  } catch (err) {
-    showToast(`${t('toast_error')}: ${err.message}`, 'error');
-  }
+  showToast('Use ArcScan to verify contract state on-chain.', 'info');
+  window.open(`https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A#readContract`, '_blank');
 }
 
 async function activateContract(contractId) {
-  if (!confirm(`Activate contract #${contractId}?\n\nThis will:\n• Transfer USDC to escrow on Arc Testnet\n• Issue a blockchain receipt (ContractReceiptIssued event)\n\nMake sure your wallet is connected.`)) return;
-
-  try {
-    addLog(`[AGENT:CTR] Activating contract #${contractId} with EVM escrow deposit...`, 'agent');
-
-    // Get contract data for amount
-    const ctData = await API.get(`/api/contracts/${contractId}`);
-    const contract = ctData.contract;
-
-    if (typeof window.activateContractEVM === 'function') {
-      const result = await window.activateContractEVM(contractId, contract);
-      showToast(result.message || `Contract #${contractId} activated!`, 'success');
-      if (result.escrowReceipt) {
-        addLog(`[AGENT:CTR] Contract #${contractId} activated! Escrow Receipt #${result.escrowReceipt.id} emitted. TX: ${result.escrowReceipt.txHash.slice(0,14)}...`, 'success');
-      }
-    } else {
-      const result = await API.post(`/api/contracts/${contractId}/activate`, {});
-      showToast(result.message, 'success');
-      addLog(`[AGENT:CTR] Contract #${contractId} activated!`, 'success');
-    }
-    await loadContracts();
-  } catch (err) {
-    if (err.message?.includes('rejected')) {
-      showToast('Transaction rejected by user.', 'warning');
-    } else {
-      showToast(`${t('toast_error')}: ${err.message}`, 'error');
-    }
-  }
+  if (typeof window.cfSignContract === 'function') await window.cfSignContract(contractId);
 }
 
 async function completeMilestone(contractId) {
-  const milestoneId = prompt('Milestone ID to complete (1, 2, 3...):', '1');
-  if (!milestoneId) return;
+  const idx = prompt('Índice do milestone (0 = primeiro, 1 = segundo…):');
+  if (idx === null || idx === '') return;
+  const i = parseInt(idx);
+  if (isNaN(i) || i < 0) { showToast('Índice inválido.', 'error'); return; }
+  if (typeof window.cfCompleteMilestone === 'function') await window.cfCompleteMilestone(contractId, i);
+  else {
   
-  const evidence = prompt('Completion evidence (URL, description, hash):', 'Delivered at: https://github.com/...');
-  if (!evidence) return;
-  
-  try {
-    addLog(`[AGENT:CTR] Verifying milestone #${milestoneId} of contract #${contractId}...`, 'agent');
-    const result = await API.post(`/api/contracts/${contractId}/milestone/${milestoneId}/complete`, { evidence });
-    showToast(result.message, result.milestone?.status === 'Completed' ? 'success' : 'warning');
-    addLog(`[AGENT:CTR] Milestone #${milestoneId} status: ${result.milestone?.status}`, 
-           result.milestone?.status === 'Completed' ? 'success' : 'warning');
-    await loadContracts();
-  } catch (err) {
-    showToast(`${t('toast_error')}: ${err.message}`, 'error');
   }
 }
 
 async function disputeContract(contractId) {
-  const reason = prompt('Dispute reason:');
-  if (!reason) return;
-  
-  try {
-    addLog(`[AGENT:CTR] Registering dispute on contract #${contractId}...`, 'warning');
-    const result = await API.post(`/api/contracts/${contractId}/dispute`, { reason });
-    showToast(result.message, 'warning');
-    addLog(`[AGENT:CTR] Dispute #${contractId} submitted for arbitration`, 'warning');
-    await loadContracts();
-  } catch (err) {
-    showToast(`${t('toast_error')}: ${err.message}`, 'error');
-  }
+  if (typeof window.cfCancelContract === 'function') await window.cfCancelContract(contractId);
 }
-
-document.getElementById('contract-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  const client      = document.getElementById('ct-client').value.trim();
-  const contractor  = document.getElementById('ct-contractor').value.trim();
-  const title       = document.getElementById('ct-title').value.trim();
-  const description = document.getElementById('ct-description').value.trim();
-  const totalValue  = document.getElementById('ct-value').value.trim();
-
-  if (!client || !contractor || !title || !description || !totalValue) {
-    showToast(t('toast_fill_required'), 'warning');
-    return;
-  }
-
-  addLog(`[AGENT:CTR] Creating contract "${title}" — $${parseFloat(totalValue).toFixed(2)} USDC escrow...`, 'agent');
-
-  // Use contracts.js EVM flow (handles wallet + on-chain receipt)
-  if (typeof window.createContractWithReceipt === 'function') {
-    const result = await window.createContractWithReceipt({ client, contractor, title, description, totalValue });
-    if (result?.success) {
-      addLog(`[AGENT:CTR] Contract #${result.contractId} created. Receipt #${result.receipt?.id || '?'} emitted on Arc Testnet.`, 'success');
-      e.target.reset();
-      await loadContracts();
-    }
-  } else {
-    // Fallback to plain API
-    try {
-      const result = await API.post('/api/contracts/create', { client, contractor, title, description, totalValue });
-      showToast(`✅ Contract #${result.contractId} created!`, 'success');
-      addLog(`[AGENT:CTR] New contract #${result.contractId}: "${title}" - $${parseFloat(totalValue).toFixed(2)} USDC`, 'system');
-      e.target.reset();
-      await loadContracts();
-    } catch (err) {
-      showToast(`${t('toast_error')}: ${err.message}`, 'error');
-    }
-  }
-});
 
 // ============================================================
 // AGENTS
@@ -752,6 +656,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Atualizar dashboard
     if (currentTab === 'dashboard') loadDashboard();
 
+    // Atualizar wallet gate de contratos
+    const cfGate = document.getElementById('cf-wallet-gate');
+    if (cfGate) cfGate.style.display = 'none';
+    if (currentTab === 'contracts') cfLoadContracts();
+
     addLog(`[WALLET] ✅ ${shortAddress} conectada${onArcNetwork ? ' na Arc Testnet' : ' (rede incorreta)'}`, 'success');
   });
 
@@ -786,6 +695,10 @@ document.addEventListener('DOMContentLoaded', () => {
       ctClient.dataset.autoFilled = 'false';
       ctClient.classList.remove('border-green-500/60');
     }
+
+    // Atualizar wallet gate de contratos
+    const cfGate2 = document.getElementById('cf-wallet-gate');
+    if (cfGate2) cfGate2.style.display = '';
 
     addLog('[WALLET] Wallet disconnected', 'warning');
   });
