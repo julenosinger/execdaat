@@ -9,7 +9,6 @@ import chatRouter from './routes/chat'
 import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
-import escrowRouter from './routes/escrow'
 import { ARC_TESTNET } from './types/arc'
 
 const app = new Hono()
@@ -33,7 +32,6 @@ app.route('/api/chat', chatRouter)
 app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
-app.route('/api/escrow', escrowRouter)
 
 // ─── Legal / Trust Pages ──────────────────────────────────────────────────────
 const LEGAL_STYLE = `
@@ -79,7 +77,7 @@ ${LEGAL_NAV}
     <li><strong style="color:#e5e7eb">ARC Swap</strong> — Swap EURC ↔ USDC using a real on-chain Automated Market Maker (AMM) with the x·y=k constant-product formula.</li>
     <li><strong style="color:#e5e7eb">Liquidity</strong> — Add or remove liquidity from the EURC/USDC pool and earn LP tokens representing your share.</li>
     <li><strong style="color:#e5e7eb">Contracts</strong> — Deploy and interact with smart contracts on Arc Testnet.</li>
-    <li><strong style="color:#e5e7eb">Escrow</strong> — Create escrow agreements with on-chain enforcement.</li>
+    <li><strong style="color:#e5e7eb">Contracts</strong> — Create on-chain work contracts with milestone-based USDC escrow. Each contract acts as a self-contained escrow: the client deposits USDC, milestones are completed on-chain, and funds are released per confirmation.</li>
   </ul>
 
   <h2>Security & Transparency</h2>
@@ -573,8 +571,8 @@ app.get('/', (c) => {
             <div class="w-10 h-10 rounded-xl bg-orange-900/40 border border-orange-700/30 flex items-center justify-center mb-3">
               <i class="fas fa-shield-alt text-orange-400"></i>
             </div>
-            <h3 class="text-white font-semibold mb-1.5 text-sm">On-Chain Escrow</h3>
-            <p class="text-gray-500 text-xs leading-relaxed">Lock USDC in an escrow contract and release on conditions. Transparent, verifiable, and non-custodial.</p>
+            <h3 class="text-white font-semibold mb-1.5 text-sm">Escrow Integrado</h3>
+            <p class="text-gray-500 text-xs leading-relaxed">Cada contrato é um escrow autônomo. O cliente deposita USDC diretamente no contrato; o contratado recebe por milestone confirmado on-chain.</p>
           </div>
 
           <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-pink-600/40 transition-colors">
@@ -696,10 +694,7 @@ app.get('/', (c) => {
         <button onclick="switchTab('multisend')" id="tab-multisend" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
           <i class="fas fa-paper-plane mr-2"></i><span>MultiSend</span>
         </button>
-        <button onclick="switchTab('escrow')" id="tab-escrow" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all relative">
-          <i class="fas fa-shield-alt mr-2"></i><span>Escrow</span>
-          <span id="tab-escrow-badge" class="hidden absolute -top-0.5 -right-0.5 w-5 h-5 bg-cyan-500 text-white text-xs font-bold rounded-full flex items-center justify-center">0</span>
-        </button>
+
         <button onclick="switchTab('deploy')" id="tab-deploy" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-rocket mr-2"></i><span data-i18n="tab_deploy">Deploy</span>
         </button>
@@ -1667,17 +1662,15 @@ app.get('/', (c) => {
           </div>
 
           <div class="mt-4 p-3 bg-gray-800/50 rounded-lg">
-            <h4 class="text-xs text-gray-400 mb-2" data-i18n="contract_flow">Contract Flow</h4>
+            <h4 class="text-xs text-gray-400 mb-2" data-i18n="contract_flow">Contract State Machine</h4>
             <div class="flex items-center gap-1 text-xs overflow-x-auto pb-1">
-              <span class="bg-gray-700 text-gray-300 px-2 py-1 rounded whitespace-nowrap">📝 Draft</span>
+              <span class="bg-yellow-900/50 text-yellow-300 px-2 py-1 rounded whitespace-nowrap">⏳ Pending</span>
               <i class="fas fa-arrow-right text-gray-600 flex-shrink-0"></i>
-              <span class="bg-blue-900/50 text-blue-300 px-2 py-1 rounded whitespace-nowrap">✍️ <span data-i18n="status_signed">Signed</span></span>
+              <span class="bg-blue-900/50 text-blue-300 px-2 py-1 rounded whitespace-nowrap">💰 Funded</span>
               <i class="fas fa-arrow-right text-gray-600 flex-shrink-0"></i>
-              <span class="bg-green-900/50 text-green-300 px-2 py-1 rounded whitespace-nowrap">🔒 Escrow</span>
+              <span class="bg-cyan-900/50 text-cyan-300 px-2 py-1 rounded whitespace-nowrap">⚡ Active</span>
               <i class="fas fa-arrow-right text-gray-600 flex-shrink-0"></i>
-              <span class="bg-purple-900/50 text-purple-300 px-2 py-1 rounded whitespace-nowrap">✅ <span data-i18n="status_active">Active</span></span>
-              <i class="fas fa-arrow-right text-gray-600 flex-shrink-0"></i>
-              <span class="bg-yellow-900/50 text-yellow-300 px-2 py-1 rounded whitespace-nowrap">🏆 <span data-i18n="status_completed">Completed</span></span>
+              <span class="bg-green-900/50 text-green-300 px-2 py-1 rounded whitespace-nowrap">✅ <span data-i18n="status_completed">Completed</span></span>
             </div>
           </div>
         </div>
@@ -1948,16 +1941,7 @@ app.get('/', (c) => {
 
     </div>
 
-    <!-- ESCROW WALLET TAB -->
-    <div id="tab-content-escrow" class="tab-content hidden">
-      <!-- Rendered by escrow.js: escrowInit() -->
-      <div class="flex items-center justify-center py-20 text-gray-500">
-        <div class="text-center">
-          <i class="fas fa-spinner fa-spin text-4xl mb-4 block text-cyan-600/40"></i>
-          <p class="text-sm">Loading Escrow Wallet...</p>
-        </div>
-      </div>
-    </div>
+
 
     <!-- DEPLOY TAB -->
     <div id="tab-content-deploy" class="tab-content hidden">
@@ -3197,7 +3181,7 @@ forge create src/ContractManager.sol:ContractManager \\
   <script src="/static/multisend.js"></script>
   <script src="/static/guardian.js"></script>
   <script src="/static/yield-optimizer.js"></script>
-  <script src="/static/escrow.js"></script>
+
   <script src="/static/chat.js"></script>
   <script>
     // ── ethers.js availability check ──────────────────────────────────────────

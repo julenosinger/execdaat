@@ -73,7 +73,6 @@ function switchTab(tab) {
       window.ammRefreshAll();
     }
   }
-  if (tab === 'escrow' && window.escrowInit) window.escrowInit();
 
 }
 
@@ -418,8 +417,7 @@ function renderContractsList(contracts) {
         <!-- ── Blockchain Receipt Panel (below progress bar) ── -->
         ${(() => {
           const receipts = (window.ctState?.receiptsByContract?.[ct.id] || []);
-          const best = receipts.find(r => r.type === 'escrow_deposit') || receipts.find(r => r.type === 'creation')
-                    || ct.escrowReceipt || ct.receipt;
+          const best = receipts.find(r => r.type === 'creation') || ct.receipt;
           if (!best) return '';
           if (typeof window.renderContractReceiptPanel === 'function') return window.renderContractReceiptPanel(best);
           return '';
@@ -446,7 +444,7 @@ function renderContractsList(contracts) {
           ${(() => {
             // Explorer link: use receipt's explorerUrl if available, else default
             const receipts2 = (window.ctState?.receiptsByContract?.[ct.id] || []);
-            const anyReceipt = receipts2.find(r => r.explorerUrl) || ct.escrowReceipt || ct.receipt;
+            const anyReceipt = receipts2.find(r => r.explorerUrl) || ct.receipt;
             const explorerBase = anyReceipt?.explorerUrl
               ? anyReceipt.explorerUrl.replace(/\/tx\/.*/, '')
               : 'https://testnet.arcscan.app';
