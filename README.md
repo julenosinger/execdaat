@@ -246,7 +246,7 @@ v5.1.0 — 2026-03-18
 - **Refresh incremental**: `histRefreshNew()` busca apenas novos blocos desde a última consulta
 - **Classificação de transferências**: SEND / RECEIVE / SWAP (AMM) / CONTRACT (factory)
 
-### URLs de Produção (anterior)
-- **https://arc-ai-agents-618.pages.dev** — último deploy bem-sucedido
+### URLs de Produção
+- **https://arc-ai-agents-618-3v1.pages.dev** — deploy atual (v5.1.0)
 - Local dev: https://3000-i7dbuvc4nlvszyf6ljwfs-a402f90a.sandbox.novita.ai
 2026-03-16 — v5.0.0: Escrow Wallet com milestones, smart contract Solidity, UI completa, 12 endpoints API
