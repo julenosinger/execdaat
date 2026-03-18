@@ -76,6 +76,8 @@ swapRouter.get('/rates', async (c) => {
         pairAddress: state.pairAddress,
         usdcReserve,
         eurcReserve,
+        fee: '0.3%',
+        totalSwaps: txHistory.length,
       },
       network: { name: 'Arc Testnet', chainId: ARC_TESTNET.chainId, explorer: ARC_TESTNET.explorerUrl },
     })
@@ -100,14 +102,23 @@ swapRouter.get('/quote', async (c) => {
     const [reserveIn, reserveOut] = fromToken === 'USDC' ? [usdcReserve, eurcReserve] : [eurcReserve, usdcReserve]
     const quote = quoteConstantProduct(amount, reserveIn, reserveOut)
 
+    const toToken = fromToken === 'USDC' ? 'EURC' : 'USDC'
+    const amountOut = Number(quote.amountOut.toFixed(6))
+    const rate = amount > 0 ? Number((amountOut / amount).toFixed(6)) : 0
+    const fee = Number((amount * (quote.feePercent / 100)).toFixed(6))
+    const minimumReceived = Number((amountOut * 0.995).toFixed(6))
+
     return c.json({
       success: true,
       quote: {
         fromToken,
-        toToken: fromToken === 'USDC' ? 'EURC' : 'USDC',
+        toToken,
         amountIn: amount,
-        amountOut: Number(quote.amountOut.toFixed(6)),
+        amountOut,
+        rate,
+        fee,
         feePercent: quote.feePercent,
+        minimumReceived,
         priceImpact: Number(quote.priceImpact.toFixed(4)),
         network: 'Arc Testnet',
       },
@@ -120,7 +131,7 @@ swapRouter.get('/quote', async (c) => {
 swapRouter.post('/execute', async (c) => {
   try {
     const body = await c.req.json()
-    const { txHash, walletAddress, amountIn, fromToken, toToken } = body
+    const { txHash, walletAddress, amountIn, fromToken, toToken, amountOut } = body
 
     if (!txHash || !walletAddress || !amountIn || !fromToken || !toToken) {
       return c.json({ success: false, error: 'Campos obrigatórios ausentes.' }, 400)
@@ -141,13 +152,26 @@ swapRouter.post('/execute', async (c) => {
       return c.json({ success: false, error: 'Transação não enviada ao router oficial.' }, 400)
     }
 
+    const normalizedAmountIn = Number(amountIn)
+    let normalizedAmountOut = Number(amountOut || 0)
+
+    if (!normalizedAmountOut && normalizedAmountIn > 0) {
+      const state = await getPoolState()
+      const usdcIsToken0 = state.token0 === ARC_TESTNET.usdcAddress.toLowerCase()
+      const usdcReserve = usdcIsToken0 ? state.reserve0 : state.reserve1
+      const eurcReserve = usdcIsToken0 ? state.reserve1 : state.reserve0
+      const [reserveIn, reserveOut] = fromToken === 'USDC' ? [usdcReserve, eurcReserve] : [eurcReserve, usdcReserve]
+      normalizedAmountOut = Number(quoteConstantProduct(normalizedAmountIn, reserveIn, reserveOut).amountOut.toFixed(6))
+    }
+
     const record = {
       id: `swap-${Date.now()}`,
       txHash,
       walletAddress,
       fromToken,
       toToken,
-      amountIn,
+      amountIn: normalizedAmountIn,
+      amountOut: normalizedAmountOut,
       blockNumber: receipt.blockNumber,
       timestamp: new Date().toISOString(),
       explorerUrl: `${ARC_TESTNET.explorerUrl}/tx/${txHash}`,

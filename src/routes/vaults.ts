@@ -13,7 +13,9 @@ const VAULT_ABI = [
 
 const TOKEN_DECIMALS = 6
 
-export const vaultStore: Record<string, { positions: Map<string, { balance: number; yieldEarned: number; strategy: string }> }> = {
+type VaultPosition = { balance: number; yieldEarned: number; strategy: string }
+
+export const vaultStore: Record<string, { positions: Map<string, VaultPosition> }> = {
   usdc: { positions: new Map() },
   eurc: { positions: new Map() },
 }
@@ -29,6 +31,14 @@ function getVaultAddress(token: VaultToken) {
   return token === 'usdc' ? process.env.ARC_USDC_VAULT_ADDRESS : process.env.ARC_EURC_VAULT_ADDRESS
 }
 
+function getDefaultApy(token: VaultToken) {
+  return token === 'usdc' ? 4.2 : 4.6
+}
+
+function getDefaultPosition(): VaultPosition {
+  return { balance: 0, yieldEarned: 0, strategy: 'manual' }
+}
+
 async function readVaultMetrics(token: VaultToken) {
   const vaultAddress = getVaultAddress(token)
   if (!vaultAddress) throw new Error(`Vault ${token.toUpperCase()} não configurado.`)
@@ -40,6 +50,30 @@ async function readVaultMetrics(token: VaultToken) {
     vaultAddress,
     totalAssets: Number(ethers.formatUnits(totalAssets, TOKEN_DECIMALS)),
     totalSupply: Number(ethers.formatUnits(totalSupply, TOKEN_DECIMALS)),
+  }
+}
+
+function buildVaultPayload(token: VaultToken, metrics: Awaited<ReturnType<typeof readVaultMetrics>>) {
+  const symbol = token.toUpperCase()
+  const totalDeposited = Number(metrics.totalAssets.toFixed(6))
+  const participants = vaultStore[token].positions.size
+  const accrued = Number((totalDeposited * (getDefaultApy(token) / 100 / 12)).toFixed(6))
+
+  return {
+    id: `${token}-vault`,
+    token: symbol,
+    name: `ARC ${symbol} Vault`,
+    description: `Vault on-chain para depósitos em ${symbol} na Arc Testnet.`,
+    contract: metrics.vaultAddress,
+    contractAddress: metrics.vaultAddress,
+    vaultAddress: metrics.vaultAddress,
+    totalAssets: metrics.totalAssets,
+    totalSupply: metrics.totalSupply,
+    currentBalance: totalDeposited,
+    totalDeposited,
+    apy: getDefaultApy(token),
+    accrued,
+    participants,
   }
 }
 
@@ -63,7 +97,7 @@ async function verifyAndStoreTx(token: VaultToken, txHash: string, walletAddress
   }
 
   const key = walletAddress.toLowerCase()
-  const existing = vaultStore[token].positions.get(key) || { balance: 0, yieldEarned: 0, strategy: 'manual' }
+  const existing = vaultStore[token].positions.get(key) || getDefaultPosition()
   const nextBalance = op === 'deposit' ? existing.balance + amount : Math.max(0, existing.balance - amount)
 
   vaultStore[token].positions.set(key, { ...existing, balance: Number(nextBalance.toFixed(6)) })
@@ -92,11 +126,25 @@ vaultsRouter.get('/', async (c) => {
     return c.json({
       success: true,
       vaults: [
-        { token: 'USDC', ...usdc, participants: vaultStore.usdc.positions.size },
-        { token: 'EURC', ...eurc, participants: vaultStore.eurc.positions.size },
+        buildVaultPayload('usdc', usdc),
+        buildVaultPayload('eurc', eurc),
       ],
       network: { chainId: ARC_TESTNET.chainId, explorer: ARC_TESTNET.explorerUrl },
     })
+  } catch (error) {
+    return c.json({ success: false, error: (error as Error).message }, 503)
+  }
+})
+
+vaultsRouter.get('/:token', async (c) => {
+  try {
+    const token = c.req.param('token') as VaultToken
+    if (!['usdc', 'eurc'].includes(token)) {
+      return c.json({ success: false, error: 'Token inválido.' }, 400)
+    }
+
+    const metrics = await readVaultMetrics(token)
+    return c.json({ success: true, vault: buildVaultPayload(token, metrics) })
   } catch (error) {
     return c.json({ success: false, error: (error as Error).message }, 503)
   }
@@ -140,15 +188,33 @@ vaultsRouter.get('/:token/history', (c) => {
   return c.json({ success: true, history: history[token] })
 })
 
+function positionResponse(token: VaultToken, walletAddress: string) {
+  const wallet = walletAddress.toLowerCase()
+  const position = vaultStore[token].positions.get(wallet) || getDefaultPosition()
+  return { success: true, wallet, token, position }
+}
+
+vaultsRouter.get('/:token/position', (c) => {
+  const token = c.req.param('token') as VaultToken
+  const wallet = c.req.query('wallet')
+  if (!['usdc', 'eurc'].includes(token)) {
+    return c.json({ success: false, error: 'Token inválido.' }, 400)
+  }
+  if (!wallet) {
+    return c.json({ success: false, error: 'Parâmetro wallet é obrigatório.' }, 400)
+  }
+
+  return c.json(positionResponse(token, wallet))
+})
+
 vaultsRouter.get('/:token/position/:wallet', (c) => {
   const token = c.req.param('token') as VaultToken
-  const wallet = c.req.param('wallet').toLowerCase()
+  const wallet = c.req.param('wallet')
   if (!['usdc', 'eurc'].includes(token)) {
     return c.json({ success: false, error: 'Token inválido.' }, 400)
   }
 
-  const position = vaultStore[token].positions.get(wallet) || { balance: 0, yieldEarned: 0, strategy: 'manual' }
-  return c.json({ success: true, wallet, token, position })
+  return c.json(positionResponse(token, wallet))
 })
 
 export default vaultsRouter

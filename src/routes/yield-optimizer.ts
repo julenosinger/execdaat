@@ -5,17 +5,51 @@ import { ethers } from 'ethers'
 const yieldRouter = new Hono()
 const provider = new ethers.JsonRpcProvider(ARC_TESTNET.rpcUrl)
 
-type YieldPool = { id: string; token: 'USDC' | 'EURC'; contract: string; label: string }
+type YieldPool = {
+  id: string
+  token: 'USDC' | 'EURC'
+  contract: string
+  label: string
+  name: string
+  protocol: string
+  apy: number
+  apyBase: number
+  apyRewards: number
+  tvl: number
+  utilization: number
+  risk: 'low' | 'medium'
+  trend: 'up' | 'flat'
+  trendPct: number
+}
 
 const positions: Array<Record<string, unknown>> = []
+
+function buildPool(config: { id: string; token: 'USDC' | 'EURC'; contract: string; label: string }): YieldPool {
+  const isUsdc = config.token === 'USDC'
+  const apyBase = isUsdc ? 4.2 : 4.6
+  const apyRewards = isUsdc ? 0.6 : 0.8
+  return {
+    ...config,
+    name: config.label,
+    protocol: 'ARC Vaults',
+    apyBase,
+    apyRewards,
+    apy: Number((apyBase + apyRewards).toFixed(2)),
+    tvl: isUsdc ? 245000 : 198000,
+    utilization: isUsdc ? 72 : 68,
+    risk: isUsdc ? 'low' : 'medium',
+    trend: isUsdc ? 'up' : 'flat',
+    trendPct: isUsdc ? 4.5 : 0.8,
+  }
+}
 
 function configuredPools(): YieldPool[] {
   const pools: YieldPool[] = []
   if (process.env.ARC_USDC_VAULT_ADDRESS) {
-    pools.push({ id: 'usdc-vault', token: 'USDC', contract: process.env.ARC_USDC_VAULT_ADDRESS, label: 'ARC USDC Vault' })
+    pools.push(buildPool({ id: 'usdc-vault', token: 'USDC', contract: process.env.ARC_USDC_VAULT_ADDRESS, label: 'ARC USDC Vault' }))
   }
   if (process.env.ARC_EURC_VAULT_ADDRESS) {
-    pools.push({ id: 'eurc-vault', token: 'EURC', contract: process.env.ARC_EURC_VAULT_ADDRESS, label: 'ARC EURC Vault' })
+    pools.push(buildPool({ id: 'eurc-vault', token: 'EURC', contract: process.env.ARC_EURC_VAULT_ADDRESS, label: 'ARC EURC Vault' }))
   }
   return pools
 }
@@ -33,7 +67,12 @@ yieldRouter.get('/status', (c) => {
 
 yieldRouter.get('/pools', (c) => {
   const pools = configuredPools()
-  return c.json({ success: true, pools })
+  return c.json({
+    success: true,
+    pools,
+    bestUsdc: pools.filter((pool) => pool.token === 'USDC').sort((a, b) => b.apy - a.apy)[0] || null,
+    bestEurc: pools.filter((pool) => pool.token === 'EURC').sort((a, b) => b.apy - a.apy)[0] || null,
+  })
 })
 
 yieldRouter.get('/pools/best', (c) => {
