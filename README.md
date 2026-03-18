@@ -1,4 +1,4 @@
-# ARC AI Agents — v5.0.0 (Escrow Wallet)
+# ARC AI Agents — v5.1.0 (Multisend v3 + History v2)
 
 ## Visão Geral
 Plataforma completa de DeFi na **Arc Testnet** com DEX AMM, pagamentos e contratos autônomos, 4 agentes de IA, swap USDC↔EURC, vaults de rendimento, chatbot inteligente e **Escrow Wallet com milestones**. Todas as operações são assinadas e confirmadas na EVM via MetaMask/carteira EIP-1193.
@@ -222,4 +222,31 @@ webapp/
 5. Adicionar notificações push via webhook quando milestone muda de estado
 
 ## Última Atualização
+v5.1.0 — 2026-03-18
+
+### ✅ Multisend v3 (Real On-Chain)
+- **Precisão USDC 6 decimais**: Usa `parseUnits(amount.toFixed(6), 6)` para evitar erros de floating point
+- **Detecção de duplicatas**: Bloqueia endereços repetidos na lista
+- **Verificação de saldo on-chain**: Lê `balanceOf` antes de executar, bloqueia se insuficiente
+- **Estimativa de gas real**: Usa `estimateGas` antes de cada `transfer`, adiciona buffer de +10k gas
+- **Switch automático de rede**: Tenta `wallet_switchEthereumChain` → `wallet_addEthereumChain` se necessário
+- **Leitura de decimais on-chain**: Confirma `decimals()` do contrato USDC antes de executar
+- **Receipts completos**: Inclui sender, recipients, amounts, gasUsed, txHash, feeTxHash, timestamp
+- **Totais inteiros seguros**: Usa operações em micros (×1_000_000) para evitar erros de float
+
+### ✅ History v2 (Real On-Chain)
+- **Zero mocks**: Todos os dados vêm do RPC `https://rpc.testnet.arc.network`
+- **Chunked log fetching**: Divide 50k blocos em chunks de 10k para evitar timeout de RPC
+- **Polling automático**: Verifica novos blocos a cada 30s quando a tab está visível
+- **Badge "Live"**: Indicador visual de polling ativo
+- **Contador de transações**: Exibe total filtrado no header
+- **Detecção de multisend on-chain**: Agrupa 3+ transferências consecutivas (60s) + taxa ao fee wallet
+- **AMM Swap events**: Decodifica eventos `Swap(address,bool,uint256,uint256,uint256,uint256)` do AMM
+- **Expandable receipts**: Multisend com lista de destinatários expansível inline
+- **Refresh incremental**: `histRefreshNew()` busca apenas novos blocos desde a última consulta
+- **Classificação de transferências**: SEND / RECEIVE / SWAP (AMM) / CONTRACT (factory)
+
+### URLs de Produção (anterior)
+- **https://arc-ai-agents-618.pages.dev** — último deploy bem-sucedido
+- Local dev: https://3000-i7dbuvc4nlvszyf6ljwfs-a402f90a.sandbox.novita.ai
 2026-03-16 — v5.0.0: Escrow Wallet com milestones, smart contract Solidity, UI completa, 12 endpoints API
