@@ -442,10 +442,10 @@ app.get('/', (c) => {
             <i class="fas fa-rocket"></i>
             Launch App
           </button>
-          <button onclick="openWalletModal()"
+          <button onclick="openCreateAccount()"
             class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-purple-500 text-white font-semibold rounded-2xl px-8 py-3.5 text-base transition-all">
-            <i class="fas fa-wallet text-purple-400"></i>
-            Connect Wallet
+            <i class="fas fa-user-plus text-purple-400"></i>
+            Create Account
           </button>
           <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener"
             class="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors">
@@ -676,8 +676,8 @@ app.get('/', (c) => {
   <div class="bg-gray-900/60 border-b border-gray-800 sticky top-[32px] z-40">
     <div class="max-w-7xl mx-auto px-4 overflow-x-auto">
       <div class="flex gap-0 min-w-max">
-        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn active px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
-          <i class="fas fa-chart-line mr-2"></i><span data-i18n="tab_dashboard">Dashboard</span>
+        <button onclick="switchTab('agents')" id="tab-agents" class="tab-btn active px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
+          <i class="fas fa-brain mr-2"></i><span data-i18n="tab_agents">AI Agents</span>
         </button>
         <button onclick="switchTab('payments')" id="tab-payments" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-dollar-sign mr-2"></i><span data-i18n="tab_payments">Payments</span>
@@ -685,18 +685,17 @@ app.get('/', (c) => {
         <button onclick="switchTab('contracts')" id="tab-contracts" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-file-contract mr-2"></i><span data-i18n="tab_contracts">Contracts</span>
         </button>
-        <button onclick="switchTab('agents')" id="tab-agents" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-brain mr-2"></i><span data-i18n="tab_agents">AI Agents</span>
-        </button>
         <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-exchange-alt mr-2"></i><span>DEX</span>
         </button>
         <button onclick="switchTab('multisend')" id="tab-multisend" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
           <i class="fas fa-paper-plane mr-2"></i><span>MultiSend</span>
         </button>
-
-        <button onclick="switchTab('deploy')" id="tab-deploy" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-rocket mr-2"></i><span data-i18n="tab_deploy">Deploy</span>
+        <button onclick="switchTab('history')" id="tab-history" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-blue-400 transition-all">
+          <i class="fas fa-history mr-2"></i><span>History</span>
+        </button>
+        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all">
+          <i class="fas fa-info-circle mr-2"></i><span>Information</span>
         </button>
       </div>
     </div>
@@ -1380,7 +1379,7 @@ app.get('/', (c) => {
               </div>
               MultiSend — Batch Payments
             </h2>
-            <p class="text-gray-400 text-sm mt-1">Send USDC to multiple recipients in one batch transaction on Arc Testnet</p>
+            <p class="text-gray-400 text-sm mt-1">Send USDC to multiple recipients with a single fee payment on Arc Testnet</p>
           </div>
           <div class="flex items-center gap-2 bg-amber-900/20 border border-amber-700/30 rounded-xl px-3 py-2">
             <i class="fas fa-flask text-amber-400 text-xs"></i>
@@ -1388,144 +1387,231 @@ app.get('/', (c) => {
           </div>
         </div>
 
-        <!-- Stats bar -->
-        <div class="grid grid-cols-3 gap-3 mb-6">
-          <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-3 text-center">
-            <div class="text-lg font-bold text-white" id="ms-stat-recipients">0</div>
-            <div class="text-xs text-gray-500 mt-0.5">Recipients</div>
+        <!-- 3-Step Progress Bar -->
+        <div class="flex items-center justify-between mb-8 px-2" id="ms-steps-bar">
+          <div class="flex flex-col items-center gap-1.5 flex-1" id="ms-bar-step1">
+            <div class="w-9 h-9 rounded-full border-2 border-cyan-500 bg-cyan-900/30 flex items-center justify-center font-bold text-cyan-400 text-sm transition-all">1</div>
+            <span class="text-xs text-cyan-400 font-medium">Recipients</span>
           </div>
-          <div class="bg-cyan-900/20 border border-cyan-700/30 rounded-xl p-3 text-center">
-            <div class="text-lg font-bold text-cyan-400" id="ms-stat-total">$0.00</div>
-            <div class="text-xs text-gray-500 mt-0.5">Total USDC</div>
+          <div class="flex-1 h-0.5 bg-gray-700 mx-1" id="ms-bar-line1"></div>
+          <div class="flex flex-col items-center gap-1.5 flex-1" id="ms-bar-step2">
+            <div class="w-9 h-9 rounded-full border-2 border-gray-600 bg-gray-800/40 flex items-center justify-center font-bold text-gray-500 text-sm transition-all">2</div>
+            <span class="text-xs text-gray-500 font-medium">Review &amp; Sign</span>
           </div>
-          <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-3 text-center">
-            <div class="text-lg font-bold text-purple-400" id="ms-stat-batches">0</div>
-            <div class="text-xs text-gray-500 mt-0.5">Batches Sent</div>
+          <div class="flex-1 h-0.5 bg-gray-700 mx-1" id="ms-bar-line2"></div>
+          <div class="flex flex-col items-center gap-1.5 flex-1" id="ms-bar-step3">
+            <div class="w-9 h-9 rounded-full border-2 border-gray-600 bg-gray-800/40 flex items-center justify-center font-bold text-gray-500 text-sm transition-all">3</div>
+            <span class="text-xs text-gray-500 font-medium">Pay Fee &amp; Send</span>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          <!-- LEFT: Recipient table -->
-          <div class="lg:col-span-2 bg-gray-900/60 border border-gray-700/40 rounded-2xl overflow-hidden">
-
-            <!-- Table Header -->
-            <div class="flex items-center justify-between px-5 py-3 border-b border-gray-700/40 bg-gray-800/30">
-              <div class="flex items-center gap-3">
-                <span class="text-sm font-semibold text-white">Recipients</span>
-                <span class="text-xs text-gray-500 bg-gray-800 rounded-full px-2 py-0.5" id="ms-row-count">0 rows</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <input id="ms-csv-input" type="file" accept=".csv,.txt" class="hidden" onchange="msHandleCSV(this.files[0])">
-                <button onclick="document.getElementById('ms-csv-input').click()"
-                  ondragover="event.preventDefault(); this.classList.add('border-cyan-400','bg-cyan-900/20')"
-                  ondragleave="this.classList.remove('border-cyan-400','bg-cyan-900/20')"
-                  ondrop="event.preventDefault(); this.classList.remove('border-cyan-400','bg-cyan-900/20'); msHandleCSV(event.dataTransfer.files[0])"
-                  class="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-cyan-500 text-gray-300 rounded-lg px-3 py-1.5 transition-all">
-                  <i class="fas fa-upload text-cyan-400"></i>CSV Upload
-                </button>
-                <button onclick="msDownloadTemplate()" title="Download CSV template"
-                  class="w-7 h-7 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 rounded-lg transition-all text-xs">
-                  <i class="fas fa-download"></i>
-                </button>
-              </div>
+        <!-- STEP 1: Build recipient list -->
+        <div id="ms-panel-step1" class="ms-step active">
+          <!-- Stats bar -->
+          <div class="grid grid-cols-4 gap-3 mb-5">
+            <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-3 text-center">
+              <div class="text-lg font-bold text-white" id="ms-stat-recipients">0</div>
+              <div class="text-xs text-gray-500 mt-0.5">Recipients</div>
             </div>
-
-            <!-- Column headers -->
-            <div class="grid grid-cols-12 gap-2 px-5 py-2 bg-gray-800/20 border-b border-gray-700/30 text-[11px] text-gray-500 uppercase tracking-wider">
-              <div class="col-span-5">Recipient Address</div>
-              <div class="col-span-3">Amount (USDC)</div>
-              <div class="col-span-3">Note</div>
-              <div class="col-span-1"></div>
+            <div class="bg-cyan-900/20 border border-cyan-700/30 rounded-xl p-3 text-center">
+              <div class="text-lg font-bold text-cyan-400" id="ms-stat-total">$0.00</div>
+              <div class="text-xs text-gray-500 mt-0.5">Total USDC</div>
             </div>
-
-            <div id="ms-error-banner" class="hidden px-5 py-2 bg-red-900/20 border-b border-red-700/30 flex items-center gap-2">
-              <i class="fas fa-exclamation-circle text-red-400 text-xs"></i>
-              <span id="ms-error-text" class="text-xs text-red-300"></span>
+            <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-3 text-center">
+              <div class="text-lg font-bold text-yellow-400" id="ms-stat-fee">$0.00</div>
+              <div class="text-xs text-gray-500 mt-0.5">Platform Fee</div>
             </div>
-
-            <!-- Rows container -->
-            <div id="ms-rows" class="divide-y divide-gray-800/60 min-h-[120px]"></div>
-
-            <!-- Add row -->
-            <div class="px-5 py-3 border-t border-gray-700/30">
-              <button onclick="msAddRow()"
-                class="w-full flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-medium py-1.5 transition-colors border border-dashed border-gray-700 hover:border-cyan-600 rounded-xl">
-                <i class="fas fa-plus text-xs"></i>Add Recipient
-              </button>
-            </div>
-
-            <!-- Sender + Priority -->
-            <div class="px-5 py-3 border-t border-gray-700/30 bg-gray-800/20 space-y-3">
-              <div>
-                <label class="text-xs text-gray-500 mb-1 block uppercase tracking-wider">From (Sender Wallet)</label>
-                <input type="text" id="ms-from" placeholder="0x… (auto-filled from connected wallet)"
-                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none font-mono">
-              </div>
-              <div class="flex items-center gap-3 flex-wrap">
-                <div class="flex items-center gap-2">
-                  <label class="text-xs text-gray-500">Priority:</label>
-                  <select id="ms-priority"
-                    class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-cyan-500 focus:outline-none">
-                    <option value="low">Low</option>
-                    <option value="medium" selected>Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </div>
-              </div>
+            <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-3 text-center">
+              <div class="text-lg font-bold text-purple-400" id="ms-stat-batches">0</div>
+              <div class="text-xs text-gray-500 mt-0.5">Batches Sent</div>
             </div>
           </div>
 
-          <!-- RIGHT: Actions + Receipt -->
-          <div class="space-y-4">
-
-            <!-- Send panel -->
-            <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-4">
-              <h3 class="text-white font-semibold text-sm mb-3 flex items-center gap-2">
-                <i class="fas fa-paper-plane text-cyan-400"></i>Execute Batch
-              </h3>
-              <div class="space-y-2 mb-4">
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">Recipients</span>
-                  <span class="text-white font-medium" id="ms-summary-count">—</span>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- LEFT: Recipient table -->
+            <div class="lg:col-span-2 bg-gray-900/60 border border-gray-700/40 rounded-2xl overflow-hidden">
+              <div class="flex items-center justify-between px-5 py-3 border-b border-gray-700/40 bg-gray-800/30">
+                <div class="flex items-center gap-3">
+                  <span class="text-sm font-semibold text-white">Recipients</span>
+                  <span class="text-xs text-gray-500 bg-gray-800 rounded-full px-2 py-0.5" id="ms-row-count">0 rows</span>
                 </div>
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">Total amount</span>
-                  <span class="text-cyan-400 font-bold text-sm" id="ms-summary-total">$0.00 USDC</span>
-                </div>
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">Network</span>
-                  <span class="text-green-400">Arc Testnet</span>
-                </div>
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">Gas token</span>
-                  <span class="text-white">USDC</span>
+                <div class="flex items-center gap-2">
+                  <input id="ms-csv-input" type="file" accept=".csv,.txt" class="hidden" onchange="msHandleCSV(this.files[0])">
+                  <button onclick="document.getElementById('ms-csv-input').click()"
+                    ondragover="event.preventDefault(); this.classList.add('border-cyan-400','bg-cyan-900/20')"
+                    ondragleave="this.classList.remove('border-cyan-400','bg-cyan-900/20')"
+                    ondrop="event.preventDefault(); this.classList.remove('border-cyan-400','bg-cyan-900/20'); msHandleCSV(event.dataTransfer.files[0])"
+                    class="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-cyan-500 text-gray-300 rounded-lg px-3 py-1.5 transition-all">
+                    <i class="fas fa-upload text-cyan-400"></i>CSV
+                  </button>
+                  <button onclick="msDownloadTemplate()" title="Download CSV template"
+                    class="w-7 h-7 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 rounded-lg transition-all text-xs">
+                    <i class="fas fa-download"></i>
+                  </button>
                 </div>
               </div>
-              <div class="space-y-2">
-                <button onclick="msAnalyze()"
-                  class="w-full flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl px-4 py-2 text-sm font-medium transition-all">
-                  <i class="fas fa-brain text-purple-400"></i>AI Analysis
+
+              <div class="grid grid-cols-12 gap-2 px-5 py-2 bg-gray-800/20 border-b border-gray-700/30 text-[11px] text-gray-500 uppercase tracking-wider">
+                <div class="col-span-5">Recipient Address</div>
+                <div class="col-span-3">Amount (USDC)</div>
+                <div class="col-span-3">Note</div>
+                <div class="col-span-1"></div>
+              </div>
+
+              <div id="ms-error-banner" class="hidden px-5 py-2 bg-red-900/20 border-b border-red-700/30 flex items-center gap-2">
+                <i class="fas fa-exclamation-circle text-red-400 text-xs"></i>
+                <span id="ms-error-text" class="text-xs text-red-300"></span>
+              </div>
+
+              <div id="ms-rows" class="divide-y divide-gray-800/60 min-h-[120px]"></div>
+
+              <div class="px-5 py-3 border-t border-gray-700/30">
+                <button onclick="msAddRow()"
+                  class="w-full flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-medium py-1.5 transition-colors border border-dashed border-gray-700 hover:border-cyan-600 rounded-xl">
+                  <i class="fas fa-plus text-xs"></i>Add Recipient
                 </button>
-                <button onclick="msSubmit()" id="ms-send-btn"
+              </div>
+
+              <div class="px-5 py-3 border-t border-gray-700/30 bg-gray-800/20 space-y-3">
+                <div>
+                  <label class="text-xs text-gray-500 mb-1 block uppercase tracking-wider">From (Sender Wallet)</label>
+                  <input type="text" id="ms-from" placeholder="0x… (auto-filled from connected wallet)"
+                    class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none font-mono">
+                </div>
+              </div>
+            </div>
+
+            <!-- RIGHT: Fee info + proceed -->
+            <div class="space-y-4">
+              <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-4">
+                <h3 class="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+                  <i class="fas fa-info-circle text-cyan-400"></i>Fee Breakdown
+                </h3>
+                <div class="space-y-2 mb-4">
+                  <div class="flex justify-between text-xs">
+                    <span class="text-gray-500">Recipients</span>
+                    <span class="text-white font-medium" id="ms-summary-count">—</span>
+                  </div>
+                  <div class="flex justify-between text-xs">
+                    <span class="text-gray-500">Total USDC</span>
+                    <span class="text-cyan-400 font-bold text-sm" id="ms-summary-total">$0.00</span>
+                  </div>
+                  <div class="flex justify-between text-xs border-t border-gray-700/30 pt-2">
+                    <span class="text-gray-500">Platform fee <span class="text-gray-600" id="ms-fee-pct">(1%)</span></span>
+                    <span class="text-yellow-400 font-medium" id="ms-summary-fee">$0.00</span>
+                  </div>
+                  <div class="flex justify-between text-xs border-t border-gray-700/30 pt-2">
+                    <span class="text-gray-500">Government fee</span>
+                    <span class="text-gray-500">—</span>
+                  </div>
+                  <div class="flex justify-between text-xs">
+                    <span class="text-gray-400 font-medium">You pay total</span>
+                    <span class="text-white font-bold text-sm" id="ms-summary-grand">$0.00</span>
+                  </div>
+                  <div class="flex justify-between text-xs">
+                    <span class="text-gray-500">Network</span>
+                    <span class="text-green-400">Arc Testnet</span>
+                  </div>
+                </div>
+                <div class="bg-blue-900/15 border border-blue-700/20 rounded-lg p-2.5 mb-3 text-xs text-blue-300">
+                  <i class="fas fa-shield-alt mr-1"></i>
+                  Single fee payment — not per transfer. Fee scales with recipient count.
+                </div>
+                <button onclick="msProceedToReview()" id="ms-proceed-btn"
                   class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl px-4 py-2.5 text-sm font-bold transition-all shadow-lg shadow-cyan-900/30">
-                  <i class="fas fa-paper-plane"></i>Send All
+                  <i class="fas fa-arrow-right"></i>Review &amp; Sign
                 </button>
+              </div>
+
+              <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3">
+                <p class="text-xs text-gray-500 font-medium mb-1.5"><i class="fas fa-info-circle text-cyan-600 mr-1"></i>CSV Format</p>
+                <p class="text-xs text-gray-600">Columns: <code class="text-cyan-500 bg-gray-800 px-1 rounded">address</code>, <code class="text-cyan-500 bg-gray-800 px-1 rounded">amount</code>, <code class="text-gray-400 bg-gray-800 px-1 rounded">note</code></p>
+                <p class="text-xs text-gray-600 mt-1">Max 500 rows · Max $10,000 per row</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 2: Review & Sign summary -->
+        <div id="ms-panel-step2" class="ms-step hidden">
+          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-6 mb-5">
+            <h3 class="text-white font-semibold mb-4 flex items-center gap-2">
+              <i class="fas fa-list-alt text-cyan-400"></i>Batch Summary
+            </h3>
+            <div id="ms-review-table" class="space-y-1 max-h-64 overflow-y-auto mb-4"></div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-gray-700/30">
+              <div class="bg-gray-800/50 rounded-lg px-3 py-2 text-center">
+                <div class="text-white font-bold text-sm" id="ms-review-count">—</div>
+                <div class="text-xs text-gray-500">Recipients</div>
+              </div>
+              <div class="bg-gray-800/50 rounded-lg px-3 py-2 text-center">
+                <div class="text-cyan-400 font-bold text-sm" id="ms-review-total">—</div>
+                <div class="text-xs text-gray-500">Total USDC</div>
+              </div>
+              <div class="bg-gray-800/50 rounded-lg px-3 py-2 text-center">
+                <div class="text-yellow-400 font-bold text-sm" id="ms-review-fee">—</div>
+                <div class="text-xs text-gray-500">Platform Fee</div>
+              </div>
+              <div class="bg-gray-800/50 rounded-lg px-3 py-2 text-center">
+                <div class="text-white font-bold text-sm" id="ms-review-grand">—</div>
+                <div class="text-xs text-gray-500">Grand Total</div>
+              </div>
+            </div>
+          </div>
+          <div class="flex gap-3">
+            <button onclick="msGoBack()" class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 rounded-xl px-5 py-2.5 text-sm transition-all">
+              <i class="fas fa-arrow-left"></i>Back
+            </button>
+            <button onclick="msProceedToSend()" id="ms-sign-btn"
+              class="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl px-5 py-2.5 text-sm font-bold transition-all shadow-lg">
+              <i class="fas fa-check"></i>Confirm &amp; Proceed to Fee Payment
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 3: Pay fee + send all transfers -->
+        <div id="ms-panel-step3" class="ms-step hidden">
+          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-6 mb-5">
+            <h3 class="text-white font-semibold mb-4 flex items-center gap-2">
+              <i class="fas fa-paper-plane text-cyan-400"></i>Execute Batch
+            </h3>
+
+            <!-- Tx lifecycle steps -->
+            <div id="ms-tx-steps" class="space-y-2 mb-5">
+              <div class="ms-tx-step flex items-center gap-3 p-3 bg-gray-800/40 border border-gray-700/30 rounded-xl" id="ms-txstep-1">
+                <div class="w-7 h-7 rounded-full border-2 border-gray-600 flex items-center justify-center flex-shrink-0 text-xs text-gray-500" id="ms-txstep-1-icon">1</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm text-gray-300">Check Arc Testnet &amp; USDC Balance</div>
+                  <div class="text-xs text-gray-600 ms-txstep-status" id="ms-txstep-1-status">Waiting…</div>
+                </div>
+              </div>
+              <div class="ms-tx-step flex items-center gap-3 p-3 bg-gray-800/40 border border-gray-700/30 rounded-xl" id="ms-txstep-2">
+                <div class="w-7 h-7 rounded-full border-2 border-gray-600 flex items-center justify-center flex-shrink-0 text-xs text-gray-500" id="ms-txstep-2-icon">2</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm text-gray-300">Pay Single Platform Fee</div>
+                  <div class="text-xs text-gray-600 ms-txstep-status" id="ms-txstep-2-status">Waiting…</div>
+                </div>
+              </div>
+              <div class="ms-tx-step flex items-center gap-3 p-3 bg-gray-800/40 border border-gray-700/30 rounded-xl" id="ms-txstep-3">
+                <div class="w-7 h-7 rounded-full border-2 border-gray-600 flex items-center justify-center flex-shrink-0 text-xs text-gray-500" id="ms-txstep-3-icon">3</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm text-gray-300" id="ms-txstep-3-label">Send Transfers (0 / 0)</div>
+                  <div class="text-xs text-gray-600 ms-txstep-status" id="ms-txstep-3-status">Waiting…</div>
+                </div>
               </div>
             </div>
 
-            <!-- CSV format hint -->
-            <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3">
-              <p class="text-xs text-gray-500 font-medium mb-1.5"><i class="fas fa-info-circle text-cyan-600 mr-1"></i>CSV Format</p>
-              <p class="text-xs text-gray-600">Columns: <code class="text-cyan-500 bg-gray-800 px-1 rounded">address</code>, <code class="text-cyan-500 bg-gray-800 px-1 rounded">amount</code>, <code class="text-gray-400 bg-gray-800 px-1 rounded">note</code> (optional)</p>
-              <p class="text-xs text-gray-600 mt-1">Max 500 rows · Max $10,000 per row</p>
-            </div>
+            <div id="ms-final-result" class="hidden rounded-xl p-4 mb-4"></div>
 
-            <!-- AI Analysis result -->
-            <div id="ms-analysis-result" class="hidden bg-gray-900/60 border border-purple-700/30 rounded-xl p-4">
-              <p class="text-xs text-purple-400 font-semibold mb-2 uppercase tracking-wide"><i class="fas fa-brain mr-1"></i>AI Analysis</p>
-              <div id="ms-analysis-content" class="text-xs text-gray-300"></div>
+            <div class="flex gap-3">
+              <button onclick="msGoBack()" id="ms-step3-back"
+                class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 rounded-xl px-5 py-2.5 text-sm transition-all">
+                <i class="fas fa-arrow-left"></i>Back
+              </button>
+              <button onclick="msExecute()" id="ms-execute-btn"
+                class="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl px-5 py-2.5 text-sm font-bold transition-all shadow-lg shadow-cyan-900/30">
+                <i class="fas fa-rocket"></i>Pay Fee &amp; Send All
+              </button>
             </div>
           </div>
         </div>
@@ -1943,135 +2029,87 @@ app.get('/', (c) => {
 
 
 
-    <!-- DEPLOY TAB -->
-    <div id="tab-content-deploy" class="tab-content hidden">
-      <div class="max-w-4xl space-y-6">
-        <!-- Guia de Deploy -->
-        <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-6">
-          <h3 class="text-white font-bold text-lg mb-2 flex items-center gap-2">
-            <i class="fas fa-rocket text-purple-400"></i>
-            <span data-i18n="deploy_title">Deploy Smart Contracts</span>
-          </h3>
-          <p class="text-gray-400 text-sm mb-6" data-i18n="deploy_guide_desc">Follow the steps below to deploy the PaymentManager and ContractManager contracts on the Arc Testnet using Foundry.</p>
-
-          <div class="space-y-5">
-            <div class="step-card border border-gray-700/40 rounded-xl p-5">
-              <div class="flex items-center gap-3 mb-3">
-                <div class="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">1</div>
-                <h4 class="text-white font-semibold" data-i18n="deploy_step1">Install Foundry</h4>
-              </div>
-              <pre class="bg-black/60 rounded-lg p-3 text-sm text-green-400 overflow-x-auto"><code>curl -L https://foundry.paradigm.xyz | bash
-foundryup</code></pre>
-            </div>
-
-            <div class="step-card border border-gray-700/40 rounded-xl p-5">
-              <div class="flex items-center gap-3 mb-3">
-                <div class="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">2</div>
-                <h4 class="text-white font-semibold" data-i18n="deploy_step2">Create Wallet &amp; Configure</h4>
-              </div>
-              <pre class="bg-black/60 rounded-lg p-3 text-sm text-green-400 overflow-x-auto"><code>cast wallet new
-# Salvar o endereço e chave privada
-
-# Criar .env na pasta contracts/
-cat > contracts/.env << EOF
-# RPC primário (alternativas: rpc.blockdaemon / rpc.drpc / rpc.quicknode .testnet.arc.network)
-ARC_TESTNET_RPC_URL="https://rpc.testnet.arc.network"
-PRIVATE_KEY="0xSUA_CHAVE_PRIVADA"
-EOF</code></pre>
-            </div>
-
-            <div class="step-card border border-gray-700/40 rounded-xl p-5">
-              <div class="flex items-center gap-3 mb-3">
-                <div class="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">3</div>
-                <h4 class="text-white font-semibold" data-i18n="deploy_step3">Get Testnet USDC</h4>
-              </div>
-              <p class="text-gray-400 text-sm mb-3" data-i18n="deploy_step3_desc">USDC is the native gas token of Arc. Get it free from the faucet:</p>
-              <a href="https://faucet.circle.com" target="_blank" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm transition-colors">
-                <i class="fas fa-faucet"></i>
-                faucet.circle.com → Arc Testnet
-              </a>
-            </div>
-
-            <div class="step-card border border-gray-700/40 rounded-xl p-5">
-              <div class="flex items-center gap-3 mb-3">
-                <div class="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">4</div>
-                <h4 class="text-white font-semibold" data-i18n="deploy_step4">Initialize Foundry Project &amp; Compile</h4>
-              </div>
-              <pre class="bg-black/60 rounded-lg p-3 text-sm text-green-400 overflow-x-auto"><code>cd contracts/
-forge init --no-git
-# Copiar contratos src/PaymentManager.sol e src/ContractManager.sol
-source .env
-forge build</code></pre>
-            </div>
-
-            <div class="step-card border border-gray-700/40 rounded-xl p-5">
-              <div class="flex items-center gap-3 mb-3">
-                <div class="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">5</div>
-                <h4 class="text-white font-semibold" data-i18n="deploy_step5">Deploy on Arc Testnet</h4>
-              </div>
-              <pre class="bg-black/60 rounded-lg p-3 text-sm text-green-400 overflow-x-auto"><code># Deploy do PaymentManager
-forge create src/PaymentManager.sol:PaymentManager \\
-  --rpc-url $ARC_TESTNET_RPC_URL \\
-  --private-key $PRIVATE_KEY \\
-  --constructor-args $SEU_ENDERECO \\
-  --broadcast
-
-# Deploy do ContractManager
-forge create src/ContractManager.sol:ContractManager \\
-  --rpc-url $ARC_TESTNET_RPC_URL \\
-  --private-key $PRIVATE_KEY \\
-  --constructor-args $SEU_ENDERECO \\
-  --broadcast</code></pre>
-            </div>
-
-            <div class="step-card border border-gray-700/40 rounded-xl p-5">
-              <div class="flex items-center gap-3 mb-3">
-                <div class="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">6</div>
-                <h4 class="text-white font-semibold" data-i18n="deploy_step6">Verify Deploy on Explorer</h4>
-              </div>
-              <p class="text-gray-400 text-sm mb-3" data-i18n="deploy_step6_desc">Confirm the deployment on the Arc Testnet explorer:</p>
-              <a href="https://testnet.arcscan.app" target="_blank" class="inline-flex items-center gap-2 bg-green-700 hover:bg-green-600 text-white rounded-lg px-4 py-2 text-sm transition-colors">
-                <i class="fas fa-search"></i>
-                testnet.arcscan.app
-              </a>
-            </div>
+    <!-- HISTORY TAB -->
+    <div id="tab-content-history" class="tab-content hidden">
+      <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-2xl font-bold text-white flex items-center gap-3">
+              <span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-lg">
+                <i class="fas fa-history"></i>
+              </span>
+              Transaction History
+            </h2>
+            <p class="text-gray-500 text-xs mt-1 ml-13">All on-chain activity · Arc Testnet · Real blockchain data</p>
           </div>
+          <button onclick="if(window.historyInit) window.historyInit()"
+            class="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-600/40 rounded-lg px-3 py-1.5 transition">
+            <i class="fas fa-sync text-[10px]"></i>Refresh
+          </button>
         </div>
 
-        <!-- ABI dos Contratos -->
-        <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-6">
-          <h3 class="text-white font-semibold mb-4 flex items-center gap-2">
-            <i class="fas fa-code text-yellow-400"></i>
-            <span data-i18n="contracts_abi_title">Contract Addresses &amp; ABIs</span>
-          </h3>
-          <div class="space-y-4">
-            <div class="bg-gray-800/60 rounded-lg p-4">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-white font-medium text-sm">USDC (Nativo Arc)</span>
-                <span class="text-xs bg-green-900/50 text-green-400 px-2 py-0.5 rounded" data-i18n="native_token">Native</span>
-              </div>
-              <code class="text-xs text-purple-300 font-mono break-all">0x3600000000000000000000000000000000000000</code>
-            </div>
-            <div class="bg-gray-800/60 rounded-lg p-4">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-white font-medium text-sm">PaymentManager.sol</span>
-                <span class="text-xs bg-purple-900/50 text-purple-400 px-2 py-0.5 rounded" data-i18n="to_deploy">Deploy</span>
-              </div>
-              <code class="text-xs text-gray-400">Functions: createPayment, executePayment, cancelPayment, agentDirectPayment</code>
-            </div>
-            <div class="bg-gray-800/60 rounded-lg p-4">
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-white font-medium text-sm">ContractManager.sol</span>
-                <span class="text-xs bg-blue-900/50 text-blue-400 px-2 py-0.5 rounded" data-i18n="to_deploy">Deploy</span>
-              </div>
-              <code class="text-xs text-gray-400">Functions: createContract, signContract, activateContract, completeMilestone, resolveDispute</code>
-            </div>
-          </div>
+        <!-- Filters -->
+        <div class="flex flex-wrap gap-2 mb-5" id="history-filters">
+          <button onclick="window.historyFilter('all')" data-filter="all"
+            class="history-filter-btn active text-xs px-3 py-1.5 rounded-lg bg-blue-700/40 border border-blue-600/40 text-blue-300 font-semibold transition">
+            <i class="fas fa-th-list mr-1"></i>All
+          </button>
+          <button onclick="window.historyFilter('payment')" data-filter="payment"
+            class="history-filter-btn text-xs px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/40 text-gray-400 hover:text-purple-300 hover:border-purple-700/40 transition">
+            <i class="fas fa-dollar-sign mr-1"></i>Payments
+          </button>
+          <button onclick="window.historyFilter('multisend')" data-filter="multisend"
+            class="history-filter-btn text-xs px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/40 text-gray-400 hover:text-cyan-300 hover:border-cyan-700/40 transition">
+            <i class="fas fa-paper-plane mr-1"></i>MultiSend
+          </button>
+          <button onclick="window.historyFilter('swap')" data-filter="swap"
+            class="history-filter-btn text-xs px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/40 text-gray-400 hover:text-green-300 hover:border-green-700/40 transition">
+            <i class="fas fa-exchange-alt mr-1"></i>Swaps
+          </button>
+          <button onclick="window.historyFilter('contract')" data-filter="contract"
+            class="history-filter-btn text-xs px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/40 text-gray-400 hover:text-yellow-300 hover:border-yellow-700/40 transition">
+            <i class="fas fa-file-contract mr-1"></i>Contracts
+          </button>
+        </div>
+
+        <!-- Wallet gate -->
+        <div id="history-wallet-gate" class="hidden bg-gray-900/60 border border-gray-700/40 rounded-2xl p-10 text-center mb-6">
+          <i class="fas fa-wallet text-4xl text-gray-600 mb-4 block"></i>
+          <h3 class="text-white font-semibold mb-2">Connect wallet to view history</h3>
+          <p class="text-gray-500 text-sm mb-4">Transaction history is fetched from the blockchain using your wallet address.</p>
+          <button onclick="openWalletModal()" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl px-6 py-2.5 transition-all">
+            <i class="fas fa-wallet"></i>Connect Wallet
+          </button>
+        </div>
+
+        <!-- Loading state -->
+        <div id="history-loading" class="hidden text-center py-12">
+          <i class="fas fa-spinner fa-spin text-blue-400 text-3xl mb-4 block"></i>
+          <p class="text-gray-400">Loading transaction history from Arc Testnet…</p>
+        </div>
+
+        <!-- Empty state -->
+        <div id="history-empty" class="hidden text-center py-12">
+          <i class="fas fa-inbox text-4xl text-gray-600 mb-4 block"></i>
+          <p class="text-white font-semibold mb-1">No transactions found</p>
+          <p class="text-gray-500 text-sm">Transactions will appear here after you interact with the app.</p>
+        </div>
+
+        <!-- Transaction list -->
+        <div id="history-list" class="space-y-2"></div>
+
+        <!-- Load more -->
+        <div id="history-load-more" class="hidden text-center mt-6">
+          <button onclick="window.historyLoadMore()"
+            class="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-blue-300 bg-gray-800/60 border border-gray-700/40 rounded-xl px-5 py-2.5 transition">
+            <i class="fas fa-chevron-down"></i>Load more transactions
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->
+    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->
     <div id="tab-content-dex" class="tab-content hidden">
 
       <!-- ── Page Header ─────────────────────────────────────────────────────── -->
@@ -2772,34 +2810,9 @@ forge create src/ContractManager.sol:ContractManager \\
               </div>
             </div>
 
-            <div>
-              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">API Key</label>
-              <div class="relative">
-                <input type="password" id="circle-api-key"
-                  placeholder="TEST_API_KEY:xxxxxxxxxxxx or LIVE_API_KEY:xxxxxxxxxxxx"
-                  autocomplete="off"
-                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none pr-12 font-mono">
-                <button type="button" onclick="toggleFieldVisibility('circle-api-key', this)"
-                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
-                  <i class="fas fa-eye text-xs"></i>
-                </button>
-              </div>
-              <p class="text-xs text-gray-600 mt-1">Leave blank to keep current key</p>
-            </div>
-
-            <div>
-              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Webhook Secret <span class="text-gray-600">(optional)</span></label>
-              <div class="relative">
-                <input type="password" id="circle-webhook-secret"
-                  placeholder="whsec_xxxxxxxxxxxx"
-                  autocomplete="off"
-                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none pr-12 font-mono">
-                <button type="button" onclick="toggleFieldVisibility('circle-webhook-secret', this)"
-                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
-                  <i class="fas fa-eye text-xs"></i>
-                </button>
-              </div>
-            </div>
+            <!-- API Key & Webhook — hidden from UI, managed server-side -->
+            <input type="hidden" id="circle-api-key" value="">
+            <input type="hidden" id="circle-webhook-secret" value="">
 
             <!-- Ações Circle -->
             <div class="flex gap-3 pt-1">
@@ -2841,13 +2854,25 @@ forge create src/ContractManager.sol:ContractManager \\
         <div id="stab-content-appconfig" class="settings-tab-content hidden space-y-5">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-            <div>
-              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Theme</label>
-              <select id="cfg-theme"
-                class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white focus:border-purple-500 focus:outline-none">
-                <option value="dark">🌙 Dark</option>
-                <option value="light">☀️ Light (coming soon)</option>
-              </select>
+            <!-- Light / Dark Mode Toggle -->
+            <div class="sm:col-span-2">
+              <label class="text-xs text-gray-400 uppercase tracking-wider mb-3 block">Appearance</label>
+              <div class="flex items-center gap-4 bg-gray-800/60 border border-gray-700/40 rounded-xl p-4">
+                <div class="flex items-center gap-3 flex-1">
+                  <div id="theme-dark-btn" onclick="setThemeMode('dark')"
+                    class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl cursor-pointer border-2 border-purple-600 bg-purple-900/30 text-purple-300 font-semibold text-sm transition-all">
+                    <i class="fas fa-moon"></i>Dark
+                  </div>
+                  <div id="theme-light-btn" onclick="setThemeMode('light')"
+                    class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl cursor-pointer border-2 border-gray-600 bg-gray-800/40 text-gray-400 font-semibold text-sm transition-all hover:border-yellow-500/50 hover:text-yellow-400">
+                    <i class="fas fa-sun"></i>Light
+                  </div>
+                </div>
+                <div class="text-xs text-gray-600 text-right leading-tight">
+                  <div id="theme-mode-label" class="text-gray-400 font-medium">Dark Mode</div>
+                  <div>active</div>
+                </div>
+              </div>
             </div>
 
             <div>
@@ -3181,7 +3206,7 @@ forge create src/ContractManager.sol:ContractManager \\
   <script src="/static/multisend.js"></script>
   <script src="/static/guardian.js"></script>
   <script src="/static/yield-optimizer.js"></script>
-
+  <script src="/static/history.js"></script>
   <script src="/static/chat.js"></script>
   <script>
     // ── ethers.js availability check ──────────────────────────────────────────

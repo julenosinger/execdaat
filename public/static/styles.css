@@ -1237,3 +1237,131 @@ details > summary .fa-chevron-down { transition: transform 0.2s ease; }
   from { transform: scale(0); }
   to   { transform: scale(1); }
 }
+
+/* ============================================================
+   LIGHT MODE
+   ============================================================ */
+body.light-mode {
+  background-color: #f3f4f6 !important;
+  color: #111827 !important;
+}
+body.light-mode .bg-gray-950,
+body.light-mode .bg-gray-900\/95,
+body.light-mode .bg-gray-900\/60,
+body.light-mode .bg-gray-900\/80 {
+  background-color: #ffffff !important;
+}
+body.light-mode header {
+  background: rgba(255,255,255,0.97) !important;
+  border-bottom-color: #e5e7eb !important;
+}
+body.light-mode .bg-gray-900 {
+  background-color: #f9fafb !important;
+}
+body.light-mode .bg-gray-800 {
+  background-color: #f3f4f6 !important;
+}
+body.light-mode .bg-gray-800\/60,
+body.light-mode .bg-gray-800\/40,
+body.light-mode .bg-gray-800\/80 {
+  background-color: rgba(229,231,235,0.8) !important;
+}
+body.light-mode .text-white {
+  color: #111827 !important;
+}
+body.light-mode .text-gray-100,
+body.light-mode .text-gray-200,
+body.light-mode .text-gray-300 {
+  color: #374151 !important;
+}
+body.light-mode .text-gray-400 {
+  color: #6b7280 !important;
+}
+body.light-mode .text-gray-500 {
+  color: #9ca3af !important;
+}
+body.light-mode .text-gray-600 {
+  color: #d1d5db !important;
+}
+body.light-mode .border-gray-700,
+body.light-mode .border-gray-700\/40,
+body.light-mode .border-gray-800,
+body.light-mode .border-gray-800\/60 {
+  border-color: #e5e7eb !important;
+}
+body.light-mode .tab-btn {
+  color: #6b7280;
+}
+body.light-mode .tab-btn.active {
+  color: #7c3aed !important;
+  border-color: #7c3aed !important;
+}
+body.light-mode input,
+body.light-mode select,
+body.light-mode textarea {
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+  color: #111827 !important;
+}
+body.light-mode .bg-gray-950\/90 {
+  background-color: rgba(255,255,255,0.97) !important;
+}
+body.light-mode #toast .bg-gray-800 {
+  background: #ffffff !important;
+  border-color: #e5e7eb !important;
+  color: #111827 !important;
+}
+/* Settings/Modal in light mode */
+body.light-mode #settings-modal .bg-gray-900,
+body.light-mode #profile-modal .bg-gray-900,
+body.light-mode #wallet-modal .bg-gray-900,
+body.light-mode #pin-modal .bg-gray-900 {
+  background: #ffffff !important;
+}
+/* History filter button active */
+body.light-mode .history-filter-btn.active {
+  background: rgba(109,40,217,0.15) !important;
+  border-color: rgba(109,40,217,0.4) !important;
+  color: #5b21b6 !important;
+}
+
+/* Theme toggle buttons */
+#theme-dark-btn, #theme-light-btn {
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+body.light-mode #theme-dark-btn {
+  border-color: #9ca3af !important;
+  background: rgba(209,213,219,0.3) !important;
+  color: #6b7280 !important;
+}
+body.light-mode #theme-light-btn {
+  border-color: #f59e0b !important;
+  background: rgba(251,191,36,0.15) !important;
+  color: #d97706 !important;
+}
+
+/* History tx row */
+.history-tx-row {
+  transition: all 0.15s ease;
+}
+.history-tx-row:hover {
+  background: rgba(139,92,246,0.05) !important;
+}
+.history-filter-btn.active {
+  box-shadow: 0 0 0 1px rgba(96,165,250,0.4);
+}
+
+/* Multisend step progress */
+.ms-step {
+  transition: all 0.3s ease;
+}
+.ms-step.active {
+  border-color: rgba(6,182,212,0.6) !important;
+  background: rgba(6,182,212,0.05) !important;
+}
+.ms-step.done {
+  border-color: rgba(16,185,129,0.6) !important;
+  background: rgba(16,185,129,0.05) !important;
+}

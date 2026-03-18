@@ -1,6 +1,8 @@
 // ============================================================
-// MULTISEND MODULE — ARC AI Agents
-// Standalone batch payments with receipt emission
+// MULTISEND MODULE — ARC AI Agents  (3-Step Flow)
+// Step 1: Build recipient list
+// Step 2: Review & confirm
+// Step 3: Pay single platform fee → send all transfers
 // Arc Testnet (chainId 5042002) | USDC native gas token
 // ============================================================
 'use strict';
@@ -10,18 +12,114 @@ const MS_MAX_AMOUNT_ROW = 10000;
 const MS_USDC_ADDR      = '0x3600000000000000000000000000000000000000';
 const MS_EXPLORER       = 'https://testnet.arcscan.app';
 const MS_CHAIN_ID       = 5042002;
+// Platform fee wallet (receives the single fee payment)
+const MS_FEE_WALLET     = '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A';
+// Fee tiers: 1% base, -0.1% per 10 recipients beyond 10 (min 0.3%)
+const MS_FEE_BASE       = 0.01;   // 1%
+const MS_FEE_MIN        = 0.003;  // 0.3%
+const MS_FEE_DISCOUNT   = 0.001;  // 0.1% per 10 extra recipients
 
 let msRowCounter  = 0;
 let msBatchesSent = 0;
-const msReceipts  = [];  // local receipt store
+const msReceipts  = [];
+let msCurrentStep = 1;
+let msValidatedRows = [];  // set when proceeding to step 2
+
+// ─── Fee calculator ───────────────────────────────────────────────────────────
+function msCalcFee(total, count) {
+  if (!count || !total) return 0;
+  const discount = Math.floor(Math.max(0, count - 10) / 10) * MS_FEE_DISCOUNT;
+  const rate     = Math.max(MS_FEE_MIN, MS_FEE_BASE - discount);
+  return +(total * rate).toFixed(6);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function msEl(id)       { return document.getElementById(id); }
 function msIsAddr(addr) { return /^0x[0-9a-fA-F]{40}$/.test(String(addr || '').trim()); }
-function msFmt4(n)      { return Number(n || 0).toFixed(4); }
 function msFmt2(n)      { return Number(n || 0).toFixed(2); }
+function msFmt4(n)      { return Number(n || 0).toFixed(4); }
 function msShort(h)     { return h ? h.slice(0, 12) + '…' + h.slice(-8) : '—'; }
 function msNow()        { return new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+
+// ─── Step bar UI ──────────────────────────────────────────────────────────────
+function msSetStep(step) {
+  msCurrentStep = step;
+  [1, 2, 3].forEach(s => {
+    const panel = msEl(`ms-panel-step${s}`);
+    const barEl = msEl(`ms-bar-step${s}`);
+    const numEl = barEl?.querySelector('div');
+    const lblEl = barEl?.querySelector('span');
+
+    if (panel) panel.classList.toggle('hidden', s !== step);
+
+    if (!numEl) return;
+    if (s < step) {
+      // Done
+      numEl.className = 'w-9 h-9 rounded-full border-2 border-green-500 bg-green-900/30 flex items-center justify-center font-bold text-green-400 text-sm transition-all';
+      numEl.innerHTML = '<i class="fas fa-check text-xs"></i>';
+      if (lblEl) lblEl.className = 'text-xs text-green-400 font-medium';
+      // line after done
+      const line = msEl(`ms-bar-line${s}`);
+      if (line) line.className = 'flex-1 h-0.5 bg-green-600 mx-1 transition-all';
+    } else if (s === step) {
+      // Active
+      numEl.className = 'w-9 h-9 rounded-full border-2 border-cyan-500 bg-cyan-900/30 flex items-center justify-center font-bold text-cyan-400 text-sm transition-all';
+      numEl.textContent = s;
+      if (lblEl) lblEl.className = 'text-xs text-cyan-400 font-medium';
+    } else {
+      // Future
+      numEl.className = 'w-9 h-9 rounded-full border-2 border-gray-600 bg-gray-800/40 flex items-center justify-center font-bold text-gray-500 text-sm transition-all';
+      numEl.textContent = s;
+      if (lblEl) lblEl.className = 'text-xs text-gray-500 font-medium';
+      const line = msEl(`ms-bar-line${s - 1}`);
+      if (line) line.className = 'flex-1 h-0.5 bg-gray-700 mx-1';
+    }
+  });
+}
+
+// ─── Tx lifecycle step helpers ─────────────────────────────────────────────────
+function msTxStep(n, state, detail) {
+  const row     = msEl(`ms-txstep-${n}`);
+  const icon    = msEl(`ms-txstep-${n}-icon`);
+  const status  = msEl(`ms-txstep-${n}-status`);
+  if (!row) return;
+
+  row.className = 'ms-tx-step flex items-center gap-3 p-3 rounded-xl border ' + (
+    state === 'active' ? 'bg-cyan-900/10 border-cyan-700/40' :
+    state === 'done'   ? 'bg-green-900/10 border-green-700/40' :
+    state === 'error'  ? 'bg-red-900/10 border-red-700/40' :
+    'bg-gray-800/40 border-gray-700/30'
+  );
+
+  if (icon) {
+    icon.className = 'w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 text-xs ' + (
+      state === 'active' ? 'border-cyan-500 text-cyan-400 animate-pulse' :
+      state === 'done'   ? 'border-green-500 text-green-400' :
+      state === 'error'  ? 'border-red-500 text-red-400' :
+      'border-gray-600 text-gray-500'
+    );
+    icon.innerHTML = state === 'done' ? '<i class="fas fa-check text-[10px]"></i>' :
+                     state === 'error' ? '<i class="fas fa-times text-[10px]"></i>' :
+                     state === 'active' ? '<i class="fas fa-spinner fa-spin text-[10px]"></i>' : n;
+  }
+
+  if (status) {
+    status.textContent = detail || (state === 'active' ? 'In progress…' : state === 'done' ? 'Done' : state === 'error' ? 'Failed' : 'Waiting…');
+    status.className   = 'text-xs ms-txstep-status ' + (
+      state === 'done'  ? 'text-green-400' :
+      state === 'error' ? 'text-red-400' :
+      state === 'active'? 'text-cyan-400' :
+      'text-gray-600'
+    );
+  }
+}
+
+// Reset tx steps to waiting
+function msTxStepsReset() {
+  [1,2,3].forEach(n => msTxStep(n, 'wait'));
+  const fin = msEl('ms-final-result');
+  if (fin) { fin.classList.add('hidden'); fin.innerHTML = ''; }
+}
 
 // ─── Update stats / summary ───────────────────────────────────────────────────
 function msUpdateStats() {
@@ -33,19 +131,23 @@ function msUpdateStats() {
     if (msIsAddr(addr) && amt > 0) valid.push({ addr, amt });
   });
 
-  const total     = valid.reduce((s, r) => s + r.amt, 0);
-  const count     = valid.length;
-  const rowCount  = rows.length;
+  const total    = valid.reduce((s, r) => s + r.amt, 0);
+  const count    = valid.length;
+  const rowCount = rows.length;
+  const fee      = msCalcFee(total, count);
+  const feePct   = count > 0 ? Math.max(MS_FEE_MIN, MS_FEE_BASE - Math.floor(Math.max(0,count-10)/10)*MS_FEE_DISCOUNT) : MS_FEE_BASE;
 
-  // Stats bar
   const statR = msEl('ms-stat-recipients'); if (statR) statR.textContent = count;
   const statT = msEl('ms-stat-total');      if (statT) statT.textContent = '$' + msFmt2(total);
+  const statF = msEl('ms-stat-fee');        if (statF) statF.textContent = '$' + msFmt2(fee);
   const statB = msEl('ms-stat-batches');    if (statB) statB.textContent = msBatchesSent;
   const rowCt = msEl('ms-row-count');       if (rowCt) rowCt.textContent = rowCount + ' row' + (rowCount !== 1 ? 's' : '');
 
-  // Summary panel
-  const sumC = msEl('ms-summary-count'); if (sumC) sumC.textContent = count + ' recipient' + (count !== 1 ? 's' : '');
-  const sumT = msEl('ms-summary-total'); if (sumT) sumT.textContent = '$' + msFmt2(total) + ' USDC';
+  const sumC  = msEl('ms-summary-count');  if (sumC) sumC.textContent = count + ' recipient' + (count !== 1 ? 's' : '');
+  const sumT  = msEl('ms-summary-total');  if (sumT) sumT.textContent = '$' + msFmt2(total) + ' USDC';
+  const sumF  = msEl('ms-summary-fee');    if (sumF) sumF.textContent = '$' + msFmt2(fee) + ' USDC';
+  const sumFP = msEl('ms-fee-pct');        if (sumFP) sumFP.textContent = '(' + (feePct*100).toFixed(1) + '%)';
+  const sumG  = msEl('ms-summary-grand');  if (sumG) sumG.textContent = '$' + msFmt2(total + fee) + ' USDC';
 }
 
 // ─── Add a row ────────────────────────────────────────────────────────────────
@@ -100,29 +202,89 @@ function msValidateAddr(input) {
 
 // ─── Collect valid rows ────────────────────────────────────────────────────────
 function msCollectRows() {
-  const rows    = document.querySelectorAll('.ms-row');
-  const valid   = [];
-  const errors  = [];
-  const from    = msEl('ms-from')?.value?.trim();
-  const priority = msEl('ms-priority')?.value || 'medium';
+  const rows   = document.querySelectorAll('.ms-row');
+  const valid  = [];
+  const errors = [];
+  const from   = msEl('ms-from')?.value?.trim();
 
   rows.forEach((row, i) => {
     const addr = row.querySelector('.ms-addr')?.value?.trim();
     const amt  = parseFloat(row.querySelector('.ms-amt')?.value || '0');
     const note = row.querySelector('.ms-note')?.value?.trim() || '';
 
-    if (!addr && !amt) return; // skip empty rows
+    if (!addr && !amt) return;
     const errs = [];
-    if (!addr)           errs.push('Address required');
+    if (!addr)              errs.push('Address required');
     else if (!msIsAddr(addr)) errs.push('Invalid EVM address');
-    if (!amt || amt <= 0) errs.push('Amount must be > 0');
+    if (!amt || amt <= 0)   errs.push('Amount must be > 0');
     else if (amt > MS_MAX_AMOUNT_ROW) errs.push(`Amount exceeds max $${MS_MAX_AMOUNT_ROW}`);
 
     if (errs.length) errors.push(`Row ${i + 1}: ${errs.join(', ')}`);
-    else valid.push({ address: addr, amount: amt, note, priority, from });
+    else valid.push({ address: addr, amount: amt, note, from });
   });
 
   return { valid, errors, from };
+}
+
+// ─── Step 1 → Step 2 ──────────────────────────────────────────────────────────
+function msProceedToReview() {
+  const { valid, errors, from } = msCollectRows();
+
+  if (errors.length)  { showToast(errors[0], 'warning'); return; }
+  if (!valid.length)  { showToast('Add at least one valid recipient.', 'warning'); return; }
+  if (!from || !msIsAddr(from)) { showToast('Sender wallet address not valid.', 'warning'); return; }
+
+  if (!window.walletState?.connected) {
+    showToast('Please connect your wallet first.', 'warning');
+    if (typeof openWalletModal === 'function') openWalletModal();
+    return;
+  }
+
+  msValidatedRows = valid;
+  const total = valid.reduce((s, r) => s + r.amount, 0);
+  const fee   = msCalcFee(total, valid.length);
+  const grand = total + fee;
+  const feePct = Math.max(MS_FEE_MIN, MS_FEE_BASE - Math.floor(Math.max(0,valid.length-10)/10)*MS_FEE_DISCOUNT);
+
+  // Populate review table
+  const tbl = msEl('ms-review-table');
+  if (tbl) {
+    tbl.innerHTML = valid.map((r, i) => `
+      <div class="flex items-center gap-2 py-1.5 border-b border-gray-700/20 last:border-0 text-xs">
+        <span class="text-gray-600 w-5 flex-shrink-0">${i + 1}.</span>
+        <span class="font-mono text-gray-400 flex-1 truncate">${msShort(r.address)}</span>
+        <span class="text-cyan-400 font-medium w-20 text-right">$${msFmt2(r.amount)}</span>
+        ${r.note ? `<span class="text-gray-600 text-[10px] max-w-[80px] truncate">${r.note}</span>` : ''}
+      </div>`).join('');
+  }
+
+  const rC = msEl('ms-review-count'); if (rC) rC.textContent = valid.length;
+  const rT = msEl('ms-review-total'); if (rT) rT.textContent = '$' + msFmt2(total) + ' USDC';
+  const rF = msEl('ms-review-fee');   if (rF) rF.textContent = '$' + msFmt2(fee) + ' USDC (' + (feePct*100).toFixed(1) + '%)';
+  const rG = msEl('ms-review-grand'); if (rG) rG.textContent = '$' + msFmt2(grand) + ' USDC';
+
+  msSetStep(2);
+}
+
+// ─── Step 2 → Step 3 ──────────────────────────────────────────────────────────
+function msProceedToSend() {
+  msTxStepsReset();
+  const total = msValidatedRows.reduce((s, r) => s + r.amount, 0);
+  const label = msEl('ms-txstep-3-label');
+  if (label) label.textContent = `Send Transfers (0 / ${msValidatedRows.length})`;
+
+  const backBtn = msEl('ms-step3-back');
+  const execBtn = msEl('ms-execute-btn');
+  if (backBtn) backBtn.disabled = false;
+  if (execBtn) { execBtn.disabled = false; execBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Pay Fee &amp; Send All'; }
+
+  msSetStep(3);
+}
+
+// ─── Go back to previous step ─────────────────────────────────────────────────
+function msGoBack() {
+  if (msCurrentStep === 2) msSetStep(1);
+  else if (msCurrentStep === 3) msSetStep(2);
 }
 
 // ─── CSV parsing ──────────────────────────────────────────────────────────────
@@ -188,7 +350,6 @@ function msHandleCSV(file) {
         }
       });
 
-      // Auto-fill sender
       const wallet = window.walletState?.address;
       const fromEl = msEl('ms-from');
       if (fromEl && !fromEl.value && wallet) fromEl.value = wallet;
@@ -216,172 +377,184 @@ function msDownloadTemplate() {
   a.click(); URL.revokeObjectURL(url);
 }
 
-// ─── AI Analysis ──────────────────────────────────────────────────────────────
-async function msAnalyze() {
-  const { valid, errors, from } = msCollectRows();
-  if (!valid.length) { showToast('Add at least one valid recipient.', 'warning'); return; }
+// ─── Execute: Step 3 — Pay fee then send all transfers ────────────────────────
+async function msExecute() {
+  const execBtn  = msEl('ms-execute-btn');
+  const backBtn  = msEl('ms-step3-back');
+  const finEl    = msEl('ms-final-result');
+  const from     = msEl('ms-from')?.value?.trim();
 
-  const resultEl  = msEl('ms-analysis-result');
-  const contentEl = msEl('ms-analysis-content');
-  if (resultEl) resultEl.classList.remove('hidden');
-  if (contentEl) contentEl.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Analyzing…';
-
-  try {
-    const totalAmount = valid.reduce((s, r) => s + r.amount, 0);
-    const res = await axios.post('/api/payments/analyze', {
-      payments: valid, totalAmount, from,
-    });
-    const d   = res.data;
-    const riskColors = { low: 'text-green-400', medium: 'text-yellow-400', high: 'text-orange-400', critical: 'text-red-400' };
-    const rl = d.decision?.riskLevel || 'unknown';
-    if (contentEl) contentEl.innerHTML = `
-      <div class="space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-gray-400">Decision</span>
-          <span class="font-semibold ${d.decision?.action === 'approve' ? 'text-green-400' : 'text-red-400'}">${d.decision?.action?.toUpperCase() || '—'}</span>
-        </div>
-        <div class="flex items-center justify-between">
-          <span class="text-gray-400">Risk Level</span>
-          <span class="${riskColors[rl] || 'text-gray-400'}">${rl}</span>
-        </div>
-        <div class="flex items-center justify-between">
-          <span class="text-gray-400">Confidence</span>
-          <span class="text-white">${d.decision?.confidence || 0}%</span>
-        </div>
-        ${d.decision?.reasoning ? `<p class="text-gray-500 text-[11px] pt-1 border-t border-gray-700/30">${d.decision.reasoning.slice(0, 120)}…</p>` : ''}
-      </div>`;
-  } catch (e) {
-    if (contentEl) contentEl.innerHTML = `<span class="text-red-400">Analysis failed: ${e.message}</span>`;
-  }
-}
-
-// ─── Submit batch — real on-chain ERC-20 transfers ───────────────────────────
-async function msSubmit() {
-  const { valid, errors, from } = msCollectRows();
-
-  if (errors.length)        { showToast(errors[0], 'warning'); return; }
-  if (!valid.length)        { showToast('Add at least one valid recipient.', 'warning'); return; }
-  if (!from || !msIsAddr(from)) { showToast('Sender address not valid.', 'warning'); return; }
-
-  // ── 0. Wallet check ───────────────────────────────────────────────────────
-  if (!window.ethereum) {
-    showToast('MetaMask or compatible wallet not detected.', 'error'); return;
-  }
+  if (!msValidatedRows.length) { showToast('No validated recipients.', 'warning'); return; }
+  if (!window.ethereum)        { showToast('Wallet not detected.', 'error'); return; }
   if (!window.walletState?.connected) {
-    showToast('Please connect your wallet before sending.', 'warning');
+    showToast('Connect your wallet first.', 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
 
-  // ── 0b. Network check ─────────────────────────────────────────────────────
-  const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
-  if (parseInt(chainHex, 16) !== MS_CHAIN_ID) {
-    showToast('Wrong network. Please switch to Arc Testnet (chainId 5042002).', 'error');
-    try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0x4CE612' }],
-      });
-    } catch (e) { /* user declined */ }
-    return;
-  }
+  if (execBtn) { execBtn.disabled = true; execBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing…'; }
+  if (backBtn) backBtn.disabled = true;
+  if (finEl)   { finEl.classList.add('hidden'); finEl.innerHTML = ''; }
 
-  const btn       = msEl('ms-send-btn');
-  const origLabel = '<i class="fas fa-paper-plane mr-2"></i>Send All';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing…'; }
-
-  const totalAmount = valid.reduce((s, r) => s + r.amount, 0);
-  const hashes      = [];     // collect tx hashes
-  const results     = [];     // {address, amount, note, txHash, status}
-  const batchId     = `BATCH-${Date.now().toString(36).toUpperCase()}`;
+  const total    = msValidatedRows.reduce((s, r) => s + r.amount, 0);
+  const fee      = msCalcFee(total, msValidatedRows.length);
+  const grand    = total + fee;
+  const decimals = 6;
+  const batchId  = `BATCH-${Date.now().toString(36).toUpperCase()}`;
 
   try {
-    const ethers   = window.ethers;
+    const ethers = window.ethers;
     if (!ethers) throw new Error('ethers.js not loaded');
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer   = await provider.getSigner();
 
-    // ── ERC-20 ABI ─────────────────────────────────────────────────────────
-    const ERC20_ABI = [
-      'function balanceOf(address) view returns (uint256)',
-      'function allowance(address owner, address spender) view returns (uint256)',
-      'function transfer(address to, uint256 amount) returns (bool)',
-      'function decimals() view returns (uint8)',
-    ];
-    const usdc     = new ethers.Contract(MS_USDC_ADDR, ERC20_ABI, signer);
-    const decimals = 6;   // USDC always 6
+    // ── Step 1: Verify network + balance ─────────────────────────────────────
+    msTxStep(1, 'active', 'Checking Arc Testnet and USDC balance…');
 
-    // ── 1. Balance check ──────────────────────────────────────────────────
-    if (btn) btn.innerHTML = '<i class="fas fa-coins fa-spin mr-2"></i>Checking USDC balance…';
-    const bal      = await usdc.balanceOf(from);
-    const required = ethers.parseUnits(totalAmount.toFixed(decimals), decimals);
-    if (bal < required) {
-      const have = Number(ethers.formatUnits(bal, decimals)).toFixed(2);
-      showToast(`Insufficient USDC. Have $${have}, need $${msFmt2(totalAmount)}.`, 'error');
-      if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+    const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
+    if (parseInt(chainHex, 16) !== MS_CHAIN_ID) {
+      msTxStep(1, 'error', `Wrong network (got chainId ${parseInt(chainHex,16)}). Expected Arc Testnet 5042002.`);
+      showToast('Wrong network. Switching to Arc Testnet…', 'error');
+      try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x4CE612' }] }); }
+      catch (e) { /* user declined */ }
+      if (execBtn) { execBtn.disabled = false; execBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Pay Fee &amp; Send All'; }
+      if (backBtn) backBtn.disabled = false;
       return;
     }
 
-    // ── 2. Send transfers one-by-one ──────────────────────────────────────
-    if (btn) btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Sending 0 / ${valid.length}…`;
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer   = await provider.getSigner();
+    const ERC20_ABI = [
+      'function balanceOf(address) view returns (uint256)',
+      'function transfer(address to, uint256 amount) returns (bool)',
+    ];
+    const usdc = new ethers.Contract(MS_USDC_ADDR, ERC20_ABI, signer);
 
-    for (let i = 0; i < valid.length; i++) {
-      const p = valid[i];
-      if (btn) btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Sending ${i + 1} / ${valid.length}…`;
+    const bal      = await usdc.balanceOf(from);
+    const required = ethers.parseUnits(grand.toFixed(decimals), decimals);
+
+    if (bal < required) {
+      const have = Number(ethers.formatUnits(bal, decimals)).toFixed(2);
+      msTxStep(1, 'error', `Insufficient USDC. Have $${have}, need $${msFmt2(grand)}.`);
+      showToast(`Insufficient USDC. Have $${have}, need $${msFmt2(grand)}.`, 'error');
+      if (execBtn) { execBtn.disabled = false; execBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Pay Fee &amp; Send All'; }
+      if (backBtn) backBtn.disabled = false;
+      return;
+    }
+
+    msTxStep(1, 'done', `Balance OK · $${Number(ethers.formatUnits(bal, decimals)).toFixed(2)} USDC`);
+
+    // ── Step 2: Pay single platform fee ──────────────────────────────────────
+    let feeTxHash = null;
+    if (fee > 0) {
+      msTxStep(2, 'active', `Sending fee $${msFmt2(fee)} USDC to platform…`);
+      const feeAmt = ethers.parseUnits(fee.toFixed(decimals), decimals);
+      const feeTx  = await usdc.transfer(MS_FEE_WALLET, feeAmt);
+      msTxStep(2, 'active', `Waiting for confirmation · tx ${feeTx.hash.slice(0,12)}…`);
+      const feeRcpt = await feeTx.wait(1);
+      feeTxHash = feeTx.hash;
+      msTxStep(2, 'done', `Fee confirmed · <a href="${MS_EXPLORER}/tx/${feeTx.hash}" target="_blank" class="underline text-blue-400">view on ArcScan</a>`);
+    } else {
+      msTxStep(2, 'done', 'No fee for this batch.');
+    }
+
+    // ── Step 3: Send individual transfers ──────────────────────────────────
+    const label = msEl('ms-txstep-3-label');
+    msTxStep(3, 'active', `Sending transfers 0 / ${msValidatedRows.length}…`);
+    if (label) label.textContent = `Send Transfers (0 / ${msValidatedRows.length})`;
+
+    const hashes  = [];
+    const results = [];
+
+    for (let i = 0; i < msValidatedRows.length; i++) {
+      const p = msValidatedRows[i];
+      if (label) label.textContent = `Send Transfers (${i + 1} / ${msValidatedRows.length})`;
+      msTxStep(3, 'active', `Sending ${i + 1}/${msValidatedRows.length} → ${msShort(p.address)} $${msFmt2(p.amount)} USDC`);
+
       try {
-        const amt   = ethers.parseUnits(Number(p.amount).toFixed(decimals), decimals);
-        const tx    = await usdc.transfer(p.address, amt);
-        if (btn) btn.innerHTML = `<i class="fas fa-clock fa-spin mr-2"></i>Confirming ${i + 1} / ${valid.length}…`;
-        const receipt = await tx.wait(1);
+        const amt    = ethers.parseUnits(Number(p.amount).toFixed(decimals), decimals);
+        const tx     = await usdc.transfer(p.address, amt);
+        const receipt= await tx.wait(1);
         hashes.push(tx.hash);
-        results.push({ address: p.address, amount: p.amount, note: p.note || '', txHash: tx.hash, status: 'confirmed' });
-        addLog(`[MULTISEND] ✅ ${i + 1}/${valid.length} → ${p.address.slice(0, 10)}… $${msFmt2(p.amount)} USDC · tx ${tx.hash.slice(0, 12)}…`, 'success');
+        results.push({ address: p.address, amount: p.amount, note: p.note||'', txHash: tx.hash, status: 'confirmed' });
+        if (typeof addLog === 'function') addLog(`[MULTISEND] ✅ ${i+1}/${msValidatedRows.length} → ${p.address.slice(0,10)}… $${msFmt2(p.amount)} USDC · ${tx.hash.slice(0,12)}…`, 'success');
       } catch (e) {
         const errMsg = e.reason || e.message || 'Transaction failed';
         if (e.code === 4001 || errMsg.includes('rejected') || errMsg.includes('denied')) {
           showToast(`Transaction ${i + 1} rejected by user. Stopping batch.`, 'warning');
-          results.push({ address: p.address, amount: p.amount, note: p.note || '', txHash: null, status: 'rejected' });
+          results.push({ address: p.address, amount: p.amount, note: p.note||'', txHash: null, status: 'rejected' });
           break;
         }
-        results.push({ address: p.address, amount: p.amount, note: p.note || '', txHash: null, status: 'failed', error: errMsg });
-        addLog(`[MULTISEND] ❌ ${i + 1}/${valid.length} → ${p.address.slice(0, 10)}… failed: ${errMsg}`, 'error');
+        results.push({ address: p.address, amount: p.amount, note: p.note||'', txHash: null, status: 'failed', error: errMsg });
+        if (typeof addLog === 'function') addLog(`[MULTISEND] ❌ ${i+1}/${msValidatedRows.length} → ${p.address.slice(0,10)}… failed: ${errMsg}`, 'error');
       }
     }
 
     const confirmedCount  = results.filter(r => r.status === 'confirmed').length;
     const confirmedAmount = results.filter(r => r.status === 'confirmed').reduce((s, r) => s + r.amount, 0);
+    const allOk           = confirmedCount === msValidatedRows.length;
+
+    if (label) label.textContent = `Send Transfers (${confirmedCount} / ${msValidatedRows.length} confirmed)`;
+    msTxStep(3, allOk ? 'done' : 'error',
+      `${confirmedCount}/${msValidatedRows.length} confirmed · $${msFmt2(confirmedAmount)} USDC`);
 
     msBatchesSent++;
 
-    // ── 3. Build receipt ──────────────────────────────────────────────────
-    const receipt = {
-      id:          `ms-${Date.now()}`,
+    // ── Build receipt ─────────────────────────────────────────────────────────
+    const receiptObj = {
+      id:           `ms-${Date.now()}`,
       batchId,
-      timestamp:   new Date().toISOString(),
+      timestamp:    new Date().toISOString(),
       from,
-      network:     'Arc Testnet',
-      chainId:     MS_CHAIN_ID,
-      token:       'USDC',
-      count:       confirmedCount,
-      totalAmount: msFmt2(confirmedAmount),
-      recipients:  results,
-      // Primary tx hash = first confirmed hash
-      txHash:      hashes[0] || null,
-      explorerUrl: hashes[0] ? `${MS_EXPLORER}/tx/${hashes[0]}` : MS_EXPLORER,
-      status:      confirmedCount === valid.length ? 'confirmed' : 'partial',
-      allHashes:   hashes,
+      network:      'Arc Testnet',
+      chainId:      MS_CHAIN_ID,
+      token:        'USDC',
+      count:        confirmedCount,
+      totalAmount:  msFmt2(confirmedAmount),
+      fee:          msFmt2(fee),
+      feeTxHash:    feeTxHash,
+      grandTotal:   msFmt2(confirmedAmount + fee),
+      governmentFee:'—',
+      recipients:   results,
+      txHash:       hashes[0] || null,
+      explorerUrl:  hashes[0] ? `${MS_EXPLORER}/tx/${hashes[0]}` : MS_EXPLORER,
+      status:       allOk ? 'confirmed' : 'partial',
+      allHashes:    hashes,
     };
-    msReceipts.unshift(receipt);
+    msReceipts.unshift(receiptObj);
     msRenderReceipts();
 
-    if (confirmedCount === valid.length) {
-      showToast(`✅ ${confirmedCount} transfers confirmed · $${msFmt2(confirmedAmount)} USDC`, 'success');
-    } else {
-      showToast(`⚠️ ${confirmedCount}/${valid.length} transfers confirmed · $${msFmt2(confirmedAmount)} USDC`, 'warning');
+    // ── Final result banner ───────────────────────────────────────────────────
+    if (finEl) {
+      finEl.classList.remove('hidden');
+      finEl.className = `rounded-xl p-4 mb-4 ${allOk ? 'bg-green-900/20 border border-green-700/30' : 'bg-yellow-900/20 border border-yellow-700/30'}`;
+      finEl.innerHTML = `
+        <div class="flex items-start gap-3">
+          <i class="fas ${allOk ? 'fa-check-circle text-green-400' : 'fa-exclamation-triangle text-yellow-400'} text-xl mt-0.5"></i>
+          <div>
+            <div class="font-semibold ${allOk ? 'text-green-300' : 'text-yellow-300'} mb-1">
+              ${allOk ? `✅ Batch complete! ${confirmedCount} transfers confirmed.` : `⚠️ Partial: ${confirmedCount}/${msValidatedRows.length} confirmed.`}
+            </div>
+            <div class="text-xs text-gray-400 space-y-0.5">
+              <div>Amount sent: <span class="text-white font-medium">$${msFmt2(confirmedAmount)} USDC</span></div>
+              <div>Platform fee paid: <span class="text-yellow-300">$${msFmt2(fee)} USDC</span></div>
+              <div>Government fee: <span class="text-gray-500">—</span></div>
+              ${hashes[0] ? `<div>First tx: <a href="${MS_EXPLORER}/tx/${hashes[0]}" target="_blank" class="text-blue-400 hover:underline font-mono">${hashes[0].slice(0,18)}…</a></div>` : ''}
+              ${feeTxHash ? `<div>Fee tx: <a href="${MS_EXPLORER}/tx/${feeTxHash}" target="_blank" class="text-yellow-400 hover:underline font-mono">${feeTxHash.slice(0,18)}…</a></div>` : ''}
+            </div>
+          </div>
+        </div>`;
     }
 
-    // Reset rows after success
-    if (confirmedCount > 0) msInitRows();
+    showToast(
+      allOk
+        ? `✅ ${confirmedCount} transfers confirmed · $${msFmt2(confirmedAmount)} USDC · Fee $${msFmt2(fee)}`
+        : `⚠️ ${confirmedCount}/${msValidatedRows.length} confirmed · $${msFmt2(confirmedAmount)} USDC`,
+      allOk ? 'success' : 'warning'
+    );
+
+    if (allOk) {
+      msInitRows();
+      msValidatedRows = [];
+    }
 
     const statB = msEl('ms-stat-batches'); if (statB) statB.textContent = msBatchesSent;
     if (typeof loadDashboard === 'function') setTimeout(loadDashboard, 1500);
@@ -389,10 +562,11 @@ async function msSubmit() {
   } catch (e) {
     const msg = e.reason || e.message || 'Unknown error';
     showToast('Error: ' + msg, 'error');
-    addLog('[MULTISEND] Error: ' + msg, 'error');
+    if (typeof addLog === 'function') addLog('[MULTISEND] Error: ' + msg, 'error');
     console.error('[MULTISEND]', e);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+    if (execBtn) { execBtn.disabled = false; execBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Pay Fee &amp; Send All'; }
+    if (backBtn) backBtn.disabled = false;
   }
 }
 
@@ -431,14 +605,22 @@ function msRenderReceipts() {
           <div class="text-gray-600 text-xs">${r.count} recipient${r.count !== 1 ? 's' : ''}</div>
         </div>
       </div>
-      <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs mb-3">
         <div class="bg-gray-900/40 rounded-lg px-3 py-2">
           <div class="text-gray-600 text-[10px] mb-0.5 uppercase">From</div>
           <div class="font-mono text-cyan-400">${msShort(r.from)}</div>
         </div>
         <div class="bg-gray-900/40 rounded-lg px-3 py-2">
           <div class="text-gray-600 text-[10px] mb-0.5 uppercase">Network</div>
-          <div class="text-green-400">${r.network} · ${r.chainId}</div>
+          <div class="text-green-400">${r.network}</div>
+        </div>
+        <div class="bg-gray-900/40 rounded-lg px-3 py-2">
+          <div class="text-gray-600 text-[10px] mb-0.5 uppercase">Platform Fee</div>
+          <div class="text-yellow-400">$${r.fee || '0.00'}</div>
+        </div>
+        <div class="bg-gray-900/40 rounded-lg px-3 py-2">
+          <div class="text-gray-600 text-[10px] mb-0.5 uppercase">Gov. Fee</div>
+          <div class="text-gray-500">${r.governmentFee || '—'}</div>
         </div>
       </div>
       ${r.txHash ? `
@@ -446,8 +628,10 @@ function msRenderReceipts() {
         <span class="text-gray-600">Primary Tx</span>
         <a href="${r.explorerUrl}" target="_blank" rel="noopener" class="text-blue-400 hover:underline">${msShort(r.txHash)} <i class="fas fa-external-link-alt text-[10px]"></i></a>
       </div>
-      ${(r.allHashes && r.allHashes.length > 1) ? `<div class="text-[10px] text-gray-600 mb-2">${r.allHashes.length} transactions confirmed</div>` : ''}` : ''}
-      <!-- Recipients preview -->
+      ${r.feeTxHash ? `<div class="text-xs text-gray-500 mb-2 font-mono bg-gray-900/30 rounded-lg px-2.5 py-1.5 flex items-center justify-between">
+        <span class="text-gray-600">Fee Tx</span>
+        <a href="${MS_EXPLORER}/tx/${r.feeTxHash}" target="_blank" rel="noopener" class="text-yellow-400 hover:underline">${msShort(r.feeTxHash)} <i class="fas fa-external-link-alt text-[10px]"></i></a>
+      </div>` : ''}` : ''}
       <details class="mb-2">
         <summary class="text-xs text-gray-500 hover:text-gray-400 cursor-pointer select-none flex items-center gap-1">
           <i class="fas fa-users text-[10px]"></i>Recipients (${r.recipients?.length || 0})
@@ -478,32 +662,36 @@ function msRenderReceipts() {
     </div>`).join('');
 }
 
-// ─── Download receipt as JSON ──────────────────────────────────────────────────
+// ─── Download receipt ─────────────────────────────────────────────────────────
 function msDownloadReceipt(receiptId) {
   const r = msReceipts.find(x => x.id === receiptId);
   if (!r) { showToast('Receipt not found.', 'error'); return; }
 
   const doc = {
-    receiptType:  'ARC_MULTISEND_BATCH_RECEIPT',
-    version:      '1.0',
-    generatedAt:  new Date().toISOString(),
-    batchId:      r.batchId,
-    timestamp:    r.timestamp,
+    receiptType:     'ARC_MULTISEND_BATCH_RECEIPT',
+    version:         '2.0',
+    generatedAt:     new Date().toISOString(),
+    batchId:         r.batchId,
+    timestamp:       r.timestamp,
     network: {
-      name:       r.network,
-      chainId:    r.chainId,
-      explorer:   MS_EXPLORER,
-      gasToken:   'USDC',
+      name:          r.network,
+      chainId:       r.chainId,
+      explorer:      MS_EXPLORER,
+      gasToken:      'USDC',
     },
-    sender:       r.from,
-    token:        r.token,
-    totalAmount:  r.totalAmount,
-    recipientCount: r.count,
-    txHash:       r.txHash || null,
-    allTxHashes:  r.allHashes || [],
-    explorerUrl:  r.explorerUrl,
-    status:       r.status,
-    recipients:   r.recipients.map(p => ({
+    sender:          r.from,
+    token:           r.token,
+    totalAmountSent: r.totalAmount,
+    platformFee:     r.fee || '0.00',
+    governmentFee:   r.governmentFee || '—',
+    grandTotal:      r.grandTotal || r.totalAmount,
+    recipientCount:  r.count,
+    txHash:          r.txHash || null,
+    feeTxHash:       r.feeTxHash || null,
+    allTxHashes:     r.allHashes || [],
+    explorerUrl:     r.explorerUrl,
+    status:          r.status,
+    recipients:      r.recipients.map(p => ({
       address: p.address,
       amount:  msFmt2(p.amount),
       note:    p.note || '',
@@ -512,9 +700,9 @@ function msDownloadReceipt(receiptId) {
     })),
   };
 
-  const json    = JSON.stringify(doc, null, 2);
-  const url     = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-  const a       = Object.assign(document.createElement('a'), { href: url, download: `arc_multisend_receipt_${r.batchId}.json` });
+  const json = JSON.stringify(doc, null, 2);
+  const url  = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  const a    = Object.assign(document.createElement('a'), { href: url, download: `arc_multisend_receipt_${r.batchId}.json` });
   a.click();
   URL.revokeObjectURL(url);
   showToast('Receipt downloaded as JSON.', 'success');
@@ -527,72 +715,64 @@ function msInitRows() {
   container.innerHTML = '';
   msRowCounter = 0;
   msAddRow(); msAddRow();
-  // Auto-fill sender from wallet
   const wallet = window.walletState?.address;
   const fromEl = msEl('ms-from');
   if (fromEl && wallet) { fromEl.value = wallet; fromEl.dataset.autoFilled = 'true'; }
   msUpdateStats();
+  msSetStep(1);
 }
 
 // ─── Module init ──────────────────────────────────────────────────────────────
 function msInit() {
-  // Wallet gate
-  const gate = msEl('ms-wallet-gate');
+  const gate      = msEl('ms-wallet-gate');
   const connected = window.walletState?.connected;
   if (gate) gate.classList.toggle('hidden', !!connected);
 
   const rows = document.querySelectorAll('.ms-row');
   if (rows.length === 0) msInitRows();
   else {
-    // Just sync sender wallet if connected
     const wallet = window.walletState?.address;
     const fromEl = msEl('ms-from');
     if (fromEl && wallet && !fromEl.value) fromEl.value = wallet;
     msUpdateStats();
   }
   msRenderReceipts();
+  msSetStep(msCurrentStep || 1);
 }
 
 // ─── Wallet listeners ─────────────────────────────────────────────────────────
 window.addEventListener('walletConnected', (e) => {
   const addr   = e.detail?.address;
   const fromEl = msEl('ms-from');
-  if (fromEl && addr && !fromEl.value) {
-    fromEl.value = addr;
-    fromEl.dataset.autoFilled = 'true';
-  }
-  // Hide wallet gate
+  if (fromEl && addr && !fromEl.value) { fromEl.value = addr; fromEl.dataset.autoFilled = 'true'; }
   const gate = msEl('ms-wallet-gate');
   if (gate) gate.classList.add('hidden');
 });
 window.addEventListener('walletDisconnected', () => {
   const fromEl = msEl('ms-from');
-  if (fromEl && fromEl.dataset.autoFilled === 'true') {
-    fromEl.value = '';
-    fromEl.dataset.autoFilled = 'false';
-  }
-  // Show wallet gate
+  if (fromEl && fromEl.dataset.autoFilled === 'true') { fromEl.value = ''; fromEl.dataset.autoFilled = 'false'; }
   const gate = msEl('ms-wallet-gate');
   if (gate) gate.classList.remove('hidden');
 });
 
 // ─── Expose globals ────────────────────────────────────────────────────────────
-window.msInit           = msInit;
-window.msAddRow         = msAddRow;
-window.msSubmit         = msSubmit;
-window.msAnalyze        = msAnalyze;
-window.msHandleCSV      = msHandleCSV;
-window.msDownloadTemplate = msDownloadTemplate;
-window.msDownloadReceipt  = msDownloadReceipt;
-window.msUpdateStats    = msUpdateStats;
-window.msValidateAddr   = msValidateAddr;
+window.msInit              = msInit;
+window.msAddRow            = msAddRow;
+window.msSubmit            = msExecute;   // legacy alias
+window.msHandleCSV         = msHandleCSV;
+window.msDownloadTemplate  = msDownloadTemplate;
+window.msDownloadReceipt   = msDownloadReceipt;
+window.msUpdateStats       = msUpdateStats;
+window.msValidateAddr      = msValidateAddr;
+window.msProceedToReview   = msProceedToReview;
+window.msProceedToSend     = msProceedToSend;
+window.msExecute           = msExecute;
+window.msGoBack            = msGoBack;
+window.msReceipts          = msReceipts;
 
-// Legacy compat (csv-upload.js still referenced for payments tab)
+// Legacy compat
 window.addMultisendRow      = (a, b, c) => msAddRow(a, b, c);
 window.updateMultisendTotal = msUpdateStats;
-window.submitMultisend      = () => {
-  // If on multisend tab, delegate there; otherwise fallback to old submitMultisend in csv-upload.js
-  if (typeof msSubmit === 'function') msSubmit();
-};
+window.submitMultisend      = () => { if (typeof msProceedToReview === 'function') msProceedToReview(); };
 
-console.log('[MULTISEND] Module loaded — Arc Testnet', MS_CHAIN_ID);
+console.log('[MULTISEND] Module loaded v2 (3-step flow) — Arc Testnet', MS_CHAIN_ID);

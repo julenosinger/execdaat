@@ -33,7 +33,8 @@ function switchTab(tab) {
   // Deactivate all tabs
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.remove('active');
-    btn.classList.remove('border-purple-500', 'text-purple-400', 'border-green-500', 'text-green-400');
+    btn.classList.remove('border-purple-500', 'text-purple-400', 'border-green-500', 'text-green-400',
+                         'border-blue-500', 'text-blue-400', 'border-cyan-500', 'text-cyan-400');
     btn.classList.add('border-transparent', 'text-gray-400');
   });
   
@@ -54,9 +55,8 @@ function switchTab(tab) {
   if (tab === 'dashboard') loadDashboard();
   if (tab === 'payments') { loadPayments(); if (window.initPayments) window.initPayments(); }
   if (tab === 'contracts') { cfWalletGateUpdate(); cfLoadContracts(); }
-  if (tab === 'multisend') { if (window.msInit) window.msInit(); }
-  // Show/hide multisend wallet gate
   if (tab === 'multisend') {
+    if (window.msInit) window.msInit();
     const gate = document.getElementById('ms-wallet-gate');
     if (gate) gate.classList.toggle('hidden', !!window.walletState?.connected);
   }
@@ -73,7 +73,9 @@ function switchTab(tab) {
       window.ammRefreshAll();
     }
   }
-
+  if (tab === 'history') {
+    if (window.historyInit) window.historyInit();
+  }
 }
 
 // ============================================================
@@ -625,8 +627,8 @@ function enterApp() {
   const appShell = document.getElementById('app-shell');
   if (landing)  landing.classList.add('hidden');
   if (appShell) appShell.classList.remove('hidden');
-  // Load dashboard data when entering the app
-  loadDashboard();
+  // Load agents tab by default (first tab now)
+  switchTab('agents');
 }
 
 function showLanding() {
@@ -641,6 +643,16 @@ function checkAutoEnter() {
   if (window.walletState?.connected) enterApp();
 }
 
+// Open account creation modal
+function openCreateAccount() {
+  if (window.openAuthModal) {
+    window.openAuthModal('signup');
+  } else {
+    // fallback: go to app
+    enterApp();
+  }
+}
+
 // ============================================================
 // INIT
 // ============================================================
@@ -650,6 +662,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(() => {
     if (currentTab === 'dashboard') loadDashboard();
     if (currentTab === 'agents') loadAgentsDetails();
+    if (currentTab === 'history' && window.historyRefresh) window.historyRefresh();
   }, 30000);
   
   addLog('[SYSTEM] ARC AI Agents interface loaded', 'system');
@@ -812,3 +825,57 @@ function updateWalletAgentsStatus(walletData) {
   `;
 }
 
+
+// ============================================================
+// LIGHT / DARK MODE
+// ============================================================
+function setThemeMode(mode) {
+  if (mode === 'light') {
+    document.body.classList.add('light-mode');
+    localStorage.setItem('arc_theme', 'light');
+  } else {
+    document.body.classList.remove('light-mode');
+    localStorage.setItem('arc_theme', 'dark');
+  }
+  // Update toggle buttons in settings
+  const darkBtn  = document.getElementById('theme-dark-btn');
+  const lightBtn = document.getElementById('theme-light-btn');
+  const label    = document.getElementById('theme-mode-label');
+  if (darkBtn && lightBtn) {
+    if (mode === 'light') {
+      darkBtn.className  = 'flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl cursor-pointer border-2 border-gray-600 bg-gray-800/40 text-gray-400 font-semibold text-sm transition-all hover:border-purple-500/50 hover:text-purple-400';
+      lightBtn.className = 'flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl cursor-pointer border-2 border-yellow-500 bg-yellow-900/20 text-yellow-400 font-semibold text-sm transition-all';
+    } else {
+      darkBtn.className  = 'flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl cursor-pointer border-2 border-purple-600 bg-purple-900/30 text-purple-300 font-semibold text-sm transition-all';
+      lightBtn.className = 'flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl cursor-pointer border-2 border-gray-600 bg-gray-800/40 text-gray-400 font-semibold text-sm transition-all hover:border-yellow-500/50 hover:text-yellow-400';
+    }
+  }
+  if (label) label.textContent = mode === 'light' ? 'Light Mode' : 'Dark Mode';
+}
+
+function applyStoredTheme() {
+  const stored = localStorage.getItem('arc_theme');
+  if (stored === 'light') setThemeMode('light');
+}
+
+// Apply on page load
+document.addEventListener('DOMContentLoaded', applyStoredTheme);
+// Also try immediately
+applyStoredTheme();
+
+// ============================================================
+// CREATE ACCOUNT MODAL
+// ============================================================
+function openCreateAccount() {
+  // Reuse the profile modal for account creation
+  if (typeof openProfileModal === 'function') {
+    enterApp();
+    setTimeout(() => { if (typeof openProfileModal === 'function') openProfileModal(); }, 300);
+  } else {
+    enterApp();
+  }
+}
+window.openCreateAccount = openCreateAccount;
+window.setThemeMode      = setThemeMode;
+
+console.log('[APP] Theme system loaded');
