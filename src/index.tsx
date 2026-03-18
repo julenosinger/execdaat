@@ -973,20 +973,8 @@ app.get('/', (c) => {
     <!-- CONTRACTS TAB -->
     <div id="tab-content-contracts" class="tab-content hidden">
 
-      <!-- ── Wallet gate ──────────────────────────────────────────────────────── -->
-      <div id="cf-wallet-gate" class="mb-6 bg-yellow-900/20 border border-yellow-700/30 rounded-2xl p-5 flex items-center gap-4">
-        <div class="w-10 h-10 rounded-xl bg-yellow-900/40 border border-yellow-700/30 flex items-center justify-center flex-shrink-0">
-          <i class="fas fa-wallet text-yellow-400"></i>
-        </div>
-        <div class="flex-1">
-          <p class="text-yellow-300 font-semibold text-sm">Carteira necessária</p>
-          <p class="text-yellow-400/70 text-xs mt-0.5">Conecte sua carteira EVM para ver e criar contratos on-chain. Seu endereço é a sua identidade — nenhum dado é simulado.</p>
-        </div>
-        <button onclick="openWalletModal()"
-          class="flex-shrink-0 flex items-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-white rounded-xl px-4 py-2 text-sm font-semibold transition">
-          <i class="fas fa-plug"></i>Conectar
-        </button>
-      </div>
+      <!-- ── Wallet gate (hidden — shown via JS when disconnected) ──────────── -->
+      <div id="cf-wallet-gate" class="hidden"></div>
 
       <!-- ── Factory info bar ────────────────────────────────────────────────── -->
       <div class="mb-5 flex flex-wrap items-center gap-3 text-xs text-gray-500 bg-gray-800/30 border border-gray-700/30 rounded-xl px-4 py-3">
