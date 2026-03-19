@@ -307,6 +307,8 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
   <!-- ethers.js v6 — used for ethers.Contract, ethers.parseUnits, BrowserProvider -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+  <!-- jsPDF — PDF receipt generation -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <link href="/static/styles.css" rel="stylesheet">
   <script src="/static/i18n.js"></script>
 </head>
@@ -1588,14 +1590,14 @@ app.get('/', (c) => {
               <div class="ms-tx-step flex items-center gap-3 p-3 bg-gray-800/40 border border-gray-700/30 rounded-xl" id="ms-txstep-2">
                 <div class="w-7 h-7 rounded-full border-2 border-gray-600 flex items-center justify-center flex-shrink-0 text-xs text-gray-500" id="ms-txstep-2-icon">2</div>
                 <div class="flex-1 min-w-0">
-                  <div class="text-sm text-gray-300">Pay Single Platform Fee</div>
+                  <div class="text-sm text-gray-300">Pay Platform Fee &amp; Execute Multicall</div>
                   <div class="text-xs text-gray-600 ms-txstep-status" id="ms-txstep-2-status">Waiting…</div>
                 </div>
               </div>
               <div class="ms-tx-step flex items-center gap-3 p-3 bg-gray-800/40 border border-gray-700/30 rounded-xl" id="ms-txstep-3">
                 <div class="w-7 h-7 rounded-full border-2 border-gray-600 flex items-center justify-center flex-shrink-0 text-xs text-gray-500" id="ms-txstep-3-icon">3</div>
                 <div class="flex-1 min-w-0">
-                  <div class="text-sm text-gray-300" id="ms-txstep-3-label">Send Transfers (0 / 0)</div>
+                  <div class="text-sm text-gray-300" id="ms-txstep-3-label">Multicall Batch (0 recipients)</div>
                   <div class="text-xs text-gray-600 ms-txstep-status" id="ms-txstep-3-status">Waiting…</div>
                 </div>
               </div>

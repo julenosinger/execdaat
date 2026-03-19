@@ -11,7 +11,7 @@ const PAY_USDC = () => window.USDC_ADDRESS || '0x3600000000000000000000000000000
 const PAY_EURC = () => window.EURC_ADDRESS || '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
 const PAY_EXPLORER = () => window.ARC_EXPLORER || 'https://testnet.arcscan.app';
 const PAY_CHAIN_ID = 5042002;
-const PAY_CHAIN_HEX = '0x4CFC12';
+const PAY_CHAIN_HEX = '0x4cef52';
 
 // ERC-20 selectors
 const PAY_SELECTORS = {

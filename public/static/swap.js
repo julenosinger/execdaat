@@ -8,7 +8,7 @@
 const SWAP_USDC = '0x3600000000000000000000000000000000000000'; // nativo Arc
 const SWAP_EURC = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a'; // ERC-20
 const SWAP_CHAIN_ID = 5042002;
-const SWAP_CHAIN_HEX = '0x4CFC12';
+const SWAP_CHAIN_HEX = '0x4cef52';
 const SWAP_EXPLORER  = 'https://testnet.arcscan.app';
 
 // Endereço do contrato de swap (router custodial)

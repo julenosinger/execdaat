@@ -15,7 +15,7 @@
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const AMM_CHAIN_ID  = 5042002;
-const AMM_CHAIN_HEX = '0x4CFC12';
+const AMM_CHAIN_HEX = '0x4cef52';
 const AMM_EXPLORER  = 'https://testnet.arcscan.app';
 const AMM_RPC       = 'https://rpc.testnet.arc.network';
 

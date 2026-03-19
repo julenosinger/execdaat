@@ -7,7 +7,7 @@
 
 // Configuração da Arc Testnet
 const ARC_TESTNET_PARAMS = {
-  chainId: '0x4CFC12',          // 5042002 em hex
+  chainId: '0x4cef52',          // 5042002 em hex
   chainName: 'Arc Testnet',
   nativeCurrency: {
     // MetaMask exige decimals=18 para o campo nativeCurrency em wallet_addEthereumChain
@@ -194,7 +194,7 @@ async function switchToArcTestnet(provider) {
     // ── 2. Tentar trocar para Arc Testnet ────────────────────────────────────
     await provider.request({
       method: 'wallet_switchEthereumChain',
-      params: [{ chainId: ARC_TESTNET_PARAMS.chainId }],  // '0x4CFC12'
+      params: [{ chainId: ARC_TESTNET_PARAMS.chainId }],  // '0x4cef52'
     });
 
     // Atualizar estado após troca bem-sucedida
@@ -905,6 +905,49 @@ async function tryAutoReconnect() {
 }
 
 // ============================================================
+// AUTO-REFRESH DE SALDO (polling)
+// ============================================================
+let _walletBalanceTimer = null;
+const WALLET_BALANCE_INTERVAL = 30_000; // 30 segundos
+
+function walletStartBalancePolling() {
+  walletStopBalancePolling();
+  _walletBalanceTimer = setInterval(async () => {
+    const state = window.walletState;
+    if (!state.connected || !state.provider || !state.onArcNetwork) return;
+    try {
+      const prev = state.usdcBalance;
+      const bal  = await fetchUSDCBalance(state.address, state.provider);
+      if (bal !== null) {
+        state.usdcBalance = bal;
+        // Atualizar indicadores de saldo sem rebuildar toda a UI
+        const panelBal = document.getElementById('panel-balance');
+        if (panelBal) panelBal.textContent = bal;
+        const headerBal = document.getElementById('wallet-balance-display');
+        if (headerBal) headerBal.textContent = `$${bal} USDC`;
+        // Flash visual se saldo mudou
+        if (prev !== null && prev !== bal) {
+          [panelBal, headerBal].forEach(el => {
+            if (!el) return;
+            el.classList.add('text-green-400');
+            setTimeout(() => el.classList.remove('text-green-400'), 1500);
+          });
+          addWalletLog(`[WALLET] Saldo atualizado: $${bal} USDC`, 'success');
+        }
+      }
+    } catch (_) {}
+  }, WALLET_BALANCE_INTERVAL);
+}
+
+function walletStopBalancePolling() {
+  if (_walletBalanceTimer) { clearInterval(_walletBalanceTimer); _walletBalanceTimer = null; }
+}
+
+// Iniciar polling ao conectar, parar ao desconectar
+window.addEventListener('walletConnected', () => walletStartBalancePolling());
+window.addEventListener('walletDisconnected', () => walletStopBalancePolling());
+
+// ============================================================
 // INICIALIZAÇÃO
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -916,15 +959,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Tentar auto-reconectar após carregamento
   setTimeout(tryAutoReconnect, 800);
 
-  // Verificar se openWalletModal está acessível globalmente
-  window.openWalletModal = openWalletModal;
-  window.closeWalletModal = closeWalletModal;
-  window.connectWithProvider = connectWithProvider;
-  window.disconnectWallet = disconnectWallet;
-  window.switchNetworkFromUI = switchNetworkFromUI;
-  window.refreshBalance = refreshBalance;
-  window.copyAddress = copyAddress;
-  window.updateWalletUI = updateWalletUI;
-  window.switchToArcTestnet = switchToArcTestnet;
-  window.fetchUSDCBalance = fetchUSDCBalance;
+  // Expor funções globais
+  window.openWalletModal          = openWalletModal;
+  window.closeWalletModal         = closeWalletModal;
+  window.connectWithProvider      = connectWithProvider;
+  window.disconnectWallet         = disconnectWallet;
+  window.switchNetworkFromUI      = switchNetworkFromUI;
+  window.refreshBalance           = refreshBalance;
+  window.copyAddress              = copyAddress;
+  window.updateWalletUI           = updateWalletUI;
+  window.switchToArcTestnet       = switchToArcTestnet;
+  window.fetchUSDCBalance         = fetchUSDCBalance;
+  window.walletStartBalancePolling = walletStartBalancePolling;
+  window.walletStopBalancePolling  = walletStopBalancePolling;
 });

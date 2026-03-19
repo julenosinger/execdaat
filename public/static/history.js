@@ -279,7 +279,7 @@ async function histFetchSwaps(wallet, provider, latestBlock) {
 function histMergeReceipts() {
   if (!window.msReceipts || !window.msReceipts.length) return [];
   return window.msReceipts.map(r => ({
-    id:           r.id,
+    id:           r.id + '_ms',
     txHash:       r.txHash,
     blockNum:     0,
     ts:           Math.floor(new Date(r.timestamp).getTime() / 1000),
@@ -289,7 +289,8 @@ function histMergeReceipts() {
     from:         r.from,
     to:           `${r.count} recipients`,
     status:       r.status === 'confirmed' ? 'confirmed' : 'partial',
-    batchDetails: r,   // carry full receipt for expansion
+    batchDetails: r,       // carry full receipt for expansion
+    receiptId:    r.id,    // for PDF re-download
   }));
 }
 
@@ -579,23 +580,36 @@ function histRenderRow(item, wallet) {
     </details>` : '';
 
   // Batch details (in-memory multisend receipt)
-  const batchHtml = item.batchDetails ? `
-    <details class="mt-2 col-span-full">
-      <summary class="text-xs text-gray-600 hover:text-gray-400 cursor-pointer select-none flex items-center gap-1">
-        <i class="fas fa-list-ul text-[10px]"></i>
-        ${item.batchDetails.count} recipients · batch ${item.batchDetails.batchId} — expand
-        <i class="fas fa-chevron-down text-[9px] ml-1"></i>
-      </summary>
-      <div class="mt-1.5 space-y-1 max-h-48 overflow-y-auto pl-2">
-        ${(item.batchDetails.recipients || []).map(p => `
-          <div class="flex items-center gap-2 text-[11px] py-1 border-b border-gray-700/20 last:border-0">
-            <span class="font-mono text-gray-500">${histShort(p.address)}</span>
-            <span class="text-cyan-400">$${p.amount}</span>
-            <span class="${p.status === 'confirmed' ? 'text-green-400' : p.status === 'failed' ? 'text-red-400' : 'text-yellow-400'} text-[10px]">${p.status}</span>
-            ${p.txHash ? `<a href="${HIST_EXPLORER}/tx/${p.txHash}" target="_blank" class="text-blue-400 hover:underline text-[10px] ml-auto"><i class="fas fa-external-link-alt"></i></a>` : ''}
-          </div>`).join('')}
+  const bd = item.batchDetails;
+  const batchHtml = bd ? `
+    <div class="mt-2">
+      <div class="flex items-center gap-2 mb-1.5">
+        <span class="text-xs text-gray-500">Batch: <span class="text-yellow-400 font-mono">${bd.batchId}</span></span>
+        <span class="text-xs text-gray-600">·</span>
+        <span class="text-xs text-gray-500">Fee: <span class="text-yellow-300">$${bd.fee} USDC</span></span>
+        ${bd.feeTxHash ? `<a href="${HIST_EXPLORER}/tx/${bd.feeTxHash}" target="_blank" class="text-yellow-400 text-[10px] hover:underline"><i class="fas fa-external-link-alt"></i> fee tx</a>` : ''}
+        <button onclick="if(typeof msPdfReceipt==='function') msPdfReceipt('${bd.id}')"
+          class="ml-auto flex items-center gap-1 px-2 py-0.5 bg-blue-800/40 hover:bg-blue-700/50 border border-blue-700/40 text-blue-300 text-[10px] rounded-lg transition">
+          <i class="fas fa-file-pdf text-[9px]"></i>${bd.pdfGenerated ? 'Re-download PDF' : 'Download PDF'}
+        </button>
       </div>
-    </details>` : '';
+      <details>
+        <summary class="text-xs text-gray-600 hover:text-gray-400 cursor-pointer select-none flex items-center gap-1 py-0.5">
+          <i class="fas fa-list-ul text-[10px]"></i>
+          ${bd.count} recipients — expand
+          <i class="fas fa-chevron-down text-[9px] ml-1"></i>
+        </summary>
+        <div class="mt-1.5 space-y-0.5 max-h-48 overflow-y-auto pl-2">
+          ${(bd.recipients || []).map(p => `
+            <div class="flex items-center gap-2 text-[11px] py-1 border-b border-gray-700/20 last:border-0">
+              <span class="font-mono text-gray-500 flex-1 truncate">${histShort(p.address)}</span>
+              <span class="text-cyan-400">$${p.amount}</span>
+              <span class="${p.status === 'confirmed' ? 'text-green-400' : p.status === 'failed' ? 'text-red-400' : 'text-yellow-400'} text-[10px]">${p.status}</span>
+              ${p.txHash ? `<a href="${HIST_EXPLORER}/tx/${p.txHash}" target="_blank" class="text-blue-400 hover:underline text-[10px] ml-auto"><i class="fas fa-external-link-alt"></i></a>` : ''}
+            </div>`).join('')}
+        </div>
+      </details>
+    </div>` : '';
 
   return `
   <div class="history-tx-row bg-gray-900/60 border border-gray-700/40 rounded-xl px-4 py-3 hover:bg-gray-900/80 transition-colors">

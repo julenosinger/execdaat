@@ -21,7 +21,7 @@ export interface Token {
 }
 
 export const CHAIN_ID    = 5042002;
-export const CHAIN_HEX   = '0x4CFC12';
+export const CHAIN_HEX   = '0x4cef52';
 export const EXPLORER    = 'https://testnet.arcscan.app';
 export const RPC         = 'https://rpc.testnet.arc.network';
 export const ALT_RPCS    = [

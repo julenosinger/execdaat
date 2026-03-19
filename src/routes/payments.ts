@@ -354,7 +354,7 @@ paymentsRouter.get('/network', (c) => {
     network: {
       name: 'Arc Testnet',
       chainId: 5042002,
-      chainHex: '0x4CFC12',
+      chainHex: '0x4cef52',
       rpcUrl: 'https://rpc.testnet.arc.network',
       rpcAlternatives: [
         'https://rpc.blockdaemon.testnet.arc.network',

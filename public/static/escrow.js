@@ -15,7 +15,7 @@
 (function () {
   // ── Constants ──────────────────────────────────────────────────────────────
   const CHAIN_ID      = 5042002;
-  const CHAIN_HEX     = '0x4CFC12';
+  const CHAIN_HEX     = '0x4cef52';
   const EXPLORER      = 'https://testnet.arcscan.app';
   const USDC_ADDR     = '0x3600000000000000000000000000000000000000';
   const API_BASE      = '/api/escrow';

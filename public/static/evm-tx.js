@@ -7,7 +7,7 @@
 // ─── Arc Testnet Config ───────────────────────────────────────────────────────
 // NOTA: Constantes definidas como window.* para evitar conflito entre arquivos JS
 window.ARC_CHAIN_ID = 5042002;
-window.ARC_CHAIN_HEX = '0x4CFC12';
+window.ARC_CHAIN_HEX = '0x4cef52';
 // USDC nativo da Arc Testnet (endereço especial)
 window.USDC_ADDRESS = '0x3600000000000000000000000000000000000000';
 // EURC na Arc Testnet

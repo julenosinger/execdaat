@@ -37,7 +37,7 @@ const VAULT_CUSTODIAN = {
   eurc: '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8', // mesmo custodiante
 };
 
-const ARC_CHAIN_HEX_VAULT = '0x4CFC12'; // 5042002
+const ARC_CHAIN_HEX_VAULT = '0x4cef52'; // 5042002
 
 // ─── Estado local ────────────────────────────────────────────────────────────
 let vaultActions = { usdc: 'deposit', eurc: 'deposit' };
