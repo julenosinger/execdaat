@@ -1,252 +1,135 @@
-# ARC AI Agents — v5.1.0 (Multisend v3 + History v2)
+# ARC AI Agents — v5.2.0 (Multisend v5 + History v2 + ChainId Fix)
 
 ## Visão Geral
-Plataforma completa de DeFi na **Arc Testnet** com DEX AMM, pagamentos e contratos autônomos, 4 agentes de IA, swap USDC↔EURC, vaults de rendimento, chatbot inteligente e **Escrow Wallet com milestones**. Todas as operações são assinadas e confirmadas na EVM via MetaMask/carteira EIP-1193.
+Plataforma completa de DeFi na **Arc Testnet** com DEX AMM, pagamentos e contratos autônomos, 4 agentes de IA, swap USDC↔EURC, vaults de rendimento e chatbot inteligente. Todas as operações são assinadas e confirmadas na EVM via MetaMask/carteira EIP-1193.
 
-## URL Sandbox
-**https://3000-i7dbuvc4nlvszyf6ljwfs-a402f90a.sandbox.novita.ai**
-
----
-
-## 🆕 Novo: Escrow Wallet (v5.0)
-Escrow baseado em milestones em USDC — espelha o smart contract `EscrowWallet.sol` (ARC Testnet, EVM-compatible).
-
-### Smart Contract: `contracts/EscrowWallet.sol`
-```
-EscrowWallet.sol
-├── State Variables: client, contractor, usdcToken, totalAmount, releasedAmount, depositedAmount
-├── Milestone struct: id, amount, description, state, completed, released, timestamps
-├── EscrowState enum: Created → Active → Completed/Disputed → Refunded
-├── MilestoneState: Pending → RequestedByContractor → Verified → Released
-└── Events: EscrowCreated, DepositReceived, MilestoneRequested, MilestoneVerified, PaymentReleased, DisputeRaised, RefundIssued
-```
-
-### Fluxo de Escrow
-```
-1. createEscrow(client, contractor, totalAmount, milestones[])
-        ↓ State: Created
-2. client.depositUSDC(amount)
-        ↓ State: Active (quando totalAmount depositado)
-3. contractor.requestMilestoneVerification(milestoneId)
-        ↓ MilestoneState: RequestedByContractor
-4. client.verifyMilestone(milestoneId)
-        ↓ MilestoneState: Verified
-5. contractor.releaseMilestonePayment(milestoneId)
-        ↓ USDC transferido → MilestoneState: Released
-        ↓ State: Completed (se todos milestones liberados)
-
-Fluxo de Disputa:
-5b. raiseDispute() → State: Disputed (qualquer participante)
-6b. refundClient() → USDC retornado → State: Refunded (só client)
-```
-
-### Segurança Implementada
-- Apenas client pode aprovar milestones (`verifyMilestone`)
-- Apenas contractor pode solicitar/liberar pagamentos
-- Prevenção de double-withdrawal (`released` flag + CEI pattern)
-- Verificação de saldo antes de liberar
-- Somente pode fazer refund quando em estado `Disputed`
-- Over-deposit bloqueado
-
-### Endpoints API Escrow
-| Método | Endpoint | Função |
-|--------|----------|--------|
-| `POST` | `/api/escrow/create` | createEscrow() |
-| `POST` | `/api/escrow/:id/deposit` | depositUSDC() |
-| `POST` | `/api/escrow/:id/request/:mId` | requestMilestoneVerification() |
-| `POST` | `/api/escrow/:id/verify/:mId` | verifyMilestone() |
-| `POST` | `/api/escrow/:id/release/:mId` | releaseMilestonePayment() |
-| `POST` | `/api/escrow/:id/dispute` | raiseDispute() |
-| `POST` | `/api/escrow/:id/refund` | refundClient() |
-| `GET` | `/api/escrow` | Listar todos os escrows |
-| `GET` | `/api/escrow/:id` | Detalhe do escrow |
-| `GET` | `/api/escrow/:id/milestones` | Milestones do escrow |
-| `GET` | `/api/escrow/wallet/:address` | Escrows por carteira |
-| `GET` | `/api/escrow/events` | Histórico de eventos on-chain |
-| `GET` | `/api/escrow/network` | Info da rede + ABI ref |
-
-### Deploy do Contrato (Foundry)
-```bash
-# Instalar Foundry
-curl -L https://foundry.paradigm.xyz | bash
-
-# Deploy EscrowWallet na ARC Testnet
-forge create contracts/EscrowWallet.sol:EscrowFactory \
-  --rpc-url https://rpc.testnet.arc.network \
-  --private-key $PRIVATE_KEY \
-  --constructor-args 0x3600000000000000000000000000000000000000
-
-# Deploy EscrowWallet individual
-forge create contracts/EscrowWallet.sol:EscrowWallet \
-  --rpc-url https://rpc.testnet.arc.network \
-  --private-key $PRIVATE_KEY \
-  --constructor-args 1 0xClient 0xContractor 0x3600... 1000000000 [500000000,500000000] ["M1","M2"]
-```
+## URLs
+- **Produção:** https://arc-ai-agents-618-3v1.pages.dev
+- **Sandbox Dev:** https://3000-i7dbuvc4nlvszyf6ljwfs-a402f90a.sandbox.novita.ai
 
 ---
 
-## ARC DEX (v4.0)
-Mini-Uniswap totalmente funcional na Arc Testnet:
-
-### AMM Engine (x·y=k)
-| Componente | Detalhes |
-|-----------|---------|
-| **Fórmula** | `amountOut = (reserveOut×amountIn×997)/(reserveIn×1000+amountIn×997)` |
-| **Taxa** | 0.3% por swap (acumula para LP holders) |
-| **LP Tokens** | Primeiro: `sqrt(amountA×amountB)`, Subsequente: `min(amtA/rA, amtB/rB)×totalLP` |
-| **Segurança** | Bloqueia swaps com impact >15%, avisa em >5% |
-
-### Pools Disponíveis
-| Pool | TVL | 24h Volume | APR |
-|------|-----|-----------|-----|
-| EURC/USDC | ~$1.0M | $125K | 13.67% |
-| USDC/USYC | ~$398K | $45K | 12.36% |
-| EURC/USYC | ~$175K | $18K | 11.82% |
+## 🔗 Rede Arc Testnet
+| Parâmetro | Valor |
+|-----------|-------|
+| Chain ID | `5042002` |
+| Chain Hex | `0x4cef52` |
+| RPC | `https://rpc.testnet.arc.network` |
+| Explorer | `https://testnet.arcscan.app` |
+| USDC | `0x3600000000000000000000000000000000000000` |
+| EURC | `0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a` |
+| AMM | `0x3148E2807F172D1cC354F35fB4fC4104e8b6b561` |
+| Factory | `0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A` |
 
 ---
 
-## Funcionalidades Completas
+## 🆕 v5.2.0 — Correções e Melhorias
 
-### 🛡️ Escrow Wallet
-- Criar escrow com múltiplos milestones
-- Deposit USDC (trava fundos)
-- Contractor solicita verificação de milestone
-- Client aprova milestone
-- Contractor libera pagamento por milestone
-- Levantar disputa (congela escrow)
-- Reembolso total ao client (apenas em disputa)
-- Progress bar visual + event log on-chain
-- Modal de depósito com assinatura EVM opcional
+### ✅ Correção Crítica: ChainId Hex
+- **Bug:** Todos os arquivos JS/TS usavam `0x4CFC12` (5045266) — valor incorreto
+- **Fix:** Corrigido para `0x4cef52` (5042002) em todos os arquivos:
+  - `wallet.js`, `multisend.js`, `payments.js`, `contracts.js`, `dex.js`
+  - `swap.js`, `vaults.js`, `evm-tx.js`, `escrow.js`
+  - `src/routes/payments.ts`, `src/routes/swap.ts`, `src/tokens/tokenRegistry.ts`
+- Sem essa correção, `wallet_switchEthereumChain` e `wallet_addEthereumChain` falhavam silenciosamente
 
-### 🔀 DEX AMM
-- Swap com quote em tempo real
-- Add/Remove Liquidity
-- LP tokens + My Positions
-- Pool Analytics (TVL, volume, APR)
-- APR estimator + IL calculator
-
-### 🧠 4 Agentes de IA
-| Agente | Função |
-|--------|---------|
-| **ArcPay** | Pagamentos, análise de risco, batch |
-| **ArcContract** | Contratos, escrow, milestones |
-| **Guardian** | Compliance, KYC/AML, sanções |
-| **Yield Optimizer** | APY tracking, rebalancing auto |
-
-### 💳 Pagamentos, Swap, Vaults, Chatbot
-- Batch de pagamentos em USDC/EURC (CSV/Excel)
-- Swap USDC↔EURC com assinatura EVM
-- Vaults: USDC 5.2% APY / EURC 4.8% APY
-- Chatbot integrado com todos os agentes
+### ✅ swap.ts — Reservas On-Chain Reais
+- Eliminado jitter aleatório dos rates de swap
+- Backend agora lê reservas diretamente do AMM via `eth_call` (getReserves + totalSupply)
+- Cache de 15 segundos para evitar sobrecarga de RPC
+- Fallback para cache se RPC falhar
 
 ---
 
-## Arquitetura
+## 🆕 v5.1.0 — Multisend v5 + History v2
+
+### Multisend v5 (True Atomic Batch + PDF)
+- **Precisão USDC:** `ethers.parseUnits(amount.toFixed(6), 6)` — elimina bug de zero/float
+- **Balanço on-chain:** `usdc.balanceOf(from)` antes de qualquer tx — bloqueia se insuficiente
+- **Decimais do contrato:** `usdc.decimals()` chamado on-chain para confirmar 6 decimais
+- **Gas real:** `estimateGas` + 25% margem de segurança
+- **Estratégia de batch:** Tenta Multicall3 (0xcA11bde...) → Fallback para sequential com nonces explícitos
+- **Nonces explícitos:** Envia todas as txs sem esperar cada confirmação (mais rápido, ~atômico)
+- **Validação:** Endereços EVM, sem duplicatas (Set), amount > 0, máx 500 linhas, máx $10k/linha
+- **Recibo PDF:** jsPDF — inclui sender, recipients, amounts, total, gas fee, tx hash, timestamp, explorer link
+- **Auto-sync:** Chama `historyInit()` 3s após conclusão
+
+### History v2 (Real On-Chain)
+- **Zero mock data:** Fetches reais via `provider.getLogs()` + RPC
+- **Chunked scanning:** 10k blocos por query, 50k total (5 queries paralelas para USDC + EURC)
+- **Timestamps reais:** `provider.getBlock()` em batch de 10
+- **AMM Swap events:** Decodifica `Swap(address,bool,uint256,uint256,uint256,uint256)` com ethers.Interface
+- **Multisend detection:** Agrupa ≥3 sends dentro de 60s com fee-wallet transfer → marca como MultiSend
+- **Expandable details:** `<details>` com lista de recipients individuais
+- **Polling 30s:** `setInterval` visível apenas quando aba está ativa (verifica `tab-content-history`)
+- **Live badge:** `#history-poll-badge` animado quando polling está ativo
+- **Filtros:** All, Payment, MultiSend, Swap, Contract
+- **Load more:** Paginação de 30 itens
+- **Auto-refresh:** `histRefreshNew()` busca apenas blocos novos (incremental)
+
+---
+
+## 📁 Arquivos Principais
+
 ```
 webapp/
-├── contracts/
-│   └── EscrowWallet.sol        ← Smart contract Solidity (deploy via Foundry)
 ├── src/
-│   ├── routes/
-│   │   ├── escrow.ts           ← API Escrow (12 endpoints, mirrors on-chain logic)
-│   │   ├── dex.ts              ← API DEX AMM
-│   │   ├── contracts.ts        ← API Contratos + Receipts
-│   │   ├── payments.ts         ← API Pagamentos
-│   │   ├── guardian.ts         ← API Guardian
-│   │   ├── vaults.ts           ← API Vaults
-│   │   └── ...
-│   ├── dex/
-│   │   ├── poolManager.ts      ← Pool state + positions
-│   │   ├── pricingEngine.ts    ← AMM core (x*y=k)
-│   │   ├── swapRouter.ts       ← Route finder
-│   │   ├── liquidityEngine.ts  ← Add/Remove lifecycle
-│   │   └── lpToken.ts          ← ERC-20 LP model
-│   ├── tokens/tokenRegistry.ts ← USDC, EURC, USYC
-│   └── index.tsx               ← App Hono + HTML (Escrow tab)
+│   ├── index.tsx            # Main Hono app — HTML + routes
+│   ├── types/arc.ts         # ARC_TESTNET config (chainId, addresses)
+│   └── routes/
+│       ├── swap.ts          # Swap API — reservas on-chain AMM
+│       ├── contracts.ts     # Contracts API — read-only metadata
+│       ├── payments.ts      # Payments API
+│       └── ...
 ├── public/static/
-│   ├── escrow.js               ← Frontend Escrow Wallet
-│   ├── dex.js                  ← Frontend DEX
-│   ├── contracts.js            ← Frontend Contratos
+│   ├── multisend.js         # v5 — Atomic batch + PDF receipt
+│   ├── history.js           # v2 — Real on-chain history
+│   ├── wallet.js            # EIP-1193/6963 wallet — chainId 0x4cef52
+│   ├── payments.js          # ERC-20 transfer UI
+│   ├── dex.js               # AMM swap frontend
 │   └── ...
+└── wrangler.jsonc           # Cloudflare Pages config
 ```
 
-## APIs Endpoints
+---
 
-### Escrow Wallet
-- `POST /api/escrow/create` — Criar escrow + milestones
-- `POST /api/escrow/:id/deposit` — Depositar USDC
-- `POST /api/escrow/:id/request/:mId` — Solicitar verificação de milestone
-- `POST /api/escrow/:id/verify/:mId` — Verificar milestone (client)
-- `POST /api/escrow/:id/release/:mId` — Liberar pagamento (contractor)
-- `POST /api/escrow/:id/dispute` — Levantar disputa
-- `POST /api/escrow/:id/refund` — Reembolsar client
-- `GET /api/escrow` — Listar escrows + stats
-- `GET /api/escrow/:id` — Detalhe + eventos
-- `GET /api/escrow/events` — Log de eventos
-- `GET /api/escrow/wallet/:address` — Escrows por carteira
-- `GET /api/escrow/network` — Info ARC Testnet
+## 🚀 Funcionalidades
 
-### DEX
-- `GET /api/dex/pools` — Pools + analytics
-- `GET /api/dex/quote` — AMM quote
-- `POST /api/dex/swap` — Executar swap
-- `POST /api/dex/liquidity/add` — Adicionar liquidez
-- `POST /api/dex/liquidity/remove` — Remover liquidez
-- `GET /api/dex/positions/:wallet` — Posições LP
-- `GET /api/dex/analytics` — TVL, volume, fees
+| Feature | Status | Descrição |
+|---------|--------|-----------|
+| Payments | ✅ On-chain | ERC-20 transfer via ethers.Contract |
+| MultiSend | ✅ On-chain v5 | Batch con nonces explícitos + PDF receipt |
+| History | ✅ On-chain v2 | getLogs chunked, polling, filtros |
+| DEX Swap | ✅ On-chain | AMM x*y=k, quotes de reservas reais |
+| Contracts | ✅ On-chain | ContractFactory, 5-state machine |
+| Wallet | ✅ Multi-provider | EIP-6963 + EIP-1193, chainId correto |
 
-## Rede Arc Testnet
-| Propriedade | Valor |
-|-------------|-------|
-| Chain ID | 5042002 |
-| RPC URL | https://rpc.testnet.arc.network |
-| Explorer | https://testnet.arcscan.app |
-| Faucet | https://faucet.circle.com |
-| Gas Token | USDC (~$0.009/tx) |
-| USDC | 0x3600000000000000000000000000000000000000 |
-| EURC | 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a |
+---
 
-## Stack Técnica
-- **Backend**: Hono + TypeScript → Cloudflare Workers
-- **Frontend**: Vanilla JS + Tailwind CSS (CDN)
-- **Build**: Vite + @hono/vite-cloudflare-pages
-- **Smart Contracts**: Solidity 0.8.20 (Foundry deploy)
-- **Wallet**: EIP-1193 (MetaMask, Coinbase, etc.)
-- **i18n**: 5 idiomas (EN/PT/ES/ZH/KO)
+## 🔧 Desenvolvimento
 
-## Próximos Passos Sugeridos
-1. Deploy `EscrowWallet.sol` e `EscrowFactory.sol` via Foundry na ARC Testnet
-2. Conectar frontend escrow.js ao contrato real (substituir chamadas de API por `eth_sendTransaction`)
-3. Integrar Guardian compliance check no fluxo de criação de escrow
-4. Deploy na Cloudflare Pages (`npm run deploy:prod`)
-5. Adicionar notificações push via webhook quando milestone muda de estado
+```bash
+# Instalar dependências
+npm install
 
-## Última Atualização
-v5.1.0 — 2026-03-18
+# Build
+npm run build
 
-### ✅ Multisend v3 (Real On-Chain)
-- **Precisão USDC 6 decimais**: Usa `parseUnits(amount.toFixed(6), 6)` para evitar erros de floating point
-- **Detecção de duplicatas**: Bloqueia endereços repetidos na lista
-- **Verificação de saldo on-chain**: Lê `balanceOf` antes de executar, bloqueia se insuficiente
-- **Estimativa de gas real**: Usa `estimateGas` antes de cada `transfer`, adiciona buffer de +10k gas
-- **Switch automático de rede**: Tenta `wallet_switchEthereumChain` → `wallet_addEthereumChain` se necessário
-- **Leitura de decimais on-chain**: Confirma `decimals()` do contrato USDC antes de executar
-- **Receipts completos**: Inclui sender, recipients, amounts, gasUsed, txHash, feeTxHash, timestamp
-- **Totais inteiros seguros**: Usa operações em micros (×1_000_000) para evitar erros de float
+# Iniciar servidor local (PM2)
+pm2 start ecosystem.config.cjs
 
-### ✅ History v2 (Real On-Chain)
-- **Zero mocks**: Todos os dados vêm do RPC `https://rpc.testnet.arc.network`
-- **Chunked log fetching**: Divide 50k blocos em chunks de 10k para evitar timeout de RPC
-- **Polling automático**: Verifica novos blocos a cada 30s quando a tab está visível
-- **Badge "Live"**: Indicador visual de polling ativo
-- **Contador de transações**: Exibe total filtrado no header
-- **Detecção de multisend on-chain**: Agrupa 3+ transferências consecutivas (60s) + taxa ao fee wallet
-- **AMM Swap events**: Decodifica eventos `Swap(address,bool,uint256,uint256,uint256,uint256)` do AMM
-- **Expandable receipts**: Multisend com lista de destinatários expansível inline
-- **Refresh incremental**: `histRefreshNew()` busca apenas novos blocos desde a última consulta
-- **Classificação de transferências**: SEND / RECEIVE / SWAP (AMM) / CONTRACT (factory)
+# Deploy produção
+npx wrangler pages deploy dist --project-name arc-ai-agents-618
+```
 
-### URLs de Produção
-- **https://arc-ai-agents-618-3v1.pages.dev** — deploy atual (v5.1.0)
-- Local dev: https://3000-i7dbuvc4nlvszyf6ljwfs-a402f90a.sandbox.novita.ai
-2026-03-16 — v5.0.0: Escrow Wallet com milestones, smart contract Solidity, UI completa, 12 endpoints API
+---
+
+## 📅 Histórico de Versões
+
+| Versão | Data | Descrição |
+|--------|------|-----------|
+| v5.2.0 | Mar 2026 | Fix chainId hex (0x4cef52), swap.ts on-chain reserves |
+| v5.1.0 | Mar 2026 | Multisend v5 (atomic+PDF), History v2 (polling+filters) |
+| v5.0.0 | Mar 2026 | Escrow wallet milestones, 5-state contracts |
+| v4.0.0 | Mar 2026 | Trustless Contracts, ContractFactory on-chain |
+| v3.0.0 | Mar 2026 | DEX AMM, swap USDC↔EURC, liquidity pools |
