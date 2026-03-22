@@ -273,15 +273,15 @@ function payValidateField(field) {
   hint.textContent = '';
 
   if (field === 'fullname') {
-    if (!val) { hint.className += ' err'; hint.textContent = 'Full name is required'; input.classList.add('is-error'); }
+    if (!val) { hint.className += ' info'; hint.textContent = ''; }
     else if (val.length < 2) { hint.className += ' err'; hint.textContent = 'Name too short'; input.classList.add('is-error'); }
-    else { hint.className += ' ok'; hint.textContent = '✓ Valid'; input.classList.add('is-valid'); }
+    else { hint.className += ' ok'; hint.textContent = '✓'; input.classList.add('is-valid'); }
   }
 
   if (field === 'email') {
-    if (!val) { hint.className += ' err'; hint.textContent = 'Email is required'; input.classList.add('is-error'); }
+    if (!val) { hint.className += ' info'; hint.textContent = ''; }
     else if (!isValidEmail(val)) { hint.className += ' err'; hint.textContent = 'Invalid email format'; input.classList.add('is-error'); }
-    else { hint.className += ' ok'; hint.textContent = '✓ Valid email'; input.classList.add('is-valid'); }
+    else { hint.className += ' ok'; hint.textContent = '✓ Valid'; input.classList.add('is-valid'); }
   }
 
   if (field === 'recipient') {
@@ -337,8 +337,8 @@ function payValidateForm() {
   let reason = 'Sign & Send';
 
   if (!connected)                                   { ok = false; reason = 'Connect wallet to send'; }
-  else if (!fullname || fullname.length < 2)        { ok = false; reason = 'Enter your full name'; }
-  else if (!isValidEmail(email))                    { ok = false; reason = 'Enter a valid email'; }
+  else if (fullname && fullname.length < 2)         { ok = false; reason = 'Name too short'; }
+  else if (email && !isValidEmail(email))           { ok = false; reason = 'Invalid email format'; }
   else if (!isValidAddress(recipient))              { ok = false; reason = 'Invalid recipient address'; }
   else if (recipient.toLowerCase() === window.walletState?.address?.toLowerCase()) { ok = false; reason = 'Cannot send to yourself'; }
   else if (isNaN(amount) || amount <= 0)            { ok = false; reason = 'Enter a valid amount'; }
@@ -391,9 +391,9 @@ async function executePayment() {
   // Validate all fields
   ['fullname','email','recipient','amount'].forEach(payValidateField);
 
-  if (!fullname || fullname.length < 2)          { showPayError('Full name is required.'); return; }
-  if (!isValidEmail(email))                       { showPayError('Invalid email address.'); return; }
-  if (!isValidAddress(recipient))                 { showPayError('Invalid recipient wallet address.'); return; }
+  if (fullname && fullname.length < 2)           { showPayError('Name is too short.'); return; }
+  if (email && !isValidEmail(email))             { showPayError('Invalid email address format.'); return; }
+  if (!isValidAddress(recipient))                { showPayError('Invalid recipient wallet address.'); return; }
   if (!amountStr || Number(amountStr) <= 0)       { showPayError('Enter a valid amount greater than 0.'); return; }
   if (!window.walletState?.address)               { showPayError('Please connect your EVM wallet first.'); return; }
 
