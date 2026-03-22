@@ -317,18 +317,11 @@ app.get('/', (c) => {
   <!-- ══════════════════════════════════════════════════════════════════════
        PERSISTENT TESTNET WARNING — always visible, non-dismissible
        ══════════════════════════════════════════════════════════════════════ -->
-  <div id="testnet-banner" class="bg-amber-500 text-black text-center text-xs font-bold py-2 px-4 flex items-center justify-center gap-2 sticky top-0 z-[100]">
+  <div class="bg-amber-500 text-black text-center text-xs font-bold py-2 px-4 flex items-center justify-center gap-2 sticky top-0 z-[100]">
     <i class="fas fa-flask"></i>
     <span class="hidden sm:inline">⚠️ TESTNET APPLICATION — No real funds. Arc Testnet only. Do not send mainnet assets.</span>
     <span class="sm:hidden">⚠️ TESTNET ONLY — No real funds</span>
     <a href="/about" class="underline ml-2 opacity-70 hover:opacity-100 hidden sm:inline">Learn more</a>
-    <button
-      onclick="document.getElementById('testnet-banner').style.display='none'"
-      title="Fechar aviso"
-      style="margin-left:auto;background:rgba(0,0,0,0.15);border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;color:#000;line-height:1;padding:0;flex-shrink:0;"
-      onmouseover="this.style.background='rgba(0,0,0,0.3)'"
-      onmouseout="this.style.background='rgba(0,0,0,0.15)'"
-    >✕</button>
   </div>
 
   <!-- ══════════════════════════════════════════════════════════════════════
