@@ -309,8 +309,8 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20250322" rel="stylesheet">
-  <script src="/static/i18n.js?v=20250322"></script>
+  <link href="/static/styles.css?v=20250322b" rel="stylesheet">
+  <script src="/static/i18n.js?v=20250322b"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
 
@@ -888,369 +888,580 @@ app.get('/', (c) => {
 
     <!-- PAYMENTS TAB -->
     <div id="tab-content-payments" class="tab-content hidden">
-      <div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+      <style>
+        /* ── Payments v2 — Reference Design ───────────────────── */
+        #pay-v2-wrap { background: #0d1117; min-height: 100%; }
 
-        <!-- ═══════════════════════════════════════════════════
-             COLUNA ESQUERDA — Send Payment (EVM Real)
-             ═══════════════════════════════════════════════════ -->
-        <div class="xl:col-span-3 space-y-5">
+        /* Page header */
+        #pay-page-header {
+          background: linear-gradient(180deg, #141a2e 0%, #0d1117 100%);
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          padding: 20px 0 16px;
+          margin: -24px -24px 24px;
+        }
+        @media(max-width:640px){ #pay-page-header{margin:-16px -16px 16px;padding:16px 0 12px;} }
 
-          <!-- ── WALLET BANNER ── -->
-          <div class="bg-gray-900/70 border border-purple-700/40 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
-            <div class="flex items-center gap-3">
-              <div class="w-9 h-9 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-                <i class="fas fa-wallet text-white text-sm"></i>
-              </div>
-              <div>
-                <p class="text-xs text-gray-500 uppercase tracking-wider">Wallet</p>
-                <p id="pay-wallet-short" class="text-white text-sm font-mono font-semibold">Not connected</p>
-              </div>
+        /* Balance cards in header */
+        .pay-bal-card {
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 12px;
+          padding: 10px 18px;
+          display: flex; align-items: center; gap: 12px;
+        }
+        .pay-bal-icon {
+          width: 38px; height: 38px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 16px; font-weight: bold; flex-shrink: 0;
+        }
+        .pay-bal-icon-usdc { background: #1a56db; color: #fff; }
+        .pay-bal-icon-eurc { background: #1e3a5f; color: #60b4ff; }
+
+        /* Main send card */
+        #pay-send-card {
+          background: #161b27;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 18px;
+          overflow: hidden;
+          position: relative;
+        }
+
+        /* Asset selector */
+        .pay-asset-btn {
+          flex: 1; padding: 10px 0; border-radius: 10px; font-size: 13px; font-weight: 700;
+          border: none; cursor: pointer; transition: all 0.2s;
+          background: transparent; color: #6b7280;
+        }
+        .pay-asset-btn.active {
+          background: #1e2535; color: #fff;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+
+        /* Form labels */
+        .pay-form-label {
+          font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+          text-transform: uppercase; color: #6b7280; margin-bottom: 6px; display: block;
+        }
+
+        /* Inputs */
+        .pay-input {
+          width: 100%; background: #1e2535;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 10px; padding: 13px 14px;
+          font-size: 13px; color: #e5e7eb;
+          outline: none; transition: border-color 0.2s;
+          box-sizing: border-box;
+        }
+        .pay-input::placeholder { color: #374151; }
+        .pay-input:focus { border-color: rgba(99,102,241,0.5); }
+        .pay-input-with-icon { padding-left: 40px; }
+
+        .pay-input-wrap { position: relative; }
+        .pay-input-icon {
+          position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+          color: #4b5563; font-size: 13px; pointer-events: none;
+        }
+        .pay-input-icon-right {
+          position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
+          color: #4b5563; font-size: 13px; cursor: pointer;
+          transition: color 0.15s;
+        }
+        .pay-input-icon-right:hover { color: #9ca3af; }
+
+        /* Amount field large */
+        #pay-amount-input-wrap {
+          background: #1e2535;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 10px; padding: 0 14px;
+          display: flex; align-items: center; gap: 0;
+          transition: border-color 0.2s;
+        }
+        #pay-amount-input-wrap:focus-within { border-color: rgba(99,102,241,0.5); }
+        #pay-amount {
+          flex: 1; background: transparent; border: none; outline: none;
+          font-size: 24px; font-weight: 300; color: #6b7280;
+          padding: 14px 0; min-width: 0;
+        }
+        #pay-amount::placeholder { color: #374151; }
+        #pay-amount:not(:placeholder-shown) { color: #e5e7eb; }
+
+        .pay-max-btn {
+          background: #2d3748; border: none; border-radius: 6px;
+          color: #e5e7eb; font-size: 11px; font-weight: 700;
+          padding: 5px 10px; cursor: pointer; flex-shrink: 0;
+          transition: background 0.15s; margin-right: 8px;
+        }
+        .pay-max-btn:hover { background: #374151; }
+
+        .pay-token-label {
+          font-size: 15px; font-weight: 700; color: #e5e7eb; flex-shrink: 0;
+        }
+
+        /* Valid address badge */
+        #pay-addr-valid {
+          font-size: 11px; color: #22c55e;
+          display: none; align-items: center; gap: 4px; margin-top: 5px;
+        }
+        #pay-addr-valid.show { display: flex; }
+
+        /* Save checkbox */
+        .pay-save-row {
+          display: flex; align-items: center; gap: 8px; margin-top: 8px;
+        }
+        .pay-save-check {
+          width: 14px; height: 14px; accent-color: #6366f1; cursor: pointer;
+        }
+        .pay-save-label { font-size: 12px; color: #6b7280; cursor: pointer; }
+
+        /* USD equivalent */
+        .pay-usd-equiv { font-size: 12px; color: #6b7280; margin-top: 6px; }
+
+        /* Transaction details box */
+        #pay-tx-details {
+          background: #1a2035;
+          border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 12px; padding: 16px 18px;
+          margin-top: 20px;
+        }
+        .pay-tx-label {
+          font-size: 9px; font-weight: 800; letter-spacing: 0.12em;
+          text-transform: uppercase; color: #4b5563; margin-bottom: 12px; display: block;
+        }
+        .pay-tx-row {
+          display: flex; justify-content: space-between; align-items: center;
+          font-size: 13px; margin-bottom: 8px;
+        }
+        .pay-tx-row:last-child { margin-bottom: 0; }
+        .pay-tx-row-key { color: #6b7280; }
+        .pay-tx-row-val { color: #e5e7eb; font-weight: 500; }
+
+        /* Review & Send button */
+        #pay-send-btn {
+          width: 100%; padding: 16px; border-radius: 12px;
+          font-size: 15px; font-weight: 700; color: #9ca3af;
+          background: #1e2535; border: 1px solid rgba(255,255,255,0.06);
+          cursor: not-allowed; transition: all 0.25s; margin-top: 18px;
+        }
+        #pay-send-btn.ready {
+          background: linear-gradient(135deg, #6366f1, #4f46e5);
+          color: #fff; cursor: pointer; border-color: transparent;
+          box-shadow: 0 4px 20px rgba(99,102,241,0.35);
+        }
+        #pay-send-btn.ready:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 28px rgba(99,102,241,0.45);
+        }
+
+        /* Pay footer note */
+        .pay-footer-note {
+          font-size: 11px; color: #374151; text-align: center; margin-top: 14px;
+        }
+
+        /* Right column cards */
+        .pay-side-card {
+          background: #161b27;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 16px; overflow: hidden;
+        }
+        .pay-side-card-header {
+          padding: 14px 16px;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          display: flex; align-items: center; justify-content: space-between;
+        }
+        .pay-side-card-title {
+          font-size: 14px; font-weight: 700; color: #e5e7eb;
+          display: flex; align-items: center; gap: 8px;
+        }
+
+        /* Agent queue badge */
+        .pay-queue-badge {
+          font-size: 10px; font-weight: 800; letter-spacing: 0.05em;
+          padding: 3px 9px; border-radius: 999px;
+          background: rgba(99,102,241,0.15); color: #818cf8;
+          border: 1px solid rgba(99,102,241,0.25);
+        }
+
+        /* Queue item */
+        .pay-queue-item {
+          padding: 12px 16px;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          display: flex; align-items: center; gap: 12px;
+          transition: background 0.15s; cursor: pointer;
+        }
+        .pay-queue-item:last-child { border-bottom: none; }
+        .pay-queue-item:hover { background: rgba(255,255,255,0.03); }
+        .pay-queue-icon {
+          width: 34px; height: 34px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 13px; flex-shrink: 0;
+        }
+        .pay-queue-icon-purple { background: rgba(139,92,246,0.2); color: #a78bfa; }
+        .pay-queue-icon-orange { background: rgba(249,115,22,0.2); color: #fb923c; }
+        .pay-queue-name { font-size: 13px; font-weight: 600; color: #e5e7eb; }
+        .pay-queue-type { font-size: 11px; color: #6b7280; margin-top: 1px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .pay-status-badge {
+          font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; flex-shrink: 0;
+        }
+        .pay-status-queued  { background: rgba(99,102,241,0.12); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); }
+        .pay-status-active  { background: rgba(34,197,94,0.12);  color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
+        .pay-status-pending { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+        .pay-status-success { background: rgba(34,197,94,0.1);   color: #4ade80; font-size: 10px; font-weight:700; }
+
+        .pay-view-all {
+          display: block; text-align: center; padding: 12px;
+          font-size: 12px; color: #6366f1; font-weight: 600;
+          border-top: 1px solid rgba(255,255,255,0.05);
+          cursor: pointer; transition: color 0.15s;
+        }
+        .pay-view-all:hover { color: #818cf8; }
+
+        /* History items */
+        .pay-hist-item {
+          padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05);
+          display: flex; align-items: center; gap: 12px;
+          transition: background 0.15s;
+        }
+        .pay-hist-item:last-child { border-bottom: none; }
+        .pay-hist-item:hover { background: rgba(255,255,255,0.02); }
+        .pay-hist-arrow {
+          width: 30px; height: 30px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0; font-size: 13px;
+        }
+        .pay-hist-arrow-out { background: rgba(239,68,68,0.1);  color: #f87171; }
+        .pay-hist-arrow-in  { background: rgba(34,197,94,0.1);  color: #4ade80; }
+        .pay-hist-amount { font-size: 13px; font-weight: 600; color: #e5e7eb; }
+        .pay-hist-sub   { font-size: 11px; color: #6b7280; margin-top: 1px; }
+        .pay-hist-meta  { text-align: right; flex-shrink: 0; }
+        .pay-hist-time  { font-size: 10px; color: #4b5563; margin-top: 2px; }
+        .pay-hist-external {
+          color: #6b7280; font-size: 13px; cursor: pointer;
+          transition: color 0.15s; text-decoration: none;
+        }
+        .pay-hist-external:hover { color: #9ca3af; }
+
+        /* Hidden IDs kept for JS compatibility */
+        #pay-wallet-short, #pay-balance-usdc, #pay-balance-eurc, #pay-network-name,
+        #pay-max-hint, #pay-description, #pay-from, #pay-from-display,
+        #prev-token, #prev-amount, #prev-recipient, #prev-network, #prev-gas,
+        #pay-priority, #multisend-total, #multisend-rows, #csv-file-input,
+        #csv-error-banner, #csv-error-text, #payment-analysis-result,
+        #csv-preview-container { display: none !important; }
+      </style>
+
+      <div id="pay-v2-wrap">
+
+        <!-- ── PAGE HEADER ─────────────────────────────────────────── -->
+        <div id="pay-page-header">
+          <div class="px-6">
+            <!-- Network badge -->
+            <div class="flex items-center gap-2 mb-2">
+              <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+              <span class="text-[11px] font-700 text-gray-400 uppercase tracking-widest">Network: Arc Testnet</span>
             </div>
-            <div class="flex items-center gap-4 flex-wrap">
-              <div class="text-right">
-                <p class="text-xs text-gray-500">USDC</p>
-                <p id="pay-balance-usdc" class="text-cyan-400 text-sm font-bold">— USDC</p>
-              </div>
-              <div class="text-right">
-                <p class="text-xs text-gray-500">EURC</p>
-                <p id="pay-balance-eurc" class="text-purple-400 text-sm font-bold">— EURC</p>
-              </div>
-              <div class="text-right">
-                <p class="text-xs text-gray-500">Network</p>
-                <p id="pay-network-name" class="text-green-400 text-xs font-semibold">—</p>
-              </div>
-              <button onclick="refreshPaymentBalances()"
-                class="w-8 h-8 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 hover:text-cyan-400 rounded-lg transition-all text-xs">
-                <i class="fas fa-sync"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- ── SEND PAYMENT PANEL ── -->
-          <div class="bg-gray-900/70 border border-gray-700/50 rounded-2xl overflow-hidden">
-
-            <!-- Header -->
-            <div class="px-5 py-4 border-b border-gray-700/40 flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i class="fas fa-paper-plane text-cyan-400"></i>
-                <h3 class="text-white font-semibold text-sm">Send Payment</h3>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <span class="text-xs text-gray-500">Token:</span>
-                <button id="pay-token-usdc" onclick="selectPayToken('USDC')"
-                  class="px-4 py-2 rounded-lg border text-sm font-semibold transition-all bg-cyan-700 text-white border-cyan-500">
-                  USDC
-                </button>
-                <button id="pay-token-eurc" onclick="selectPayToken('EURC')"
-                  class="px-4 py-2 rounded-lg border text-sm font-semibold transition-all bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-500">
-                  EURC
-                </button>
-              </div>
-            </div>
-
-            <!-- Form body -->
-            <div class="p-5 space-y-4">
-
-              <!-- Recipient -->
-              <div>
-                <label class="text-xs text-gray-400 uppercase tracking-wider mb-1.5 block">Recipient Address</label>
-                <input type="text" id="pay-recipient" placeholder="0x... recipient wallet address"
-                  oninput="updatePayPreview(); validatePayForm()"
-                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none font-mono transition-colors">
-              </div>
-
-              <!-- Amount + MAX -->
-              <div>
-                <div class="flex justify-between items-center mb-1.5">
-                  <label class="text-xs text-gray-400 uppercase tracking-wider">Amount</label>
-                  <span id="pay-max-hint" class="text-xs text-gray-600"></span>
-                </div>
-                <div class="flex gap-2">
-                  <input type="number" id="pay-amount" placeholder="0.000000" min="0" step="0.000001"
-                    oninput="updatePayPreview(); validatePayForm()"
-                    class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none transition-colors">
-                  <button onclick="setPayMax()"
-                    class="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-cyan-400 text-xs font-bold rounded-xl transition-colors">
-                    MAX
-                  </button>
-                </div>
-              </div>
-
-              <!-- Description / Note -->
-              <div>
-                <label class="text-xs text-gray-400 uppercase tracking-wider mb-1.5 block">Note (optional)</label>
-                <input type="text" id="pay-description" placeholder="Payment for services, invoice #123..."
-                  oninput="updatePayPreview()"
-                  class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:border-gray-500 focus:outline-none transition-colors">
-              </div>
-
-              <!-- Transaction Preview -->
-              <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-4 space-y-2">
-                <p class="text-xs text-gray-400 uppercase tracking-wider mb-2">Transaction Preview</p>
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">Token</span>
-                  <span id="prev-token" class="text-cyan-400 font-semibold">USDC</span>
-                </div>
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">Amount</span>
-                  <span id="prev-amount" class="text-white font-bold">—</span>
-                </div>
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">To</span>
-                  <span id="prev-recipient" class="text-gray-300 font-mono">—</span>
-                </div>
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">From</span>
-                  <span id="pay-from-display" class="text-gray-300 font-mono">—</span>
-                </div>
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">Network</span>
-                  <span id="prev-network" class="text-green-400">Arc Testnet</span>
-                </div>
-                <div class="flex justify-between text-xs">
-                  <span class="text-gray-500">Gas</span>
-                  <span id="prev-gas" class="text-yellow-400">~1 tx (native)</span>
-                </div>
-              </div>
-
-              <!-- Error box -->
-              <div id="pay-error-box" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl px-4 py-3 flex items-start gap-2">
-                <i class="fas fa-exclamation-circle text-red-400 mt-0.5 flex-shrink-0"></i>
-                <div class="flex-1">
-                  <span id="pay-error-text" class="text-red-300 text-xs"></span>
-                </div>
-                <button onclick="hidePayError()" class="text-gray-600 hover:text-gray-400 text-xs ml-1">✕</button>
-              </div>
-
-              <!-- Send button -->
-              <button id="pay-send-btn" onclick="executePayment()" disabled
-                class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-700 to-blue-700 hover:from-cyan-600 hover:to-blue-600 disabled:from-gray-700 disabled:to-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl py-3 text-sm transition-all shadow-lg shadow-cyan-900/20">
-                <i class="fas fa-paper-plane mr-2"></i>Sign &amp; Send
-              </button>
-
-              <!-- ARC note -->
-              <p class="text-xs text-gray-600 text-center">
-                <i class="fas fa-info-circle mr-1"></i>
-                USDC is the native gas token on Arc Testnet. Dynamic gas estimation. No hard-coded values.
-              </p>
-            </div>
-          </div>
-
-          <!-- ── PROGRESS STEPS ── -->
-          <div id="pay-steps-panel" class="hidden bg-gray-900/70 border border-gray-700/50 rounded-2xl p-5">
-            <p class="text-xs text-gray-400 uppercase tracking-wider mb-4">Transaction Progress</p>
-            <div class="space-y-2">
-              <div id="pay-step-0" class="pay-step pay-step-idle flex items-center gap-3">
-                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
-                  <i class="fas fa-network-wired"></i>
-                </div>
-                <span id="pay-step-label-0" class="text-xs">Verify Arc Testnet network</span>
-              </div>
-              <div id="pay-step-1" class="pay-step pay-step-idle flex items-center gap-3">
-                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
-                  <i class="fas fa-coins"></i>
-                </div>
-                <span id="pay-step-label-1" class="text-xs">Read on-chain balance</span>
-              </div>
-              <div id="pay-step-2" class="pay-step pay-step-idle flex items-center gap-3">
-                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
-                  <i class="fas fa-check-double"></i>
-                </div>
-                <span id="pay-step-label-2" class="text-xs">Approve token spending (EURC only)</span>
-              </div>
-              <div id="pay-step-3" class="pay-step pay-step-idle flex items-center gap-3">
-                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
-                  <i class="fas fa-signature"></i>
-                </div>
-                <span id="pay-step-label-3" class="text-xs">Sign &amp; broadcast transaction</span>
-              </div>
-              <div id="pay-step-4" class="pay-step pay-step-idle flex items-center gap-3">
-                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
-                  <i class="fas fa-hourglass-half"></i>
-                </div>
-                <span id="pay-step-label-4" class="text-xs">Wait for on-chain confirmation</span>
-              </div>
-              <div id="pay-step-5" class="pay-step pay-step-idle flex items-center gap-3">
-                <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">
-                  <i class="fas fa-receipt"></i>
-                </div>
-                <span id="pay-step-label-5" class="text-xs">Generate receipt</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- ── RECEIPT PANEL ── -->
-          <div id="pay-receipt-panel" class="hidden">
-            <div id="pay-receipt-content"></div>
-          </div>
-
-          <!-- ── BATCH / CSV SECTION (collapsible) ── -->
-          <details class="bg-gray-900/50 border border-gray-700/40 rounded-2xl overflow-hidden">
-            <summary class="px-5 py-3 cursor-pointer text-sm text-gray-300 hover:text-white flex items-center gap-2 select-none list-none">
-              <i class="fas fa-table text-cyan-600"></i>
-              <span class="font-medium">Batch / Multi-send (CSV)</span>
-              <i class="fas fa-chevron-down text-xs text-gray-600 ml-auto"></i>
-            </summary>
-            <div class="border-t border-gray-700/40">
-
-              <!-- Cabeçalho do painel multi-send -->
-              <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700/40">
-                <div class="flex items-center gap-4">
+            <!-- Title + Balance cards row -->
+            <div class="flex items-end justify-between flex-wrap gap-4">
+              <h2 class="text-3xl font-800 text-white leading-none" style="font-weight:800;">Wallet Balance</h2>
+              <div class="flex items-center gap-3 flex-wrap">
+                <!-- USDC card -->
+                <div class="pay-bal-card">
+                  <div class="pay-bal-icon pay-bal-icon-usdc">$</div>
                   <div>
-                    <p class="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Token</p>
-                    <p class="text-cyan-400 font-bold text-lg leading-none">USDC</p>
+                    <div class="text-[10px] font-700 text-gray-500 uppercase tracking-wider mb-0.5">USDC Balance</div>
+                    <div class="flex items-baseline gap-1.5">
+                      <span id="pay-header-usdc" class="text-xl font-800 text-white" style="font-weight:800;">--</span>
+                      <span class="text-xs text-gray-500 font-600">USDC</span>
+                    </div>
                   </div>
-                  <div class="w-px h-8 bg-gray-700/60"></div>
+                </div>
+                <!-- EURC card -->
+                <div class="pay-bal-card">
+                  <div class="pay-bal-icon pay-bal-icon-eurc" style="font-size:18px;">€</div>
                   <div>
-                    <p class="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Total to Send</p>
-                    <p id="multisend-total" class="text-cyan-400 font-bold text-lg leading-none">0.0000 <span class="text-sm text-gray-400 font-normal">USDC</span></p>
+                    <div class="text-[10px] font-700 text-gray-500 uppercase tracking-wider mb-0.5">EURC Balance</div>
+                    <div class="flex items-baseline gap-1.5">
+                      <span id="pay-header-eurc" class="text-xl font-800 text-white" style="font-weight:800;">--</span>
+                      <span class="text-xs text-gray-500 font-600">EURC</span>
+                    </div>
                   </div>
+                </div>
+                <!-- Refresh -->
+                <button onclick="refreshPaymentBalances()" title="Refresh balances"
+                  class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-500 hover:text-gray-300 flex items-center justify-center transition-all">
+                  <i class="fas fa-sync-alt text-xs"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── MAIN GRID ───────────────────────────────────────────── -->
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+          <!-- ════════════════════════════════
+               LEFT — Send Payment
+               ════════════════════════════════ -->
+          <div class="lg:col-span-3">
+            <div id="pay-send-card">
+
+              <!-- Decorative arrow watermark -->
+              <div style="position:absolute;right:24px;top:20px;opacity:0.04;pointer-events:none;font-size:90px;color:#fff;">
+                <i class="fas fa-arrow-right"></i>
+              </div>
+
+              <div class="p-6" style="position:relative;z-index:1;">
+
+                <!-- Title -->
+                <h3 style="font-size:18px;font-weight:800;color:#e5e7eb;margin-bottom:22px;">Send Payment</h3>
+
+                <!-- SELECT ASSET -->
+                <div style="margin-bottom:20px;">
+                  <label class="pay-form-label">Select Asset</label>
+                  <div style="background:#0d1117;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:4px;display:flex;gap:4px;">
+                    <button id="pay-token-usdc" onclick="selectPayToken('USDC')"
+                      class="pay-asset-btn active">USDC</button>
+                    <button id="pay-token-eurc" onclick="selectPayToken('EURC')"
+                      class="pay-asset-btn">EURC</button>
+                  </div>
+                </div>
+
+                <!-- SENDER NAME (display only) -->
+                <div style="margin-bottom:16px;">
+                  <label class="pay-form-label">Sender Name</label>
+                  <div class="pay-input-wrap">
+                    <i class="fas fa-user pay-input-icon"></i>
+                    <input type="text" id="pay-wallet-short-display"
+                      placeholder="Your legal or account name"
+                      class="pay-input pay-input-with-icon" readonly
+                      style="cursor:default;opacity:0.7;">
+                  </div>
+                </div>
+
+                <!-- RECIPIENT NAME -->
+                <div style="margin-bottom:16px;">
+                  <label class="pay-form-label">Recipient Name</label>
+                  <div class="pay-input-wrap">
+                    <i class="fas fa-user-plus pay-input-icon"></i>
+                    <input type="text" id="pay-recipient-name"
+                      placeholder="Enter recipient's name"
+                      class="pay-input pay-input-with-icon">
+                  </div>
+                </div>
+
+                <!-- RECIPIENT ADDRESS -->
+                <div style="margin-bottom:16px;">
+                  <label class="pay-form-label">Recipient Address</label>
+                  <div class="pay-input-wrap">
+                    <i class="fas fa-wallet pay-input-icon"></i>
+                    <input type="text" id="pay-recipient"
+                      placeholder="0x71C...8e92 or ENS name"
+                      oninput="updatePayPreview(); validatePayForm(); payCheckAddress(this.value)"
+                      class="pay-input pay-input-with-icon"
+                      style="padding-right:44px;">
+                    <span class="pay-input-icon-right" onclick="payPasteAddress()" title="Paste address">
+                      <i class="fas fa-paste"></i>
+                    </span>
+                  </div>
+                  <!-- Valid address indicator -->
+                  <div id="pay-addr-valid">
+                    <i class="fas fa-check-circle" style="color:#22c55e;"></i>
+                    <span>Valid Arc Network address</span>
+                  </div>
+                  <!-- Save address checkbox -->
+                  <div class="pay-save-row">
+                    <input type="checkbox" id="pay-save-addr" class="pay-save-check">
+                    <label for="pay-save-addr" class="pay-save-label">Save this address for future payments</label>
+                  </div>
+                </div>
+
+                <!-- AMOUNT -->
+                <div style="margin-bottom:6px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <label class="pay-form-label" style="margin-bottom:0;">Amount</label>
+                    <span class="text-xs text-gray-500">Available: <span id="pay-avail-display" class="text-gray-300 font-semibold">-- USDC</span></span>
+                  </div>
+                  <div id="pay-amount-input-wrap">
+                    <input type="number" id="pay-amount" placeholder="0.00" min="0" step="0.000001"
+                      oninput="updatePayPreview(); validatePayForm(); payUpdateUsdEquiv()">
+                    <button class="pay-max-btn" onclick="setPayMax()">MAX</button>
+                    <span id="pay-amount-token-label" class="pay-token-label">USDC</span>
+                  </div>
+                </div>
+                <!-- USD equivalent -->
+                <div class="pay-usd-equiv">≈ <span id="pay-usd-equiv">0.00</span> USD</div>
+
+                <!-- TRANSACTION DETAILS -->
+                <div id="pay-tx-details">
+                  <span class="pay-tx-label">Transaction Details</span>
+                  <div class="pay-tx-row">
+                    <span class="pay-tx-row-key">Estimated Network Fee</span>
+                    <span class="pay-tx-row-val"><span id="pay-fee-display">0.12</span> USDC</span>
+                  </div>
+                  <div class="pay-tx-row">
+                    <span class="pay-tx-row-key">Total Cost</span>
+                    <span class="pay-tx-row-val"><span id="pay-total-display">0.12</span> USDC</span>
+                  </div>
+                  <div class="pay-tx-row">
+                    <span class="pay-tx-row-key">Arrival Time</span>
+                    <span class="pay-tx-row-val">~12 Seconds</span>
+                  </div>
+                </div>
+
+                <!-- Error box -->
+                <div id="pay-error-box" class="hidden mt-4" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:12px 14px;display:flex;align-items:flex-start;gap:8px;">
+                  <i class="fas fa-exclamation-circle text-red-400 mt-0.5 flex-shrink-0"></i>
+                  <span id="pay-error-text" class="text-red-300 text-xs flex-1"></span>
+                  <button onclick="hidePayError()" class="text-gray-600 hover:text-gray-400 text-xs ml-1">✕</button>
+                </div>
+
+                <!-- REVIEW & SEND button -->
+                <button id="pay-send-btn" onclick="executePayment()" disabled>
+                  Review &amp; Send
+                </button>
+
+                <!-- Footer note -->
+                <p class="pay-footer-note">Funds are transferred instantly across the Sovereign Ledger.</p>
+
+              </div>
+            </div>
+
+            <!-- ── PROGRESS STEPS (hidden until tx) ── -->
+            <div id="pay-steps-panel" class="hidden mt-4" style="background:#161b27;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px;">
+              <p class="text-xs text-gray-500 uppercase tracking-wider mb-4 font-bold">Transaction Progress</p>
+              <div class="space-y-3">
+                <div id="pay-step-0" class="pay-step pay-step-idle flex items-center gap-3">
+                  <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-network-wired"></i></div>
+                  <span id="pay-step-label-0" class="text-xs text-gray-500">Verify Arc Testnet network</span>
+                </div>
+                <div id="pay-step-1" class="pay-step pay-step-idle flex items-center gap-3">
+                  <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-coins"></i></div>
+                  <span id="pay-step-label-1" class="text-xs text-gray-500">Read on-chain balance</span>
+                </div>
+                <div id="pay-step-2" class="pay-step pay-step-idle flex items-center gap-3">
+                  <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-check-double"></i></div>
+                  <span id="pay-step-label-2" class="text-xs text-gray-500">Approve token spending</span>
+                </div>
+                <div id="pay-step-3" class="pay-step pay-step-idle flex items-center gap-3">
+                  <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-signature"></i></div>
+                  <span id="pay-step-label-3" class="text-xs text-gray-500">Sign &amp; broadcast transaction</span>
+                </div>
+                <div id="pay-step-4" class="pay-step pay-step-idle flex items-center gap-3">
+                  <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-hourglass-half"></i></div>
+                  <span id="pay-step-label-4" class="text-xs text-gray-500">Wait for on-chain confirmation</span>
+                </div>
+                <div id="pay-step-5" class="pay-step pay-step-idle flex items-center gap-3">
+                  <div class="pay-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-receipt"></i></div>
+                  <span id="pay-step-label-5" class="text-xs text-gray-500">Generate receipt</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── RECEIPT ── -->
+            <div id="pay-receipt-panel" class="hidden mt-4">
+              <div id="pay-receipt-content"></div>
+            </div>
+
+            <!-- ── Hidden compat fields for JS ── -->
+            <input type="text"   id="pay-description" style="display:none">
+            <input type="text"   id="pay-from"        style="display:none">
+            <input type="text"   id="pay-wallet-short" style="display:none">
+            <span id="pay-from-display"  style="display:none"></span>
+            <span id="prev-token"        style="display:none">USDC</span>
+            <span id="prev-amount"       style="display:none"></span>
+            <span id="prev-recipient"    style="display:none"></span>
+            <span id="prev-network"      style="display:none">Arc Testnet</span>
+            <span id="prev-gas"          style="display:none"></span>
+            <span id="pay-max-hint"      style="display:none"></span>
+            <span id="pay-balance-usdc"  style="display:none"></span>
+            <span id="pay-balance-eurc"  style="display:none"></span>
+            <span id="pay-network-name"  style="display:none"></span>
+            <!-- Multisend compat -->
+            <select id="pay-priority" style="display:none"><option value="medium" selected>Medium</option></select>
+            <span id="multisend-total" style="display:none"></span>
+            <div id="multisend-rows" style="display:none"></div>
+            <input id="csv-file-input" type="file" style="display:none" onchange="handleCSVFile(this.files[0])">
+            <div id="csv-error-banner" style="display:none"><span id="csv-error-text"></span></div>
+            <div id="payment-analysis-result" style="display:none"></div>
+            <div id="csv-preview-container" style="display:none"></div>
+
+          </div>
+
+          <!-- ════════════════════════════════
+               RIGHT — Agent Queue + History
+               ════════════════════════════════ -->
+          <div class="lg:col-span-2 space-y-4">
+
+            <!-- AGENT QUEUE -->
+            <div class="pay-side-card">
+              <div class="pay-side-card-header">
+                <div class="pay-side-card-title">
+                  <i class="fas fa-robot" style="color:#a78bfa;font-size:15px;"></i>
+                  Agent Queue
                 </div>
                 <div class="flex items-center gap-2">
-                  <input id="csv-file-input" type="file" accept=".csv,.txt" class="hidden"
-                    onchange="handleCSVFile(this.files[0])">
-                  <button
-                    onclick="document.getElementById('csv-file-input').click()"
-                    ondragover="event.preventDefault(); event.currentTarget.classList.add('border-cyan-400','bg-cyan-900/20')"
-                    ondragleave="event.currentTarget.classList.remove('border-cyan-400','bg-cyan-900/20')"
-                    ondrop="event.preventDefault(); event.currentTarget.classList.remove('border-cyan-400','bg-cyan-900/20'); handleCSVFile(event.dataTransfer.files[0])"
-                    class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-cyan-500 text-gray-200 font-semibold rounded-xl px-4 py-2.5 text-sm transition-all">
-                    <i class="fas fa-upload text-cyan-400"></i>
-                    <span>CSV</span>
-                  </button>
-                  <button onclick="downloadCSVTemplate()" title="Download CSV template"
-                    class="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-gray-500 text-gray-400 hover:text-cyan-400 rounded-xl transition-all">
-                    <i class="fas fa-download text-xs"></i>
+                  <span id="pay-queue-count" class="pay-queue-badge">0 ACTIVE</span>
+                  <button onclick="loadPayments()" title="Refresh queue"
+                    class="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 flex items-center justify-center transition-all">
+                    <i class="fas fa-sync-alt text-xs"></i>
                   </button>
                 </div>
               </div>
 
-              <div id="csv-error-banner" class="hidden px-5 py-2 bg-red-900/20 border-b border-red-700/30 flex items-center gap-2">
-                <i class="fas fa-exclamation-circle text-red-400 text-xs"></i>
-                <span id="csv-error-text" class="text-xs text-red-300"></span>
+              <!-- Queue items container -->
+              <div id="pay-queue-items">
+                <!-- Populated by JS — default empty state -->
+                <div id="pay-queue-empty" class="py-10 text-center">
+                  <i class="fas fa-inbox text-3xl text-gray-700 block mb-2"></i>
+                  <p class="text-xs text-gray-600">No agents in queue</p>
+                </div>
               </div>
 
-              <div class="grid grid-cols-12 gap-3 px-5 py-2 bg-gray-800/30 border-b border-gray-700/30">
-                <div class="col-span-5 text-xs text-gray-500 uppercase tracking-wider">ADDRESS</div>
-                <div class="col-span-3 text-xs text-gray-500 uppercase tracking-wider">AMOUNT (USDC)</div>
-                <div class="col-span-3 text-xs text-gray-500 uppercase tracking-wider">NOTE</div>
-                <div class="col-span-1"></div>
+              <!-- Hidden compat div for old loadPayments() -->
+              <div id="payments-list" style="display:none"></div>
+
+              <span class="pay-view-all" onclick="switchTab('dashboard')">View All Agents</span>
+            </div>
+
+            <!-- ON-CHAIN HISTORY -->
+            <div class="pay-side-card">
+              <div class="pay-side-card-header">
+                <div class="pay-side-card-title">
+                  <i class="fas fa-clock" style="color:#60b4ff;font-size:15px;"></i>
+                  On-chain History
+                </div>
+                <div class="flex items-center gap-2">
+                  <button onclick="refreshPaymentBalances(); renderPaymentHistory()" title="Refresh"
+                    class="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 text-gray-500 hover:text-gray-300 flex items-center justify-center transition-all">
+                    <i class="fas fa-sync-alt text-xs"></i>
+                  </button>
+                  <a href="https://testnet.arcscan.app" target="_blank" rel="noopener noreferrer"
+                    class="pay-hist-external" title="Open in ArcScan">
+                    <i class="fas fa-external-link-alt text-xs"></i>
+                  </a>
+                </div>
               </div>
 
-              <div id="multisend-rows" class="divide-y divide-gray-800/60"></div>
-
-              <div class="px-5 py-3 border-t border-gray-700/30">
-                <button onclick="addMultisendRow()"
-                  class="w-full flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm font-medium py-1 transition-colors">
-                  <i class="fas fa-plus text-xs"></i> + Add Recipient
-                </button>
-              </div>
-
-              <div class="px-5 py-3 border-t border-gray-700/30 bg-gray-800/20">
-                <label class="text-xs text-gray-500 mb-1.5 block uppercase tracking-wider">From (Sender)</label>
-                <input type="text" id="pay-from" placeholder="0x... (auto-filled by wallet)"
-                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none font-mono">
-              </div>
-
-              <div class="px-5 py-4 border-t border-gray-700/30 bg-gray-800/10">
-                <div class="flex items-center gap-3 flex-wrap">
-                  <div class="flex items-center gap-2">
-                    <label class="text-xs text-gray-500">Priority:</label>
-                    <select id="pay-priority"
-                      class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-cyan-500 focus:outline-none">
-                      <option value="low">Low</option>
-                      <option value="medium" selected>Medium</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
-                    </select>
-                  </div>
-                  <div class="flex-1 flex gap-2 justify-end">
-                    <button onclick="analyzeMultisend()"
-                      class="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl px-4 py-2 text-sm font-medium transition-colors">
-                      <i class="fas fa-brain text-purple-400"></i> AI Analysis
-                    </button>
-                    <button onclick="submitMultisend()"
-                      class="flex items-center gap-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-xl px-5 py-2 text-sm font-bold transition-colors shadow-lg shadow-cyan-900/30">
-                      <i class="fas fa-paper-plane"></i> Send All
-                    </button>
-                  </div>
+              <!-- History items -->
+              <div id="pay-history-list">
+                <div id="pay-hist-empty" class="py-10 text-center">
+                  <i class="fas fa-clock text-3xl text-gray-700 block mb-2"></i>
+                  <p class="text-xs text-gray-600">No transactions yet</p>
                 </div>
               </div>
             </div>
-          </details>
 
-          <!-- CSV format hint -->
-          <div class="bg-gray-900/40 border border-gray-700/30 rounded-xl px-4 py-3 flex items-start gap-3">
-            <i class="fas fa-info-circle text-cyan-600 mt-0.5 flex-shrink-0"></i>
-            <div class="text-xs text-gray-500">
-              <strong class="text-gray-400">CSV Format:</strong>
-              columns <code class="text-cyan-500 bg-gray-800 px-1 rounded">address</code>,
-              <code class="text-cyan-500 bg-gray-800 px-1 rounded">amount</code>,
-              <code class="text-gray-400 bg-gray-800 px-1 rounded">note</code> (optional),
-              <code class="text-gray-400 bg-gray-800 px-1 rounded">priority</code> (optional) —
-              max 500 rows · max $10,000 per row
-            </div>
-          </div>
-
-          <div id="csv-preview-container" class="hidden"></div>
-          <div id="payment-analysis-result" class="hidden"></div>
-
-          <div class="flex gap-2">
-            <button onclick="createDemoPayments()"
-              class="flex-1 bg-blue-900/30 border border-blue-700/40 hover:bg-blue-800/40 text-blue-400 rounded-xl py-2 text-sm transition-colors">
-              <i class="fas fa-flask mr-2"></i>Demo Payments
-            </button>
-            <button onclick="processPayments()"
-              class="flex-1 bg-green-800/40 border border-green-700/40 hover:bg-green-700/50 text-green-400 rounded-xl py-2 text-sm font-medium transition-colors">
-              <i class="fas fa-play mr-2"></i>Process Queue
-            </button>
           </div>
         </div>
-
-        <!-- ═══════════════════════════════════════════════════
-             COLUNA DIREITA — Queue + History
-             ═══════════════════════════════════════════════════ -->
-        <div class="xl:col-span-2 space-y-4">
-
-          <!-- On-chain payment history -->
-          <div>
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-white font-semibold flex items-center gap-2 text-sm">
-                <i class="fas fa-history text-cyan-400"></i> On-chain History
-              </h3>
-              <button onclick="refreshPaymentBalances(); renderPaymentHistory()" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
-                <i class="fas fa-sync mr-1"></i>Refresh
-              </button>
-            </div>
-            <div id="pay-history-list" class="space-y-2">
-              <div class="text-gray-600 text-xs text-center py-6 bg-gray-900/40 rounded-xl border border-gray-700/30">
-                <i class="fas fa-clock text-2xl mb-2 block"></i>
-                No transactions yet
-              </div>
-            </div>
-          </div>
-
-          <!-- Agent Payment Queue -->
-          <div>
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-white font-semibold flex items-center gap-2 text-sm">
-                <i class="fas fa-robot text-purple-400"></i> Agent Queue
-              </h3>
-              <button onclick="loadPayments()" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">
-                <i class="fas fa-sync mr-1"></i>Update
-              </button>
-            </div>
-            <div id="payments-list" class="space-y-3">
-              <div class="text-gray-500 text-sm text-center py-8 bg-gray-900/40 rounded-xl border border-gray-700/30">
-                <i class="fas fa-inbox text-4xl mb-3 block text-gray-700"></i>
-                No payments in queue
-              </div>
-            </div>
-          </div>
-
-        </div>
-
       </div>
+
+      <!-- ── Init script: wire new UI — logic is in payments.js payV2Init() ── -->
+      <script>
+        window.addEventListener('DOMContentLoaded', function() {
+          if (typeof payV2Init === 'function') payV2Init();
+          else document.addEventListener('payV2Ready', function() { payV2Init(); });
+        });
+      </script>
+
     </div>
 
     <!-- CONTRACTS TAB -->
@@ -3398,20 +3609,20 @@ app.get('/', (c) => {
     </div>
   </footer>
 
-  <script src="/static/wallet.js?v=20250322"></script>
-  <script src="/static/csv-upload.js?v=20250322"></script>
-  <script src="/static/app.js?v=20250322"></script>
-  <script src="/static/payments.js?v=20250322"></script>
-  <script src="/static/contracts.js?v=20250322"></script>
-  <script src="/static/settings.js?v=20250322"></script>
-  <script src="/static/swap.js?v=20250322"></script>
-  <script src="/static/dex.js?v=20250322"></script>
-  <script src="/static/multisend.js?v=20250322"></script>
-  <script src="/static/guardian.js?v=20250322"></script>
-  <script src="/static/yield-optimizer.js?v=20250322"></script>
-  <script src="/static/history.js?v=20250322"></script>
-  <script src="/static/dashboard.js?v=20250322"></script>
-  <script src="/static/chat.js?v=20250322"></script>
+  <script src="/static/wallet.js?v=20250322b"></script>
+  <script src="/static/csv-upload.js?v=20250322b"></script>
+  <script src="/static/app.js?v=20250322b"></script>
+  <script src="/static/payments.js?v=20250322b"></script>
+  <script src="/static/contracts.js?v=20250322b"></script>
+  <script src="/static/settings.js?v=20250322b"></script>
+  <script src="/static/swap.js?v=20250322b"></script>
+  <script src="/static/dex.js?v=20250322b"></script>
+  <script src="/static/multisend.js?v=20250322b"></script>
+  <script src="/static/guardian.js?v=20250322b"></script>
+  <script src="/static/yield-optimizer.js?v=20250322b"></script>
+  <script src="/static/history.js?v=20250322b"></script>
+  <script src="/static/dashboard.js?v=20250322b"></script>
+  <script src="/static/chat.js?v=20250322b"></script>
   <script>
     // ── Platform initialization ───────────────────────────────────────────────
     window.addEventListener('load', () => {
