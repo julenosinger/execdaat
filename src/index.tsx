@@ -315,13 +315,21 @@ app.get('/', (c) => {
 <body class="bg-gray-950 text-gray-100 min-h-screen">
 
   <!-- ══════════════════════════════════════════════════════════════════════
-       PERSISTENT TESTNET WARNING — always visible, non-dismissible
+       PERSISTENT TESTNET WARNING — dismissible
        ══════════════════════════════════════════════════════════════════════ -->
-  <div class="bg-amber-500 text-black text-center text-xs font-bold py-2 px-4 flex items-center justify-center gap-2 sticky top-0 z-[100]">
-    <i class="fas fa-flask"></i>
-    <span class="hidden sm:inline">⚠️ TESTNET APPLICATION — No real funds. Arc Testnet only. Do not send mainnet assets.</span>
-    <span class="sm:hidden">⚠️ TESTNET ONLY — No real funds</span>
-    <a href="/about" class="underline ml-2 opacity-70 hover:opacity-100 hidden sm:inline">Learn more</a>
+  <div id="testnet-banner" style="background:#111;border-bottom:1px solid #2a2a2a;color:#fff;font-size:12px;padding:7px 16px;display:flex;align-items:center;justify-content:center;gap:8px;position:sticky;top:0;z-index:100;">
+    <span style="color:#f59e0b;font-size:14px;">⚠</span>
+    <span style="color:#f59e0b;font-weight:700;letter-spacing:0.03em;">TESTNET ONLY —</span>
+    <span style="color:#ccc;font-weight:400;" class="hidden sm:inline">This application runs exclusively on Arc Testnet. No real funds are used. Do not send mainnet assets.</span>
+    <span style="color:#ccc;font-weight:400;" class="sm:hidden">Arc Testnet only. No real funds.</span>
+    <a href="/about" style="color:#ccc;text-decoration:underline;margin-left:4px;opacity:0.8;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" class="hidden sm:inline">Learn more</a>
+    <button
+      onclick="document.getElementById('testnet-banner').style.display='none'"
+      title="Fechar"
+      style="margin-left:12px;background:none;border:none;color:#888;font-size:14px;cursor:pointer;padding:0 2px;line-height:1;display:flex;align-items:center;"
+      onmouseover="this.style.color='#fff'"
+      onmouseout="this.style.color='#888'"
+    >✕</button>
   </div>
 
   <!-- ══════════════════════════════════════════════════════════════════════
