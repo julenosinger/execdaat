@@ -205,13 +205,16 @@ function selectPayToken(token) {
   const eBtn = payEl('pay-token-eurc');
   if (uBtn && eBtn) {
     if (token === 'USDC') {
-      uBtn.className = 'pay-token-btn active-usdc';
-      eBtn.className = 'pay-token-btn inactive';
+      uBtn.className = 'pay-tok-btn tok-usdc';
+      eBtn.className = 'pay-tok-btn tok-off';
     } else {
-      uBtn.className = 'pay-token-btn inactive';
-      eBtn.className = 'pay-token-btn active-eurc';
+      uBtn.className = 'pay-tok-btn tok-off';
+      eBtn.className = 'pay-tok-btn tok-eurc';
     }
   }
+  // Update label span inside Amount field
+  const lblTok = payEl('pay-label-token');
+  if (lblTok) lblTok.textContent = token;
   paySet('prev-token', token);
   updatePayMaxHint();
   updatePayPreview();
@@ -570,43 +573,44 @@ function renderPaymentReceipt(r) {
   if (!container) return;
 
   container.innerHTML = `
-    <div style="background:rgba(10,12,20,0.98);border:1px solid rgba(52,211,153,0.2);border-radius:16px;overflow:hidden;margin-bottom:16px;">
+    <div style="background:rgba(10,12,24,0.98);border:1px solid rgba(29,158,117,0.22);border-radius:16px;overflow:hidden;margin-bottom:16px;position:relative;">
+      <div style="height:2px;background:linear-gradient(90deg,transparent,#378ADD 40%,#1D9E75 60%,transparent);"></div>
       <!-- Receipt header -->
-      <div style="background:rgba(52,211,153,0.06);border-bottom:1px solid rgba(52,211,153,0.15);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
-        <span style="color:#34d399;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">
+      <div style="background:rgba(29,158,117,0.06);border-bottom:1px solid rgba(29,158,117,0.15);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
+        <span style="color:#34d399;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">
           <i class="fas fa-receipt" style="margin-right:6px;"></i>Payment Receipt
         </span>
-        <span style="background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);color:#34d399;font-size:10px;padding:3px 10px;border-radius:20px;font-weight:700;">✓ Confirmed</span>
+        <span style="background:rgba(29,158,117,0.12);border:1px solid rgba(29,158,117,0.35);color:#34d399;font-size:10px;padding:3px 10px;border-radius:20px;font-weight:700;">✓ Confirmed</span>
       </div>
       <!-- Receipt body -->
       <div style="padding:18px 20px;">
         <div style="display:grid;gap:8px;">
           ${receiptRow('Full Name', r.fullname)}
           ${receiptRow('Email', r.email)}
-          ${receiptRow('Token', '<span style="color:#22d3ee;font-weight:700;">' + r.token + '</span>')}
-          ${receiptRow('Amount', '<span style="color:#e2e8f0;font-weight:700;">' + r.amount.toFixed(6) + ' ' + r.token + '</span>')}
-          ${receiptRow('From', '<span style="font-family:monospace;font-size:11px;">' + shortAddr(r.sender) + '</span>')}
-          ${receiptRow('To', '<span style="font-family:monospace;font-size:11px;">' + shortAddr(r.recipient) + '</span>')}
+          ${receiptRow('Token', '<span style="color:#60b4ff;font-weight:700;">' + r.token + '</span>')}
+          ${receiptRow('Amount', '<span style="color:#dde2f0;font-weight:700;">' + r.amount.toFixed(6) + ' ' + r.token + '</span>')}
+          ${receiptRow('From', '<span style="font-family:monospace;font-size:11px;color:#dde2f0;">' + shortAddr(r.sender) + '</span>')}
+          ${receiptRow('To', '<span style="font-family:monospace;font-size:11px;color:#dde2f0;">' + shortAddr(r.recipient) + '</span>')}
           ${receiptRow('Network', '<span style="color:#34d399;">' + r.network + '</span>')}
           ${receiptRow('Est. Gas', '~' + r.gasFee + ' USDC')}
-          ${receiptRow('Tx Hash', '<a href="' + r.explorerUrl + '" target="_blank" style="color:#818cf8;font-family:monospace;font-size:11px;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + r.txHash.slice(0,16) + '… ↗</a>')}
+          ${receiptRow('Tx Hash', '<a href="' + r.explorerUrl + '" target="_blank" style="color:#378ADD;font-family:monospace;font-size:11px;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + r.txHash.slice(0,16) + '… ↗</a>')}
           ${receiptRow('Date & Time', new Date(r.timestamp).toLocaleString())}
         </div>
         <!-- Action buttons -->
         <div style="display:flex;gap:8px;margin-top:18px;">
           <button onclick="generatePayReceiptPDF(payState.receipt, false)"
-            style="flex:1;padding:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;color:#f87171;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;"
-            onmouseover="this.style.background='rgba(239,68,68,0.18)'" onmouseout="this.style.background='rgba(239,68,68,0.1)'">
+            style="flex:1;padding:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;color:#f87171;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;"
+            onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='rgba(239,68,68,0.08)'">
             <i class="fas fa-file-pdf"></i> Download PDF
           </button>
           <button onclick="downloadPayReceipt('json')"
-            style="flex:1;padding:10px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:10px;color:#818cf8;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;"
-            onmouseover="this.style.background='rgba(99,102,241,0.15)'" onmouseout="this.style.background='rgba(99,102,241,0.08)'">
+            style="flex:1;padding:10px;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.22);border-radius:10px;color:#60b4ff;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;"
+            onmouseover="this.style.background='rgba(55,138,221,0.15)'" onmouseout="this.style.background='rgba(55,138,221,0.08)'">
             <i class="fas fa-download"></i> JSON
           </button>
           <a href="${r.explorerUrl}" target="_blank"
-            style="flex:1;padding:10px;background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.25);border-radius:10px;color:#22d3ee;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;"
-            onmouseover="this.style.background='rgba(34,211,238,0.15)'" onmouseout="this.style.background='rgba(34,211,238,0.08)'">
+            style="flex:1;padding:10px;background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.25);border-radius:10px;color:#34d399;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;"
+            onmouseover="this.style.background='rgba(29,158,117,0.15)'" onmouseout="this.style.background='rgba(29,158,117,0.08)'">
             <i class="fas fa-external-link-alt"></i> ArcScan
           </a>
         </div>
@@ -617,9 +621,9 @@ function renderPaymentReceipt(r) {
 
 function receiptRow(label, value) {
   return `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:12px;">
-      <span style="color:#374151;flex-shrink:0;margin-right:12px;">${label}</span>
-      <span style="color:#cbd5e1;text-align:right;">${value}</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(55,138,221,0.06);font-size:12px;">
+      <span style="color:#3a4870;flex-shrink:0;margin-right:12px;">${label}</span>
+      <span style="color:#dde2f0;text-align:right;">${value}</span>
     </div>`;
 }
 
@@ -812,27 +816,27 @@ function renderPaymentHistory() {
   if (!container) return;
   if (payState.history.length === 0) {
     container.innerHTML = `
-      <div style="color:#2a3450;font-size:12px;text-align:center;padding:28px 0;">
-        <i class="fas fa-clock" style="font-size:22px;display:block;margin-bottom:8px;"></i>
+      <div style="color:#3a4870;font-size:12px;text-align:center;padding:28px 0;">
+        <i class="fas fa-clock" style="font-size:22px;display:block;margin-bottom:8px;color:#252a40;"></i>
         No transactions yet
       </div>`;
     return;
   }
   container.innerHTML = payState.history.slice(0, 20).map(r => `
-    <div style="background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px;padding:10px 12px;transition:border-color 0.2s;"
-         onmouseover="this.style.borderColor='rgba(99,102,241,0.3)'" onmouseout="this.style.borderColor='rgba(99,102,241,0.12)'">
+    <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.14);border-radius:10px;padding:10px 12px;transition:border-color 0.2s;"
+         onmouseover="this.style.borderColor='rgba(55,138,221,0.3)'" onmouseout="this.style.borderColor='rgba(55,138,221,0.14)'">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-        <span style="color:#e2e8f0;font-size:12px;font-weight:700;">${r.amount.toFixed(4)} ${r.token}</span>
+        <span style="color:#dde2f0;font-size:12px;font-weight:700;">${r.amount.toFixed(4)} ${r.token}</span>
         <span style="color:#34d399;font-size:10px;">✓ Confirmed</span>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#374151;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#3a4870;">
         <span>→ ${shortAddr(r.recipient)}</span>
-        <a href="${r.explorerUrl}" target="_blank" style="color:#818cf8;text-decoration:none;font-family:monospace;"
+        <a href="${r.explorerUrl}" target="_blank" style="color:#378ADD;text-decoration:none;font-family:monospace;"
            onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
           ${r.txHash.slice(0,10)}…↗
         </a>
       </div>
-      ${r.fullname ? '<div style="font-size:10px;color:#2a3450;margin-top:3px;">' + r.fullname + ' · ' + (r.email || '') + '</div>' : ''}
+      ${r.fullname ? '<div style="font-size:10px;color:#3a4870;margin-top:3px;">' + r.fullname + (r.email ? ' · ' + r.email : '') + '</div>' : ''}
     </div>
   `).join('');
 }

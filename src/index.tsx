@@ -897,267 +897,358 @@ app.get('/', (c) => {
     <!-- PAYMENTS TAB -->
     <div id="tab-content-payments" class="tab-content hidden">
 
-      <!-- ══ PAYMENTS PAGE STYLES (isolated) ══ -->
+      <!-- ══ PAYMENTS STYLES (isolated, mirrors Contracts design system) ══ -->
       <style>
-        #pay-page { display:grid; grid-template-columns:1fr; gap:16px; }
-        @media(min-width:1024px){ #pay-page { grid-template-columns:minmax(0,1fr) 300px; gap:16px; } }
+        /* ── Layout ── */
+        #pay-page { display:grid; grid-template-columns:1fr; gap:20px; }
+        @media(min-width:1280px){ #pay-page { grid-template-columns:minmax(0,2fr) minmax(0,3fr); gap:20px; } }
 
-        #pay-wallet-strip {
-          background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(34,211,238,0.06));
-          border:1px solid rgba(99,102,241,0.2); border-radius:12px;
-          padding:10px 16px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;
+        /* ── Panel (mirrors .cf-panel) ── */
+        .pay-cf-panel {
+          background:rgba(10,12,24,0.98);
+          border:1px solid rgba(55,138,221,0.18);
+          border-radius:18px;
+          position:relative;
+          overflow:hidden;
         }
-        #pay-main-card {
-          background:rgba(10,12,20,0.97); border:1px solid rgba(99,102,241,0.18);
-          border-radius:16px; overflow:hidden;
-          box-shadow:0 4px 20px rgba(0,0,0,0.35);
+        .pay-cf-panel::after {
+          content:'';
+          position:absolute;
+          top:0; left:0; right:0; height:1px;
+          pointer-events:none;
+          background:linear-gradient(90deg,transparent,rgba(55,138,221,0.6) 40%,rgba(29,158,117,0.5) 60%,transparent);
         }
-        #pay-main-card-header {
-          background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(34,211,238,0.06));
-          border-bottom:1px solid rgba(99,102,241,0.15);
-          padding:12px 18px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
-        }
-        .pay-field { margin-bottom:12px; }
-        .pay-label {
-          display:flex; align-items:center; gap:4px;
-          font-size:10px; font-weight:700; letter-spacing:0.07em;
-          text-transform:uppercase; color:#4b5675; margin-bottom:5px;
-        }
-        .pay-label .opt { color:#2a3450; font-weight:400; text-transform:none; letter-spacing:0; font-size:10px; }
-        .pay-input {
-          width:100%; background:rgba(255,255,255,0.03); border:1px solid rgba(99,102,241,0.16);
-          border-radius:10px; color:#e2e8f0; font-size:13px; padding:9px 13px;
-          outline:none; transition:border-color 0.2s,box-shadow 0.2s,background 0.2s; box-sizing:border-box;
-        }
-        .pay-input::placeholder { color:#2a3450; }
-        .pay-input:hover  { border-color:rgba(99,102,241,0.32); }
-        .pay-input:focus  { border-color:rgba(99,102,241,0.55); box-shadow:0 0 0 2px rgba(99,102,241,0.09); background:rgba(99,102,241,0.03); }
-        .pay-input.is-valid { border-color:rgba(52,211,153,0.45); }
-        .pay-input.is-error { border-color:rgba(239,68,68,0.45); box-shadow:0 0 0 2px rgba(239,68,68,0.07); }
-        .pay-input.font-mono { font-family:'Courier New',monospace; font-size:12px; }
 
-        .pay-token-btn { padding:5px 14px; border-radius:8px; border:1px solid transparent; font-size:12px; font-weight:700; cursor:pointer; transition:all 0.18s; }
-        .pay-token-btn.active-usdc { background:rgba(34,211,238,0.13); border-color:rgba(34,211,238,0.45); color:#22d3ee; }
-        .pay-token-btn.active-eurc { background:rgba(99,102,241,0.13); border-color:rgba(99,102,241,0.45); color:#818cf8; }
-        .pay-token-btn.inactive    { background:rgba(255,255,255,0.02); border-color:rgba(255,255,255,0.07); color:#374151; }
-        .pay-token-btn.inactive:hover { border-color:rgba(255,255,255,0.18); color:#6b7280; }
+        /* ── Input (mirrors .cf-input) ── */
+        .pay-cf-input {
+          background:rgba(255,255,255,0.04) !important;
+          border:1px solid rgba(55,138,221,0.2) !important;
+          border-radius:12px !important;
+          color:#dde2f0 !important;
+          transition:all 0.2s;
+          outline:none !important;
+          width:100%;
+          box-sizing:border-box;
+        }
+        .pay-cf-input::placeholder { color:#2a3450 !important; }
+        .pay-cf-input:hover  { border-color:rgba(55,138,221,0.35) !important; }
+        .pay-cf-input:focus  {
+          border-color:rgba(55,138,221,0.6) !important;
+          box-shadow:0 0 0 3px rgba(55,138,221,0.1) !important;
+          background:rgba(55,138,221,0.05) !important;
+        }
+        .pay-cf-input.is-valid { border-color:rgba(29,158,117,0.5) !important; }
+        .pay-cf-input.is-error { border-color:rgba(239,68,68,0.45) !important; box-shadow:0 0 0 3px rgba(239,68,68,0.08) !important; }
 
-        .pay-field-hint { font-size:10px; margin-top:3px; min-height:14px; }
-        .pay-field-hint.ok   { color:#34d399; }
+        /* ── Label (mirrors .cf-label) ── */
+        .pay-cf-label {
+          font-size:10px; font-weight:700;
+          letter-spacing:0.1em; text-transform:uppercase;
+          color:#3a4870;
+          display:flex; align-items:center; gap:6px;
+          margin-bottom:6px;
+        }
+        .pay-cf-label .opt {
+          color:#252a40; font-weight:400;
+          text-transform:none; letter-spacing:0; font-size:10px;
+        }
+
+        /* ── Field hint ── */
+        .pay-field-hint { font-size:10px; margin-top:4px; min-height:14px; }
+        .pay-field-hint.ok   { color:#1D9E75; }
         .pay-field-hint.err  { color:#f87171; }
-        .pay-field-hint.info { color:#2a3450; }
+        .pay-field-hint.info { color:#3a4870; }
 
+        /* ── Token selector buttons ── */
+        .pay-tok-btn {
+          padding:5px 14px; border-radius:8px;
+          border:1px solid transparent; font-size:11px; font-weight:700;
+          cursor:pointer; transition:all 0.18s;
+        }
+        .pay-tok-btn.tok-usdc { background:rgba(55,138,221,0.13); border-color:rgba(55,138,221,0.45); color:#60b4ff; }
+        .pay-tok-btn.tok-eurc { background:rgba(29,158,117,0.13); border-color:rgba(29,158,117,0.45); color:#34d399; }
+        .pay-tok-btn.tok-off  { background:rgba(255,255,255,0.02); border-color:rgba(255,255,255,0.07); color:#374151; }
+        .pay-tok-btn.tok-off:hover { border-color:rgba(55,138,221,0.25); color:#4b5675; }
+
+        /* ── Preview box ── */
         #pay-preview-box {
-          background:rgba(255,255,255,0.015); border:1px solid rgba(99,102,241,0.11);
-          border-radius:10px; padding:10px 14px; margin-bottom:12px;
+          background:rgba(255,255,255,0.015);
+          border:1px solid rgba(55,138,221,0.1);
+          border-radius:12px; padding:10px 14px; margin-bottom:14px;
         }
-        #pay-preview-box .prow { display:flex; justify-content:space-between; align-items:center; padding:3px 0; font-size:11px; border-bottom:1px solid rgba(255,255,255,0.03); }
+        #pay-preview-box .prow {
+          display:flex; justify-content:space-between; align-items:center;
+          padding:4px 0; font-size:11px;
+          border-bottom:1px solid rgba(55,138,221,0.05);
+        }
         #pay-preview-box .prow:last-child { border-bottom:none; }
-        #pay-preview-box .prow .pk { color:#2a3450; }
-        #pay-preview-box .prow .pv { color:#cbd5e1; font-weight:600; }
+        #pay-preview-box .prow .pk { color:#3a4870; }
+        #pay-preview-box .prow .pv { color:#dde2f0; font-weight:600; }
 
+        /* ── Error box ── */
         #pay-error-box {
-          background:rgba(239,68,68,0.07); border:1px solid rgba(239,68,68,0.28);
+          background:rgba(239,68,68,0.07);
+          border:1px solid rgba(239,68,68,0.28);
           border-radius:10px; padding:9px 13px;
-          display:none; align-items:flex-start; gap:8px; margin-bottom:12px;
+          display:none; align-items:flex-start; gap:8px; margin-bottom:14px;
         }
+
+        /* ── Send button ── */
         #pay-send-btn {
-          width:100%; padding:11px; border-radius:11px; border:none; cursor:pointer;
-          font-size:14px; font-weight:700;
-          background:linear-gradient(135deg,#6366f1,#22d3ee);
-          color:#fff; transition:all 0.2s; box-shadow:0 3px 14px rgba(99,102,241,0.28);
-          display:flex; align-items:center; justify-content:center; gap:7px;
+          width:100%;
+          background:linear-gradient(135deg,#1565c0,#006064);
+          color:#fff; border:none; border-radius:14px;
+          padding:13px; font-size:13px; font-weight:800;
+          cursor:pointer; transition:all 0.3s;
+          box-shadow:0 0 20px rgba(55,138,221,0.3);
+          letter-spacing:0.04em;
+          display:flex; align-items:center; justify-content:center; gap:8px;
         }
-        #pay-send-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 5px 22px rgba(99,102,241,0.42); }
-        #pay-send-btn:disabled { background:rgba(55,65,81,0.8); color:#374151; cursor:not-allowed; box-shadow:none; transform:none; }
+        #pay-send-btn:hover:not(:disabled) { box-shadow:0 0 30px rgba(55,138,221,0.5); transform:translateY(-1px); }
+        #pay-send-btn:disabled {
+          background:rgba(255,255,255,0.04);
+          border:1px solid rgba(55,138,221,0.1);
+          color:#3a4870; cursor:not-allowed;
+          box-shadow:none; transform:none;
+        }
 
+        /* ── Steps panel (mirrors ct-step) ── */
         #pay-steps-panel {
-          background:rgba(10,12,20,0.98); border:1px solid rgba(99,102,241,0.15);
-          border-radius:12px; padding:14px 16px; margin-top:12px;
+          background:rgba(255,255,255,0.02);
+          border:1px solid rgba(55,138,221,0.1);
+          border-radius:12px; padding:14px; margin-top:14px;
         }
-        .pstep { display:flex; align-items:center; gap:9px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.03); }
+        .pstep { display:flex; align-items:center; gap:9px; padding:5px 0; border-bottom:1px solid rgba(55,138,221,0.05); }
         .pstep:last-child { border-bottom:none; }
-        .pstep-icon { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; flex-shrink:0; transition:all 0.3s; }
-        .pstep-idle  .pstep-icon { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); color:#2a3450; }
-        .pstep-active .pstep-icon { background:rgba(99,102,241,0.18); border:1px solid rgba(99,102,241,0.45); color:#818cf8; animation:payStepPulse 1.5s infinite; }
-        .pstep-done  .pstep-icon { background:rgba(52,211,153,0.13); border:1px solid rgba(52,211,153,0.38); color:#34d399; }
-        .pstep-error .pstep-icon { background:rgba(239,68,68,0.1);  border:1px solid rgba(239,68,68,0.35);  color:#f87171; }
-        .pstep-idle  .pstep-label { color:#2a3450; font-size:11px; }
-        .pstep-active .pstep-label { color:#c7d2fe; font-size:11px; }
-        .pstep-done  .pstep-label { color:#374151; font-size:11px; text-decoration:line-through; }
-        .pstep-error .pstep-label { color:#f87171; font-size:11px; }
-        @keyframes payStepPulse { 0%,100%{box-shadow:0 0 8px rgba(99,102,241,0.28)} 50%{box-shadow:0 0 18px rgba(99,102,241,0.55)} }
+        .pstep-icon { width:24px; height:24px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:10px; flex-shrink:0; transition:all 0.3s; }
+        .pstep-idle  .pstep-icon { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#252a40; }
+        .pstep-active .pstep-icon { background:rgba(55,138,221,0.2); border:1px solid rgba(55,138,221,0.5); color:#60b4ff; box-shadow:0 0 12px rgba(55,138,221,0.3); animation:payStepPulse 1.5s infinite; }
+        .pstep-done  .pstep-icon { background:rgba(29,158,117,0.2); border:1px solid rgba(29,158,117,0.5); color:#34d399; }
+        .pstep-error .pstep-icon { background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#f87171; }
+        .pstep-idle  .pstep-label { color:#252a40; font-size:11px; }
+        .pstep-active .pstep-label { color:#c5d8f0; font-size:11px; }
+        .pstep-done  .pstep-label  { color:#4b5675; font-size:11px; text-decoration:line-through; }
+        .pstep-error .pstep-label  { color:#f87171; font-size:11px; }
+        @keyframes payStepPulse { 0%,100%{box-shadow:0 0 10px rgba(55,138,221,0.3)} 50%{box-shadow:0 0 20px rgba(55,138,221,0.6)} }
 
+        /* ── Success panel ── */
         #pay-success-panel {
-          background:linear-gradient(135deg,rgba(52,211,153,0.06),rgba(10,12,20,0.98));
-          border:1px solid rgba(52,211,153,0.22); border-radius:14px;
-          padding:16px 18px; margin-top:12px; display:none;
+          background:linear-gradient(135deg,rgba(29,158,117,0.06),rgba(10,12,24,0.98));
+          border:1px solid rgba(29,158,117,0.22);
+          border-radius:14px; padding:16px 18px;
+          margin-top:14px; display:none;
         }
         #pay-success-panel.show { display:block; }
 
-        #pay-right-col { display:flex; flex-direction:column; gap:12px; }
-        .pay-panel { background:rgba(10,12,20,0.97); border:1px solid rgba(99,102,241,0.13); border-radius:12px; overflow:hidden; }
-        .pay-panel-hdr { padding:9px 14px; border-bottom:1px solid rgba(99,102,241,0.09); display:flex; align-items:center; justify-content:space-between; background:rgba(99,102,241,0.04); }
+        /* ── Right column panels ── */
+        #pay-right-col { display:flex; flex-direction:column; gap:14px; }
+        .pay-side-panel {
+          background:rgba(10,12,24,0.98);
+          border:1px solid rgba(55,138,221,0.15);
+          border-radius:14px; overflow:hidden;
+          position:relative;
+        }
+        .pay-side-panel::after {
+          content:''; position:absolute; top:0; left:0; right:0; height:1px;
+          pointer-events:none;
+          background:linear-gradient(90deg,transparent,rgba(55,138,221,0.4) 50%,transparent);
+        }
+        .pay-side-hdr {
+          padding:10px 16px;
+          border-bottom:1px solid rgba(55,138,221,0.09);
+          display:flex; align-items:center; justify-content:space-between;
+          background:rgba(55,138,221,0.03);
+        }
       </style>
+
+      <!-- ── Info bar (mirrors factory bar in contracts) ── -->
+      <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:10px 16px;">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full" style="background:#4ade80;animation:pulse 2s infinite;box-shadow:0 0 6px #4ade80;"></div>
+          <span style="color:#3a5a8a;font-weight:700;">ArcPay Payments</span>
+        </div>
+        <span style="color:#4a6490;">Single on-chain ERC-20 transfer</span>
+        <span class="ml-auto" style="color:#252a40;">Arc Testnet · Chain 5042002 · No real funds</span>
+      </div>
 
       <div id="pay-page">
 
-        <!-- LEFT COLUMN -->
+        <!-- ══ LEFT: Wallet + Form ══ -->
         <div>
 
-          <!-- Wallet strip -->
-          <div id="pay-wallet-strip">
-            <div style="display:flex;align-items:center;gap:9px;">
-              <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#22d3ee);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                <i class="fas fa-wallet" style="color:#fff;font-size:12px;"></i>
+          <!-- Wallet info bar -->
+          <div style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.14);border-radius:14px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:10px;background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="fas fa-wallet" style="color:#60b4ff;font-size:13px;"></i>
               </div>
               <div>
-                <p style="font-size:9px;color:#374151;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 1px;">Wallet</p>
-                <p id="pay-wallet-short" style="color:#e2e8f0;font-family:monospace;font-size:12px;font-weight:700;margin:0;">Not connected</p>
+                <p style="font-size:9px;color:#3a4870;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 1px;font-weight:700;">Connected Wallet</p>
+                <p id="pay-wallet-short" style="color:#dde2f0;font-family:monospace;font-size:12px;font-weight:700;margin:0;">Not connected</p>
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-              <div style="text-align:right;">
-                <p style="font-size:9px;color:#374151;margin:0 0 1px;">USDC</p>
-                <p id="pay-balance-usdc" style="color:#22d3ee;font-size:13px;font-weight:700;margin:0;">— USDC</p>
+            <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+              <div>
+                <p style="font-size:9px;color:#3a4870;margin:0 0 1px;font-weight:700;">USDC</p>
+                <p id="pay-balance-usdc" style="color:#60b4ff;font-size:13px;font-weight:700;margin:0;">—</p>
               </div>
-              <div style="text-align:right;">
-                <p style="font-size:9px;color:#374151;margin:0 0 1px;">EURC</p>
-                <p id="pay-balance-eurc" style="color:#818cf8;font-size:13px;font-weight:700;margin:0;">— EURC</p>
+              <div>
+                <p style="font-size:9px;color:#3a4870;margin:0 0 1px;font-weight:700;">EURC</p>
+                <p id="pay-balance-eurc" style="color:#34d399;font-size:13px;font-weight:700;margin:0;">—</p>
               </div>
-              <div style="text-align:right;">
-                <p style="font-size:9px;color:#374151;margin:0 0 1px;">Network</p>
+              <div>
+                <p style="font-size:9px;color:#3a4870;margin:0 0 1px;font-weight:700;">Network</p>
                 <p id="pay-network-name" style="color:#34d399;font-size:10px;font-weight:700;margin:0;">—</p>
               </div>
-              <button onclick="refreshPaymentBalances()" title="Refresh"
-                style="width:28px;height:28px;background:rgba(255,255,255,0.03);border:1px solid rgba(99,102,241,0.18);border-radius:8px;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;"
-                onmouseover="this.style.color='#818cf8'" onmouseout="this.style.color='#374151'">
+              <button onclick="refreshPaymentBalances()" title="Refresh balances"
+                style="width:28px;height:28px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.18);border-radius:8px;color:#3a4870;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;"
+                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.35)'" onmouseout="this.style.color='#3a4870';this.style.borderColor='rgba(55,138,221,0.18)'">
                 <i class="fas fa-sync" style="font-size:11px;"></i>
               </button>
             </div>
           </div>
 
-          <!-- Main card -->
-          <div id="pay-main-card" style="margin-top:12px;">
+          <!-- Main form panel -->
+          <div class="pay-cf-panel">
+            <div style="height:2px;background:linear-gradient(90deg,transparent,#378ADD 40%,#1D9E75 60%,transparent);"></div>
+            <div class="p-5">
 
-            <!-- Header -->
-            <div id="pay-main-card-header">
-              <div style="display:flex;align-items:center;gap:8px;">
-                <i class="fas fa-paper-plane" style="color:#818cf8;font-size:13px;"></i>
-                <div>
-                  <p style="color:#e2e8f0;font-size:13px;font-weight:700;margin:0;">Send Payment</p>
-                  <p style="color:#2a3450;font-size:10px;margin:0;">Single on-chain transfer · Arc Testnet</p>
+              <!-- Panel header -->
+              <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <div style="width:32px;height:32px;border-radius:10px;background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.25);display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-paper-plane" style="color:#60b4ff;font-size:13px;"></i>
+                  </div>
+                  <div>
+                    <p style="color:#dde2f0;font-size:14px;font-weight:800;margin:0;">Send Payment</p>
+                    <p style="color:#3a4870;font-size:10px;margin:0;">Single on-chain transfer · Arc Testnet</p>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:5px;">
+                  <button id="pay-token-usdc" class="pay-tok-btn tok-usdc" onclick="selectPayToken('USDC')">USDC</button>
+                  <button id="pay-token-eurc" class="pay-tok-btn tok-off"  onclick="selectPayToken('EURC')">EURC</button>
                 </div>
               </div>
-              <div style="display:flex;align-items:center;gap:5px;">
-                <button id="pay-token-usdc" class="pay-token-btn active-usdc" onclick="selectPayToken('USDC')">USDC</button>
-                <button id="pay-token-eurc" class="pay-token-btn inactive"    onclick="selectPayToken('EURC')">EURC</button>
+
+              <!-- Anti-phishing -->
+              <div class="mb-4" style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);border-radius:10px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px;">
+                <i class="fas fa-shield-alt" style="color:#f87171;font-size:11px;flex-shrink:0;margin-top:1px;"></i>
+                <p style="color:#fca5a5;font-size:11px;margin:0;">Never enter private keys or seed phrases. All interactions use wallet approval only.</p>
               </div>
-            </div>
 
-            <!-- Form body -->
-            <div style="padding:16px 18px;">
+              <div class="space-y-3">
 
-              <!-- Name + Email in a row -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;" class="pay-field">
+                <!-- Name + Email row -->
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="pay-cf-label">
+                      <i class="fas fa-user" style="color:#3a4870;"></i>
+                      SENDER NAME
+                      <span class="opt">(optional)</span>
+                    </label>
+                    <input type="text" id="pay-fullname" class="pay-cf-input px-3 py-2 text-sm"
+                      placeholder="Your name"
+                      autocomplete="name"
+                      oninput="payValidateField('fullname'); payValidateForm()">
+                    <div id="pay-hint-fullname" class="pay-field-hint"></div>
+                  </div>
+                  <div>
+                    <label class="pay-cf-label">
+                      <i class="fas fa-envelope" style="color:#3a4870;"></i>
+                      EMAIL
+                      <span class="opt">(optional)</span>
+                    </label>
+                    <input type="email" id="pay-email" class="pay-cf-input px-3 py-2 text-sm"
+                      placeholder="you@example.com"
+                      autocomplete="email"
+                      oninput="payValidateField('email'); payValidateForm()">
+                    <div id="pay-hint-email" class="pay-field-hint"></div>
+                  </div>
+                </div>
+
+                <!-- Recipient wallet -->
                 <div>
-                  <label class="pay-label" for="pay-fullname">
-                    <i class="fas fa-user" style="color:#4b5675;"></i> Name
-                    <span class="opt">(optional)</span>
+                  <label class="pay-cf-label">
+                    <i class="fas fa-hard-hat" style="color:#1D9E75;"></i>
+                    RECIPIENT WALLET (0x…)
                   </label>
-                  <input type="text" id="pay-fullname" class="pay-input" placeholder="Your name"
-                    autocomplete="name" oninput="payValidateField('fullname'); payValidateForm()">
-                  <div id="pay-hint-fullname" class="pay-field-hint"></div>
+                  <input type="text" id="pay-recipient" class="pay-cf-input px-3 py-2.5 text-sm font-mono"
+                    placeholder="0x..."
+                    autocomplete="off" spellcheck="false"
+                    oninput="payValidateField('recipient'); updatePayPreview(); payValidateForm()">
+                  <div id="pay-hint-recipient" class="pay-field-hint"></div>
                 </div>
+
+                <!-- Amount -->
                 <div>
-                  <label class="pay-label" for="pay-email">
-                    <i class="fas fa-envelope" style="color:#4b5675;"></i> Email
-                    <span class="opt">(optional)</span>
+                  <label class="pay-cf-label">
+                    <i class="fas fa-coins" style="color:#1D9E75;"></i>
+                    AMOUNT (<span id="pay-label-token">USDC</span>)
+                    <span id="pay-max-hint" style="font-size:10px;color:#3a4870;font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto;"></span>
                   </label>
-                  <input type="email" id="pay-email" class="pay-input" placeholder="you@example.com"
-                    autocomplete="email" oninput="payValidateField('email'); payValidateForm()">
-                  <div id="pay-hint-email" class="pay-field-hint"></div>
+                  <div style="position:relative;">
+                    <input type="number" id="pay-amount" class="pay-cf-input px-3 py-2.5 text-sm pr-24"
+                      placeholder="0.000000" min="0" step="0.000001"
+                      oninput="payValidateField('amount'); updatePayPreview(); payValidateForm()">
+                    <button onclick="setPayMax()"
+                      style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;color:#378ADD;background:rgba(55,138,221,0.12);padding:2px 8px;border-radius:8px;border:1px solid rgba(55,138,221,0.25);cursor:pointer;transition:all 0.2s;"
+                      onmouseover="this.style.background='rgba(55,138,221,0.22)'" onmouseout="this.style.background='rgba(55,138,221,0.12)'">MAX</button>
+                  </div>
+                  <div id="pay-hint-amount" class="pay-field-hint"></div>
                 </div>
-              </div>
 
-              <!-- Recipient -->
-              <div class="pay-field">
-                <label class="pay-label" for="pay-recipient">
-                  <i class="fas fa-wallet" style="color:#6366f1;"></i> Recipient Address <span style="color:#6366f1;">*</span>
-                </label>
-                <input type="text" id="pay-recipient" class="pay-input font-mono"
-                  placeholder="0x..."
-                  autocomplete="off" spellcheck="false"
-                  oninput="payValidateField('recipient'); updatePayPreview(); payValidateForm()">
-                <div id="pay-hint-recipient" class="pay-field-hint"></div>
-              </div>
-
-              <!-- Amount + MAX -->
-              <div class="pay-field">
-                <label class="pay-label" for="pay-amount">
-                  <i class="fas fa-coins" style="color:#6366f1;"></i> Amount <span style="color:#6366f1;">*</span>
-                  <span id="pay-max-hint" style="font-size:10px;color:#374151;font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto;"></span>
-                </label>
-                <div style="display:flex;gap:6px;">
-                  <input type="number" id="pay-amount" class="pay-input" style="flex:1;"
-                    placeholder="0.000000" min="0" step="0.000001"
-                    oninput="payValidateField('amount'); updatePayPreview(); payValidateForm()">
-                  <button onclick="setPayMax()"
-                    style="padding:0 12px;background:rgba(34,211,238,0.07);border:1px solid rgba(34,211,238,0.22);border-radius:10px;color:#22d3ee;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;white-space:nowrap;"
-                    onmouseover="this.style.background='rgba(34,211,238,0.13)'" onmouseout="this.style.background='rgba(34,211,238,0.07)'">MAX</button>
+                <!-- Preview box -->
+                <div id="pay-preview-box">
+                  <div class="prow"><span class="pk">Token</span><span id="prev-token" class="pv" style="color:#60b4ff;">USDC</span></div>
+                  <div class="prow"><span class="pk">Amount</span><span id="prev-amount" class="pv">—</span></div>
+                  <div class="prow"><span class="pk">To</span><span id="prev-recipient" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
+                  <div class="prow"><span class="pk">From</span><span id="pay-from-display" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
+                  <div class="prow"><span class="pk">Network</span><span id="prev-network" class="pv" style="color:#34d399;">Arc Testnet</span></div>
+                  <div class="prow"><span class="pk">Est. Fee</span><span id="prev-gas" class="pv" style="color:#fbbf24;">~1 tx</span></div>
                 </div>
-                <div id="pay-hint-amount" class="pay-field-hint"></div>
-              </div>
 
-              <!-- Preview (compact) -->
-              <div id="pay-preview-box">
-                <div class="prow"><span class="pk">Token</span><span id="prev-token" class="pv" style="color:#22d3ee;">USDC</span></div>
-                <div class="prow"><span class="pk">Amount</span><span id="prev-amount" class="pv">—</span></div>
-                <div class="prow"><span class="pk">To</span><span id="prev-recipient" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
-                <div class="prow"><span class="pk">From</span><span id="pay-from-display" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
-                <div class="prow"><span class="pk">Network</span><span id="prev-network" class="pv" style="color:#34d399;">Arc Testnet</span></div>
-                <div class="prow"><span class="pk">Fee</span><span id="prev-gas" class="pv" style="color:#fbbf24;">~1 tx</span></div>
-              </div>
+                <!-- Error box -->
+                <div id="pay-error-box">
+                  <i class="fas fa-exclamation-circle" style="color:#f87171;flex-shrink:0;"></i>
+                  <span id="pay-error-text" style="color:#fca5a5;font-size:12px;flex:1;"></span>
+                  <button onclick="hidePayError()" style="background:none;border:none;color:#3a4870;cursor:pointer;font-size:14px;padding:0;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#3a4870'">✕</button>
+                </div>
 
-              <!-- Error -->
-              <div id="pay-error-box">
-                <i class="fas fa-exclamation-circle" style="color:#f87171;flex-shrink:0;"></i>
-                <span id="pay-error-text" style="color:#fca5a5;font-size:12px;flex:1;"></span>
-                <button onclick="hidePayError()" style="background:none;border:none;color:#374151;cursor:pointer;font-size:14px;padding:0;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#374151'">✕</button>
-              </div>
+                <!-- Submit button -->
+                <button type="button" id="pay-send-btn" onclick="executePayment()" disabled
+                  onmouseover="if(!this.disabled)this.style.boxShadow='0 0 30px rgba(55,138,221,0.5)'" onmouseout="if(!this.disabled)this.style.boxShadow='0 0 20px rgba(55,138,221,0.3)'">
+                  <i class="fas fa-paper-plane"></i>
+                  <span id="pay-send-btn-text">Sign &amp; Send</span>
+                </button>
 
-              <!-- Send button -->
-              <button id="pay-send-btn" onclick="executePayment()" disabled>
-                <i class="fas fa-paper-plane"></i>
-                <span id="pay-send-btn-text">Sign &amp; Send</span>
-              </button>
+                <p style="font-size:10px;color:#252a40;text-align:center;margin-top:4px;">
+                  ERC-20 · Arc Testnet (5042002) · No real funds
+                </p>
+              </div><!-- end space-y-3 -->
 
-              <p style="font-size:10px;color:#2a3450;text-align:center;margin-top:10px;">
-                ERC-20 · Arc Testnet (5042002) · No real funds
-              </p>
-            </div>
-          </div>
+            </div><!-- end p-5 -->
+          </div><!-- end pay-cf-panel -->
 
-          <!-- Progress Steps -->
+          <!-- Transaction Steps -->
           <div id="pay-steps-panel" style="display:none;">
-            <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#374151;font-weight:700;margin:0 0 10px;">Transaction Progress</p>
-            <div id="pay-step-0" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-network-wired"></i></div><span id="pay-step-label-0" class="pstep-label">Verify network</span></div>
-            <div id="pay-step-1" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-coins"></i></div><span id="pay-step-label-1" class="pstep-label">Read balance</span></div>
-            <div id="pay-step-2" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-check-double"></i></div><span id="pay-step-label-2" class="pstep-label">Token approval</span></div>
-            <div id="pay-step-3" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-signature"></i></div><span id="pay-step-label-3" class="pstep-label">Sign &amp; broadcast</span></div>
-            <div id="pay-step-4" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-hourglass-half"></i></div><span id="pay-step-label-4" class="pstep-label">Awaiting confirmation</span></div>
+            <p style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;margin:0 0 10px;">TRANSACTION PIPELINE</p>
+            <div id="pay-step-0" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-network-wired"></i></div><span id="pay-step-label-0" class="pstep-label">Verify Arc Testnet network</span></div>
+            <div id="pay-step-1" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-coins"></i></div><span id="pay-step-label-1" class="pstep-label">Read token balance</span></div>
+            <div id="pay-step-2" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-check-double"></i></div><span id="pay-step-label-2" class="pstep-label">Token approval (if needed)</span></div>
+            <div id="pay-step-3" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-signature"></i></div><span id="pay-step-label-3" class="pstep-label">Sign &amp; broadcast transaction</span></div>
+            <div id="pay-step-4" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-hourglass-half"></i></div><span id="pay-step-label-4" class="pstep-label">Awaiting on-chain confirmation</span></div>
             <div id="pay-step-5" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-receipt"></i></div><span id="pay-step-label-5" class="pstep-label">Generating receipt</span></div>
           </div>
 
           <!-- Success + Receipt -->
           <div id="pay-success-panel">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-              <div style="width:34px;height:34px;border-radius:50%;background:rgba(52,211,153,0.13);border:1px solid rgba(52,211,153,0.35);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <div style="width:36px;height:36px;border-radius:10px;background:rgba(29,158,117,0.15);border:1px solid rgba(29,158,117,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                 <i class="fas fa-check" style="color:#34d399;font-size:14px;"></i>
               </div>
               <div>
-                <p style="color:#34d399;font-size:14px;font-weight:700;margin:0;">Payment Confirmed!</p>
-                <p style="color:#374151;font-size:11px;margin:1px 0 0;">Transaction submitted to Arc Testnet</p>
+                <p style="color:#34d399;font-size:14px;font-weight:800;margin:0;">Payment Confirmed!</p>
+                <p style="color:#3a4870;font-size:11px;margin:2px 0 0;">Transaction submitted to Arc Testnet</p>
               </div>
             </div>
             <div id="pay-receipt-content"></div>
@@ -1165,42 +1256,44 @@ app.get('/', (c) => {
 
         </div><!-- end left col -->
 
-        <!-- RIGHT COLUMN -->
+        <!-- ══ RIGHT COLUMN ══ -->
         <div id="pay-right-col">
 
-          <div class="pay-panel">
-            <div class="pay-panel-hdr">
-              <span style="color:#e2e8f0;font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px;">
-                <i class="fas fa-history" style="color:#22d3ee;"></i> History
+          <!-- History panel -->
+          <div class="pay-side-panel">
+            <div class="pay-side-hdr">
+              <span style="color:#dde2f0;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">
+                <i class="fas fa-history" style="color:#378ADD;"></i> Transaction History
               </span>
               <button onclick="refreshPaymentBalances();renderPaymentHistory()"
-                style="background:none;border:none;color:#374151;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;"
-                onmouseover="this.style.color='#818cf8'" onmouseout="this.style.color='#374151'">
-                <i class="fas fa-sync"></i> Refresh
+                style="font-size:10px;color:#3a4870;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.3)'" onmouseout="this.style.color='#3a4870';this.style.borderColor='rgba(55,138,221,0.15)'">
+                <i class="fas fa-sync" style="font-size:9px;"></i> Refresh
               </button>
             </div>
-            <div id="pay-history-list" style="padding:10px;display:flex;flex-direction:column;gap:6px;">
-              <div style="color:#2a3450;font-size:11px;text-align:center;padding:20px 0;">
-                <i class="fas fa-clock" style="font-size:18px;display:block;margin-bottom:6px;"></i>
+            <div id="pay-history-list" style="padding:12px;display:flex;flex-direction:column;gap:6px;">
+              <div style="color:#3a4870;font-size:11px;text-align:center;padding:24px 0;">
+                <i class="fas fa-clock" style="font-size:20px;display:block;margin-bottom:8px;color:#252a40;"></i>
                 No transactions yet
               </div>
             </div>
           </div>
 
-          <div class="pay-panel">
-            <div class="pay-panel-hdr">
-              <span style="color:#e2e8f0;font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px;">
-                <i class="fas fa-robot" style="color:#818cf8;"></i> Agent Queue
+          <!-- Agent Queue panel -->
+          <div class="pay-side-panel">
+            <div class="pay-side-hdr">
+              <span style="color:#dde2f0;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">
+                <i class="fas fa-robot" style="color:#1D9E75;"></i> Agent Payment Queue
               </span>
               <button onclick="loadPayments()"
-                style="background:none;border:none;color:#374151;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:3px;"
-                onmouseover="this.style.color='#818cf8'" onmouseout="this.style.color='#374151'">
-                <i class="fas fa-sync"></i> Update
+                style="font-size:10px;color:#3a4870;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.3)'" onmouseout="this.style.color='#3a4870';this.style.borderColor='rgba(55,138,221,0.15)'">
+                <i class="fas fa-sync" style="font-size:9px;"></i> Update
               </button>
             </div>
-            <div id="payments-list" style="padding:10px;">
-              <div style="color:#2a3450;font-size:11px;text-align:center;padding:20px 0;">
-                <i class="fas fa-inbox" style="font-size:22px;display:block;margin-bottom:6px;"></i>
+            <div id="payments-list" style="padding:12px;">
+              <div style="color:#3a4870;font-size:11px;text-align:center;padding:24px 0;">
+                <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#252a40;"></i>
                 No payments in queue
               </div>
             </div>
@@ -3358,7 +3451,7 @@ app.get('/', (c) => {
   <script src="/static/wallet.js?v=20250322"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/app.js?v=20250322"></script>
-  <script src="/static/payments.js?v=20250322d"></script>
+  <script src="/static/payments.js?v=20250322e"></script>
   <script src="/static/contracts.js?v=20250322"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
