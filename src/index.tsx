@@ -1217,138 +1217,250 @@ app.get('/', (c) => {
     <!-- CONTRACTS TAB -->
     <div id="tab-content-contracts" class="tab-content hidden">
 
-      <!-- ── Wallet gate (hidden — shown via JS when disconnected) ──────────── -->
-      <div id="cf-wallet-gate" class="hidden"></div>
+      <!-- ══ CONTRACTS STYLES ══ -->
+      <style>
+        .cf-panel { background:rgba(10,12,24,0.98); border:1px solid rgba(55,138,221,0.18); border-radius:18px; position:relative; overflow:hidden; }
+        .cf-panel::after { content:''; position:absolute; top:0; left:0; right:0; height:1px; pointer-events:none; background:linear-gradient(90deg,transparent,rgba(55,138,221,0.6) 40%,rgba(29,158,117,0.5) 60%,transparent); }
+        .cf-input { background:rgba(255,255,255,0.04) !important; border:1px solid rgba(55,138,221,0.2) !important; border-radius:12px !important; color:#dde2f0 !important; transition:all 0.2s; outline:none !important; }
+        .cf-input::placeholder { color:#2a3450 !important; }
+        .cf-input:focus { border-color:rgba(55,138,221,0.6) !important; box-shadow:0 0 0 3px rgba(55,138,221,0.1) !important; background:rgba(55,138,221,0.05) !important; }
+        .cf-label { font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#3a4870; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+        .ct-step-idle  .ct-step-icon { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#252a40; }
+        .ct-step-active .ct-step-icon { background:rgba(55,138,221,0.2); border:1px solid rgba(55,138,221,0.5); color:#60b4ff; box-shadow:0 0 12px rgba(55,138,221,0.3); animation:cfStepPulse 1.5s infinite; }
+        .ct-step-done  .ct-step-icon { background:rgba(29,158,117,0.2); border:1px solid rgba(29,158,117,0.5); color:#34d399; }
+        .ct-step-error .ct-step-icon { background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#f87171; }
+        .ct-step-idle  span { color:#252a40; }
+        .ct-step-active span { color:#c5d8f0; }
+        .ct-step-done  span { color:#4b5675; text-decoration:line-through; }
+        .ct-step-error span { color:#f87171; }
+        @keyframes cfStepPulse { 0%,100%{box-shadow:0 0 10px rgba(55,138,221,0.3)} 50%{box-shadow:0 0 20px rgba(55,138,221,0.6)} }
+        .cf-proof-drop { border:2px dashed rgba(55,138,221,0.25); border-radius:14px; transition:all 0.2s; background:rgba(55,138,221,0.03); }
+        .cf-proof-drop.drag-over { border-color:rgba(55,138,221,0.6); background:rgba(55,138,221,0.08); }
+        .cf-badge-pending   { background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); color:#fbbf24; }
+        .cf-badge-funded    { background:rgba(96,165,250,0.12); border:1px solid rgba(96,165,250,0.3); color:#93c5fd; }
+        .cf-badge-active    { background:rgba(34,211,238,0.12); border:1px solid rgba(34,211,238,0.3); color:#67e8f9; }
+        .cf-badge-completed { background:rgba(52,211,153,0.12); border:1px solid rgba(52,211,153,0.3); color:#6ee7b7; }
+        .cf-badge-cancelled { background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.3); color:#fca5a5; }
+        .cf-card { background:rgba(8,11,24,0.95); border:1px solid rgba(55,138,221,0.14); border-radius:16px; transition:border-color 0.2s; }
+        .cf-card:hover { border-color:rgba(55,138,221,0.3); }
+        .cf-action-btn { display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;border:1px solid transparent;transition:all 0.2s;white-space:nowrap; }
+        .cf-btn-deposit  { background:rgba(167,139,250,0.12);border-color:rgba(167,139,250,0.3);color:#c4b5fd; }
+        .cf-btn-deposit:hover { background:rgba(167,139,250,0.22); }
+        .cf-btn-sign     { background:rgba(34,211,238,0.1);border-color:rgba(34,211,238,0.3);color:#67e8f9; }
+        .cf-btn-sign:hover { background:rgba(34,211,238,0.18); }
+        .cf-btn-proof    { background:rgba(167,139,250,0.08);border-color:rgba(167,139,250,0.2);color:#a78bfa; }
+        .cf-btn-proof:hover { background:rgba(167,139,250,0.16); }
+        .cf-btn-receive  { background:rgba(52,211,153,0.1);border-color:rgba(52,211,153,0.3);color:#34d399; }
+        .cf-btn-receive:hover { background:rgba(52,211,153,0.18); }
+        .cf-btn-complete { background:rgba(52,211,153,0.12);border-color:rgba(52,211,153,0.4);color:#6ee7b7;box-shadow:0 0 12px rgba(52,211,153,0.15); }
+        .cf-btn-complete:hover { background:rgba(52,211,153,0.22);box-shadow:0 0 20px rgba(52,211,153,0.25); }
+        .cf-btn-disabled { background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.06);color:#3a4870;cursor:not-allowed; }
+        .cf-btn-cancel   { background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.2);color:#f87171; }
+        .cf-btn-cancel:hover { background:rgba(239,68,68,0.15); }
+        .cf-btn-receipt  { background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);color:#93c5fd; }
+        .cf-btn-receipt:hover { background:rgba(59,130,246,0.18); }
+      </style>
 
-      <!-- ── Factory info bar ────────────────────────────────────────────────── -->
-      <div class="mb-5 flex flex-wrap items-center gap-3 text-xs text-gray-500 bg-gray-800/30 border border-gray-700/30 rounded-xl px-4 py-3">
+      <!-- ── Factory info bar ── -->
+      <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:10px 16px;">
         <div class="flex items-center gap-2">
-          <div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
-          <span class="text-gray-400 font-medium">ContractFactory</span>
+          <div class="w-2 h-2 rounded-full bg-green-400" style="animation:pulse 2s infinite;box-shadow:0 0 6px #4ade80;"></div>
+          <span style="color:#3a5a8a;font-weight:700;">ContractFactory</span>
         </div>
-        <span class="font-mono text-gray-400">0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A</span>
-        <a href="https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A"
-           target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300">
+        <span style="font-family:monospace;color:#4a6490;">0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A</span>
+        <a href="https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A" target="_blank" rel="noopener" style="color:#378ADD;">
           <i class="fas fa-external-link-alt mr-1"></i>ArcScan
         </a>
-        <span class="ml-auto text-gray-600">Arc Testnet · Chain ID 5042002</span>
+        <span class="ml-auto" style="color:#252a40;">Arc Testnet · Chain 5042002 · 0.2% Platform Fee</span>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div class="grid grid-cols-1 xl:grid-cols-5 gap-5">
 
-        <!-- ── LEFT: Create Contract Form ────────────────────────────────────── -->
-        <div class="lg:col-span-2">
-          <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5">
-            <h3 class="text-white font-semibold mb-4 flex items-center gap-2 text-sm">
-              <i class="fas fa-file-plus text-green-400"></i>
-              Novo Contrato On-Chain
-            </h3>
+        <!-- ══ LEFT: Create Contract Form ══ -->
+        <div class="xl:col-span-2">
+          <div class="cf-panel">
+            <div style="height:2px;background:linear-gradient(90deg,transparent,#378ADD 40%,#1D9E75 60%,transparent);"></div>
+            <div class="p-5">
 
-            <!-- ⚠️ anti-phishing notice -->
-            <div class="mb-4 bg-red-900/20 border border-red-700/30 rounded-xl px-3 py-2.5 flex items-start gap-2">
-              <i class="fas fa-shield-alt text-red-400 mt-0.5 flex-shrink-0 text-xs"></i>
-              <p class="text-[11px] text-red-300/80">Esta interface nunca solicita chave privada ou seed phrase. Toda interação usa aprovação na carteira.</p>
-            </div>
-
-            <div class="space-y-3">
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block">Título do contrato</label>
-                <input type="text" id="cf-title" placeholder="Ex: Desenvolvimento de dApp DeFi"
-                  class="w-full bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
-              </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block">Endereço do contratado (0x…)</label>
-                <input type="text" id="cf-contractor" placeholder="0x..."
-                  class="w-full bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white font-mono placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
-              </div>
-              <div>
-                <label class="text-xs text-gray-400 mb-1 block">Total USDC (depositado no contrato)</label>
-                <input type="number" id="cf-value" placeholder="0.00" step="0.01" min="0.01"
-                  oninput="cfUpdateMilestoneSum()"
-                  class="w-full bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" />
-              </div>
-
-              <!-- Milestones -->
-              <div>
-                <div class="flex items-center justify-between mb-2">
-                  <label class="text-xs text-gray-400">Milestones (máx. 10)</label>
-                  <button type="button" onclick="cfAddMilestone()"
-                    class="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1">
-                    <i class="fas fa-plus text-[10px]"></i>Adicionar
-                  </button>
+              <div class="flex items-center gap-2.5 mb-5">
+                <div style="width:32px;height:32px;border-radius:10px;background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.25);display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-file-signature" style="color:#60b4ff;font-size:13px;"></i>
                 </div>
-                <div id="cf-milestones-container" class="space-y-2">
-                  <div class="cf-milestone-row flex items-center gap-2">
-                    <input type="text" placeholder="Descrição do milestone" class="cf-ms-desc flex-1 bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" oninput="cfUpdateMilestoneSum()" />
-                    <input type="number" placeholder="USDC" step="0.01" min="0.01" class="cf-ms-amt w-28 bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/60 focus:outline-none" oninput="cfUpdateMilestoneSum()" />
+                <div>
+                  <p style="color:#dde2f0;font-size:14px;font-weight:800;margin:0;">New On-Chain Contract</p>
+                  <p style="color:#3a4870;font-size:10px;margin:0;">Escrow · USDC · Arc Testnet</p>
+                </div>
+              </div>
+
+              <!-- Anti-phishing -->
+              <div class="mb-4" style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);border-radius:10px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px;">
+                <i class="fas fa-shield-alt" style="color:#f87171;font-size:11px;flex-shrink:0;margin-top:1px;"></i>
+                <p style="color:#fca5a5;font-size:11px;margin:0;">Never enter private key or seed phrase. All interactions use wallet approval only.</p>
+              </div>
+
+              <div class="space-y-3">
+                <!-- Title -->
+                <div>
+                  <label class="cf-label"><i class="fas fa-heading" style="color:#378ADD;"></i>CONTRACT TITLE</label>
+                  <input type="text" id="cf-title" placeholder="e.g. DeFi dApp Development"
+                    class="cf-input w-full px-3 py-2.5 text-sm" />
+                </div>
+
+                <!-- Contractor wallet -->
+                <div>
+                  <label class="cf-label"><i class="fas fa-hard-hat" style="color:#1D9E75;"></i>CONTRACTOR WALLET (0x…)</label>
+                  <input type="text" id="cf-contractor" placeholder="0x..."
+                    class="cf-input w-full px-3 py-2.5 text-sm font-mono" />
+                </div>
+
+                <!-- Emails row -->
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="cf-label"><i class="fas fa-envelope" style="color:#a78bfa;"></i>CLIENT EMAIL</label>
+                    <input type="email" id="cf-client-email" placeholder="client@email.com"
+                      class="cf-input w-full px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label class="cf-label"><i class="fas fa-envelope" style="color:#f59e0b;"></i>CONTRACTOR EMAIL</label>
+                    <input type="email" id="cf-contractor-email" placeholder="contractor@email.com"
+                      class="cf-input w-full px-3 py-2 text-sm" />
                   </div>
                 </div>
-                <div id="cf-ms-sum" class="text-xs mt-1 text-gray-600">Soma milestones: $0.00 USDC</div>
+
+                <!-- Total USDC -->
+                <div>
+                  <label class="cf-label"><i class="fas fa-coins" style="color:#1D9E75;"></i>TOTAL USDC (escrow amount)</label>
+                  <div style="position:relative;">
+                    <input type="number" id="cf-value" placeholder="0.00" step="0.01" min="0.01"
+                      oninput="cfUpdateMilestoneSum();cfUpdateFeePreview()"
+                      class="cf-input w-full px-3 py-2.5 text-sm pr-24" />
+                    <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:#378ADD;background:rgba(55,138,221,0.12);padding:2px 8px;border-radius:8px;border:1px solid rgba(55,138,221,0.25);">USDC</span>
+                  </div>
+                  <div id="cf-fee-preview" style="font-size:11px;color:#3a4870;margin-top:4px;"></div>
+                </div>
+
+                <!-- OTC Toggle -->
+                <div style="background:rgba(167,139,250,0.05);border:1px solid rgba(167,139,250,0.15);border-radius:12px;padding:10px 14px;">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <i class="fas fa-handshake" style="color:#a78bfa;font-size:12px;"></i>
+                      <span style="color:#c4b5fd;font-size:12px;font-weight:600;">OTC Negotiation</span>
+                      <span style="font-size:9px;background:rgba(167,139,250,0.15);color:#a78bfa;border:1px solid rgba(167,139,250,0.25);padding:1px 6px;border-radius:999px;">optional</span>
+                    </div>
+                    <label style="position:relative;display:inline-block;width:36px;height:20px;cursor:pointer;">
+                      <input type="checkbox" id="cf-otc-toggle" onchange="cfToggleOTC()" style="opacity:0;width:0;height:0;">
+                      <span id="cf-otc-slider" style="position:absolute;inset:0;border-radius:20px;background:rgba(255,255,255,0.08);transition:all 0.3s;border:1px solid rgba(255,255,255,0.12);">
+                        <span id="cf-otc-knob" style="position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#4b5675;transition:all 0.3s;"></span>
+                      </span>
+                    </label>
+                  </div>
+                  <div id="cf-otc-fields" class="hidden mt-3 space-y-2">
+                    <div>
+                      <label class="cf-label"><i class="fas fa-star" style="color:#f59e0b;"></i>PROJECT POINTS / TOKENS</label>
+                      <input type="text" id="cf-otc-points" placeholder="e.g. 500 PROJECT_POINTS or 1000 UNLISTED_TKN"
+                        class="cf-input w-full px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label class="cf-label"><i class="fas fa-file-alt" style="color:#f59e0b;"></i>OTC AGREEMENT TERMS</label>
+                      <textarea id="cf-otc-terms" placeholder="Describe the OTC terms and conditions…" rows="2"
+                        class="cf-input w-full px-3 py-2 text-sm resize-none"></textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Milestones -->
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <label class="cf-label" style="margin-bottom:0;"><i class="fas fa-list-check" style="color:#60b4ff;"></i>MILESTONES (max 10)</label>
+                    <button type="button" onclick="cfAddMilestone()"
+                      style="font-size:10px;color:#60b4ff;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+                      onmouseover="this.style.background='rgba(55,138,221,0.18)'" onmouseout="this.style.background='rgba(55,138,221,0.08)'">
+                      <i class="fas fa-plus" style="font-size:9px;"></i> Add
+                    </button>
+                  </div>
+                  <div id="cf-milestones-container" class="space-y-2">
+                    <div class="cf-milestone-row flex items-center gap-2">
+                      <input type="text" placeholder="Milestone description" class="cf-ms-desc flex-1 cf-input px-3 py-2 text-sm" oninput="cfUpdateMilestoneSum()" />
+                      <input type="number" placeholder="USDC" step="0.01" min="0.01" class="cf-ms-amt w-24 cf-input px-3 py-2 text-sm" oninput="cfUpdateMilestoneSum()" />
+                      <button onclick="this.closest('.cf-milestone-row').remove(); cfUpdateMilestoneSum()"
+                        style="width:28px;height:28px;border-radius:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;">
+                        <i class="fas fa-times"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div id="cf-ms-sum" style="font-size:11px;color:#3a4870;margin-top:6px;">Milestones sum: $0.00 USDC</div>
+                </div>
+
+                <!-- Submit button -->
+                <button type="button" id="cf-submit-btn" onclick="cfCreateContract()"
+                  style="width:100%;background:linear-gradient(135deg,#1565c0,#006064);color:#fff;border:none;border-radius:14px;padding:13px;font-size:13px;font-weight:800;cursor:pointer;transition:all 0.3s;box-shadow:0 0 20px rgba(55,138,221,0.3);letter-spacing:0.04em;display:flex;align-items:center;justify-content:center;gap:8px;"
+                  onmouseover="this.style.boxShadow='0 0 30px rgba(55,138,221,0.5)'" onmouseout="this.style.boxShadow='0 0 20px rgba(55,138,221,0.3)'">
+                  <i class="fas fa-file-signature"></i>Create Contract On-Chain
+                </button>
               </div>
 
-              <button type="button" id="cf-submit-btn" onclick="cfCreateContract()"
-                class="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl py-2.5 text-sm font-semibold transition-all flex items-center justify-center gap-2">
-                <i class="fas fa-file-plus"></i>Criar Contrato
-              </button>
-            </div>
+              <!-- Tx steps panel -->
+              <div id="cf-steps-panel" class="hidden mt-4 space-y-1.5" style="background:rgba(255,255,255,0.02);border:1px solid rgba(55,138,221,0.1);border-radius:12px;padding:14px;">
+                <p style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;margin-bottom:10px;">TRANSACTION PIPELINE</p>
+                <div id="cf-step-0" class="ct-step ct-step-idle flex items-center gap-2.5">
+                  <div class="ct-step-icon w-6 h-6 rounded-lg flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-network-wired"></i></div>
+                  <span class="text-xs">Verify Arc Testnet network</span>
+                </div>
+                <div id="cf-step-1" class="ct-step ct-step-idle flex items-center gap-2.5">
+                  <div class="ct-step-icon w-6 h-6 rounded-lg flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-coins"></i></div>
+                  <span class="text-xs">Check USDC balance</span>
+                </div>
+                <div id="cf-step-2" class="ct-step ct-step-idle flex items-center gap-2.5">
+                  <div class="ct-step-icon w-6 h-6 rounded-lg flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-check-double"></i></div>
+                  <span class="text-xs">Approve USDC for ContractFactory</span>
+                </div>
+                <div id="cf-step-3" class="ct-step ct-step-idle flex items-center gap-2.5">
+                  <div class="ct-step-icon w-6 h-6 rounded-lg flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-paper-plane"></i></div>
+                  <span class="text-xs">Send createContract (sign in wallet)</span>
+                </div>
+                <div id="cf-step-4" class="ct-step ct-step-idle flex items-center gap-2.5">
+                  <div class="ct-step-icon w-6 h-6 rounded-lg flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-hourglass-half"></i></div>
+                  <span class="text-xs">Awaiting on-chain confirmation</span>
+                </div>
+                <div id="cf-step-5" class="ct-step ct-step-idle flex items-center gap-2.5">
+                  <div class="ct-step-icon w-6 h-6 rounded-lg flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-database"></i></div>
+                  <span class="text-xs">Save metadata (emails, OTC)</span>
+                </div>
+                <div id="cf-step-6" class="ct-step ct-step-idle flex items-center gap-2.5">
+                  <div class="ct-step-icon w-6 h-6 rounded-lg flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-list-check"></i></div>
+                  <span class="text-xs">Reload contracts list</span>
+                </div>
+              </div>
 
-            <!-- Transaction steps panel -->
-            <div id="cf-steps-panel" class="hidden mt-4 space-y-1.5 bg-gray-800/60 border border-gray-700/40 rounded-xl p-4">
-              <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-3 font-semibold">Progresso da transação</p>
-              <div id="cf-step-0" class="ct-step ct-step-idle flex items-center gap-2.5">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-network-wired"></i></div>
-                <span class="text-xs">Verificar rede Arc Testnet</span>
-              </div>
-              <div id="cf-step-1" class="ct-step ct-step-idle flex items-center gap-2.5">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-coins"></i></div>
-                <span class="text-xs">Verificar saldo USDC</span>
-              </div>
-              <div id="cf-step-2" class="ct-step ct-step-idle flex items-center gap-2.5">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-check-double"></i></div>
-                <span class="text-xs">Approve USDC para ContractFactory</span>
-              </div>
-              <div id="cf-step-3" class="ct-step ct-step-idle flex items-center gap-2.5">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-gas-pump"></i></div>
-                <span class="text-xs">Estimar gas</span>
-              </div>
-              <div id="cf-step-4" class="ct-step ct-step-idle flex items-center gap-2.5">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-paper-plane"></i></div>
-                <span class="text-xs">Enviar createContract (assinar na carteira)</span>
-              </div>
-              <div id="cf-step-5" class="ct-step ct-step-idle flex items-center gap-2.5">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-hourglass-half"></i></div>
-                <span class="text-xs">Aguardar confirmação on-chain (1–3 blocos)</span>
-              </div>
-              <div id="cf-step-6" class="ct-step ct-step-idle flex items-center gap-2.5">
-                <div class="ct-step-icon w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-list-check"></i></div>
-                <span class="text-xs">Recarregar lista de contratos</span>
-              </div>
             </div>
           </div>
         </div>
 
-        <!-- ── RIGHT: Contracts list ──────────────────────────────────────────── -->
-        <div class="lg:col-span-3">
+        <!-- ══ RIGHT: Contracts list ══ -->
+        <div class="xl:col-span-3">
           <!-- Summary stats -->
           <div id="cf-summary" class="mb-4"></div>
 
           <!-- Header -->
           <div class="flex items-center justify-between mb-3">
-            <h3 class="text-white font-semibold text-sm flex items-center gap-2">
-              <i class="fas fa-file-contract text-cyan-400 text-base"></i>
-              Meus Contratos On-Chain
-            </h3>
+            <div class="flex items-center gap-2">
+              <i class="fas fa-file-contract" style="color:#60b4ff;font-size:14px;"></i>
+              <span style="color:#dde2f0;font-size:14px;font-weight:700;">My Contracts</span>
+            </div>
             <button onclick="cfLoadContracts()"
-              class="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-600/40 rounded-lg px-3 py-1.5 transition">
-              <i class="fas fa-sync text-[10px]"></i>Atualizar
+              style="font-size:11px;color:#60b4ff;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);padding:5px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;"
+              onmouseover="this.style.background='rgba(55,138,221,0.18)'" onmouseout="this.style.background='rgba(55,138,221,0.08)'">
+              <i class="fas fa-rotate" style="font-size:10px;"></i>Refresh
             </button>
           </div>
 
-          <!-- Contracts list -->
+          <!-- Contracts list container -->
           <div id="cf-contracts-list">
-            <div class="flex items-center justify-center gap-3 py-12 text-gray-500">
-              <i class="fas fa-wallet text-gray-600 text-xl"></i>
-              <span class="text-sm">Conecte sua carteira para carregar contratos on-chain.</span>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px 0;text-align:center;">
+              <div style="width:56px;height:56px;border-radius:16px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.12);display:flex;align-items:center;justify-content:center;">
+                <i class="fas fa-wallet" style="color:#3a4870;font-size:22px;"></i>
+              </div>
+              <p style="color:#3a4870;font-size:13px;">Connect your wallet to load on-chain contracts.</p>
             </div>
           </div>
         </div>
