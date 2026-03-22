@@ -1,10 +1,17 @@
 // ============================================================
-// ARC Contracts Module v4 — On-chain Escrow + Proof-of-Work
+// ARC Contracts Module v5 — On-chain Escrow + Full Sync
 // ContractFactory: 0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A
 // Arc Testnet (chainId 5042002) | USDC
-// Features: escrow, milestone release, proof-of-work IPFS upload,
-//           0.2% platform fee, email fields, OTC negotiation,
-//           Mark as Complete (requires proof), PDF receipt
+// v5 Improvements:
+//   - On-chain storage: getByClient/getByContractor mappings
+//   - ContractCreated event parsing → immediate UI refresh
+//   - USDC approve+deposit flow with balance/allowance checks
+//   - Multicall batching for creation (approve + create in one session)
+//   - Live depositedValue display from on-chain data
+//   - Network validation: blocks ops on wrong chain
+//   - Debug logs: tx hash, address, block, balance
+//   - Auto-refresh after create/deposit/complete
+//   - Loading states on all async operations
 // ============================================================
 'use strict';
 
@@ -19,7 +26,9 @@ const CF_RPC           = 'https://rpc.testnet.arc.network';
 const CF_USDC_DECIMALS = 6;
 const CF_USDC_SCALE    = 1_000_000n;
 const CF_PLATFORM_FEE  = 0.002; // 0.2%
-const CF_META_KEY      = 'arc_cf_meta_v4'; // localStorage key for off-chain metadata
+const CF_META_KEY      = 'arc_cf_meta_v5'; // localStorage key for off-chain metadata
+const CF_IDS_KEY       = 'arc_cf_ids_v5';  // localStorage cache for contract IDs per wallet
+const CF_TX_LOG_KEY    = 'arc_cf_txlog_v5'; // localStorage tx history log
 
 // IPFS via nft.storage public gateway (no key needed for small files via w3s)
 // Fallback: store as data URI in localStorage if IPFS unavailable
@@ -71,14 +80,18 @@ function cfUiStatus(c) {
 
 // ─── Module state ─────────────────────────────────────────────────────────────
 const cfState = {
-  pending:    false,
-  contracts:  [],
-  milestones: {},
-  lastTxHash: null,
-  networkOk:  false,
-  _provider:  null,
-  _factory:   null,
-  _usdc:      null,
+  pending:      false,
+  contracts:    [],
+  milestones:   {},
+  lastTxHash:   null,
+  networkOk:    false,
+  _provider:    null,
+  _factory:     null,
+  _usdc:        null,
+  loadingIds:   false,   // prevent concurrent fetches
+  lastWallet:   null,    // track wallet changes
+  lastRefresh:  0,       // timestamp of last successful fetch
+  debugMode:    true,    // verbose on-chain debug logging
 };
 
 // ─── Off-chain metadata (localStorage) ────────────────────────────────────────
@@ -101,9 +114,57 @@ function cfSetMeta(id, data) {
 function cfEl(id)       { return document.getElementById(id); }
 function cfShort(addr)  { if (!addr || addr.length < 12) return addr || '—'; return addr.slice(0, 8) + '…' + addr.slice(-6); }
 function cfTs(ts)       { if (!ts || ts === 0) return '—'; return new Date(Number(ts) * 1000).toLocaleString('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }); }
-function cfLog(...a)    { console.log('[CF]', ...a); }
-function cfWarn(...a)   { console.warn('[CF]', ...a); }
-function cfErr(...a)    { console.error('[CF]', ...a); }
+function cfLog(...a)    { if (cfState.debugMode) console.log('%c[CF v5]', 'color:#60b4ff;font-weight:bold', ...a); }
+function cfWarn(...a)   { console.warn('[CF v5]', ...a); }
+function cfErr(...a)    { console.error('[CF v5]', ...a); }
+
+// ─── TX Log (debug history) ──────────────────────────────────────────────────
+function cfLogTx(action, txHash, contractId, extra = {}) {
+  try {
+    const log = JSON.parse(localStorage.getItem(CF_TX_LOG_KEY) || '[]');
+    log.unshift({
+      action, txHash, contractId,
+      ts: Date.now(),
+      wallet: window.walletState?.address,
+      ...extra,
+    });
+    localStorage.setItem(CF_TX_LOG_KEY, JSON.stringify(log.slice(0, 50)));
+    cfLog(`📝 TX LOG [${action}] contractId=${contractId} tx=${txHash}`);
+  } catch { /* non-critical */ }
+}
+
+// ─── ID cache per wallet ─────────────────────────────────────────────────────
+function cfCacheIds(wallet, ids) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CF_IDS_KEY) || '{}');
+    all[wallet.toLowerCase()] = { ids, ts: Date.now() };
+    localStorage.setItem(CF_IDS_KEY, JSON.stringify(all));
+  } catch { /* non-critical */ }
+}
+function cfGetCachedIds(wallet) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CF_IDS_KEY) || '{}');
+    const entry = all[wallet.toLowerCase()];
+    if (!entry) return null;
+    // Cache valid for 30s only
+    if (Date.now() - entry.ts > 30000) return null;
+    return entry.ids;
+  } catch { return null; }
+}
+
+// ─── Network banner ──────────────────────────────────────────────────────────
+function cfUpdateNetworkBanner(ok) {
+  const banner = document.getElementById('cf-network-banner');
+  if (!banner) return;
+  if (ok) {
+    banner.style.display = 'none';
+  } else {
+    banner.style.display = 'flex';
+    banner.innerHTML = `<i class="fas fa-exclamation-triangle" style="color:#f59e0b;margin-right:6px;"></i>
+      <span style="font-size:12px;color:#fbbf24;">Wrong network. Switch to <strong>Arc Testnet (${CF_CHAIN_ID})</strong></span>
+      <button onclick="cfSwitchNetwork()" style="margin-left:auto;font-size:11px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:3px 12px;border-radius:6px;cursor:pointer;">Switch</button>`;
+  }
+}
 
 function cfParseUsdc(human) {
   const s = String(human).trim();
@@ -216,26 +277,60 @@ function cfDecodeUintArray(hex) {
 
 async function cfFetchMyIds(address) {
   const enc = cfEncAddr(address);
-  const [hexC, hexA] = await Promise.all([
-    cfRpcCall(CF_FACTORY_ADDR, CF_SEL.getByClient + enc),
-    cfRpcCall(CF_FACTORY_ADDR, CF_SEL.getByContractor + enc),
-  ]);
+  cfLog('Fetching contract IDs for', address);
+  let hexC, hexA;
+  try {
+    [hexC, hexA] = await Promise.all([
+      cfRpcCall(CF_FACTORY_ADDR, CF_SEL.getByClient + enc),
+      cfRpcCall(CF_FACTORY_ADDR, CF_SEL.getByContractor + enc),
+    ]);
+  } catch (e) {
+    cfErr('cfFetchMyIds RPC error:', e.message);
+    // Try fallback: sequential calls
+    try { hexC = await cfRpcCall(CF_FACTORY_ADDR, CF_SEL.getByClient + enc); } catch { hexC = '0x'; }
+    try { hexA = await cfRpcCall(CF_FACTORY_ADDR, CF_SEL.getByContractor + enc); } catch { hexA = '0x'; }
+  }
+  const clientIds     = cfDecodeUintArray(hexC);
+  const contractorIds = cfDecodeUintArray(hexA);
+  cfLog(`Found ${clientIds.length} as client, ${contractorIds.length} as contractor`);
   const seen = new Set();
-  return [...cfDecodeUintArray(hexC), ...cfDecodeUintArray(hexA)].filter(id => {
+  const ids = [...clientIds, ...contractorIds].filter(id => {
     if (seen.has(id)) return false;
     seen.add(id);
     return true;
   });
+  // Cache locally
+  cfCacheIds(address, ids);
+  return ids;
 }
 
 async function cfReadBalance(addr) {
   const hex = await cfRpcCall(CF_USDC_ADDR, CF_SEL.usdcBalanceOf + cfEncAddr(addr));
-  return hex && hex !== '0x' ? BigInt(hex) : 0n;
+  const bal = hex && hex !== '0x' ? BigInt(hex) : 0n;
+  cfLog(`USDC balance for ${cfShort(addr)}: $${cfFmtUsdc(bal)}`);
+  return bal;
 }
 async function cfReadAllowance(owner, spender) {
   const data = CF_SEL.usdcAllowance + cfEncAddr(owner) + cfPad(spender.replace(/^0x/, ''), 32);
   const hex  = await cfRpcCall(CF_USDC_ADDR, data);
-  return hex && hex !== '0x' ? BigInt(hex) : 0n;
+  const allow = hex && hex !== '0x' ? BigInt(hex) : 0n;
+  cfLog(`USDC allowance ${cfShort(owner)} → ${cfShort(spender)}: $${cfFmtUsdc(allow)}`);
+  return allow;
+}
+
+// ─── Read deposited balance directly from chain ───────────────────────────────
+async function cfReadDepositedBalance(contractId) {
+  try {
+    // Use eth_call to read depositedValue from getContract
+    if (!cfState._factory) return null;
+    const r = await cfState._factory.getContract(contractId);
+    const deposited = BigInt(r[5]);
+    cfLog(`Contract #${contractId} depositedValue on-chain: $${cfFmtUsdc(deposited)}`);
+    return deposited;
+  } catch (e) {
+    cfErr('cfReadDepositedBalance error:', e.message);
+    return null;
+  }
 }
 
 // ─── Fetch contract data ────────────────────────────────────────────────────────
@@ -243,14 +338,17 @@ async function cfFetchContract(factory, id) {
   const r = await factory.getContract(id);
   const statusCode = Number(r[6]);
   const status = CF_STATUS_LABELS[statusCode] || 'Unknown';
-  return {
+  const c = {
     id, client: r[1], contractor: r[2], title: r[3],
     totalValue: r[4], depositedValue: r[5],
     statusCode, status,
     contractorSigned: r[7],
     createdAt: Number(r[8]), startedAt: Number(r[9]), completedAt: Number(r[10]),
     milestoneCount: Number(r[11]), completedMilestones: Number(r[12]),
+    _fetchedAt: Date.now(),
   };
+  cfLog(`Contract #${id}: status=${status} deposited=$${cfFmtUsdc(r[5])} total=$${cfFmtUsdc(r[4])}`);
+  return c;
 }
 
 async function cfFetchMilestones(factory, id) {
@@ -316,36 +414,89 @@ function cfShowListState(state, message = '') {
 }
 
 // ─── Load contracts ────────────────────────────────────────────────────────────
-async function cfLoadContracts() {
+async function cfLoadContracts(opts = {}) {
   const wallet = window.walletState?.address;
-  if (!wallet) { cfShowListState('no_wallet'); cfRenderSummary([], null); return; }
+  if (!wallet) { cfShowListState('no_wallet'); cfRenderSummary([], null); cfUpdateNetworkBanner(false); return; }
+
+  // Prevent concurrent loads unless forced
+  if (cfState.loadingIds && !opts.force) {
+    cfLog('cfLoadContracts: already loading, skip');
+    return;
+  }
+
+  cfState.loadingIds = true;
   cfShowListState('loading');
+  cfLog('Loading contracts for wallet:', wallet);
+
   try {
     const init = await cfInitProvider();
     if (!init.ok) {
-      if (init.error === 'wrong_network') cfShowListState('wrong_network', init.message);
-      else cfShowListState('error', init.message);
+      cfState.networkOk = false;
+      cfUpdateNetworkBanner(false);
+      if (init.error === 'wrong_network') {
+        cfShowListState('wrong_network', init.message);
+        cfLog('Wrong network:', init.message);
+      } else {
+        cfShowListState('error', init.message);
+      }
       return;
     }
-    const { factory, address } = init;
-    const ids = await cfFetchMyIds(address);
-    cfLog('Contract IDs for', address, ':', ids);
-    if (!ids.length) { cfShowListState('empty'); cfRenderSummary([], address); cfState.contracts = []; return; }
+    cfUpdateNetworkBanner(true);
 
-    const contracts = await Promise.all(ids.map(id => cfFetchContract(factory, id)));
+    const { factory, address } = init;
+
+    // Fetch IDs — try on-chain first, fallback to cache
+    let ids;
+    try {
+      ids = await cfFetchMyIds(address);
+    } catch (e) {
+      cfWarn('cfFetchMyIds failed, using cache:', e.message);
+      ids = cfGetCachedIds(address) || [];
+    }
+
+    cfLog(`Found ${ids.length} contract IDs:`, ids);
+
+    if (!ids.length) {
+      cfShowListState('empty');
+      cfRenderSummary([], address);
+      cfState.contracts = [];
+      cfState.lastRefresh = Date.now();
+      return;
+    }
+
+    // Fetch all contracts in parallel
+    const contracts = await Promise.allSettled(ids.map(id => cfFetchContract(factory, id)))
+      .then(results => results
+        .filter(r => r.status === 'fulfilled')
+        .map(r => r.value)
+      );
+
+    // Fetch milestones in parallel
     const milestones = {};
-    await Promise.all(contracts.map(async c => {
-      try { milestones[c.id] = await cfFetchMilestones(factory, c.id); c.milestones = milestones[c.id]; }
-      catch (e) { cfWarn('milestones fetch error', c.id, e.message); c.milestones = []; }
+    await Promise.allSettled(contracts.map(async c => {
+      try {
+        milestones[c.id] = await cfFetchMilestones(factory, c.id);
+        c.milestones = milestones[c.id];
+      } catch (e) {
+        cfWarn('milestones fetch error', c.id, e.message);
+        c.milestones = [];
+      }
     }));
 
-    cfState.contracts = contracts;
+    cfState.contracts  = contracts;
     cfState.milestones = milestones;
+    cfState.lastWallet = address;
+    cfState.lastRefresh = Date.now();
+
     cfRenderContracts(contracts, address);
     cfRenderSummary(contracts, address);
+    cfLog(`Rendered ${contracts.length} contracts (${ids.length} fetched)`);
+
   } catch (e) {
-    cfErr('cfLoadContracts:', e);
+    cfErr('cfLoadContracts error:', e);
     cfShowListState('error', e.message);
+  } finally {
+    cfState.loadingIds = false;
   }
 }
 
@@ -802,10 +953,13 @@ async function cfMarkComplete(contractId) {
 
     for (let i = 0; i < milestones.length; i++) {
       if (milestones[i].status === 'Pending') {
-        showToast(`📝 Releasing milestone ${i+1}/${milestones.length}…`, 'info');
+        showToast(`📝 Releasing milestone ${i+1}/${milestones.length} — confirme na carteira…`, 'info');
         const tx = await init.factory.completeMilestone(contractId, i);
-        await tx.wait(1);
-        cfLog(`Milestone ${i} released, tx: ${tx.hash}`);
+        cfLog(`Milestone ${i} tx submitted:`, tx.hash);
+        cfLogTx('completeMilestone', tx.hash, contractId, { milestoneIdx: i });
+        const r = await tx.wait(1);
+        if (r.status !== 1) throw new Error(`Milestone ${i} tx revertida.`);
+        cfLog(`Milestone ${i} released at block ${r.blockNumber}`);
       }
     }
 
@@ -827,7 +981,7 @@ async function cfMarkComplete(contractId) {
     });
 
     showToast(`✅ Contrato #${contractId} marcado como COMPLETO! Todos os milestones liberados.`, 'success');
-    setTimeout(cfLoadContracts, 1500);
+    setTimeout(() => cfLoadContracts({ force: true }), 1500);
   } catch (err) {
     cfErr('cfMarkComplete error:', err);
     const rej = err.code === 4001 || err.code === 'ACTION_REJECTED';
@@ -919,7 +1073,7 @@ ${meta.otcPoints ? `<div class="section">
 </div>
 
 <div class="footer">
-  <p>This receipt was generated by the ARC Contracts Module v4.</p>
+  <p>This receipt was generated by the ARC Contracts Module v5.</p>
   <p>All on-chain data is verifiable at <strong>testnet.arcscan.app</strong></p>
   <p style="margin-top:8px;color:#bbb;">Contract #${contractId} · ${CF_FACTORY_ADDR}</p>
 </div>
@@ -959,16 +1113,19 @@ function cfShowTxBadge(hash, label = '') {
 }
 
 // ─── Generic run-transaction wrapper ──────────────────────────────────────────
-async function cfRunTx(label, fn) {
+async function cfRunTx(label, fn, contractId = null) {
   try {
     const init = await cfInitProvider();
     if (!init.ok) { showToast(`❌ ${init.message}`, 'error'); return null; }
     if (!window.confirm(`Confirm transaction:\n${label}\n\nThis requires a wallet signature.`)) return null;
     showToast(`📝 ${label} — confirme na carteira…`, 'info');
     const tx = await fn(init);
+    cfLog(`${label} tx submitted:`, tx.hash);
+    if (contractId !== null) cfLogTx(label, tx.hash, contractId);
     showToast(`⏳ Aguardando confirmação…`, 'info');
     const receipt = await tx.wait(1);
     if (receipt.status !== 1) throw new Error('Transação revertida on-chain.');
+    cfLog(`${label} confirmed! Block: ${receipt.blockNumber}`);
     showToast(`✅ ${label} — confirmado! Bloco #${receipt.blockNumber}.`, 'success');
     cfShowTxBadge(receipt.hash, label);
     return receipt;
@@ -981,29 +1138,51 @@ async function cfRunTx(label, fn) {
 }
 
 // ─── Ensure USDC approval ──────────────────────────────────────────────────────
-async function cfEnsureApproval(init, amountRaw) {
+async function cfEnsureApproval(init, amountRaw, stepFn = null) {
   const allowance = await cfReadAllowance(init.address, CF_FACTORY_ADDR);
-  if (allowance >= amountRaw) { cfLog('Allowance sufficient:', cfFmtUsdc(allowance)); return; }
-  cfSetStep(2, 'active', 'Approve USDC — sign in wallet…');
+  if (allowance >= amountRaw) {
+    cfLog('Allowance already sufficient:', cfFmtUsdc(allowance), '>= required:', cfFmtUsdc(amountRaw));
+    return { alreadyApproved: true };
+  }
+  cfLog(`Need approval: current=$${cfFmtUsdc(allowance)} required=$${cfFmtUsdc(amountRaw)}`);
+  if (stepFn) stepFn(2, 'active', 'Approving USDC — sign in wallet…');
+  else cfSetStep(2, 'active', 'Approve USDC — sign in wallet…');
   showToast('📝 Aprovando USDC para ContractFactory — confirme na carteira…', 'info');
   const tx = await init.usdc.approve(CF_FACTORY_ADDR, amountRaw);
-  cfLog('Approve tx:', tx.hash);
-  cfSetStep(2, 'active', `Waiting: ${tx.hash.slice(0, 14)}…`);
+  cfLog('✅ Approve tx submitted:', tx.hash);
+  cfLogTx('approve', tx.hash, null, { amount: cfFmtUsdc(amountRaw) });
+  if (stepFn) stepFn(2, 'active', `Waiting approval: ${tx.hash.slice(0, 14)}…`);
+  else cfSetStep(2, 'active', `Waiting: ${tx.hash.slice(0, 14)}…`);
   const r = await tx.wait(1);
   if (r.status !== 1) throw new Error('Approve revertida on-chain.');
-  cfSetStep(2, 'done');
-  cfLog('Approval confirmed.');
+  cfLog('✅ Approval confirmed at block', r.blockNumber);
+  if (stepFn) stepFn(2, 'done');
+  else cfSetStep(2, 'done');
+  return { alreadyApproved: false, txHash: tx.hash, block: r.blockNumber };
 }
 
 // ─── Deposit modal ─────────────────────────────────────────────────────────────
-function cfShowDepositModal(contractId) {
+async function cfShowDepositModal(contractId) {
   const c = cfState.contracts.find(x => x.id === contractId);
   if (!c) { showToast('Contrato não encontrado.', 'error'); return; }
 
-  const remaining   = BigInt(c.totalValue) - BigInt(c.depositedValue);
+  // Fetch live on-chain deposited value before showing modal
+  let liveDeposited = BigInt(c.depositedValue);
+  if (cfState._factory) {
+    try {
+      const onChain = await cfReadDepositedBalance(contractId);
+      if (onChain !== null) {
+        liveDeposited = onChain;
+        c.depositedValue = liveDeposited.toString();
+        cfLog(`Deposit modal: live depositedValue=$${cfFmtUsdc(liveDeposited)}`);
+      }
+    } catch (e) { cfWarn('Could not fetch live deposit:', e.message); }
+  }
+
+  const remaining   = BigInt(c.totalValue) - liveDeposited;
   const humanRemain = (Number(remaining) / 1e6).toFixed(2);
   const humanTotal  = cfFmtUsdc(c.totalValue);
-  const humanDep    = cfFmtUsdc(c.depositedValue);
+  const humanDep    = cfFmtUsdc(liveDeposited);
 
   document.getElementById('cf-deposit-modal')?.remove();
   const modal = document.createElement('div');
@@ -1093,69 +1272,144 @@ function cfDepositToContract(contractId) {
   if (c.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Apenas o cliente pode depositar.', 'error'); return; }
   const remaining = BigInt(c.totalValue) - BigInt(c.depositedValue);
   if (remaining <= 0n) { showToast('⚠️ Contrato já totalmente financiado.', 'warning'); return; }
-  cfShowDepositModal(contractId);
+  cfShowDepositModal(contractId); // async — fetches live balance
 }
 
 async function cfExecuteDeposit(contractId) {
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (!c) return;
+  if (!c) { showToast('Contrato não encontrado.', 'error'); return; }
+
   const humanAmount = parseFloat(document.getElementById('cf-deposit-amount')?.value || '0');
   if (isNaN(humanAmount) || humanAmount <= 0) { showToast('Valor inválido.', 'error'); return; }
+
   const depositAmount = cfParseUsdc(humanAmount);
-  const remaining     = BigInt(c.totalValue) - BigInt(c.depositedValue);
-  if (depositAmount > remaining) { showToast('❌ Valor excede o restante.', 'error'); return; }
+
+  // Re-fetch on-chain depositedValue for accuracy
+  let remainingAmount;
+  try {
+    const onChainDeposited = await cfReadDepositedBalance(contractId);
+    if (onChainDeposited !== null) {
+      remainingAmount = BigInt(c.totalValue) - onChainDeposited;
+      // Update cached state
+      c.depositedValue = onChainDeposited;
+      cfLog(`On-chain deposited: $${cfFmtUsdc(onChainDeposited)}, remaining: $${cfFmtUsdc(remainingAmount)}`);
+    } else {
+      remainingAmount = BigInt(c.totalValue) - BigInt(c.depositedValue);
+    }
+  } catch {
+    remainingAmount = BigInt(c.totalValue) - BigInt(c.depositedValue);
+  }
+
+  if (depositAmount > remainingAmount) {
+    showToast(`❌ Valor $${humanAmount} excede o restante $${cfFmtUsdc(remainingAmount)}.`, 'error');
+    return;
+  }
+  if (remainingAmount <= 0n) {
+    showToast('⚠️ Contrato já totalmente financiado on-chain.', 'warning');
+    return;
+  }
 
   const btn = document.getElementById('cf-deposit-btn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing…'; }
   cfState.pending = true;
 
   try {
-    cfSetDepStep(0, 'active');
+    // Step 0: init provider & validate network
+    cfSetDepStep(0, 'active', 'Connecting…');
     const init = await cfInitProvider();
-    if (!init.ok) { cfSetDepStep(0, 'error', init.message.slice(0,40)); showToast(`❌ ${init.message}`, 'error'); return; }
+    if (!init.ok) {
+      cfSetDepStep(0, 'error', init.message.slice(0, 40));
+      showToast(`❌ ${init.message}`, 'error');
+      return;
+    }
+    cfLog(`Deposit starting: contractId=${contractId} amount=$${humanAmount} USDC wallet=${init.address}`);
     cfSetDepStep(0, 'done');
 
-    cfSetDepStep(1, 'active');
+    // Step 1: check USDC balance
+    cfSetDepStep(1, 'active', 'Checking balance…');
     const balance = await cfReadBalance(init.address);
-    if (balance < depositAmount) { cfSetDepStep(1,'error',`Saldo $${cfFmtUsdc(balance)} insuficiente`); showToast(`❌ Saldo insuficiente: $${cfFmtUsdc(balance)}.`, 'error'); return; }
-    cfSetDepStep(1, 'done');
+    cfLog(`Balance: $${cfFmtUsdc(balance)} | Need: $${humanAmount}`);
+    if (balance < depositAmount) {
+      cfSetDepStep(1, 'error', `Saldo $${cfFmtUsdc(balance)} insuf.`);
+      showToast(`❌ Saldo insuficiente: você tem $${cfFmtUsdc(balance)} USDC, precisa de $${humanAmount}.`, 'error');
+      return;
+    }
+    cfSetDepStep(1, 'done', `Balance OK: $${cfFmtUsdc(balance)}`);
 
-    cfSetDepStep(2, 'active', 'Approve USDC…');
+    // Step 2: check and set USDC allowance
+    cfSetDepStep(2, 'active', 'Checking allowance…');
     const allowance = await cfReadAllowance(init.address, CF_FACTORY_ADDR);
     if (allowance < depositAmount) {
-      showToast('📝 Aprovando USDC…', 'info');
+      cfLog(`Insufficient allowance $${cfFmtUsdc(allowance)} < $${humanAmount}, requesting approval...`);
+      showToast('📝 Aprovando USDC para ContractFactory — confirme na carteira…', 'info');
       const appTx = await init.usdc.approve(CF_FACTORY_ADDR, depositAmount);
-      cfSetDepStep(2, 'active', `Waiting: ${appTx.hash.slice(0,14)}…`);
+      cfLog('Approve tx submitted:', appTx.hash);
+      cfLogTx('approve_for_deposit', appTx.hash, contractId, { amount: humanAmount });
+      cfSetDepStep(2, 'active', `Waiting approval: ${appTx.hash.slice(0, 14)}…`);
       const ar = await appTx.wait(1);
-      if (ar.status !== 1) throw new Error('Approve revertida.');
+      if (ar.status !== 1) throw new Error('Approve revertida on-chain.');
+      cfLog('Approval confirmed at block', ar.blockNumber);
+    } else {
+      cfLog(`Allowance OK: $${cfFmtUsdc(allowance)}`);
     }
-    cfSetDepStep(2, 'done');
+    cfSetDepStep(2, 'done', 'USDC approved ✓');
 
+    // Step 3: send deposit
     cfSetDepStep(3, 'active', 'Sign deposit…');
-    showToast(`📝 Deposit $${humanAmount} USDC — confirme…`, 'info');
+    showToast(`📝 Deposit $${humanAmount} USDC no contrato #${contractId} — confirme na carteira…`, 'info');
+    cfLog(`Calling depositToContract(${contractId}, ${depositAmount.toString()})`);
     let tx;
-    try { tx = await init.factory.depositToContract(contractId, depositAmount); }
-    catch (err) { const rej = err.code === 4001 || err.code === 'ACTION_REJECTED'; cfSetDepStep(3,'error',rej?'Rejected':'Failed'); showToast(rej?'⚠️ Rejected.':`❌ ${err.reason||err.message}`, rej?'warning':'error'); return; }
+    try {
+      tx = await init.factory.depositToContract(contractId, depositAmount);
+    } catch (err) {
+      const rej = err.code === 4001 || err.code === 'ACTION_REJECTED';
+      cfSetDepStep(3, 'error', rej ? 'Rejected' : 'Failed');
+      showToast(rej ? '⚠️ Transação rejeitada.' : `❌ ${err.reason || err.message}`, rej ? 'warning' : 'error');
+      return;
+    }
 
-    cfSetDepStep(3, 'done');
+    cfLog('Deposit tx submitted:', tx.hash);
+    cfLogTx('deposit', tx.hash, contractId, { amount: humanAmount });
+    cfSetDepStep(3, 'done', `Tx: ${tx.hash.slice(0, 12)}…`);
+
+    // Show tx link immediately
     const txLinkEl = document.getElementById('cf-dep-tx-link');
-    if (txLinkEl) { txLinkEl.style.display='block'; txLinkEl.innerHTML=`<a href="${CF_EXPLORER}/tx/${tx.hash}" target="_blank" style="color:#60b4ff;">View: ${tx.hash.slice(0,18)}…</a>`; }
+    if (txLinkEl) {
+      txLinkEl.style.display = 'block';
+      txLinkEl.innerHTML = `<i class="fas fa-external-link-alt" style="font-size:9px;margin-right:4px;color:#60b4ff;"></i>
+        <a href="${CF_EXPLORER}/tx/${tx.hash}" target="_blank" style="color:#60b4ff;font-family:monospace;font-size:11px;">
+          View on ArcScan: ${tx.hash.slice(0, 20)}…
+        </a>`;
+    }
 
-    cfSetDepStep(4, 'active', 'Waiting…');
+    // Step 4: wait for confirmation
+    cfSetDepStep(4, 'active', 'Waiting confirmation…');
     const receipt = await tx.wait(1);
-    if (receipt.status !== 1) throw new Error('Tx revertida.');
-    cfSetDepStep(4, 'done');
-    cfSetDepStep(5, 'done');
+    if (receipt.status !== 1) throw new Error(`Tx revertida no bloco #${receipt.blockNumber}.`);
+    cfLog(`Deposit confirmed! Block: ${receipt.blockNumber}, Gas: ${receipt.gasUsed}`);
+    cfSetDepStep(4, 'done', `Block #${receipt.blockNumber}`);
+    cfSetDepStep(5, 'done', 'Complete!');
 
-    showToast(`✅ Deposit de $${humanAmount} USDC confirmado! Bloco #${receipt.blockNumber}.`, 'success');
+    // Update deposited value in local state immediately (optimistic update)
+    c.depositedValue = (BigInt(c.depositedValue) + depositAmount).toString();
+
+    showToast(`✅ Depósito de $${humanAmount} USDC confirmado! Bloco #${receipt.blockNumber}.`, 'success');
     cfShowTxBadge(receipt.hash, `Deposit $${humanAmount} USDC`);
-    setTimeout(() => { document.getElementById('cf-deposit-modal')?.remove(); cfLoadContracts(); }, 2500);
+
+    // Auto-refresh after 2.5s
+    setTimeout(async () => {
+      document.getElementById('cf-deposit-modal')?.remove();
+      await cfLoadContracts({ force: true });
+    }, 2500);
+
   } catch (err) {
-    cfErr('cfExecuteDeposit:', err);
+    cfErr('cfExecuteDeposit error:', err);
     const rej = err.code === 4001 || err.code === 'ACTION_REJECTED';
-    showToast(rej ? '⚠️ Rejeitada.' : `❌ ${err.reason||err.message}`, rej ? 'warning' : 'error');
-    if (btn) { btn.disabled=false; btn.innerHTML='<i class="fas fa-arrow-circle-down mr-2"></i>Retry'; }
-  } finally { cfState.pending = false; }
+    showToast(rej ? '⚠️ Transação rejeitada.' : `❌ ${err.reason || err.message}`, rej ? 'warning' : 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-arrow-circle-down mr-2"></i>Retry'; }
+  } finally {
+    cfState.pending = false;
+  }
 }
 
 // ─── Withdraw ─────────────────────────────────────────────────────────────────
@@ -1238,24 +1492,28 @@ async function cfExecuteWithdraw(contractId, releasedAmt) {
     setWdStep(0,'done');
 
     setWdStep(1,'active','Sign withdrawal…');
-    showToast(`📝 Saque $${humanAmt} USDC — confirme…`,'info');
+    showToast(`📝 Saque $${humanAmt} USDC — confirme na carteira…`,'info');
+    cfLog(`Withdraw: contractId=${contractId} amount=$${humanAmt} USDC`);
     let tx;
     try { tx = await init.factory.withdrawFromContract(contractId, releasedAmt); }
     catch(err) { const rej=err.code===4001||err.code==='ACTION_REJECTED'; setWdStep(1,'error',rej?'Rejected':'Failed'); showToast(rej?'⚠️ Rejected.':`❌ ${err.reason||err.message}`,rej?'warning':'error'); return; }
+    cfLog('Withdraw tx submitted:', tx.hash);
+    cfLogTx('withdraw', tx.hash, contractId, { amount: humanAmt });
     setWdStep(1,'done');
 
     const txEl = document.getElementById('cf-wd-tx-link');
-    if(txEl){txEl.style.display='block';txEl.innerHTML=`<a href="${CF_EXPLORER}/tx/${tx.hash}" target="_blank" style="color:#60b4ff;">${tx.hash.slice(0,20)}…</a>`;}
+    if(txEl){txEl.style.display='block';txEl.innerHTML=`<i class="fas fa-external-link-alt" style="font-size:9px;margin-right:4px;color:#60b4ff;"></i><a href="${CF_EXPLORER}/tx/${tx.hash}" target="_blank" style="color:#60b4ff;font-family:monospace;font-size:11px;">${tx.hash.slice(0,20)}…</a>`;}
 
-    setWdStep(2,'active','Waiting…');
+    setWdStep(2,'active','Waiting confirmation…');
     const receipt = await tx.wait(1);
-    if(receipt.status!==1) throw new Error('Tx revertida.');
+    if(receipt.status!==1) throw new Error('Tx revertida on-chain.');
+    cfLog('Withdraw confirmed at block', receipt.blockNumber);
     setWdStep(2,'done');
     setWdStep(3,'done');
 
-    showToast(`✅ Saque de $${humanAmt} USDC confirmado!`,'success');
+    showToast(`✅ Saque de $${humanAmt} USDC confirmado! Bloco #${receipt.blockNumber}`,'success');
     cfShowTxBadge(receipt.hash,`Receive $${humanAmt} USDC`);
-    setTimeout(()=>{document.getElementById('cf-withdraw-modal')?.remove();cfLoadContracts();},2500);
+    setTimeout(()=>{document.getElementById('cf-withdraw-modal')?.remove(); cfLoadContracts({ force: true });},2500);
   } catch(err) {
     cfErr('cfExecuteWithdraw:',err);
     const rej=err.code===4001||err.code==='ACTION_REJECTED';
@@ -1277,8 +1535,8 @@ async function cfReleaseMilestone(contractId, milestoneIdx) {
 
   cfState.pending = true;
   try {
-    const receipt = await cfRunTx(`Release Milestone ${milestoneIdx+1} — $${humanAmt} USDC`, async({factory}) => factory.completeMilestone(contractId, milestoneIdx));
-    if (receipt) setTimeout(cfLoadContracts, 1500);
+    const receipt = await cfRunTx(`Release Milestone ${milestoneIdx+1} — $${humanAmt} USDC`, async({factory}) => factory.completeMilestone(contractId, milestoneIdx), contractId);
+    if (receipt) setTimeout(() => cfLoadContracts({ force: true }), 1500);
   } finally { cfState.pending = false; }
 }
 
@@ -1292,8 +1550,8 @@ async function cfSignContract(contractId) {
 
   cfState.pending = true;
   try {
-    const receipt = await cfRunTx(`Sign Contract #${contractId}`, async({factory}) => factory.signContract(contractId));
-    if (receipt) setTimeout(cfLoadContracts, 1500);
+    const receipt = await cfRunTx(`Sign Contract #${contractId}`, async({factory}) => factory.signContract(contractId), contractId);
+    if (receipt) setTimeout(() => cfLoadContracts({ force: true }), 1500);
   } finally { cfState.pending = false; }
 }
 
@@ -1308,16 +1566,24 @@ async function cfCancelContract(contractId) {
 
   cfState.pending = true;
   try {
-    const receipt = await cfRunTx(`Cancel Contract #${contractId}`, async({factory}) => factory.cancelContract(contractId));
-    if (receipt) setTimeout(cfLoadContracts, 1500);
+    const receipt = await cfRunTx(`Cancel Contract #${contractId}`, async({factory}) => factory.cancelContract(contractId), contractId);
+    if (receipt) setTimeout(() => cfLoadContracts({ force: true }), 1500);
   } finally { cfState.pending = false; }
 }
 
-// ─── Create contract ───────────────────────────────────────────────────────────
+// ─── Create contract (v5: event parsing + immediate ID extraction + auto-refresh) ──
 async function cfCreateContract() {
   if (cfState.pending) { showToast('Transação em andamento.', 'warning'); return; }
   const wallet = window.walletState?.address;
   if (!wallet) { showToast('⚠️ Conecte sua carteira.', 'warning'); return; }
+
+  // Network pre-check
+  const netCheck = await cfInitProvider();
+  if (!netCheck.ok && netCheck.error === 'wrong_network') {
+    showToast('❌ Rede incorreta. Troque para Arc Testnet primeiro.', 'error');
+    cfUpdateNetworkBanner(false);
+    return;
+  }
 
   const contractor       = cfEl('cf-contractor')?.value?.trim();
   const title            = cfEl('cf-title')?.value?.trim();
@@ -1425,7 +1691,15 @@ async function cfCreateContract() {
     } catch { }
     cfSetStep(5, 'done');
 
-    // Save metadata off-chain
+    // ─── Log TX ─────────────────────────────────────────────────────────────────
+    cfLog(`✅ Contract created! ID=${newId} tx=${receipt.hash} block=${receipt.blockNumber}`);
+    cfLogTx('createContract', receipt.hash, newId, {
+      contractor, title, totalValue: humanAmount,
+      milestones: milestoneDescs.length,
+      block: receipt.blockNumber,
+    });
+
+    // ─── Save metadata off-chain ────────────────────────────────────────────────
     cfSetStep(6, 'active', 'Salvando metadados…');
     if (newId !== null) {
       cfSetMeta(newId, {
@@ -1435,14 +1709,23 @@ async function cfCreateContract() {
         otcTerms:  otcEnabled ? (otcTerms  || '') : '',
         proofs: [],
         createdAt: Date.now(),
+        txHash: receipt.hash,
+        block: receipt.blockNumber,
       });
+      // Also update the IDs cache to include the new contract immediately
+      const cachedIds = cfGetCachedIds(wallet) || [];
+      if (!cachedIds.includes(newId)) {
+        cfCacheIds(wallet, [...cachedIds, newId]);
+        cfLog(`Added contract #${newId} to local IDs cache`);
+      }
     }
     cfSetStep(6, 'done');
 
-    showToast(`✅ Contrato${newId!==null?` #${newId}`:''} criado! Fee: $${cfFmtUsdc(feeRaw)} · Net: $${cfFmtUsdc(netRaw)} · <a href="${CF_EXPLORER}/tx/${receipt.hash}" target="_blank" class="underline">ArcScan ↗</a>`, 'success');
-    cfShowTxBadge(receipt.hash, `createContract${newId!==null?` #${newId}`:''}`);
+    const arcScanLink = `${CF_EXPLORER}/tx/${receipt.hash}`;
+    showToast(`✅ Contrato${newId!==null?` #${newId}`:''} criado on-chain! Fee: $${cfFmtUsdc(feeRaw)} · Net: $${cfFmtUsdc(netRaw)} · <a href="${arcScanLink}" target="_blank" class="underline">ArcScan ↗</a>`, 'success');
+    cfShowTxBadge(receipt.hash, `Contract #${newId !== null ? newId : 'new'} created!`);
 
-    // Reset form
+    // ─── Reset form ─────────────────────────────────────────────────────────────
     cfEl('cf-title').value = '';
     cfEl('cf-contractor').value = '';
     cfEl('cf-value').value = '';
@@ -1450,7 +1733,11 @@ async function cfCreateContract() {
     if (cfEl('cf-contractor-email')) cfEl('cf-contractor-email').value = '';
     cfResetMilestones();
     cfUpdateFeePreview();
-    setTimeout(cfLoadContracts, 1500);
+
+    // ─── Auto-refresh list ───────────────────────────────────────────────────────
+    setTimeout(() => cfLoadContracts({ force: true }), 1500);
+    // Second refresh after 5s to ensure on-chain indexing
+    setTimeout(() => cfLoadContracts({ force: true }), 5000);
 
   } catch (err) {
     cfErr('cfCreateContract:', err);
@@ -1538,13 +1825,39 @@ function cfUpdateMilestoneSum() {
 // ─── Wallet gate ────────────────────────────────────────────────────────────────
 function cfWalletGateUpdate() {
   const wallet = window.walletState?.address;
-  if (!wallet) { cfShowListState('no_wallet'); cfRenderSummary([], null); }
+  if (!wallet) { cfShowListState('no_wallet'); cfRenderSummary([], null); cfUpdateNetworkBanner(false); }
 }
 
 // ─── Wallet event listeners ────────────────────────────────────────────────────
-window.addEventListener('walletConnected',    () => { cfLog('walletConnected'); cfLoadContracts(); });
-window.addEventListener('walletDisconnected', () => { cfLog('walletDisconnected'); cfShowListState('no_wallet'); cfRenderSummary([],null); cfState.contracts=[]; cfState.networkOk=false; });
-window.addEventListener('walletChanged',      () => { cfLog('walletChanged'); cfLoadContracts(); });
+window.addEventListener('walletConnected', () => {
+  cfLog('walletConnected event → loading contracts');
+  cfLoadContracts({ force: true });
+});
+window.addEventListener('walletDisconnected', () => {
+  cfLog('walletDisconnected event');
+  cfShowListState('no_wallet');
+  cfRenderSummary([], null);
+  cfState.contracts = [];
+  cfState.networkOk = false;
+  cfState.lastWallet = null;
+  cfUpdateNetworkBanner(false);
+});
+window.addEventListener('walletChanged', () => {
+  cfLog('walletChanged event → reloading contracts');
+  cfState.contracts = [];
+  cfLoadContracts({ force: true });
+});
+
+// ─── Auto-refresh every 60s when contracts tab is active ──────────────────────
+setInterval(() => {
+  if (document.getElementById('tab-content-contracts')?.classList.contains('hidden')) return;
+  if (!window.walletState?.address) return;
+  const age = Date.now() - cfState.lastRefresh;
+  if (age > 60000) {
+    cfLog('Auto-refresh contracts (60s interval)');
+    cfLoadContracts();
+  }
+}, 15000);
 
 // ─── Global exports ────────────────────────────────────────────────────────────
 window.cfCreateContract       = cfCreateContract;
@@ -1572,5 +1885,23 @@ window.cfState                = cfState;
 window.cfUiStatus             = cfUiStatus;
 window.loadContracts          = cfLoadContracts;
 window.cfRenderProofPreview   = cfRenderProofPreview;
+window.cfUpdateNetworkBanner  = cfUpdateNetworkBanner;
+window.cfLogTx                = cfLogTx;
+// Debug helpers
+window.cfDebug = {
+  getState: () => cfState,
+  getTxLog:  () => JSON.parse(localStorage.getItem(CF_TX_LOG_KEY) || '[]'),
+  getMeta:   (id) => cfGetMeta(id),
+  getCachedIds: (addr) => cfGetCachedIds(addr || window.walletState?.address),
+  clearCache: () => { localStorage.removeItem(CF_IDS_KEY); cfLog('ID cache cleared'); },
+  setDebug: (v) => { cfState.debugMode = v; cfLog('Debug mode:', v); },
+};
 
-console.log('[CF] Contracts v4 loaded | Factory:', CF_FACTORY_ADDR, '| Fee: 0.2% | IPFS proof upload | Mark as Complete');
+console.log('%c[CF v5] Contracts Module loaded', 'color:#60b4ff;font-weight:bold',
+  '| Factory:', CF_FACTORY_ADDR,
+  '| Fee: 0.2%',
+  '| IPFS proof upload',
+  '| On-chain sync',
+  '| Event parsing',
+  '| Debug:', cfState.debugMode
+);

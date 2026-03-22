@@ -1300,6 +1300,9 @@ app.get('/', (c) => {
         .cf-btn-receipt:hover { background:rgba(59,130,246,0.18); }
       </style>
 
+      <!-- ── Network warning banner (shown on wrong chain) ── -->
+      <div id="cf-network-banner" style="display:none;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:12px;padding:10px 14px;margin-bottom:12px;flex-direction:row;align-items:center;gap:8px;"></div>
+
       <!-- ── Factory info bar ── -->
       <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:10px 16px;">
         <div class="flex items-center gap-2">
