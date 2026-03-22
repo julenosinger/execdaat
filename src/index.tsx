@@ -2844,16 +2844,28 @@ app.get('/', (c) => {
       </div>
     </div>
 
-    <!-- ArcPay status bar -->
-    <div id="chat-arcpay-bar" class="hidden px-3 py-1.5 border-b border-purple-800/30 bg-purple-900/20 flex-shrink-0">
-      <div class="flex items-center justify-between">
-        <span class="text-[10px] text-purple-300 flex items-center gap-1.5">
-          <i class="fas fa-robot text-purple-400"></i>
-          <span id="chat-arcpay-status">ArcPay Agent: checking…</span>
+    <!-- ArcPay Agent v1.0 — Status Bar -->
+    <div id="chat-arcpay-bar" class="px-3 py-2 unauthorized flex-shrink-0">
+      <div class="flex items-center justify-between gap-2">
+        <!-- Status text + badge -->
+        <span id="chat-arcpay-status" class="text-[10px] flex items-center gap-1.5 flex-1 min-w-0 truncate">
+          <span class="arcpay-badge-inactive"><i class="fas fa-robot"></i> ArcPay Agent</span>
+          <span class="text-[9px] text-purple-400 ml-1">Not authorized — click to enable</span>
         </span>
-        <button onclick="sendQuickMessage('approve arcpay')" id="chat-arcpay-btn"
-          class="text-[10px] text-purple-300 hover:text-purple-100 bg-purple-800/30 hover:bg-purple-700/40 px-2 py-0.5 rounded-full border border-purple-700/30 transition-all hidden">
-          Authorize
+        <!-- Active badge (hidden until authorized) -->
+        <span id="arcpay-session-badge" class="hidden text-[9px] font-bold text-green-400 bg-green-900/30 border border-green-700/30 px-1.5 py-0.5 rounded-full flex-shrink-0"></span>
+        <!-- Authorize button (shown when NOT authorized) -->
+        <button id="arcpay-auth-btn"
+          onclick="executeArcPayAuthorization()"
+          class="flex-shrink-0 text-[11px] font-bold text-white px-3 py-1 rounded-lg border border-purple-500/40 transition-all"
+          style="background:linear-gradient(135deg,#6d28d9,#3b82f6);">
+          <i class="fas fa-shield-alt mr-1"></i>Authorize
+        </button>
+        <!-- Revoke button (hidden until authorized) -->
+        <button id="arcpay-revoke-btn"
+          onclick="revokeArcPaySession()"
+          class="hidden flex-shrink-0 text-[10px] text-red-400 hover:text-red-300 bg-red-900/20 hover:bg-red-900/30 px-2 py-0.5 rounded-full border border-red-700/30 transition-all">
+          Revoke
         </button>
       </div>
     </div>
@@ -3404,14 +3416,14 @@ app.get('/', (c) => {
     // ── Platform initialization ───────────────────────────────────────────────
     window.addEventListener('load', () => {
 
-      // 1. ArcPay status bar
-      const arcPayActive = localStorage.getItem('arc-pay-approved') === '1';
-      const bar    = document.getElementById('chat-arcpay-bar');
-      const status = document.getElementById('chat-arcpay-status');
-      const btn    = document.getElementById('chat-arcpay-btn');
-      if (bar)    bar.classList.remove('hidden');
-      if (status) status.textContent = arcPayActive ? 'ArcPay: ✅ Active' : 'ArcPay: Not authorized';
-      if (btn)    btn.classList.toggle('hidden', arcPayActive);
+      // 1. ArcPay status bar — delegate fully to chat.js v3 updateArcPayBar()
+      //    The bar is visible by default (no hidden class) and chat.js v3 owns it.
+      //    We call updateArcPayBar() after a short delay to ensure chat.js is ready.
+      setTimeout(() => {
+        if (typeof updateArcPayBar === 'function') {
+          updateArcPayBar();
+        }
+      }, 100);
 
       // 2. Chat size buttons
       const savedSize = localStorage.getItem('arc-chat-size') || 'medium';
