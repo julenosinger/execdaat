@@ -499,55 +499,76 @@ async function disputeContract(contractId) {
 async function loadAgentsDetails() {
   try {
     const payData = await API.get('/api/payments/agent');
-    const ctData = await API.get('/api/contracts/agent');
+    const ctData  = await API.get('/api/contracts/agent');
     
-    // Payment agent
+    // ── Payment agent ──
     const payDetails = document.getElementById('pay-agent-details');
-    payDetails.innerHTML = `
+    if (payDetails) payDetails.innerHTML = `
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
         <span class="text-gray-400">Status</span>
         <span class="${getAgentStatusTextClass(payData.agent.status)} font-medium capitalize">${payData.agent.status}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">${t('stat_approved')}</span>
+        <span class="text-gray-400">Approved</span>
         <span class="text-green-400">${payData.stats.approved}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">${t('stat_rejected')}</span>
+        <span class="text-gray-400">Rejected</span>
         <span class="text-red-400">${payData.stats.rejected}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">${t('stat_pending_label')}</span>
+        <span class="text-gray-400">Pending</span>
         <span class="text-yellow-400">${payData.stats.pending}</span>
       </div>
+      <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
+        <span class="text-gray-400">ArcPay Authorization</span>
+        <span class="${localStorage.getItem('arc-pay-approved')==='1' ? 'text-green-400' : 'text-gray-500'}">
+          ${localStorage.getItem('arc-pay-approved')==='1' ? '✅ Active' : '⚠️ Not authorized'}
+        </span>
+      </div>
       <div class="flex justify-between text-sm py-1">
-        <span class="text-gray-400">${t('stat_total_volume')}</span>
+        <span class="text-gray-400">Volume processed</span>
         <span class="text-white font-medium">$${(payData.stats.totalValueProcessed / 1e6).toFixed(2)} USDC</span>
       </div>
     `;
     
-    // Contract agent
+    // ── Contract agent — fetch real on-chain count ──
+    let onChainCount = '—';
+    try {
+      const res  = await fetch('https://rpc.testnet.arc.network', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ jsonrpc:'2.0', id:1, method:'eth_call', params:[{ to:'0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A', data:'0xdae90d8d' },'latest'] }),
+      });
+      const json  = await res.json();
+      if (json.result && json.result !== '0x') onChainCount = Number(BigInt(json.result)).toString();
+    } catch { }
+
     const ctDetails = document.getElementById('contract-agent-details');
-    ctDetails.innerHTML = `
+    if (ctDetails) ctDetails.innerHTML = `
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
         <span class="text-gray-400">Status</span>
         <span class="${getAgentStatusTextClass(ctData.agent.status)} font-medium capitalize">${ctData.agent.status}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">${t('stat_contracts_label')}</span>
+        <span class="text-gray-400">On-chain contracts</span>
+        <span class="text-cyan-400 font-mono">${onChainCount}</span>
+      </div>
+      <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
+        <span class="text-gray-400">Active (local)</span>
         <span class="text-green-400">${ctData.stats.activeContracts}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">${t('stat_completed')}</span>
+        <span class="text-gray-400">Completed</span>
         <span class="text-blue-400">${ctData.stats.completedContracts}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">${t('stat_disputed')}</span>
-        <span class="text-red-400">${ctData.stats.disputedContracts}</span>
+        <span class="text-gray-400">Platform Fee</span>
+        <span class="text-yellow-400">0.2%</span>
       </div>
       <div class="flex justify-between text-sm py-1">
-        <span class="text-gray-400">${t('stat_total_registered')}</span>
-        <span class="text-white font-medium">${ctData.stats.totalContracts}</span>
+        <span class="text-gray-400">Factory</span>
+        <a href="https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A" target="_blank"
+          class="text-cyan-400 text-xs font-mono hover:text-cyan-300">0xbbC9…aF2A ↗</a>
       </div>
     `;
     

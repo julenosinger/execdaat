@@ -1365,3 +1365,405 @@ body.light-mode #theme-light-btn {
   border-color: rgba(16,185,129,0.6) !important;
   background: rgba(16,185,129,0.05) !important;
 }
+
+/* ═══════════════════════════════════════════════
+   MOBILE OPTIMIZATION — ARC Platform v3
+   Full responsiveness for all screen sizes
+   ═══════════════════════════════════════════════ */
+
+/* ── Base mobile resets ── */
+* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { overflow-x: hidden; }
+
+/* ── Main content spacing on mobile ── */
+@media (max-width: 640px) {
+  main.max-w-7xl { padding-left: 12px !important; padding-right: 12px !important; padding-top: 16px !important; }
+  .max-w-7xl.mx-auto.px-6 { padding-left: 12px !important; padding-right: 12px !important; }
+}
+
+/* ── Header compact on mobile ── */
+@media (max-width: 640px) {
+  header { padding: 8px 12px !important; }
+  header .text-base { font-size: 14px !important; }
+  header .text-\\[10px\\] { display: none; }
+  #settings-btn, #profile-btn { width: 34px !important; height: 34px !important; }
+}
+
+/* ── Navigation tabs — horizontal scroll on mobile ── */
+.tab-nav-wrapper {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-nav-wrapper::-webkit-scrollbar { display: none; }
+
+/* ── Tab buttons — touch-friendly ── */
+.tab-btn {
+  white-space: nowrap;
+  min-width: fit-content;
+  touch-action: manipulation;
+}
+
+/* ── Wallet connect button — bigger on mobile ── */
+@media (max-width: 640px) {
+  #wallet-connect-btn,
+  .wallet-connect-pulse {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Header compact */
+  header .flex { flex-wrap: wrap; gap: 8px; }
+
+  /* Tab nav */
+  .tab-nav-wrapper { padding: 0 8px; }
+  .tab-btn { padding: 10px 12px !important; font-size: 12px !important; }
+
+  /* Main content padding */
+  main { padding-left: 12px !important; padding-right: 12px !important; }
+  .max-w-7xl { padding-left: 12px; padding-right: 12px; }
+
+  /* Stat cards — 2 columns on mobile */
+  .stat-card { padding: 12px !important; }
+  .stat-card .text-3xl { font-size: 22px !important; }
+
+  /* Grid overrides */
+  .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-4 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .grid.grid-cols-1.lg\:grid-cols-3 {
+    grid-template-columns: 1fr;
+  }
+  .xl\:col-span-2, .xl\:col-span-3 {
+    grid-column: span 1 / span 1;
+  }
+  .grid.grid-cols-1.xl\:grid-cols-5 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Contracts form — stack all fields */
+  .grid.grid-cols-2.gap-2 { grid-template-columns: 1fr; }
+
+  /* Chat FAB — bottom left avoid overlap with MetaMask ── */
+  #chat-fab { bottom: 12px !important; right: 12px !important; padding: 10px 14px !important; }
+
+  /* Chat widget */
+  #chat-widget {
+    width: calc(100vw - 16px) !important;
+    height: 72vh !important;
+    right: 8px !important;
+    bottom: 64px !important;
+  }
+  #chat-widget[data-size="full"] {
+    width: 100vw !important; height: 100vh !important;
+    right: 0 !important; bottom: 0 !important; border-radius: 0 !important;
+  }
+
+  /* CF cards */
+  .cf-card { margin-left: 0 !important; }
+
+  /* Payment form */
+  #tab-content-payments .grid { grid-template-columns: 1fr !important; }
+
+  /* Modals */
+  .fixed.inset-0 > div { max-height: 92vh; overflow-y: auto; }
+
+  /* Footer */
+  footer .flex { flex-direction: column; gap: 8px; text-align: center; }
+}
+
+@media (max-width: 480px) {
+  .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-4 {
+    grid-template-columns: 1fr;
+  }
+  .tab-btn { padding: 8px 10px !important; font-size: 11px !important; }
+  .stat-card .text-3xl { font-size: 18px !important; }
+}
+
+/* ── Touch-friendly buttons ── */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
+/* ── Prevent input zoom on iOS ── */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="tel"],
+textarea,
+select {
+  font-size: 16px !important; /* prevents iOS auto-zoom */
+}
+@media (min-width: 641px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="tel"],
+  textarea,
+  select {
+    font-size: inherit !important;
+  }
+}
+
+/* ── Wallet modal — mobile friendly ── */
+@media (max-width: 640px) {
+  #wallet-modal > div,
+  #pin-modal > div {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    max-height: 85vh !important;
+    overflow-y: auto;
+    margin: 0 auto;
+  }
+}
+
+/* ── DEX / Swap — mobile ── */
+@media (max-width: 640px) {
+  #tab-content-dex .grid { grid-template-columns: 1fr !important; }
+  .dex-swap-card { max-width: 100% !important; }
+}
+
+/* ── Multisend — mobile ── */
+@media (max-width: 640px) {
+  #tab-content-multisend .grid { grid-template-columns: 1fr !important; }
+}
+
+/* ── History tab — mobile ── */
+@media (max-width: 640px) {
+  #tab-content-history .flex.gap-2 { flex-wrap: wrap; }
+  .history-filter-btn { font-size: 11px; padding: 5px 10px; }
+}
+
+/* ── Overflow fix for contract cards ── */
+.cf-card { overflow: hidden; word-break: break-word; }
+.cf-card a { word-break: break-all; }
+
+/* ── Smooth scrolling for all overflow containers ── */
+.overflow-y-auto, .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Safe area for iPhone notch / home indicator ── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  #chat-fab {
+    bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+  }
+  footer {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ── Loading spinner utility ── */
+.arc-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid rgba(139,92,246,0.3);
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: arc-spin 0.8s linear infinite;
+}
+@keyframes arc-spin { to { transform: rotate(360deg); } }
+
+/* ── Better focus rings for accessibility ── */
+button:focus-visible, input:focus-visible, a:focus-visible {
+  outline: 2px solid rgba(139,92,246,0.7);
+  outline-offset: 2px;
+}
+
+/* ── Navigation tabs — horizontal scroll on mobile ── */
+.tab-nav-wrapper {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1px; /* show bottom border */
+}
+.tab-nav-wrapper::-webkit-scrollbar { display: none; }
+
+/* ── Tab buttons — touch-friendly ── */
+.tab-btn {
+  white-space: nowrap;
+  min-width: fit-content;
+  touch-action: manipulation;
+}
+
+/* ── Mobile tab spacing ── */
+@media (max-width: 640px) {
+  .tab-btn { padding: 10px 14px !important; font-size: 12px !important; }
+  .tab-btn i { margin-right: 4px !important; }
+}
+
+/* ── Wallet connect button — bigger on mobile ── */
+@media (max-width: 640px) {
+  #wallet-connect-btn { padding: 8px 14px !important; font-size: 13px !important; }
+  .wallet-connect-pulse { animation: wallet-pulse 2.5s cubic-bezier(0.4,0,0.6,1) infinite; }
+}
+@keyframes wallet-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,.4); }
+  70%       { box-shadow: 0 0 0 8px rgba(139,92,246,0); }
+}
+
+/* ── Dashboard stats — 2 columns on mobile ── */
+@media (max-width: 640px) {
+  #tab-content-dashboard .grid.lg\\:grid-cols-4 { grid-template-columns: 1fr 1fr !important; }
+  #tab-content-dashboard .grid.lg\\:grid-cols-3 { grid-template-columns: 1fr !important; }
+  .stat-card .text-3xl { font-size: 1.4rem !important; }
+  #db-metrics-bar .grid { grid-template-columns: 1fr 1fr !important; }
+}
+
+/* ── Payment form ── */
+@media (max-width: 640px) {
+  #tab-content-payments .xl\\:col-span-3,
+  #tab-content-payments .xl\\:col-span-2 { grid-column: span 1 !important; }
+  #tab-content-payments .grid.xl\\:grid-cols-5 { grid-template-columns: 1fr !important; }
+}
+
+/* ── Contract cards ── */
+.cf-card { overflow: hidden; word-break: break-word; }
+.cf-card a { word-break: break-all; }
+@media (max-width: 640px) {
+  .cf-card { margin-left: 0 !important; }
+  #tab-content-contracts .grid.xl\\:grid-cols-3 { grid-template-columns: 1fr !important; }
+}
+
+/* ── Modals — full-width on mobile ── */
+@media (max-width: 640px) {
+  .fixed.inset-0 > div { 
+    max-height: 92vh; 
+    overflow-y: auto;
+    width: 95vw !important;
+    max-width: 95vw !important;
+    margin: 0 auto !important;
+  }
+  #wallet-modal > div,
+  #pin-modal > div,
+  #settings-modal > div,
+  #profile-modal > div {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    max-height: 85vh !important;
+    overflow-y: auto;
+    margin: 0 auto;
+    border-radius: 16px !important;
+  }
+}
+
+/* ── DEX / Swap ── */
+@media (max-width: 640px) {
+  #tab-content-dex .grid { grid-template-columns: 1fr !important; }
+  .dex-swap-card { max-width: 100% !important; }
+}
+
+/* ── Multisend ── */
+@media (max-width: 640px) {
+  #tab-content-multisend .grid { grid-template-columns: 1fr !important; }
+}
+
+/* ── History tab ── */
+@media (max-width: 640px) {
+  #tab-content-history .flex.gap-2 { flex-wrap: wrap; }
+  .history-filter-btn { font-size: 11px; padding: 5px 10px; }
+}
+
+/* ── Agents tab ── */
+@media (max-width: 640px) {
+  #tab-content-agents .grid.lg\\:grid-cols-2 { grid-template-columns: 1fr !important; }
+}
+
+/* ── Chat FAB — mobile positioning ── */
+@media (max-width: 640px) {
+  #chat-fab {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 12px !important;
+    padding: 10px 14px !important;
+  }
+  #chat-widget[data-size="medium"],
+  #chat-widget[data-size="mini"] {
+    width: calc(100vw - 16px) !important;
+    height: 72vh !important;
+    right: 8px !important;
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(100vh - 120px) !important;
+  }
+  /* Move FAB up when soft keyboard might be open */
+  #chat-input:focus ~ #chat-fab,
+  #chat-input:focus-within + #chat-fab { bottom: 320px !important; }
+}
+
+/* ── Chat widget compact header on mobile ── */
+@media (max-width: 480px) {
+  #chat-widget .chat-size-btn { padding: 2px 4px !important; }
+  #chat-quick-actions button { font-size: 10px !important; padding: 4px 8px !important; }
+}
+
+/* ── Overflow fix ── */
+.overflow-y-auto, .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Touch-friendly buttons ── */
+button, a, [role="button"] {
+  touch-action: manipulation;
+  min-height: 36px;
+}
+/* Override for small inline buttons */
+button.text-xs, button.text-\\[10px\\], button.text-\\[11px\\] {
+  min-height: unset;
+}
+
+/* ── Prevent input zoom on iOS ── */
+@media (max-width: 640px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="tel"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* ── Wallet modal — mobile friendly ── */
+@media (max-width: 640px) {
+  #wallet-modal > div { border-radius: 20px !important; }
+}
+
+/* ── Footer ── */
+@media (max-width: 640px) {
+  footer .flex { flex-direction: column; gap: 8px; text-align: center; }
+}
+
+/* ── Safe area for iPhone notch / home indicator ── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  #chat-fab { bottom: calc(16px + env(safe-area-inset-bottom)) !important; }
+  footer { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+}
+
+/* ── 480px — very small screens ── */
+@media (max-width: 480px) {
+  .grid.grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-4 { grid-template-columns: 1fr 1fr; }
+  .stat-card .text-3xl { font-size: 1.1rem !important; }
+  h3 { font-size: 14px !important; }
+}
+
+/* ── Loading spinner ── */
+.arc-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid rgba(139,92,246,0.3);
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: arc-spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes arc-spin { to { transform: rotate(360deg); } }
+
+/* ── Focus rings for accessibility ── */
+button:focus-visible, input:focus-visible, a:focus-visible {
+  outline: 2px solid rgba(139,92,246,0.7);
+  outline-offset: 2px;
+}
+
+/* ── Smooth scrolling ── */
+.overflow-y-auto { scroll-behavior: smooth; }
+
+/* ── Better text selection ── */
+::selection { background: rgba(139,92,246,0.3); color: #fff; }

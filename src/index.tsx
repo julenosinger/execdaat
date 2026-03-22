@@ -252,7 +252,7 @@ app.get('/', (c) => {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
   <title>ARC AI Agents — Testnet dApp | Payments, Swap &amp; Contracts on Arc Network</title>
 
   <!-- ── SEO & Trust Meta Tags ─────────────────────────────────────────── -->
@@ -319,7 +319,8 @@ app.get('/', (c) => {
        ══════════════════════════════════════════════════════════════════════ -->
   <div class="bg-amber-500 text-black text-center text-xs font-bold py-2 px-4 flex items-center justify-center gap-2 sticky top-0 z-[100]">
     <i class="fas fa-flask"></i>
-    ⚠️ TESTNET APPLICATION — No real funds. Arc Testnet only. Do not send mainnet assets.
+    <span class="hidden sm:inline">⚠️ TESTNET APPLICATION — No real funds. Arc Testnet only. Do not send mainnet assets.</span>
+    <span class="sm:hidden">⚠️ TESTNET ONLY — No real funds</span>
     <a href="/about" class="underline ml-2 opacity-70 hover:opacity-100 hidden sm:inline">Learn more</a>
   </div>
 
@@ -676,28 +677,28 @@ app.get('/', (c) => {
 
   <!-- Tabs -->
   <div class="bg-gray-900/60 border-b border-gray-800 sticky top-[32px] z-40">
-    <div class="max-w-7xl mx-auto px-4 overflow-x-auto">
+    <div class="max-w-7xl mx-auto tab-nav-wrapper">
       <div class="flex gap-0 min-w-max">
-        <button onclick="switchTab('agents')" id="tab-agents" class="tab-btn active px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
-          <i class="fas fa-brain mr-2"></i><span data-i18n="tab_agents">AI Agents</span>
+        <button onclick="switchTab('agents')" id="tab-agents" class="tab-btn active px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
+          <i class="fas fa-brain mr-1 sm:mr-2"></i><span data-i18n="tab_agents" class="hidden xs:inline sm:inline">AI Agents</span>
         </button>
-        <button onclick="switchTab('payments')" id="tab-payments" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-dollar-sign mr-2"></i><span data-i18n="tab_payments">Payments</span>
+        <button onclick="switchTab('payments')" id="tab-payments" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
+          <i class="fas fa-dollar-sign mr-1 sm:mr-2"></i><span data-i18n="tab_payments" class="hidden xs:inline sm:inline">Payments</span>
         </button>
-        <button onclick="switchTab('contracts')" id="tab-contracts" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-file-contract mr-2"></i><span data-i18n="tab_contracts">Contracts</span>
+        <button onclick="switchTab('contracts')" id="tab-contracts" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
+          <i class="fas fa-file-contract mr-1 sm:mr-2"></i><span data-i18n="tab_contracts" class="hidden xs:inline sm:inline">Contracts</span>
         </button>
-        <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-exchange-alt mr-2"></i><span>DEX</span>
+        <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
+          <i class="fas fa-exchange-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">DEX</span><span class="sm:hidden text-xs">DEX</span>
         </button>
-        <button onclick="switchTab('multisend')" id="tab-multisend" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
-          <i class="fas fa-paper-plane mr-2"></i><span>MultiSend</span>
+        <button onclick="switchTab('multisend')" id="tab-multisend" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
+          <i class="fas fa-paper-plane mr-1 sm:mr-2"></i><span class="hidden sm:inline">MultiSend</span><span class="sm:hidden text-xs">Multi</span>
         </button>
-        <button onclick="switchTab('history')" id="tab-history" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-blue-400 transition-all">
-          <i class="fas fa-history mr-2"></i><span>History</span>
+        <button onclick="switchTab('history')" id="tab-history" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-blue-400 transition-all">
+          <i class="fas fa-history mr-1 sm:mr-2"></i><span class="hidden sm:inline">History</span><span class="sm:hidden text-xs">Hist</span>
         </button>
-        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all">
-          <i class="fas fa-info-circle mr-2"></i><span>Information</span>
+        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all">
+          <i class="fas fa-info-circle mr-1 sm:mr-2"></i><span class="hidden sm:inline">Information</span><span class="sm:hidden text-xs">Info</span>
         </button>
       </div>
     </div>
@@ -830,19 +831,57 @@ app.get('/', (c) => {
         </div>
       </div>
 
-      <!-- Recent Activity -->
-      <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-6">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-white font-semibold flex items-center gap-2">
-            <i class="fas fa-history text-gray-400"></i>
-            <span data-i18n="recent_activity">Recent Activity</span>
-          </h3>
-          <button onclick="loadDashboard()" class="text-xs text-purple-400 hover:text-purple-300">
-            <i class="fas fa-sync mr-1"></i><span data-i18n="btn_refresh">Refresh</span>
-          </button>
+      <!-- Metrics Bar -->
+      <div id="db-metrics-bar"></div>
+
+      <!-- Recent Activity + Network Metrics -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Activity Feed -->
+        <div class="lg:col-span-2 bg-gray-900/60 border border-gray-700/40 rounded-xl p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-white font-semibold flex items-center gap-2">
+              <i class="fas fa-history text-gray-400"></i>
+              <span data-i18n="recent_activity">Recent Activity</span>
+            </h3>
+            <div class="flex items-center gap-2">
+              <span id="db-live-block" class="text-xs text-gray-600 font-mono"></span>
+              <button onclick="loadDashboard()" class="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                <i class="fas fa-sync"></i><span class="hidden sm:inline ml-1">Refresh</span>
+              </button>
+            </div>
+          </div>
+          <div id="recent-activity" class="space-y-1">
+            <div class="text-gray-500 text-sm text-center py-4">Loading activities...</div>
+          </div>
         </div>
-        <div id="recent-activity" class="space-y-2">
-          <div class="text-gray-500 text-sm text-center py-4" data-i18n="loading_activity">Loading activities...</div>
+        <!-- Network Metrics -->
+        <div class="bg-gray-900/60 border border-gray-700/40 rounded-xl p-6">
+          <h3 class="text-white font-semibold mb-4 flex items-center gap-2">
+            <i class="fas fa-tachometer-alt text-purple-400"></i>
+            Live Metrics
+          </h3>
+          <div id="db-network-metrics">
+            <div class="animate-pulse space-y-2">
+              <div class="h-16 bg-gray-800/40 rounded-xl"></div>
+              <div class="h-16 bg-gray-800/40 rounded-xl"></div>
+            </div>
+          </div>
+          <div class="mt-4 pt-4 border-t border-gray-700/30">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs text-gray-400">ContractFactory</span>
+              <a href="https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A" target="_blank"
+                class="text-xs text-cyan-400 hover:text-cyan-300 font-mono">0xbbC9…aF2A ↗</a>
+            </div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs text-gray-400">USDC Token</span>
+              <a href="https://testnet.arcscan.app/address/0x3600000000000000000000000000000000000000" target="_blank"
+                class="text-xs text-blue-400 hover:text-blue-300 font-mono">0x3600…0000 ↗</a>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-gray-400">Explorer</span>
+              <a href="https://testnet.arcscan.app" target="_blank" class="text-xs text-purple-400 hover:text-purple-300">testnet.arcscan.app ↗</a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -2749,71 +2788,98 @@ app.get('/', (c) => {
 
   </main>
 
-  <!-- ===== CHATBOT WIDGET (compact 300×400) ===== -->
+  <!-- ===== CHATBOT WIDGET v2 ===== -->
   <!-- Floating Action Button -->
   <button id="chat-fab"
     onclick="toggleChat()"
-    class="fixed bottom-5 right-5 z-[90] flex items-center gap-2 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 px-4 py-3 transition-all hover:scale-105 active:scale-95 group">
+    class="fixed bottom-5 right-5 z-[90] flex items-center gap-2 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 px-4 py-3 transition-all hover:scale-105 active:scale-95"
+    style="bottom:20px;right:20px;">
     <i class="fas fa-robot text-white text-base" id="chat-fab-icon"></i>
     <span id="chat-fab-label" class="text-white text-sm font-medium">Ask me</span>
     <span id="chat-unread" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center leading-none"></span>
   </button>
 
-  <!-- Compact Chat Panel: 300px wide × 400px tall -->
+  <!-- Chat Panel -->
   <div id="chat-widget"
     class="hidden fixed z-[85] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60"
-    style="width:300px;height:400px;bottom:70px;right:20px;max-width:calc(100vw - 20px);">
+    data-size="medium"
+    style="width:400px;height:560px;bottom:70px;right:20px;max-width:calc(100vw - 16px);">
 
-    <!-- Header (compact) -->
+    <!-- Header -->
     <div class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 rounded-t-2xl flex-shrink-0">
-      <div class="flex items-center gap-2">
+      <!-- Left: identity -->
+      <div class="flex items-center gap-2 min-w-0">
         <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
           <i class="fas fa-robot text-white text-xs"></i>
         </div>
-        <div>
-          <p class="text-white font-semibold text-xs leading-tight">ARC AI Assistant</p>
+        <div class="min-w-0">
+          <p class="text-white font-semibold text-xs leading-tight truncate">ARC AI Assistant</p>
           <div class="flex items-center gap-1">
             <div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
-            <p class="text-xs text-green-400 leading-tight">Online · Arc Testnet</p>
+            <p class="text-[10px] text-green-400 leading-tight">Online · Arc Testnet</p>
           </div>
         </div>
       </div>
-      <div class="flex items-center gap-1">
-        <button onclick="clearChatHistory()" title="Clear" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
+      <!-- Right: controls -->
+      <div class="flex items-center gap-0.5 flex-shrink-0">
+        <!-- Size buttons -->
+        <button id="chat-size-mini"   onclick="setChatSize('mini')"   class="chat-size-btn" title="Mini"><i class="fas fa-compress-alt"></i></button>
+        <button id="chat-size-medium" onclick="setChatSize('medium')" class="chat-size-btn active" title="Medium"><i class="fas fa-expand-alt"></i></button>
+        <button id="chat-size-full"   onclick="setChatSize('full')"   class="chat-size-btn" title="Fullscreen"><i class="fas fa-expand"></i></button>
+        <!-- New tab -->
+        <button onclick="openChatNewTab()" title="Open in new tab" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all ml-1">
+          <i class="fas fa-external-link-alt text-xs"></i>
+        </button>
+        <!-- Clear -->
+        <button onclick="clearChatHistory()" title="Clear chat" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
           <i class="fas fa-trash text-xs"></i>
         </button>
-        <button onclick="toggleChat()" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
+        <!-- Close -->
+        <button onclick="toggleChat()" class="text-gray-500 hover:text-red-400 p-1 rounded hover:bg-gray-800 transition-all">
           <i class="fas fa-times text-xs"></i>
         </button>
       </div>
     </div>
 
-    <!-- Messages (scrollable) -->
-    <div id="chat-messages" class="flex-1 overflow-y-auto px-3 py-2 space-y-2 scroll-smooth">
-      <!-- Messages inserted by JS -->
+    <!-- ArcPay status bar -->
+    <div id="chat-arcpay-bar" class="hidden px-3 py-1.5 border-b border-purple-800/30 bg-purple-900/20 flex-shrink-0">
+      <div class="flex items-center justify-between">
+        <span class="text-[10px] text-purple-300 flex items-center gap-1.5">
+          <i class="fas fa-robot text-purple-400"></i>
+          <span id="chat-arcpay-status">ArcPay Agent: checking…</span>
+        </span>
+        <button onclick="sendQuickMessage('approve arcpay')" id="chat-arcpay-btn"
+          class="text-[10px] text-purple-300 hover:text-purple-100 bg-purple-800/30 hover:bg-purple-700/40 px-2 py-0.5 rounded-full border border-purple-700/30 transition-all hidden">
+          Authorize
+        </button>
+      </div>
     </div>
 
-    <!-- Quick actions (compact, single scroll row) -->
+    <!-- Messages -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto px-3 py-2 space-y-2 scroll-smooth"></div>
+
+    <!-- Quick actions -->
     <div id="chat-quick-actions" class="px-2 pb-1.5 flex gap-1.5 overflow-x-auto flex-shrink-0" style="scrollbar-width:none">
-      <button onclick="sendQuickMessage('Vault APY')"       class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🏦 APY</button>
-      <button onclick="sendQuickMessage('Swap rates')"      class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🔄 Rates</button>
-      <button onclick="sendQuickMessage('Payment queue')"   class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">💳 Queue</button>
-      <button onclick="sendQuickMessage('Agent status')"    class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🧠 Agent</button>
-      <button onclick="sendQuickMessage('Network status')"  class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">⛓️ Net</button>
+      <button onclick="sendQuickMessage('my wallet')"        class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">💳 Wallet</button>
+      <button onclick="sendQuickMessage('network status')"   class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">⛓️ Network</button>
+      <button onclick="sendQuickMessage('show my contracts')"class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">📋 Contracts</button>
+      <button onclick="sendQuickMessage('approve arcpay')"   class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🤖 ArcPay</button>
+      <button onclick="sendQuickMessage('guardian')"         class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🛡️ Guardian</button>
+      <button onclick="sendQuickMessage('dashboard')"        class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">📊 Stats</button>
     </div>
 
-    <!-- Input (compact) -->
+    <!-- Input -->
     <div class="px-2 pb-2.5 flex-shrink-0">
       <div class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500 transition-all">
-        <input id="chat-input" type="text" placeholder="Ask anything…"
-          class="flex-1 bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none min-w-0"
-          onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendChatMessage();}">
+        <input id="chat-input" type="text" placeholder="Ask anything or: send 10 USDC to 0x…"
+          class="flex-1 bg-transparent text-xs text-white placeholder-gray-600 focus:outline-none min-w-0"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}">
         <button onclick="sendChatMessage()" id="chat-send-btn"
           class="w-7 h-7 bg-purple-600 hover:bg-purple-500 rounded-lg flex items-center justify-center text-white transition-all flex-shrink-0">
           <i class="fas fa-paper-plane text-xs"></i>
         </button>
       </div>
-      <p class="text-center text-gray-700 text-xs mt-1">Ctrl+/ to open</p>
+      <p class="text-center text-gray-700 text-[10px] mt-1">Ctrl+/ · ESC to close · 🛡️ Guardian-protected</p>
     </div>
   </div>
 
@@ -3329,22 +3395,59 @@ app.get('/', (c) => {
   <script src="/static/guardian.js"></script>
   <script src="/static/yield-optimizer.js"></script>
   <script src="/static/history.js"></script>
+  <script src="/static/dashboard.js"></script>
   <script src="/static/chat.js"></script>
   <script>
-    // ── ethers.js availability check ──────────────────────────────────────────
-    // ethers v6 UMD exposes window.ethers
-    if (window.ethers) {
-      console.log('[ARC] ethers.js loaded · version:', window.ethers.version || '6.x');
-      console.log('[ARC] USDC contract:', '0x3600000000000000000000000000000000000000');
-      console.log('[ARC] ERC20 ABI loaded · ethers.Contract available for approve/transferFrom');
-      // Confirm parseUnits works: 1 USDC → 1000000
-      try {
-        const test = window.ethers.parseUnits('1', 6);
-        console.log('[ARC] ethers.parseUnits(1, 6) =', test.toString(), '(expected 1000000)');
-      } catch(e) { console.warn('[ARC] ethers.parseUnits test failed:', e.message); }
-    } else {
-      console.warn('[ARC] ethers.js not loaded — DEX will use raw ABI fallback (no ethers.Contract)');
-    }
+    // ── Platform initialization ───────────────────────────────────────────────
+    window.addEventListener('load', () => {
+
+      // 1. ArcPay status bar
+      const arcPayActive = localStorage.getItem('arc-pay-approved') === '1';
+      const bar    = document.getElementById('chat-arcpay-bar');
+      const status = document.getElementById('chat-arcpay-status');
+      const btn    = document.getElementById('chat-arcpay-btn');
+      if (bar)    bar.classList.remove('hidden');
+      if (status) status.textContent = arcPayActive ? 'ArcPay: ✅ Active' : 'ArcPay: Not authorized';
+      if (btn)    btn.classList.toggle('hidden', arcPayActive);
+
+      // 2. Chat size buttons
+      const savedSize = localStorage.getItem('arc-chat-size') || 'medium';
+      ['mini','medium','full'].forEach(s => {
+        const b = document.getElementById('chat-size-' + s);
+        if (b) b.classList.toggle('active', s === savedSize);
+      });
+
+      // 3. Handle ?chat=1 query param (open chat in new tab mode)
+      if (new URLSearchParams(location.search).get('chat') === '1') {
+        const data = JSON.parse(localStorage.getItem('arc-chat-newtab') || '{}');
+        if (data.messages?.length) {
+          // Restore to app view first
+          if (typeof enterApp === 'function') enterApp();
+          setTimeout(() => {
+            if (typeof toggleChat === 'function') toggleChat();
+            if (typeof setChatSize === 'function') setChatSize('full');
+          }, 300);
+        }
+      }
+
+      // 4. Restore scroll position for app shell
+      const shell = document.getElementById('app-shell');
+      if (shell && !shell.classList.contains('hidden')) {
+        window.scrollTo(0, 0);
+      }
+
+      // 5. ethers.js check
+      if (window.ethers) {
+        console.log('[ARC] ethers.js loaded · v', window.ethers.version || '6.x');
+      } else {
+        console.warn('[ARC] ethers.js not loaded');
+      }
+
+      // 6. Performance: preconnect to RPC on load
+      const link = document.createElement('link');
+      link.rel = 'preconnect'; link.href = 'https://rpc.testnet.arc.network';
+      document.head.appendChild(link);
+    });
   </script>
 </body>
 </html>`)
