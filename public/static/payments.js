@@ -1,62 +1,74 @@
 // ============================================================
-// ARC Payments Module — Real EVM wallet payments on Arc Testnet
-// Flow: connect wallet → network check → read balance →
-//       approve (if needed) → token.transfer → wait receipt →
-//       generate receipt (PDF/JSON) → refresh balances
+// ARC Payments Module v2 — Single payment · Arc Testnet
+// Fields: Full Name, Email, Recipient Address, Amount, Token
+// Features: real-time validation, PDF receipt, no multisend
 // ============================================================
 'use strict';
 
-// ─── Constants (inherited from evm-tx.js globals) ─────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 const PAY_USDC = () => window.USDC_ADDRESS || '0x3600000000000000000000000000000000000000';
 const PAY_EURC = () => window.EURC_ADDRESS || '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
 const PAY_EXPLORER = () => window.ARC_EXPLORER || 'https://testnet.arcscan.app';
-const PAY_CHAIN_ID = 5042002;
+const PAY_CHAIN_ID  = 5042002;
 const PAY_CHAIN_HEX = '0x4cef52';
 
-// ERC-20 selectors
-const PAY_SELECTORS = {
-  transfer:  '0xa9059cbb',
-  approve:   '0x095ea7b3',
-  balanceOf: '0x70a08231',
-  allowance: '0xdd62ed3e',
-  decimals:  '0x313ce567',
-};
-
-// ─── ERC-20 ABI (padrão completo) ─────────────────────────────────────────────
-// Usado com ethers.Contract para USDC (0x3600…) e EURC no Arc Testnet.
 const PAY_ERC20_ABI = [
-  'function balanceOf(address owner)                      view returns (uint256)',
-  'function decimals()                                    view returns (uint8)',
-  'function symbol()                                      view returns (string)',
-  'function allowance(address owner, address spender)     view returns (uint256)',
-  'function approve(address spender, uint256 amount)      returns (bool)',
-  'function transfer(address to, uint256 amount)          returns (bool)',
-  'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+  'function balanceOf(address owner) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+  'function symbol() view returns (string)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function transfer(address to, uint256 amount) returns (bool)',
   'event Transfer(address indexed from, address indexed to, uint256 value)',
-  'event Approval(address indexed owner, address indexed spender, uint256 value)',
 ];
 
-// ─── ethers.js helpers ────────────────────────────────────────────────────────
-// Retorna um ethers.BrowserProvider (v6) ou Web3Provider (v5) do provider injetado.
+const PAY_SELECTORS = {
+  transfer:  '0xa9059cbb',
+  balanceOf: '0x70a08231',
+};
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const payState = {
+  token: 'USDC',
+  senderBalance: { USDC: null, EURC: null },
+  receipt: null,
+  history: [],
+  step: 0,
+  pending: false,
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function payEl(id)          { return document.getElementById(id); }
+function payShow(id)        { const el = payEl(id); if (el) el.style.display = ''; }
+function payHide(id)        { const el = payEl(id); if (el) el.style.display = 'none'; }
+function paySet(id, val)    { const el = payEl(id); if (el) el.textContent = val; }
+
+function shortAddr(addr) {
+  if (!addr || addr.length < 12) return addr || '—';
+  return addr.slice(0, 8) + '…' + addr.slice(-6);
+}
+
+function encAddr(addr) { return addr.replace(/^0x/, '').padStart(64, '0'); }
+
+function isValidAddress(addr) { return /^0x[0-9a-fA-F]{40}$/.test(addr); }
+
+function isValidEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
+
+// ─── ethers helpers ────────────────────────────────────────────────────────────
 function payGetProvider() {
   const raw = window.walletState?.provider;
   if (!raw) throw new Error('Wallet not connected. Please connect your EVM wallet first.');
-  if (window.ethers?.BrowserProvider)
-    return new window.ethers.BrowserProvider(raw);
-  if (window.ethers?.providers?.Web3Provider)
-    return new window.ethers.providers.Web3Provider(raw);
-  return null; // sem ethers — usa fallback raw
+  if (window.ethers?.BrowserProvider) return new window.ethers.BrowserProvider(raw);
+  if (window.ethers?.providers?.Web3Provider) return new window.ethers.providers.Web3Provider(raw);
+  return null;
 }
 
-// Retorna o signer conectado para assinar transações.
 async function payGetSigner() {
   const provider = payGetProvider();
-  if (!provider) throw new Error('ethers.js não disponível');
+  if (!provider) throw new Error('ethers.js not available');
   return provider.getSigner();
 }
 
-// Instancia ethers.Contract para USDC ou EURC.
-// Retorna null se ethers não estiver disponível (usa raw fallback).
 async function payGetContract(token) {
   if (!window.ethers?.Contract) return null;
   const addr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
@@ -64,239 +76,100 @@ async function payGetContract(token) {
   return new window.ethers.Contract(addr, PAY_ERC20_ABI, signer);
 }
 
-// Normaliza valor humano para string com no máximo 6 casas decimais.
-// ethers.parseUnits v6 EXIGE string — rejeita números com TypeError.
 function payNormaliseAmount(humanAmount) {
   let s = String(humanAmount).trim();
-  // Trata notação científica (ex: 1e-6 → "0.000001")
   if (/[eE]/.test(s)) s = Number(s).toFixed(6);
-  // Trunca para max 6 casas decimais
   const dot = s.indexOf('.');
   if (dot !== -1 && s.length - dot - 1 > 6) s = s.slice(0, dot + 7);
   return s;
 }
 
-// Converte valor humano para BigInt com 6 decimais.
-//   payParseUnits(10)   → 10000000n
-//   payParseUnits(0.5)  → 500000n
-//   payParseUnits("1")  → 1000000n
 function payParseUnits(humanAmount) {
   const s = payNormaliseAmount(humanAmount);
   if (window.ethers?.parseUnits) {
-    try {
-      const raw = window.ethers.parseUnits(s, 6);
-      console.log(`[PAY:parseUnits] ethers.parseUnits("${s}", 6) → ${raw.toString()}`);
-      return raw;
-    } catch (e) {
-      console.warn(`[PAY:parseUnits] ethers falhou para "${s}":`, e.message, '— usando fallback manual');
-    }
+    try { return window.ethers.parseUnits(s, 6); } catch (e) { /* fallback */ }
   }
-  // Fallback manual (sem floating-point errors)
   const [intPart = '0', fracPart = ''] = s.split('.');
   const frac = fracPart.slice(0, 6).padEnd(6, '0');
-  const result = BigInt(intPart) * 1_000_000n + BigInt(frac);
-  console.log(`[PAY:parseUnits] manual("${s}") → ${result.toString()}`);
-  return result;
+  return BigInt(intPart) * 1_000_000n + BigInt(frac);
 }
 
-// Converte base units (BigInt/string) para número humano.
-//   payFormatUnits(1000000n) → "1.000000"
 function payFormatUnits(rawAmount) {
-  if (window.ethers?.formatUnits) {
-    return window.ethers.formatUnits(rawAmount, 6);
-  }
+  if (window.ethers?.formatUnits) return window.ethers.formatUnits(rawAmount, 6);
   return (Number(rawAmount) / 1e6).toFixed(6);
 }
-const payState = {
-  token: 'USDC',
-  recipientBalance: null,       // on-chain balance of recipient (preview)
-  senderBalance: { USDC: null, EURC: null },
-  receipt: null,                // last generated receipt
-  history: [],                  // local history of payments
-  step: 0,                      // current UI step (0-6)
-  pending: false,
-};
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function payEl(id) { return document.getElementById(id); }
-function payShow(id) { const el = payEl(id); if (el) el.classList.remove('hidden'); }
-function payHide(id) { const el = payEl(id); if (el) el.classList.add('hidden'); }
-function paySet(id, val) { const el = payEl(id); if (el) el.textContent = val; }
-function paySetHTML(id, val) { const el = payEl(id); if (el) el.innerHTML = val; }
-
-function shortAddr(addr) {
-  if (!addr || addr.length < 12) return addr || '—';
-  return addr.slice(0, 8) + '…' + addr.slice(-6);
-}
-
-function formatAmount(raw, decimals = 6) {
-  if (raw === null || raw === undefined) return '—';
-  return (Number(raw) / Math.pow(10, decimals)).toFixed(6);
-}
-
-// ABI encoding
-function encAddr(addr) { return addr.replace(/^0x/, '').padStart(64, '0'); }
-function encUint(val)  { return BigInt(Math.floor(Number(val))).toString(16).padStart(64, '0'); }
-
-// ─── Network validation ───────────────────────────────────────────────────────
+// ─── Network validation ────────────────────────────────────────────────────────
 async function payEnsureNetwork() {
   const provider = window.walletState?.provider;
-  if (!provider) throw new Error('Wallet not connected. Please connect your EVM wallet first.');
-
+  if (!provider) throw new Error('Wallet not connected.');
   const chainHex = await provider.request({ method: 'eth_chainId' });
-  const chainDec = parseInt(chainHex, 16);
-
-  if (chainDec !== PAY_CHAIN_ID) {
+  if (parseInt(chainHex, 16) !== PAY_CHAIN_ID) {
     if (typeof switchToArcTestnet === 'function') {
       const ok = await switchToArcTestnet(provider);
-      if (!ok) throw new Error('Please switch to Arc Testnet (Chain ID 5042002) to continue.');
+      if (!ok) throw new Error('Please switch to Arc Testnet (Chain ID 5042002).');
       await new Promise(r => setTimeout(r, 600));
     } else {
-      throw new Error('Wrong network. Please switch to Arc Testnet (Chain ID 5042002).');
+      throw new Error('Wrong network. Switch to Arc Testnet (Chain ID 5042002).');
     }
   }
   return true;
 }
 
-// ─── Balance reading via ethers.Contract.balanceOf ───────────────────────────
-// USDC: ERC-20 no Arc → ethers.Contract(PAY_USDC(), ERC20_ABI, signer).balanceOf(address)
-// EURC: ERC-20 → contract.balanceOf(address) via ethers.Contract
-// Retorna valor humano (float), ex: 10.5 para 10.5 USDC
+// ─── Balance reading ───────────────────────────────────────────────────────────
 async function payReadBalance(address, token = 'USDC') {
   const provider = window.walletState?.provider;
   if (!provider || !address) return null;
-
   try {
-    let rawBal;
-
     if (window.ethers?.Contract) {
-      // ✅ ethers.Contract.balanceOf() — padrão ERC-20 para USDC e EURC
-      // USDC usa endereço 0x3600000000000000000000000000000000000000 com ABI ERC-20
       const contract = await payGetContract(token);
-      rawBal = await contract.balanceOf(address);
-      const human = Number(window.ethers.formatUnits(rawBal, 6));
-      console.log(`[PAY:balance] ethers.Contract(${token}).balanceOf(${address.slice(0,10)}…) = ${rawBal.toString()} = ${human.toFixed(6)} ${token}`);
-      return human;
-
-    } else {
-      // Fallback: raw eth_call para balanceOf (USDC ou EURC)
-      const contractAddr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
-      const data = PAY_SELECTORS.balanceOf + encAddr(address);
-      const result = await provider.request({
-        method: 'eth_call',
-        params: [{ to: contractAddr, data }, 'latest'],
-      });
-      if (!result || result === '0x') return 0;
-      rawBal = BigInt(result);
-      const human = Number(rawBal) / 1e6;
-      console.log(`[PAY:balance] ${token} raw (fallback eth_call) = ${rawBal} = ${human.toFixed(6)}`);
-      return human;
+      const rawBal = await contract.balanceOf(address);
+      return parseFloat(window.ethers.formatUnits(rawBal, 6));
     }
+    const contractAddr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
+    const data = PAY_SELECTORS.balanceOf + encAddr(address);
+    const result = await provider.request({ method: 'eth_call', params: [{ to: contractAddr, data }, 'latest'] });
+    if (!result || result === '0x') return 0;
+    return Number(BigInt(result)) / 1e6;
   } catch (e) {
     console.warn('[PAY] Balance read error:', e.message);
     return null;
   }
 }
 
-// ─── Allowance check (EURC only) ──────────────────────────────────────────────
-async function payReadAllowance(owner, spender) {
-  const provider = window.walletState?.provider;
-  if (!provider) return 0n;
-  try {
-    const data = PAY_SELECTORS.allowance + encAddr(owner) + encAddr(spender);
-    const result = await provider.request({
-      method: 'eth_call',
-      params: [{ to: PAY_EURC(), data }, 'latest'],
-    });
-    if (!result || result === '0x') return 0n;
-    return BigInt(result);
-  } catch (e) {
-    console.warn('[PAY] Allowance read error:', e.message);
-    return 0n;
-  }
-}
-
-// ─── Gas estimation ────────────────────────────────────────────────────────────
+// ─── Gas helpers ───────────────────────────────────────────────────────────────
 async function payEstimateGas(txObj) {
   const provider = window.walletState?.provider;
   if (!provider) return '0x15F90';
   try {
     const est = await provider.request({ method: 'eth_estimateGas', params: [txObj] });
     return '0x' + Math.ceil(parseInt(est, 16) * 1.2).toString(16);
-  } catch (e) {
-    console.warn('[PAY] Gas estimation fallback:', e.message);
-    return '0x15F90'; // 90k fallback
-  }
+  } catch (e) { return '0x15F90'; }
 }
 
-// ─── Gas price ────────────────────────────────────────────────────────────────
 async function payGetGasPrice() {
   const provider = window.walletState?.provider;
-  if (!provider) return '0x2540BE400'; // 10 gwei
-  try {
-    return await provider.request({ method: 'eth_gasPrice' });
-  } catch (e) {
-    return '0x2540BE400';
-  }
+  if (!provider) return '0x2540BE400';
+  try { return await provider.request({ method: 'eth_gasPrice' }); } catch (e) { return '0x2540BE400'; }
 }
 
-// ─── Nonce ────────────────────────────────────────────────────────────────────
 async function payGetNonce(address) {
-  const provider = window.walletState?.provider;
-  return await provider.request({ method: 'eth_getTransactionCount', params: [address, 'latest'] });
+  return await window.walletState.provider.request({ method: 'eth_getTransactionCount', params: [address, 'latest'] });
 }
 
-// ─── Send raw tx via provider ─────────────────────────────────────────────────
-async function paySendTx(to, data, value = '0x0') {
-  const provider = window.walletState?.provider;
-  const from = window.walletState?.address;
-  if (!provider || !from) throw new Error('Wallet not connected');
-
-  const txBase = { from, to, data, value };
-  const gas      = await payEstimateGas(txBase);
-  const gasPrice = await payGetGasPrice();
-  const nonce    = await payGetNonce(from);
-
-  // ⚠️ Do NOT include chainId — MetaMask rejects with "chainId should be same"
-  const txParams = { from, to, data, value, gas, gasPrice, nonce };
-  console.log('[PAY] Sending tx:', { ...txParams, data: data.slice(0, 18) + '...' });
-
-  const txHash = await provider.request({ method: 'eth_sendTransaction', params: [txParams] });
-  return txHash;
-}
-
-// ─── Wait for receipt ──────────────────────────────────────────────────────────
 async function payWaitReceipt(txHash, maxAttempts = 30) {
   const provider = window.walletState?.provider;
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, 2000));
     try {
-      const receipt = await provider.request({
-        method: 'eth_getTransactionReceipt',
-        params: [txHash],
-      });
+      const receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [txHash] });
       if (receipt) return receipt;
     } catch (e) { /* ignore */ }
   }
   return { status: '0x1', txHash, note: 'Fast finality assumed' };
 }
 
-// ─── UI step helpers ──────────────────────────────────────────────────────────
-function paySetStep(n, status = 'active') {
-  payState.step = n;
-  for (let i = 0; i <= 5; i++) {
-    const el = payEl(`pay-step-${i}`);
-    if (!el) continue;
-    el.classList.remove('pay-step-active', 'pay-step-done', 'pay-step-error', 'pay-step-idle');
-    if (i < n) el.classList.add('pay-step-done');
-    else if (i === n) el.classList.add(status === 'error' ? 'pay-step-error' : 'pay-step-active');
-    else el.classList.add('pay-step-idle');
-  }
-  const panel = payEl('pay-steps-panel');
-  if (panel) panel.classList.remove('hidden');
-}
-
-// ─── Refresh sender balances ──────────────────────────────────────────────────
+// ─── Refresh balances ──────────────────────────────────────────────────────────
 async function refreshPaymentBalances() {
   const address = window.walletState?.address;
   if (!address) {
@@ -304,846 +177,714 @@ async function refreshPaymentBalances() {
     paySet('pay-balance-eurc', '— EURC');
     paySet('pay-wallet-short', 'Not connected');
     paySet('pay-network-name', '—');
+    paySet('pay-from-display', '—');
     return;
   }
-
   paySet('pay-wallet-short', shortAddr(address));
-  paySet('pay-network-name', 'Arc Testnet');
-
-  // Async load both
-  paySet('pay-balance-usdc', '... USDC');
-  paySet('pay-balance-eurc', '... EURC');
+  paySet('pay-network-name', 'Arc Testnet ✓');
+  paySet('pay-from-display', shortAddr(address));
+  paySet('pay-balance-usdc', '…');
+  paySet('pay-balance-eurc', '…');
 
   const [usdcBal, eurcBal] = await Promise.all([
     payReadBalance(address, 'USDC'),
     payReadBalance(address, 'EURC'),
   ]);
-
   payState.senderBalance.USDC = usdcBal;
   payState.senderBalance.EURC = eurcBal;
-
   paySet('pay-balance-usdc', usdcBal !== null ? usdcBal.toFixed(4) + ' USDC' : '— USDC');
   paySet('pay-balance-eurc', eurcBal !== null ? eurcBal.toFixed(4) + ' EURC' : '— EURC');
-
-  // Update MAX button hint
   updatePayMaxHint();
-  validatePayForm();
+  payValidateForm();
 }
 
-// ─── Token selector ───────────────────────────────────────────────────────────
+// ─── Token selector ────────────────────────────────────────────────────────────
 function selectPayToken(token) {
   payState.token = token;
-  const btnUsdc = payEl('pay-token-usdc');
-  const btnEurc = payEl('pay-token-eurc');
-  if (btnUsdc && btnEurc) {
-    const active = 'bg-cyan-700 text-white border-cyan-500';
-    const idle   = 'bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-500';
+  const uBtn = payEl('pay-token-usdc');
+  const eBtn = payEl('pay-token-eurc');
+  if (uBtn && eBtn) {
     if (token === 'USDC') {
-      btnUsdc.className = `px-4 py-2 rounded-lg border text-sm font-semibold transition-all ${active}`;
-      btnEurc.className = `px-4 py-2 rounded-lg border text-sm font-semibold transition-all ${idle}`;
+      uBtn.className = 'pay-token-btn active-usdc';
+      eBtn.className = 'pay-token-btn inactive';
     } else {
-      btnUsdc.className = `px-4 py-2 rounded-lg border text-sm font-semibold transition-all ${idle}`;
-      btnEurc.className = `px-4 py-2 rounded-lg border text-sm font-semibold transition-all ${active}`;
+      uBtn.className = 'pay-token-btn inactive';
+      eBtn.className = 'pay-token-btn active-eurc';
     }
   }
+  paySet('prev-token', token);
   updatePayMaxHint();
   updatePayPreview();
-  validatePayForm();
+  payValidateForm();
 }
 
 function updatePayMaxHint() {
   const bal = payState.senderBalance[payState.token];
   const hint = payEl('pay-max-hint');
-  if (hint) {
-    hint.textContent = bal !== null ? `Balance: ${bal.toFixed(4)} ${payState.token}` : '';
-  }
+  if (hint) hint.textContent = bal !== null ? 'Balance: ' + bal.toFixed(4) + ' ' + payState.token : '';
 }
 
-// ─── MAX button — busca saldo on-chain em tempo real ─────────────────────────
-// Usa ethers.Contract.balanceOf + formatUnits para USDC e EURC.
-// USDC: ERC-20 no Arc → contract.balanceOf(wallet)
-// EURC: ERC-20 → contract.balanceOf(wallet)
+// ─── MAX button ────────────────────────────────────────────────────────────────
 async function setPayMax() {
-  const input  = payEl('pay-amount');
-  const token  = payState.token;
   const wallet = window.walletState?.address;
-
-  if (!wallet) {
-    showToast('Connect wallet first', 'warning');
-    return;
-  }
-
-  // Busca saldo on-chain diretamente (não usa cache)
-  let maxHuman;
+  if (!wallet) { showToast('Connect wallet first', 'warning'); return; }
   try {
-    if (window.ethers?.Contract) {
-      // ✅ USDC e EURC: ERC-20 → ethers.Contract.balanceOf
-      const contract = await payGetContract(token);
-      const rawBal   = await contract.balanceOf(wallet);
+    const contract = window.ethers?.Contract ? await payGetContract(payState.token) : null;
+    let maxHuman;
+    if (contract) {
+      const rawBal = await contract.balanceOf(wallet);
       maxHuman = parseFloat(window.ethers.formatUnits(rawBal, 6));
-      console.log(`[PAY:MAX] ethers.Contract(${token}).balanceOf(${wallet.slice(0,10)}…) = ${rawBal.toString()} = ${maxHuman.toFixed(6)} ${token}`);
     } else {
-      // Fallback: raw eth_call para balanceOf
       const provider = window.walletState.provider;
-      const contractAddr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
+      const contractAddr = payState.token === 'EURC' ? PAY_EURC() : PAY_USDC();
       const data = PAY_SELECTORS.balanceOf + encAddr(wallet);
-      const result = await provider.request({
-        method: 'eth_call',
-        params: [{ to: contractAddr, data }, 'latest'],
-      });
-      const rawBal = (result && result !== '0x') ? BigInt(result) : 0n;
-      maxHuman = Number(rawBal) / 1e6;
-      console.log(`[PAY:MAX] ${token} fallback balanceOf = ${rawBal} = ${maxHuman.toFixed(6)} ${token}`);
+      const result = await provider.request({ method: 'eth_call', params: [{ to: contractAddr, data }, 'latest'] });
+      maxHuman = (result && result !== '0x') ? Number(BigInt(result)) / 1e6 : 0;
+    }
+    const input = payEl('pay-amount');
+    if (input && maxHuman !== null) {
+      input.value = maxHuman.toFixed(6);
+      payValidateField('amount');
+      updatePayPreview();
+      payValidateForm();
     }
   } catch (e) {
-    console.warn('[PAY:MAX] Balance read error:', e.message);
-    maxHuman = payState.senderBalance[token];
-  }
-
-  if (maxHuman === null || maxHuman === undefined) return;
-
-  // Sem reserva de gas — USDC no Arc é ERC-20, não paga gas em USDC
-  const maxSend = maxHuman;
-
-  // Atualiza o campo com valor formatado (6 casas decimais)
-  if (input) {
-    const formatted = maxSend.toFixed(6);
-    input.value = formatted;
-    console.log(`[PAY:MAX] Filled amount: ${formatted} ${token}`);
-
-    // Atualiza display de saldo (#balance)
-    const balanceEl = document.getElementById('balance');
-    if (balanceEl) balanceEl.innerText = maxHuman.toFixed(6) + ' ' + token;
-
-    // Atualiza preview e validação imediatamente
-    updatePayPreview();
-    validatePayForm();
+    console.warn('[PAY:MAX] Error:', e.message);
   }
 }
 
-// ─── Address validation ────────────────────────────────────────────────────────
-function isValidAddress(addr) {
-  return /^0x[0-9a-fA-F]{40}$/.test(addr);
+// ─── Field-level validation ────────────────────────────────────────────────────
+function payValidateField(field) {
+  const fieldMap = {
+    fullname:  { el: 'pay-fullname',   hint: 'pay-hint-fullname'  },
+    email:     { el: 'pay-email',      hint: 'pay-hint-email'     },
+    recipient: { el: 'pay-recipient',  hint: 'pay-hint-recipient' },
+    amount:    { el: 'pay-amount',     hint: 'pay-hint-amount'    },
+  };
+  const f = fieldMap[field];
+  if (!f) return;
+  const input = payEl(f.el);
+  const hint  = payEl(f.hint);
+  if (!input || !hint) return;
+
+  const val = input.value.trim();
+  input.classList.remove('is-valid', 'is-error');
+  hint.className = 'pay-field-hint';
+  hint.textContent = '';
+
+  if (field === 'fullname') {
+    if (!val) { hint.className += ' err'; hint.textContent = 'Full name is required'; input.classList.add('is-error'); }
+    else if (val.length < 2) { hint.className += ' err'; hint.textContent = 'Name too short'; input.classList.add('is-error'); }
+    else { hint.className += ' ok'; hint.textContent = '✓ Valid'; input.classList.add('is-valid'); }
+  }
+
+  if (field === 'email') {
+    if (!val) { hint.className += ' err'; hint.textContent = 'Email is required'; input.classList.add('is-error'); }
+    else if (!isValidEmail(val)) { hint.className += ' err'; hint.textContent = 'Invalid email format'; input.classList.add('is-error'); }
+    else { hint.className += ' ok'; hint.textContent = '✓ Valid email'; input.classList.add('is-valid'); }
+  }
+
+  if (field === 'recipient') {
+    if (!val) { hint.className += ' info'; hint.textContent = 'Enter recipient wallet address'; }
+    else if (!isValidAddress(val)) { hint.className += ' err'; hint.textContent = 'Invalid address — must start with 0x + 40 hex chars'; input.classList.add('is-error'); }
+    else if (val.toLowerCase() === window.walletState?.address?.toLowerCase()) { hint.className += ' err'; hint.textContent = 'Cannot send to yourself'; input.classList.add('is-error'); }
+    else { hint.className += ' ok'; hint.textContent = '✓ Valid Arc Testnet address'; input.classList.add('is-valid'); }
+  }
+
+  if (field === 'amount') {
+    const num = parseFloat(val);
+    const bal = payState.senderBalance[payState.token];
+    if (!val) { hint.className += ' info'; hint.textContent = 'Enter amount to send'; }
+    else if (isNaN(num) || num <= 0) { hint.className += ' err'; hint.textContent = 'Amount must be greater than 0'; input.classList.add('is-error'); }
+    else if (bal !== null && num > bal) { hint.className += ' err'; hint.textContent = 'Insufficient balance (' + bal.toFixed(4) + ' ' + payState.token + ')'; input.classList.add('is-error'); }
+    else { hint.className += ' ok'; hint.textContent = '✓ ' + num.toFixed(6) + ' ' + payState.token; input.classList.add('is-valid'); }
+  }
 }
 
-// ─── Preview panel ────────────────────────────────────────────────────────────
-// ─── Preview panel — atualiza dinamicamente ao digitar ───────────────────────
-// Spec item 8: oninput atualiza previewAmount em tempo real.
+// ─── Preview update ────────────────────────────────────────────────────────────
 function updatePayPreview() {
-  const recipInput  = payEl('pay-recipient');
-  const amountInput = payEl('pay-amount');
-  if (!recipInput || !amountInput) return;
-
-  const recipient   = recipInput.value.trim();
-  const amountStr   = amountInput.value.trim();
-  const amountFloat = parseFloat(amountStr) || 0;
-  const token       = payState.token;
+  const recipient = (payEl('pay-recipient')?.value || '').trim();
+  const amountStr = (payEl('pay-amount')?.value || '').trim();
+  const amountNum = parseFloat(amountStr) || 0;
+  const token     = payState.token;
 
   paySet('prev-token',     token);
-  paySet('prev-amount',    amountFloat > 0 ? amountFloat.toFixed(6) : '—');
+  paySet('prev-amount',    amountNum > 0 ? amountNum.toFixed(6) + ' ' + token : '—');
   paySet('prev-recipient', isValidAddress(recipient) ? shortAddr(recipient) : (recipient || '—'));
   paySet('prev-network',   'Arc Testnet (5042002)');
+  paySet('prev-gas',       token === 'EURC' ? '~2 txs (approve + transfer)' : '~1 tx (ERC-20 transfer)');
 
-  // ✅ Atualiza #previewAmount (spec item 8)
-  const previewEl = document.getElementById('previewAmount');
-  if (previewEl) previewEl.innerText = amountFloat > 0 ? amountFloat + ' ' + token : '— ' + token;
-
-  // Gas estimate display
-  const gasNote = token === 'EURC' ? '~2 txs (approve + transfer)' : '~1 tx (native transfer)';
-  paySet('prev-gas', gasNote);
-
-  // Mostra o parsed amount para debug (spec item 9)
-  if (amountFloat > 0) {
-    try {
-      const parsed = payParseUnits(amountStr);
-      console.log(`[PAY:preview] Input: "${amountStr}" → parseUnits → ${parsed.toString()} base units (${token} 6 dec)`);
-    } catch (_) {}
-  }
+  const from = window.walletState?.address;
+  if (from) paySet('pay-from-display', shortAddr(from));
 }
 
-// Registra oninput para live preview assim que o DOM estiver pronto.
-// (Chamado também em payInitListeners abaixo.)
-function payAttachAmountListener() {
-  const amountInput = payEl('pay-amount');
-  if (!amountInput) return;
-  // Remove listener anterior para evitar duplicatas
-  amountInput.oninput = () => {
-    const v = amountInput.value.trim();
-    // ✅ Spec item 8: atualiza previewAmount ao digitar
-    const previewEl = document.getElementById('previewAmount');
-    if (previewEl) previewEl.innerText = (v && Number(v) > 0 ? v : '—') + ' ' + payState.token;
-    updatePayPreview();
-    validatePayForm();
-  };
-}
-
-// ─── Form validation → enable/disable send button ─────────────────────────────
-function validatePayForm() {
-  const btn = payEl('pay-send-btn');
+// ─── Form-level validation → enable/disable send button ────────────────────────
+function payValidateForm() {
+  const btn     = payEl('pay-send-btn');
+  const btnText = payEl('pay-send-btn-text');
   if (!btn) return;
 
-  const recipient = (payEl('pay-recipient')?.value || '').trim();
-  const amount = parseFloat(payEl('pay-amount')?.value || '0');
-  const token = payState.token;
-  const bal = payState.senderBalance[token];
+  const fullname  = (payEl('pay-fullname')?.value   || '').trim();
+  const email     = (payEl('pay-email')?.value      || '').trim();
+  const recipient = (payEl('pay-recipient')?.value  || '').trim();
+  const amountStr = (payEl('pay-amount')?.value     || '').trim();
+  const amount    = parseFloat(amountStr);
+  const token     = payState.token;
+  const bal       = payState.senderBalance[token];
   const connected = !!window.walletState?.address;
 
   let ok = true;
-  let reason = '';
+  let reason = 'Sign & Send';
 
-  if (!connected) { ok = false; reason = 'Connect wallet first'; }
-  else if (!isValidAddress(recipient)) { ok = false; reason = 'Invalid recipient address'; }
-  else if (amount <= 0) { ok = false; reason = 'Enter an amount'; }
-  else if (bal !== null && amount > bal) { ok = false; reason = 'Insufficient balance'; }
+  if (!connected)                                   { ok = false; reason = 'Connect wallet to send'; }
+  else if (!fullname || fullname.length < 2)        { ok = false; reason = 'Enter your full name'; }
+  else if (!isValidEmail(email))                    { ok = false; reason = 'Enter a valid email'; }
+  else if (!isValidAddress(recipient))              { ok = false; reason = 'Invalid recipient address'; }
+  else if (recipient.toLowerCase() === window.walletState?.address?.toLowerCase()) { ok = false; reason = 'Cannot send to yourself'; }
+  else if (isNaN(amount) || amount <= 0)            { ok = false; reason = 'Enter a valid amount'; }
+  else if (bal !== null && amount > bal)            { ok = false; reason = 'Insufficient balance'; }
 
   btn.disabled = !ok || payState.pending;
-  if (!ok && reason) {
-    btn.textContent = reason;
-    btn.classList.add('opacity-50');
-  } else {
-    btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Sign & Send';
-    btn.classList.remove('opacity-50');
-  }
+  if (btnText) btnText.textContent = payState.pending ? 'Processing…' : reason;
 }
 
-// ─── Main payment execution ───────────────────────────────────────────────────
-// Usa ethers.Contract para USDC e EURC — ambos são ERC-20 no Arc Testnet.
-// USDC: 0x3600000000000000000000000000000000000000 → contract.transfer(recipient, amount)
-// EURC: 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a → approve + transfer
-// Converte o valor digitado com ethers.parseUnits(amount, 6) — NUNCA envia 0.
-async function executePayment() {
-  if (payState.pending) return;
-
-  const recipInput  = payEl('pay-recipient');
-  const amountInput = payEl('pay-amount');
-  const descInput   = payEl('pay-description');
-  const sendBtn     = payEl('pay-send-btn');
-
-  const recipient       = recipInput?.value?.trim() || '';
-  const amountInput_val = amountInput?.value?.trim() || '';
-  const token           = payState.token;
-  const description     = descInput?.value?.trim() || `Payment of ${amountInput_val} ${token}`;
-
-  // ── Validação da entrada ─────────────────────────────────────────────────
-  if (!amountInput_val || Number(amountInput_val) <= 0 || isNaN(Number(amountInput_val))) {
-    showPayError('Enter a valid amount greater than 0.');
-    return;
+// ─── Progress steps ────────────────────────────────────────────────────────────
+function paySetStep(n, status) {
+  payState.step = n;
+  for (let i = 0; i <= 5; i++) {
+    const el = payEl('pay-step-' + i);
+    if (!el) continue;
+    el.className = 'pstep';
+    if (i < n)       el.classList.add('pstep-done');
+    else if (i === n) el.classList.add(status === 'error' ? 'pstep-error' : 'pstep-active');
+    else             el.classList.add('pstep-idle');
   }
-  if (!isValidAddress(recipient)) {
-    showPayError('Invalid recipient address. Must be a valid 0x... Ethereum address.');
-    return;
-  }
-  if (!window.walletState?.address) {
-    showPayError('Please connect your EVM wallet first.');
-    return;
-  }
-
-  // ── Conversão do amount com parseUnits (6 decimais) ─────────────────────
-  // ethers.parseUnits v6 EXIGE string — payNormaliseAmount garante isso.
-  // Ex: "10" → 10000000n | "0.5" → 500000n | "1.5" → 1500000n
-  let amount;
-  try {
-    amount = payParseUnits(amountInput_val);
-  } catch (e) {
-    showPayError(`Invalid amount format: ${e.message}`);
-    return;
-  }
-
-  // ── Protege contra zero ──────────────────────────────────────────────────
-  if (amount === 0n) {
-    showPayError('Transaction amount cannot be zero. Check decimals.');
-    return;
-  }
-
-  // Valor humanizado para exibição (float)
-  const amountHuman = parseFloat(payFormatUnits(amount));
-
-  // ── Debug logs obrigatórios (spec item 9) ────────────────────────────────
-  console.log('[PAY] ─── executePayment ─────────────────────────────');
-  console.log('[PAY] Recipient:      ', recipient);
-  console.log('[PAY] Input amount:   ', amountInput_val);
-  console.log('[PAY] Parsed amount:  ', amount.toString(), '(6-dec base units)');
-  console.log('[PAY] Human amount:   ', amountHuman, token);
-  console.log('[PAY] Token:          ', token);
-  console.log('[PAY] Wallet (from):  ', window.walletState?.address);
-  console.log('[PAY] USDC contract:  ', PAY_USDC(), '← ERC-20, não nativo');
-  console.log('[PAY] EURC contract:  ', PAY_EURC());
-  console.log('[PAY] Using ethers:   ', !!window.ethers?.Contract);
-
-  const from = window.walletState.address;
-
-  // Valida saldo
-  const bal = payState.senderBalance[token];
-  if (bal !== null && amountHuman > bal) {
-    showPayError(`Insufficient ${token} balance. You have ${bal?.toFixed(4)} ${token}.`);
-    return;
-  }
-  if (recipient.toLowerCase() === from.toLowerCase()) {
-    showPayError('Cannot send to yourself.');
-    return;
-  }
-
-  payState.pending = true;
-  if (sendBtn) sendBtn.disabled = true;
-
-  payHide('pay-error-box');
-  payHide('pay-receipt-panel');
-  payShow('pay-steps-panel');
-
-  const startTime = Date.now();
-  let txHash        = null;
-  let approveTxHash = null;
-  let gasUsed       = '0';
-  let gasPrice      = '0x2540BE400';
-
-  try {
-    // ── Step 0: Verificar rede ───────────────────────────────────────────
-    paySetStep(0);
-    await payEnsureNetwork();
-
-    // ── Step 1: Ler saldo on-chain com ethers.Contract.balanceOf ─────────
-    paySetStep(1);
-    const currentBal = await payReadBalance(from, token);
-    payState.senderBalance[token] = currentBal;
-
-    // Atualiza display de saldo (spec item 6: formatUnits)
-    paySet('pay-balance-usdc', (payState.senderBalance.USDC ?? 0).toFixed(4) + ' USDC');
-    paySet('pay-balance-eurc', (payState.senderBalance.EURC ?? 0).toFixed(4) + ' EURC');
-    const balanceEl = document.getElementById('balance');
-    if (balanceEl) balanceEl.innerText = (currentBal || 0).toFixed(6) + ' ' + token;
-
-    if (currentBal !== null && amountHuman > currentBal) {
-      throw new Error(`Insufficient ${token} balance: you have ${currentBal.toFixed(4)} ${token}, trying to send ${amountHuman.toFixed(6)}.`);
-    }
-
-    if (window.ethers?.Contract) {
-      // ── CAMINHO PRINCIPAL: ethers.Contract ───────────────────────────
-      const contract = await payGetContract(token);
-      console.log(`[PAY] ethers.Contract(${token}) instanciado @ ${token === 'EURC' ? PAY_EURC() : PAY_USDC()}`);
-
-      if (token === 'USDC') {
-        // ── USDC: ERC-20 no Arc — usa contract.transfer(recipient, amount) ──
-        // Não usa eth_sendTransaction com value; usa o método transfer do ERC-20.
-        paySetStep(2, 'done');
-        paySetStepLabel(2, 'Approve — N/A (direto via ERC-20 transfer)');
-
-        // ── Step 3: Assinar e enviar via contract.transfer ─────────────
-        paySetStep(3);
-        showToast('⏳ Check your wallet — USDC ERC-20 transfer awaiting signature...', 'info');
-        console.log('[PAY] USDC ERC-20 transfer → contract.transfer(', recipient, ',', amount.toString(), ')');
-
-        // ✅ Spec: await usdcContract.transfer(recipient, amount)
-        const tx = await contract.transfer(recipient, amount);
-        txHash = tx.hash;
-        gasPrice = await payGetGasPrice();
-        console.log('[PAY] USDC tx submitted:', txHash);
-        showToast(`⏳ Transaction submitted: ${txHash.slice(0,14)}...`, 'info');
-
-        // ── Step 4: Aguardar confirmação via tx.wait() ─────────────────
-        paySetStep(4);
-        console.log('[PAY] Waiting for USDC tx.wait()...');
-        // ✅ Spec: await tx.wait()
-        const receipt = await tx.wait();
-        if (!receipt || receipt.status !== 1) {
-          throw new Error('USDC transfer reverted on-chain.');
-        }
-        gasUsed = receipt.gasUsed ? receipt.gasUsed.toString() : '~21000';
-        console.log('[PAY] USDC tx confirmed block:', receipt.blockNumber, 'gasUsed:', gasUsed);
-
-        // Log Transfer event (spec: emits standard ERC-20 Transfer event)
-        const transferEvent = receipt.logs?.find(l =>
-          l.topics?.[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-        );
-        if (transferEvent) {
-          console.log('[PAY] ✅ ERC-20 Transfer event detected:', {
-            from: '0x' + transferEvent.topics[1]?.slice(-40),
-            to:   '0x' + transferEvent.topics[2]?.slice(-40),
-            data: transferEvent.data,
-          });
-        }
-
-        // ── Step 5: Registrar ─────────────────────────────────────────
-        paySetStep(5);
-        const durationMs = Date.now() - startTime;
-        const gasPriceNum = Number(BigInt(gasPrice));
-        let gasFeeEst = (gasPriceNum * Number(BigInt(gasUsed))) / 1e18; // em ETH/USDC
-        if (isNaN(gasFeeEst) || gasFeeEst === 0) gasFeeEst = 0.000021;
-
-        const receiptData = {
-          txHash, approveTxHash: null,
-          sender: from, recipient, amount: amountHuman, token, description,
-          gasFee: gasFeeEst.toFixed(6), gasUsed, network: 'Arc Testnet',
-          chainId: PAY_CHAIN_ID, timestamp: new Date().toISOString(),
-          durationMs, explorerUrl: `${PAY_EXPLORER()}/tx/${txHash}`,
-        };
-        try {
-          await fetch('/api/payments/record', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(receiptData),
-          });
-        } catch (e) { /* não crítico */ }
-
-        payState.receipt = receiptData;
-        payState.history.unshift(receiptData);
-        paySetStep(5, 'done');
-        showToast(`✅ USDC payment confirmed! <a href="${receiptData.explorerUrl}" target="_blank" class="underline">View on ArcScan ↗</a>`, 'success');
-        if (typeof showTXConfirmationBadge === 'function')
-          showTXConfirmationBadge(txHash, `${amountHuman} ${token} → ${shortAddr(recipient)}`);
-        renderPaymentReceipt(receiptData);
-        payShow('pay-receipt-panel');
-        if (amountInput) amountInput.value = '';
-        if (descInput)   descInput.value   = '';
-        await refreshPaymentBalances();
-        renderPaymentHistory();
-        if (typeof loadPayments === 'function') setTimeout(loadPayments, 1000);
-        return; // early return — USDC confirmado via tx.wait()
-
-      } else {
-        // ── EURC: ERC-20 — usa approve + transfer ────────────────────────
-        // Step 2: Verificar allowance e aprovar se necessário
-        paySetStep(2);
-
-        // ✅ CORREÇÃO: spender deve ser o contrato EURC (não o recipient)
-        // Para transfer() simples não precisamos de approve — aprovação é para transferFrom.
-        // Porém, se quisermos manter o fluxo de approve, o spender correto seria um router.
-        // Para transfer() direta: não precisamos de approve.
-        paySetStepLabel(2, 'Approve — N/A (usando transfer direto)');
-        paySetStep(2, 'done');
-        console.log('[PAY] EURC: usando contract.transfer direto (sem approve necessário para transfer)');
-
-        // ── Step 3: Chamar contract.transfer(recipient, amount) ──────────
-        paySetStep(3);
-        showToast('📝 Confirm EURC transfer in your wallet...', 'info');
-        console.log('[PAY] EURC transfer:', amount.toString(), 'base units →', recipient);
-
-        // ✅ Requer assinatura da carteira
-        const tx = await contract.transfer(recipient, amount);
-        txHash = tx.hash;
-        console.log('[PAY] EURC tx submitted:', txHash);
-        gasPrice = await payGetGasPrice();
-
-        showToast(`⏳ Transaction submitted: ${txHash.slice(0,14)}...`, 'info');
-
-        // ── Step 4: Aguardar confirmação via tx.wait() ───────────────────
-        paySetStep(4);
-        const receipt = await tx.wait();
-        if (!receipt || receipt.status !== 1) {
-          throw new Error('Transaction reverted on-chain.');
-        }
-        gasUsed = receipt.gasUsed ? receipt.gasUsed.toString() : '~21000';
-        console.log('[PAY] EURC tx confirmed block:', receipt.blockNumber, 'gasUsed:', gasUsed);
-
-        // ── Step 5: Registrar ─────────────────────────────────────────────
-        paySetStep(5);
-        const durationMs = Date.now() - startTime;
-        const gasPriceNum = Number(BigInt(gasPrice));
-        let gasFeeEst = (gasPriceNum * Number(BigInt(gasUsed))) / 1e18;
-        if (isNaN(gasFeeEst) || gasFeeEst === 0) gasFeeEst = 0.000021;
-
-        const receiptData = {
-          txHash, approveTxHash: approveTxHash || null,
-          sender: from, recipient, amount: amountHuman, token, description,
-          gasFee: gasFeeEst.toFixed(6), gasUsed, network: 'Arc Testnet',
-          chainId: PAY_CHAIN_ID, timestamp: new Date().toISOString(),
-          durationMs, explorerUrl: `${PAY_EXPLORER()}/tx/${txHash}`,
-        };
-        try {
-          await fetch('/api/payments/record', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(receiptData),
-          });
-        } catch (e) { /* não crítico */ }
-
-        payState.receipt = receiptData;
-        payState.history.unshift(receiptData);
-        paySetStep(5, 'done');
-        showToast(`✅ Payment confirmed! <a href="${receiptData.explorerUrl}" target="_blank" class="underline">View ↗</a>`, 'success');
-        if (typeof showTXConfirmationBadge === 'function')
-          showTXConfirmationBadge(txHash, `${amountHuman} ${token} → ${shortAddr(recipient)}`);
-        renderPaymentReceipt(receiptData);
-        payShow('pay-receipt-panel');
-        if (amountInput) amountInput.value = '';
-        if (descInput)   descInput.value   = '';
-        await refreshPaymentBalances();
-        renderPaymentHistory();
-        if (typeof loadPayments === 'function') setTimeout(loadPayments, 1000);
-        return; // early return — EURC confirmado via tx.wait()
-      }
-
-    } else {
-      // ── FALLBACK RAW (sem ethers.Contract) ────────────────────────────
-      const contractAddr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
-
-      if (token === 'EURC') {
-        // Verificar allowance e aprovar se necessário (fallback)
-        paySetStep(2);
-        // Para transfer() direto não precisamos de approve
-        paySetStepLabel(2, 'Approve — N/A (transfer direto)');
-        paySetStep(2, 'done');
-      } else {
-        paySetStep(2, 'done');
-        paySetStepLabel(2, 'Approve — N/A (USDC ERC-20 transfer)');
-      }
-
-      paySetStep(3);
-      showToast('📝 Confirm transfer in your wallet...', 'info');
-      const transferData = PAY_SELECTORS.transfer + encAddr(recipient) + encUint(amount);
-      gasPrice = await payGetGasPrice();
-      txHash = await paySendTx(contractAddr, transferData);
-      console.log('[PAY] Raw tx submitted:', txHash);
-    }
-
-    showToast(`⏳ Transaction submitted: ${txHash.slice(0,14)}...`, 'info');
-
-    // ── Step 4: Aguardar confirmação ─────────────────────────────────────
-    paySetStep(4);
-    const receipt = await payWaitReceipt(txHash);
-
-    if (receipt.status !== '0x1' && receipt.status !== 1) {
-      throw new Error('Transaction reverted on-chain.');
-    }
-    gasUsed = receipt.gasUsed ? parseInt(receipt.gasUsed, 16).toString() : '~21000';
-    console.log('[PAY] Tx confirmed — gasUsed:', gasUsed, 'txHash:', txHash);
-
-    // ── Step 5: Registrar no backend ─────────────────────────────────────
-    paySetStep(5);
-    const durationMs = Date.now() - startTime;
-    let gasFeeEst = (Number(parseInt(gasPrice, 16)) * (Number(gasUsed))) / 1e18;
-    if (isNaN(gasFeeEst) || gasFeeEst === 0) gasFeeEst = 0.000021;
-
-    const receiptData = {
-      txHash, approveTxHash: approveTxHash || null,
-      sender: from, recipient, amount: amountHuman, token, description,
-      gasFee: gasFeeEst.toFixed(6), gasUsed, network: 'Arc Testnet',
-      chainId: PAY_CHAIN_ID, timestamp: new Date().toISOString(),
-      durationMs, explorerUrl: `${PAY_EXPLORER()}/tx/${txHash}`,
-    };
-
-    try {
-      await fetch('/api/payments/record', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(receiptData),
-      });
-    } catch (e) { /* não crítico */ }
-
-    payState.receipt = receiptData;
-    payState.history.unshift(receiptData);
-
-    paySetStep(5, 'done');
-    showToast(`✅ Payment confirmed! <a href="${receiptData.explorerUrl}" target="_blank" class="underline">View ↗</a>`, 'success');
-    if (typeof showTXConfirmationBadge === 'function')
-      showTXConfirmationBadge(txHash, `${amountHuman} ${token} → ${shortAddr(recipient)}`);
-
-    renderPaymentReceipt(receiptData);
-    payShow('pay-receipt-panel');
-    if (amountInput) amountInput.value = '';
-    if (descInput)   descInput.value   = '';
-    await refreshPaymentBalances();
-    renderPaymentHistory();
-    if (typeof loadPayments === 'function') setTimeout(loadPayments, 1000);
-
-  } catch (err) {
-    console.error('[PAY] Payment error:', err);
-    paySetStep(payState.step, 'error');
-
-    if (err.code === 4001 || err.message?.includes('User rejected') || err.message?.includes('user denied') || err.message?.includes('rejected')) {
-      showPayError('Transaction rejected by user.');
-    } else if (err.message?.includes('Insufficient')) {
-      showPayError(err.message);
-    } else if (err.message?.includes('wrong network') || err.message?.includes('network')) {
-      showPayError('Wrong network. Please switch to Arc Testnet.');
-    } else if (err.message?.includes('RPC') || err.message?.includes('fetch') || err.message?.includes('network request')) {
-      showPayError('RPC connection failed. Please try again or switch RPC endpoint.');
-    } else {
-      showPayError(`Payment failed: ${err.message}`);
-    }
-    showToast(`❌ ${err.message?.slice(0, 80)}`, 'error');
-  } finally {
-    payState.pending = false;
-    validatePayForm();
-  }
+  const panel = payEl('pay-steps-panel');
+  if (panel) panel.style.display = '';
 }
 
 function paySetStepLabel(n, label) {
-  const el = payEl(`pay-step-label-${n}`);
+  const el = payEl('pay-step-label-' + n);
   if (el) el.textContent = label;
 }
 
 // ─── Error display ─────────────────────────────────────────────────────────────
 function showPayError(msg) {
   const box = payEl('pay-error-box');
-  if (box) {
-    box.classList.remove('hidden');
-    const text = payEl('pay-error-text');
-    if (text) text.textContent = msg;
+  if (box) { box.style.display = 'flex'; paySet('pay-error-text', msg); }
+}
+function hidePayError() {
+  const box = payEl('pay-error-box');
+  if (box) box.style.display = 'none';
+}
+
+// ─── Main payment execution ────────────────────────────────────────────────────
+async function executePayment() {
+  if (payState.pending) return;
+
+  const fullname  = (payEl('pay-fullname')?.value   || '').trim();
+  const email     = (payEl('pay-email')?.value      || '').trim();
+  const recipient = (payEl('pay-recipient')?.value  || '').trim();
+  const amountStr = (payEl('pay-amount')?.value     || '').trim();
+  const token     = payState.token;
+
+  // Validate all fields
+  ['fullname','email','recipient','amount'].forEach(payValidateField);
+
+  if (!fullname || fullname.length < 2)          { showPayError('Full name is required.'); return; }
+  if (!isValidEmail(email))                       { showPayError('Invalid email address.'); return; }
+  if (!isValidAddress(recipient))                 { showPayError('Invalid recipient wallet address.'); return; }
+  if (!amountStr || Number(amountStr) <= 0)       { showPayError('Enter a valid amount greater than 0.'); return; }
+  if (!window.walletState?.address)               { showPayError('Please connect your EVM wallet first.'); return; }
+
+  const from = window.walletState.address;
+  if (recipient.toLowerCase() === from.toLowerCase()) { showPayError('Cannot send to yourself.'); return; }
+
+  let amount;
+  try {
+    amount = payParseUnits(amountStr);
+  } catch (e) {
+    showPayError('Invalid amount format: ' + e.message);
+    return;
+  }
+  if (amount === 0n) { showPayError('Amount cannot be zero.'); return; }
+
+  const amountHuman = parseFloat(payFormatUnits(amount));
+  const bal         = payState.senderBalance[token];
+  if (bal !== null && amountHuman > bal) {
+    showPayError('Insufficient ' + token + ' balance. You have ' + (bal?.toFixed(4)) + ' ' + token + '.');
+    return;
+  }
+
+  payState.pending = true;
+  hidePayError();
+
+  // Hide success panel, show steps
+  const successPanel = payEl('pay-success-panel');
+  if (successPanel) successPanel.classList.remove('show');
+  paySetStep(0);
+
+  const startTime  = Date.now();
+  let txHash       = null;
+  let gasUsed      = '0';
+  let gasPrice     = '0x2540BE400';
+
+  try {
+    // Step 0: Network
+    paySetStep(0);
+    await payEnsureNetwork();
+
+    // Step 1: Read balance
+    paySetStep(1);
+    const currentBal = await payReadBalance(from, token);
+    payState.senderBalance[token] = currentBal;
+    updatePayMaxHint();
+    if (currentBal !== null && amountHuman > currentBal) {
+      throw new Error('Insufficient ' + token + ' balance: ' + currentBal.toFixed(4) + ' available, trying to send ' + amountHuman.toFixed(6) + '.');
+    }
+
+    if (window.ethers?.Contract) {
+      const contract = await payGetContract(token);
+
+      // Step 2: Approve (not needed for direct transfer)
+      paySetStep(2);
+      paySetStepLabel(2, 'Token approval — N/A (direct ERC-20 transfer)');
+      paySetStep(2, 'done');
+
+      // Step 3: Sign & broadcast
+      paySetStep(3);
+      showToast('📝 Confirm ' + token + ' transfer in your wallet…', 'info');
+
+      const tx = await contract.transfer(recipient, amount);
+      txHash   = tx.hash;
+      gasPrice = await payGetGasPrice();
+      showToast('⏳ Transaction submitted: ' + txHash.slice(0,14) + '…', 'info');
+
+      // Step 4: Wait confirmation
+      paySetStep(4);
+      const receipt = await tx.wait();
+      if (!receipt || receipt.status !== 1) throw new Error(token + ' transfer reverted on-chain.');
+      gasUsed = receipt.gasUsed ? receipt.gasUsed.toString() : '~21000';
+
+    } else {
+      // Fallback: raw eth_sendTransaction
+      const contractAddr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
+      paySetStep(2, 'done');
+      paySetStep(3);
+      showToast('📝 Confirm transfer in your wallet…', 'info');
+      const data = PAY_SELECTORS.transfer + encAddr(recipient) + BigInt(amount).toString(16).padStart(64, '0');
+      gasPrice = await payGetGasPrice();
+      const txBase  = { from, to: contractAddr, data, value: '0x0' };
+      const gas     = await payEstimateGas(txBase);
+      const nonce   = await payGetNonce(from);
+      txHash = await window.walletState.provider.request({
+        method: 'eth_sendTransaction',
+        params: [{ from, to: contractAddr, data, value: '0x0', gas, gasPrice, nonce }],
+      });
+
+      paySetStep(4);
+      const receipt = await payWaitReceipt(txHash);
+      if (receipt.status !== '0x1' && receipt.status !== 1) throw new Error('Transaction reverted on-chain.');
+      gasUsed = receipt.gasUsed ? parseInt(receipt.gasUsed, 16).toString() : '~21000';
+    }
+
+    // Step 5: Generate receipt
+    paySetStep(5);
+    const durationMs  = Date.now() - startTime;
+    const gpNum       = Number(BigInt(gasPrice));
+    let gasFeeEst     = (gpNum * Number(gasUsed)) / 1e18;
+    if (isNaN(gasFeeEst) || gasFeeEst === 0) gasFeeEst = 0.000021;
+
+    const receiptData = {
+      fullname, email, txHash,
+      sender: from, recipient, amount: amountHuman, token,
+      gasFee: gasFeeEst.toFixed(6), gasUsed,
+      network: 'Arc Testnet', chainId: PAY_CHAIN_ID,
+      timestamp: new Date().toISOString(),
+      durationMs, explorerUrl: PAY_EXPLORER() + '/tx/' + txHash,
+    };
+
+    // Save to backend (non-critical)
+    try {
+      await fetch('/api/payments/record', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(receiptData),
+      });
+    } catch (_) { /* ignore */ }
+
+    payState.receipt = receiptData;
+    payState.history.unshift(receiptData);
+    paySetStep(5, 'done');
+
+    showToast('✅ Payment confirmed! <a href="' + receiptData.explorerUrl + '" target="_blank" class="underline">View on ArcScan ↗</a>', 'success');
+    if (typeof showTXConfirmationBadge === 'function')
+      showTXConfirmationBadge(txHash, amountHuman + ' ' + token + ' → ' + shortAddr(recipient));
+
+    // Show success panel
+    if (successPanel) successPanel.classList.add('show');
+
+    // Generate and auto-download PDF
+    renderPaymentReceipt(receiptData);
+    setTimeout(() => generatePayReceiptPDF(receiptData, true), 800);
+
+    // Clear form
+    ['pay-fullname','pay-email','pay-recipient','pay-amount'].forEach(id => {
+      const el = payEl(id);
+      if (el) { el.value = ''; el.classList.remove('is-valid','is-error'); }
+    });
+    ['pay-hint-fullname','pay-hint-email','pay-hint-recipient','pay-hint-amount'].forEach(id => {
+      const el = payEl(id); if (el) el.textContent = '';
+    });
+
+    await refreshPaymentBalances();
+    renderPaymentHistory();
+    if (typeof loadPayments === 'function') setTimeout(loadPayments, 1000);
+
+    // Hide steps after success
+    setTimeout(() => {
+      const sp = payEl('pay-steps-panel');
+      if (sp) sp.style.display = 'none';
+    }, 3000);
+
+  } catch (err) {
+    console.error('[PAY] Payment error:', err);
+    paySetStep(payState.step, 'error');
+    const msg = err.code === 4001 || /reject|denied|user/i.test(err.message)
+      ? 'Transaction rejected by user.'
+      : /insufficient/i.test(err.message)
+        ? err.message
+        : /network|rpc|chain/i.test(err.message)
+          ? 'Network error: ' + err.message
+          : 'Payment failed: ' + err.message;
+    showPayError(msg);
+    showToast('❌ ' + err.message?.slice(0, 80), 'error');
+  } finally {
+    payState.pending = false;
+    payValidateForm();
   }
 }
 
-function hidePayError() {
-  payHide('pay-error-box');
-}
-
-// ─── Receipt rendering ────────────────────────────────────────────────────────
+// ─── Receipt rendering (in-page) ──────────────────────────────────────────────
 function renderPaymentReceipt(r) {
   const container = payEl('pay-receipt-content');
   if (!container) return;
 
   container.innerHTML = `
-    <div class="pay-receipt-card">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-full bg-green-900/60 flex items-center justify-center">
-            <i class="fas fa-check text-green-400 text-xs"></i>
-          </div>
-          <div>
-            <p class="text-white text-sm font-bold">Payment Receipt</p>
-            <p class="text-gray-500 text-xs">${new Date(r.timestamp).toLocaleString()}</p>
-          </div>
-        </div>
-        <span class="text-xs bg-green-900/40 text-green-400 border border-green-700/40 px-2 py-0.5 rounded-full">Confirmed</span>
+    <div style="background:rgba(10,12,20,0.98);border:1px solid rgba(52,211,153,0.2);border-radius:16px;overflow:hidden;margin-bottom:16px;">
+      <!-- Receipt header -->
+      <div style="background:rgba(52,211,153,0.06);border-bottom:1px solid rgba(52,211,153,0.15);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
+        <span style="color:#34d399;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">
+          <i class="fas fa-receipt" style="margin-right:6px;"></i>Payment Receipt
+        </span>
+        <span style="background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);color:#34d399;font-size:10px;padding:3px 10px;border-radius:20px;font-weight:700;">✓ Confirmed</span>
       </div>
-
-      <div class="space-y-2 mb-4">
-        <div class="flex justify-between text-sm">
-          <span class="text-gray-400">Amount</span>
-          <span class="text-white font-bold">${r.amount.toFixed(6)} <span class="text-cyan-400">${r.token}</span></span>
+      <!-- Receipt body -->
+      <div style="padding:18px 20px;">
+        <div style="display:grid;gap:8px;">
+          ${receiptRow('Full Name', r.fullname)}
+          ${receiptRow('Email', r.email)}
+          ${receiptRow('Token', '<span style="color:#22d3ee;font-weight:700;">' + r.token + '</span>')}
+          ${receiptRow('Amount', '<span style="color:#e2e8f0;font-weight:700;">' + r.amount.toFixed(6) + ' ' + r.token + '</span>')}
+          ${receiptRow('From', '<span style="font-family:monospace;font-size:11px;">' + shortAddr(r.sender) + '</span>')}
+          ${receiptRow('To', '<span style="font-family:monospace;font-size:11px;">' + shortAddr(r.recipient) + '</span>')}
+          ${receiptRow('Network', '<span style="color:#34d399;">' + r.network + '</span>')}
+          ${receiptRow('Est. Gas', '~' + r.gasFee + ' USDC')}
+          ${receiptRow('Tx Hash', '<a href="' + r.explorerUrl + '" target="_blank" style="color:#818cf8;font-family:monospace;font-size:11px;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + r.txHash.slice(0,16) + '… ↗</a>')}
+          ${receiptRow('Date & Time', new Date(r.timestamp).toLocaleString())}
         </div>
-        <div class="flex justify-between text-xs">
-          <span class="text-gray-500">From</span>
-          <span class="text-gray-300 font-mono">${shortAddr(r.sender)}</span>
+        <!-- Action buttons -->
+        <div style="display:flex;gap:8px;margin-top:18px;">
+          <button onclick="generatePayReceiptPDF(payState.receipt, false)"
+            style="flex:1;padding:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:10px;color:#f87171;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;"
+            onmouseover="this.style.background='rgba(239,68,68,0.18)'" onmouseout="this.style.background='rgba(239,68,68,0.1)'">
+            <i class="fas fa-file-pdf"></i> Download PDF
+          </button>
+          <button onclick="downloadPayReceipt('json')"
+            style="flex:1;padding:10px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:10px;color:#818cf8;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;"
+            onmouseover="this.style.background='rgba(99,102,241,0.15)'" onmouseout="this.style.background='rgba(99,102,241,0.08)'">
+            <i class="fas fa-download"></i> JSON
+          </button>
+          <a href="${r.explorerUrl}" target="_blank"
+            style="flex:1;padding:10px;background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.25);border-radius:10px;color:#22d3ee;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;"
+            onmouseover="this.style.background='rgba(34,211,238,0.15)'" onmouseout="this.style.background='rgba(34,211,238,0.08)'">
+            <i class="fas fa-external-link-alt"></i> ArcScan
+          </a>
         </div>
-        <div class="flex justify-between text-xs">
-          <span class="text-gray-500">To</span>
-          <span class="text-gray-300 font-mono">${shortAddr(r.recipient)}</span>
-        </div>
-        ${r.description ? `
-        <div class="flex justify-between text-xs">
-          <span class="text-gray-500">Note</span>
-          <span class="text-gray-300 truncate max-w-[180px]">${r.description}</span>
-        </div>` : ''}
-        <div class="flex justify-between text-xs">
-          <span class="text-gray-500">Network</span>
-          <span class="text-purple-400">${r.network}</span>
-        </div>
-        <div class="flex justify-between text-xs">
-          <span class="text-gray-500">Gas Fee</span>
-          <span class="text-yellow-400">~${r.gasFee} USDC</span>
-        </div>
-        ${r.approveTxHash ? `
-        <div class="flex justify-between text-xs">
-          <span class="text-gray-500">Approve TX</span>
-          <a href="${PAY_EXPLORER()}/tx/${r.approveTxHash}" target="_blank" class="text-blue-400 hover:underline font-mono">${r.approveTxHash.slice(0,14)}…</a>
-        </div>` : ''}
-        <div class="flex justify-between text-xs">
-          <span class="text-gray-500">Transaction</span>
-          <a href="${r.explorerUrl}" target="_blank" class="text-blue-400 hover:underline font-mono">${r.txHash.slice(0,14)}…↗</a>
-        </div>
-      </div>
-
-      <div class="flex gap-2">
-        <button onclick="downloadPayReceipt('json')"
-          class="flex-1 flex items-center justify-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-lg py-2 transition-colors">
-          <i class="fas fa-download text-cyan-400"></i> JSON
-        </button>
-        <button onclick="downloadPayReceipt('pdf')"
-          class="flex-1 flex items-center justify-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-lg py-2 transition-colors">
-          <i class="fas fa-file-pdf text-red-400"></i> PDF
-        </button>
-        <a href="${r.explorerUrl}" target="_blank"
-          class="flex-1 flex items-center justify-center gap-1.5 bg-blue-900/30 hover:bg-blue-800/40 border border-blue-700/40 text-blue-400 text-xs rounded-lg py-2 transition-colors">
-          <i class="fas fa-external-link-alt"></i> ArcScan
-        </a>
       </div>
     </div>
   `;
 }
 
-// ─── Download receipt ─────────────────────────────────────────────────────────
-function downloadPayReceipt(format) {
-  const r = payState.receipt;
+function receiptRow(label, value) {
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:12px;">
+      <span style="color:#374151;flex-shrink:0;margin-right:12px;">${label}</span>
+      <span style="color:#cbd5e1;text-align:right;">${value}</span>
+    </div>`;
+}
+
+// ─── PDF Receipt generation (using jsPDF or print fallback) ────────────────────
+function generatePayReceiptPDF(r, autoDownload) {
   if (!r) { showToast('No receipt available', 'error'); return; }
 
-  if (format === 'json') {
-    const json = JSON.stringify(r, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `arc-receipt-${r.txHash.slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('✅ JSON receipt downloaded', 'success');
+  // Try jsPDF first
+  const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+  if (jsPDF) {
+    try {
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const W = doc.internal.pageSize.getWidth();
 
-  } else if (format === 'pdf') {
-    // Generate minimal PDF-like HTML and print
-    const content = `
-<!DOCTYPE html>
+      // Header background
+      doc.setFillColor(245, 245, 255);
+      doc.rect(0, 0, W, 40, 'F');
+
+      // Title
+      doc.setFontSize(20);
+      doc.setTextColor(50, 50, 180);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Payment Receipt', W / 2, 18, { align: 'center' });
+
+      // Subtitle
+      doc.setFontSize(9);
+      doc.setTextColor(120, 120, 140);
+      doc.setFont('helvetica', 'normal');
+      doc.text('ARC AI Agents · Arc Testnet · ' + new Date(r.timestamp).toLocaleString(), W / 2, 26, { align: 'center' });
+
+      // Status badge
+      doc.setFillColor(220, 255, 235);
+      doc.roundedRect(W / 2 - 18, 30, 36, 7, 3, 3, 'F');
+      doc.setTextColor(22, 140, 80);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('✓  CONFIRMED', W / 2, 35.5, { align: 'center' });
+
+      // Section: Payment Details
+      let y = 50;
+      const addSection = (title) => {
+        doc.setFillColor(245, 246, 255);
+        doc.rect(14, y - 4, W - 28, 7, 'F');
+        doc.setFontSize(9);
+        doc.setTextColor(80, 80, 160);
+        doc.setFont('helvetica', 'bold');
+        doc.text(title.toUpperCase(), 16, y + 0.5);
+        y += 8;
+      };
+
+      const addRow = (label, value, valueColor) => {
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(120, 120, 130);
+        doc.text(label, 16, y);
+        doc.setFont('helvetica', 'bold');
+        if (valueColor) doc.setTextColor(...valueColor);
+        else doc.setTextColor(30, 30, 40);
+        const maxW = W - 80;
+        const lines = doc.splitTextToSize(value, maxW);
+        doc.text(lines, W - 14, y, { align: 'right' });
+        y += 7 * lines.length;
+        // separator
+        doc.setDrawColor(230, 230, 240);
+        doc.line(16, y - 1, W - 16, y - 1);
+      };
+
+      addSection('Sender Information');
+      addRow('Full Name',    r.fullname);
+      addRow('Email',        r.email);
+      addRow('From Wallet',  r.sender);
+      y += 4;
+
+      addSection('Payment Details');
+      addRow('Token',        r.token,                        [34, 100, 200]);
+      addRow('Amount',       r.amount.toFixed(6) + ' ' + r.token, [30, 30, 40]);
+      addRow('Recipient',    r.recipient);
+      addRow('Network',      r.network + ' (Chain ' + r.chainId + ')', [22, 140, 80]);
+      addRow('Est. Gas Fee', '~' + r.gasFee + ' USDC');
+      y += 4;
+
+      addSection('Transaction Details');
+      addRow('Transaction Hash', r.txHash);
+      addRow('Explorer',         r.explorerUrl);
+      addRow('Date & Time',      new Date(r.timestamp).toLocaleString());
+      addRow('Duration',         (r.durationMs / 1000).toFixed(1) + 's');
+      y += 4;
+
+      // Footer
+      doc.setFontSize(8);
+      doc.setTextColor(160, 160, 175);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Generated by ARC AI Agents · https://testnet.arcscan.app · Testnet only — no real funds', W / 2, 285, { align: 'center' });
+
+      if (autoDownload) {
+        doc.save('arc-receipt-' + r.txHash.slice(0, 10) + '.pdf');
+        showToast('✅ PDF receipt downloaded', 'success');
+      } else {
+        doc.save('arc-receipt-' + r.txHash.slice(0, 10) + '.pdf');
+        showToast('✅ PDF receipt downloaded', 'success');
+      }
+      return;
+    } catch (e) {
+      console.warn('[PAY:PDF] jsPDF error, falling back to print:', e.message);
+    }
+  }
+
+  // Fallback: print-to-PDF via browser
+  const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>Payment Receipt — ARC Testnet</title>
   <style>
-    body { font-family: 'Courier New', monospace; max-width: 600px; margin: 40px auto; padding: 20px; background: #fff; color: #111; }
-    h1 { font-size: 20px; border-bottom: 2px solid #7c3aed; padding-bottom: 8px; color: #7c3aed; }
-    h2 { font-size: 13px; color: #555; margin-top: 24px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    td { padding: 6px 8px; border-bottom: 1px solid #eee; font-size: 12px; }
-    td:first-child { color: #666; width: 140px; }
-    td:last-child { font-weight: bold; word-break: break-all; }
-    .badge { display: inline-block; background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
-    .footer { margin-top: 32px; font-size: 11px; color: #999; text-align: center; border-top: 1px solid #eee; padding-top: 12px; }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:40px;max-width:640px;margin:auto;}
+    .header{background:linear-gradient(135deg,#f0f0ff,#e8f4ff);border-radius:12px;padding:24px;text-align:center;margin-bottom:28px;}
+    .header h1{font-size:22px;color:#3730a3;margin-bottom:6px;}
+    .header p{font-size:12px;color:#6b7280;}
+    .badge{display:inline-block;background:#d1fae5;color:#065f46;padding:4px 14px;border-radius:20px;font-size:11px;font-weight:700;margin-top:10px;}
+    .section-title{font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6366f1;font-weight:700;background:#f5f5ff;padding:6px 12px;border-radius:6px;margin:20px 0 8px;}
+    .row{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;}
+    .row .lbl{color:#6b7280;flex-shrink:0;margin-right:16px;}
+    .row .val{font-weight:600;word-break:break-all;text-align:right;}
+    .footer{margin-top:32px;font-size:10px;color:#9ca3af;text-align:center;border-top:1px solid #e5e7eb;padding-top:14px;}
+    @media print{body{padding:20px;}}
   </style>
 </head>
 <body>
-  <h1>🤖 ARC AI Agents — Payment Receipt</h1>
-  <p><span class="badge">✓ Confirmed</span></p>
-  <h2>Transaction Details</h2>
-  <table>
-    <tr><td>Amount</td><td>${r.amount.toFixed(6)} ${r.token}</td></tr>
-    <tr><td>From</td><td>${r.sender}</td></tr>
-    <tr><td>To</td><td>${r.recipient}</td></tr>
-    ${r.description ? `<tr><td>Note</td><td>${r.description}</td></tr>` : ''}
-    <tr><td>Network</td><td>${r.network} (Chain ID: ${r.chainId})</td></tr>
-    <tr><td>Gas Fee</td><td>~${r.gasFee} USDC</td></tr>
-    <tr><td>Gas Used</td><td>${r.gasUsed} units</td></tr>
-    ${r.approveTxHash ? `<tr><td>Approve TX</td><td>${r.approveTxHash}</td></tr>` : ''}
-    <tr><td>Transaction Hash</td><td>${r.txHash}</td></tr>
-    <tr><td>Explorer</td><td>${r.explorerUrl}</td></tr>
-    <tr><td>Timestamp</td><td>${new Date(r.timestamp).toLocaleString()}</td></tr>
-    <tr><td>Duration</td><td>${(r.durationMs / 1000).toFixed(1)}s</td></tr>
-  </table>
-  <div class="footer">Generated by ARC AI Agents · https://testnet.arcscan.app · Arc Testnet</div>
+  <div class="header">
+    <h1>Payment Receipt</h1>
+    <p>ARC AI Agents · Arc Testnet · ${new Date(r.timestamp).toLocaleString()}</p>
+    <span class="badge">✓ CONFIRMED</span>
+  </div>
+
+  <div class="section-title">Sender Information</div>
+  <div class="row"><span class="lbl">Full Name</span><span class="val">${r.fullname}</span></div>
+  <div class="row"><span class="lbl">Email</span><span class="val">${r.email}</span></div>
+  <div class="row"><span class="lbl">From Wallet</span><span class="val" style="font-family:monospace;font-size:11px;">${r.sender}</span></div>
+
+  <div class="section-title">Payment Details</div>
+  <div class="row"><span class="lbl">Token</span><span class="val" style="color:#2563eb;">${r.token}</span></div>
+  <div class="row"><span class="lbl">Amount</span><span class="val">${r.amount.toFixed(6)} ${r.token}</span></div>
+  <div class="row"><span class="lbl">Recipient</span><span class="val" style="font-family:monospace;font-size:11px;">${r.recipient}</span></div>
+  <div class="row"><span class="lbl">Network</span><span class="val" style="color:#059669;">${r.network} (Chain ${r.chainId})</span></div>
+  <div class="row"><span class="lbl">Est. Gas Fee</span><span class="val">~${r.gasFee} USDC</span></div>
+
+  <div class="section-title">Transaction Details</div>
+  <div class="row"><span class="lbl">Transaction Hash</span><span class="val" style="font-family:monospace;font-size:10px;">${r.txHash}</span></div>
+  <div class="row"><span class="lbl">Explorer</span><span class="val"><a href="${r.explorerUrl}" style="color:#2563eb;">${r.explorerUrl}</a></span></div>
+  <div class="row"><span class="lbl">Date & Time</span><span class="val">${new Date(r.timestamp).toLocaleString()}</span></div>
+  <div class="row"><span class="lbl">Duration</span><span class="val">${(r.durationMs / 1000).toFixed(1)}s</span></div>
+
+  <div class="footer">Generated by ARC AI Agents &middot; https://testnet.arcscan.app &middot; Testnet only &mdash; no real funds</div>
 </body>
 </html>`;
-    const blob = new Blob([content], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank');
-    if (win) {
-      win.onload = () => { win.print(); URL.revokeObjectURL(url); };
-    } else {
-      // Fallback: download as HTML
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `arc-receipt-${r.txHash.slice(0, 10)}.html`;
-      a.click();
-    }
-    showToast('✅ PDF receipt ready to print', 'success');
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (win) {
+    win.onload = () => { setTimeout(() => { win.print(); URL.revokeObjectURL(url); }, 300); };
+  } else {
+    const a = document.createElement('a');
+    a.href = url; a.download = 'arc-receipt-' + r.txHash.slice(0,10) + '.html';
+    a.click();
+  }
+  showToast('✅ PDF receipt opened for printing', 'success');
+}
+
+// ─── JSON download ─────────────────────────────────────────────────────────────
+function downloadPayReceipt(format) {
+  const r = payState.receipt;
+  if (!r) { showToast('No receipt available', 'error'); return; }
+  if (format === 'json') {
+    const blob = new Blob([JSON.stringify(r, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'arc-receipt-' + r.txHash.slice(0,10) + '.json';
+    a.click(); URL.revokeObjectURL(url);
+    showToast('✅ JSON receipt downloaded', 'success');
+  } else if (format === 'pdf') {
+    generatePayReceiptPDF(r, false);
   }
 }
 
-// ─── Payment history rendering ────────────────────────────────────────────────
+// ─── History rendering ─────────────────────────────────────────────────────────
 function renderPaymentHistory() {
   const container = payEl('pay-history-list');
   if (!container) return;
-
   if (payState.history.length === 0) {
     container.innerHTML = `
-      <div class="text-gray-600 text-xs text-center py-6">
-        <i class="fas fa-clock text-2xl mb-2 block"></i>
+      <div style="color:#2a3450;font-size:12px;text-align:center;padding:28px 0;">
+        <i class="fas fa-clock" style="font-size:22px;display:block;margin-bottom:8px;"></i>
         No transactions yet
       </div>`;
     return;
   }
-
   container.innerHTML = payState.history.slice(0, 20).map(r => `
-    <div class="bg-gray-900/40 border border-gray-700/30 rounded-xl p-3 hover:border-gray-600/50 transition-colors">
-      <div class="flex items-center justify-between mb-1">
-        <span class="text-xs font-bold text-white">${r.amount.toFixed(4)} ${r.token}</span>
-        <span class="text-xs text-green-400">✓ Confirmed</span>
+    <div style="background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px;padding:10px 12px;transition:border-color 0.2s;"
+         onmouseover="this.style.borderColor='rgba(99,102,241,0.3)'" onmouseout="this.style.borderColor='rgba(99,102,241,0.12)'">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="color:#e2e8f0;font-size:12px;font-weight:700;">${r.amount.toFixed(4)} ${r.token}</span>
+        <span style="color:#34d399;font-size:10px;">✓ Confirmed</span>
       </div>
-      <div class="text-xs text-gray-500 flex justify-between">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#374151;">
         <span>→ ${shortAddr(r.recipient)}</span>
-        <a href="${r.explorerUrl}" target="_blank" class="text-blue-400 hover:underline font-mono">${r.txHash.slice(0,10)}…↗</a>
+        <a href="${r.explorerUrl}" target="_blank" style="color:#818cf8;text-decoration:none;font-family:monospace;"
+           onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
+          ${r.txHash.slice(0,10)}…↗
+        </a>
       </div>
-      ${r.description ? `<div class="text-xs text-gray-600 mt-1 truncate">${r.description}</div>` : ''}
+      ${r.fullname ? '<div style="font-size:10px;color:#2a3450;margin-top:3px;">' + r.fullname + ' · ' + (r.email || '') + '</div>' : ''}
     </div>
   `).join('');
 }
 
-// ─── Init: called when Payments tab becomes active ─────────────────────────────
+// ─── Init ──────────────────────────────────────────────────────────────────────
 async function initPayments() {
-  // Wire up listeners
-  const recipInput  = payEl('pay-recipient');
-  const amountInput = payEl('pay-amount');
-  const descInput   = payEl('pay-description');
-
-  if (recipInput && !recipInput._payListenerAdded) {
-    recipInput._payListenerAdded = true;
-    recipInput.addEventListener('input', () => { updatePayPreview(); validatePayForm(); });
-    recipInput.addEventListener('paste', () => setTimeout(() => { updatePayPreview(); validatePayForm(); }, 50));
-  }
-  if (amountInput && !amountInput._payListenerAdded) {
-    amountInput._payListenerAdded = true;
-    amountInput.addEventListener('input', () => { updatePayPreview(); validatePayForm(); });
-  }
-  if (descInput && !descInput._payListenerAdded) {
-    descInput._payListenerAdded = true;
-    descInput.addEventListener('input', () => updatePayPreview());
-  }
-
-  // Auto-fill sender address if wallet is connected
-  const fromInput = payEl('pay-from-display');
-  if (fromInput && window.walletState?.address) {
-    fromInput.textContent = shortAddr(window.walletState.address);
-  }
-
-  // Set USDC as default token
   selectPayToken(payState.token || 'USDC');
-  validatePayForm();
-
-  // Load balances
+  updatePayPreview();
+  payValidateForm();
   await refreshPaymentBalances();
   renderPaymentHistory();
+
+  // Hide panels that should start hidden
+  const sp = payEl('pay-steps-panel');
+  if (sp) sp.style.display = 'none';
+  const successPanel = payEl('pay-success-panel');
+  if (successPanel) successPanel.classList.remove('show');
 }
 
-// ─── Expose globally ──────────────────────────────────────────────────────────
-window.initPayments          = initPayments;
-window.executePayment        = executePayment;
-window.refreshPaymentBalances= refreshPaymentBalances;
-window.selectPayToken        = selectPayToken;
-window.setPayMax             = setPayMax;
-window.updatePayPreview      = updatePayPreview;
-window.validatePayForm       = validatePayForm;
-window.downloadPayReceipt    = downloadPayReceipt;
-window.renderPaymentHistory  = renderPaymentHistory;
-window.hidePayError          = hidePayError;
+// ─── Global exports ────────────────────────────────────────────────────────────
+window.initPayments           = initPayments;
+window.executePayment         = executePayment;
+window.refreshPaymentBalances = refreshPaymentBalances;
+window.selectPayToken         = selectPayToken;
+window.setPayMax              = setPayMax;
+window.updatePayPreview       = updatePayPreview;
+window.payValidateField       = payValidateField;
+window.payValidateForm        = payValidateForm;
+window.validatePayForm        = payValidateForm; // legacy alias
+window.downloadPayReceipt     = downloadPayReceipt;
+window.generatePayReceiptPDF  = generatePayReceiptPDF;
+window.renderPaymentHistory   = renderPaymentHistory;
+window.hidePayError           = hidePayError;
+window.payState               = payState; // needed by receipt buttons
 
-// ─── Listen for wallet connect / account change ────────────────────────────────
+// ─── Wallet event listeners ────────────────────────────────────────────────────
 window.addEventListener('walletConnected', async (e) => {
   const addr = e.detail?.address;
   if (addr) {
-    const fromDisplay = payEl('pay-from-display');
-    if (fromDisplay) fromDisplay.textContent = shortAddr(addr);
-    const fromInput = payEl('pay-from');
-    if (fromInput && !fromInput.value) fromInput.value = addr;
+    paySet('pay-from-display', shortAddr(addr));
     await refreshPaymentBalances();
-    validatePayForm();
+    updatePayPreview();
+    payValidateForm();
   }
 });
 
-// Also update balances when Pay tab is auto-refreshed
 window.addEventListener('accountsChanged', () => {
   if (window.currentTab === 'payments') refreshPaymentBalances();
 });
 
-// Registra oninput no DOMContentLoaded para garantir que o DOM existe
-document.addEventListener('DOMContentLoaded', () => {
-  payAttachAmountListener();
-});
-
-// ─── Boot log ─────────────────────────────────────────────────────────────────
-console.log('[PAY] Payments module loaded — Arc Testnet ChainID:', PAY_CHAIN_ID);
-console.log('[PAY] USDC contract:', PAY_USDC(), '(ERC-20, 6 dec) ← balanceOf + transfer via ethers.Contract');
-console.log('[PAY] EURC contract:', PAY_EURC(), '(ERC-20, 6 dec)');
-console.log('[PAY] ethers.js available:', !!window.ethers);
-console.log('[PAY] ethers.Contract:', !!window.ethers?.Contract);
-console.log('[PAY] Amount conversion: 10 →', (() => { try { return payParseUnits(10).toString(); } catch(e){ return 'error: '+e.message; } })(), 'base units');
-console.log('[PAY] Fix summary:');
-console.log('[PAY]   ✅ payParseUnits(10) = 10000000 (não 10)');
-console.log('[PAY]   ✅ payReadBalance() usa ethers.Contract.balanceOf + formatUnits (USDC e EURC)');
-console.log('[PAY]   ✅ setPayMax() lê saldo on-chain via ethers.Contract.balanceOf em tempo real');
-console.log('[PAY]   ✅ executePayment() usa payParseUnits — proíbe amount=0n');
-console.log('[PAY]   ✅ USDC usa ethers.Contract(0x3600...).transfer(recipient, amount) + tx.wait()');
-console.log('[PAY]   ✅ EURC usa ethers.Contract.transfer(recipient, amount) + tx.wait()');
-console.log('[PAY]   ✅ Emite evento ERC-20 Transfer detectável no ArcScan');
-console.log('[PAY]   ✅ live preview oninput atualiza #previewAmount');
+// ─── Boot log ──────────────────────────────────────────────────────────────────
+console.log('[PAY v2] Payments module loaded — Arc Testnet ChainID:', PAY_CHAIN_ID);
+console.log('[PAY v2] USDC:', PAY_USDC(), '| EURC:', PAY_EURC());
+console.log('[PAY v2] Fields: Full Name, Email, Recipient, Amount | Token: USDC/EURC');
+console.log('[PAY v2] PDF receipt: jsPDF (if available) → print fallback');
