@@ -309,7 +309,7 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20250323" rel="stylesheet">
+  <link href="/static/styles.css?v=20250323b" rel="stylesheet">
   <script src="/static/i18n.js?v=20250322"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
@@ -921,43 +921,45 @@ app.get('/', (c) => {
 
         /* ── Input (mirrors .cf-input) ── */
         .pay-cf-input {
-          background:rgba(255,255,255,0.04) !important;
-          border:1px solid rgba(55,138,221,0.2) !important;
+          background:rgba(255,255,255,0.06) !important;
+          border:1px solid rgba(55,138,221,0.32) !important;
           border-radius:12px !important;
-          color:#dde2f0 !important;
+          color:#e8edf8 !important;
           transition:all 0.2s;
           outline:none !important;
           width:100%;
           box-sizing:border-box;
+          font-size:13px !important;
         }
-        .pay-cf-input::placeholder { color:#2a3450 !important; }
-        .pay-cf-input:hover  { border-color:rgba(55,138,221,0.35) !important; }
+        .pay-cf-input::placeholder { color:#6a85aa !important; }
+        .pay-cf-input:hover  { border-color:rgba(55,138,221,0.55) !important; background:rgba(255,255,255,0.07) !important; }
         .pay-cf-input:focus  {
-          border-color:rgba(55,138,221,0.6) !important;
-          box-shadow:0 0 0 3px rgba(55,138,221,0.1) !important;
-          background:rgba(55,138,221,0.05) !important;
+          border-color:rgba(55,138,221,0.75) !important;
+          box-shadow:0 0 0 3px rgba(55,138,221,0.16) !important;
+          background:rgba(55,138,221,0.07) !important;
+          color:#f0f4ff !important;
         }
-        .pay-cf-input.is-valid { border-color:rgba(29,158,117,0.5) !important; }
-        .pay-cf-input.is-error { border-color:rgba(239,68,68,0.45) !important; box-shadow:0 0 0 3px rgba(239,68,68,0.08) !important; }
+        .pay-cf-input.is-valid { border-color:rgba(29,158,117,0.65) !important; box-shadow:0 0 0 2px rgba(29,158,117,0.12) !important; }
+        .pay-cf-input.is-error { border-color:rgba(239,68,68,0.6) !important; box-shadow:0 0 0 3px rgba(239,68,68,0.12) !important; }
 
         /* ── Label (mirrors .cf-label) ── */
         .pay-cf-label {
           font-size:10px; font-weight:700;
-          letter-spacing:0.1em; text-transform:uppercase;
-          color:#3a4870;
+          letter-spacing:0.09em; text-transform:uppercase;
+          color:#a8c4e0;
           display:flex; align-items:center; gap:6px;
           margin-bottom:6px;
         }
         .pay-cf-label .opt {
-          color:#252a40; font-weight:400;
+          color:#8aaac8; font-weight:500;
           text-transform:none; letter-spacing:0; font-size:10px;
         }
 
         /* ── Field hint ── */
         .pay-field-hint { font-size:10px; margin-top:4px; min-height:14px; }
-        .pay-field-hint.ok   { color:#1D9E75; }
-        .pay-field-hint.err  { color:#f87171; }
-        .pay-field-hint.info { color:#3a4870; }
+        .pay-field-hint.ok   { color:#34d39a; font-weight:600; }
+        .pay-field-hint.err  { color:#f87171; font-weight:600; }
+        .pay-field-hint.info { color:#8aaccc; }
 
         /* ── Token selector buttons ── */
         .pay-tok-btn {
@@ -967,8 +969,8 @@ app.get('/', (c) => {
         }
         .pay-tok-btn.tok-usdc { background:rgba(55,138,221,0.13); border-color:rgba(55,138,221,0.45); color:#60b4ff; }
         .pay-tok-btn.tok-eurc { background:rgba(29,158,117,0.13); border-color:rgba(29,158,117,0.45); color:#34d399; }
-        .pay-tok-btn.tok-off  { background:rgba(255,255,255,0.02); border-color:rgba(255,255,255,0.07); color:#374151; }
-        .pay-tok-btn.tok-off:hover { border-color:rgba(55,138,221,0.25); color:#4b5675; }
+        .pay-tok-btn.tok-off  { background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.18); color:#8aaccc; }
+        .pay-tok-btn.tok-off:hover { border-color:rgba(55,138,221,0.4); color:#a8c8e8; }
 
         /* ── Preview box ── */
         #pay-preview-box {
@@ -982,8 +984,8 @@ app.get('/', (c) => {
           border-bottom:1px solid rgba(55,138,221,0.05);
         }
         #pay-preview-box .prow:last-child { border-bottom:none; }
-        #pay-preview-box .prow .pk { color:#3a4870; }
-        #pay-preview-box .prow .pv { color:#dde2f0; font-weight:600; }
+        #pay-preview-box .prow .pk { color:#8aaac8; font-weight:600; }
+        #pay-preview-box .prow .pv { color:#e8edf8; font-weight:700; }
 
         /* ── Error box ── */
         #pay-error-box {
@@ -1006,9 +1008,9 @@ app.get('/', (c) => {
         }
         #pay-send-btn:hover:not(:disabled) { box-shadow:0 0 30px rgba(55,138,221,0.5); transform:translateY(-1px); }
         #pay-send-btn:disabled {
-          background:rgba(255,255,255,0.04);
-          border:1px solid rgba(55,138,221,0.1);
-          color:#3a4870; cursor:not-allowed;
+          background:rgba(255,255,255,0.05);
+          border:1px solid rgba(55,138,221,0.18);
+          color:#7a90a8; cursor:not-allowed;
           box-shadow:none; transform:none;
         }
 
@@ -1021,13 +1023,13 @@ app.get('/', (c) => {
         .pstep { display:flex; align-items:center; gap:9px; padding:5px 0; border-bottom:1px solid rgba(55,138,221,0.05); }
         .pstep:last-child { border-bottom:none; }
         .pstep-icon { width:24px; height:24px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:10px; flex-shrink:0; transition:all 0.3s; }
-        .pstep-idle  .pstep-icon { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#252a40; }
+        .pstep-idle  .pstep-icon { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.2); color:#7a90a8; }
         .pstep-active .pstep-icon { background:rgba(55,138,221,0.2); border:1px solid rgba(55,138,221,0.5); color:#60b4ff; box-shadow:0 0 12px rgba(55,138,221,0.3); animation:payStepPulse 1.5s infinite; }
         .pstep-done  .pstep-icon { background:rgba(29,158,117,0.2); border:1px solid rgba(29,158,117,0.5); color:#34d399; }
         .pstep-error .pstep-icon { background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#f87171; }
-        .pstep-idle  .pstep-label { color:#252a40; font-size:11px; }
-        .pstep-active .pstep-label { color:#c5d8f0; font-size:11px; }
-        .pstep-done  .pstep-label  { color:#4b5675; font-size:11px; text-decoration:line-through; }
+        .pstep-idle  .pstep-label { color:#8aaac8; font-size:11px; }
+        .pstep-active .pstep-label { color:#d0e4f8; font-size:11px; font-weight:600; }
+        .pstep-done  .pstep-label  { color:#7a9cc0; font-size:11px; text-decoration:line-through; }
         .pstep-error .pstep-label  { color:#f87171; font-size:11px; }
         @keyframes payStepPulse { 0%,100%{box-shadow:0 0 10px rgba(55,138,221,0.3)} 50%{box-shadow:0 0 20px rgba(55,138,221,0.6)} }
 
@@ -1065,10 +1067,10 @@ app.get('/', (c) => {
       <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:10px 16px;">
         <div class="flex items-center gap-2">
           <div class="w-2 h-2 rounded-full" style="background:#4ade80;animation:pulse 2s infinite;box-shadow:0 0 6px #4ade80;"></div>
-          <span style="color:#3a5a8a;font-weight:700;">ArcPay Payments</span>
+          <span style="color:#90bce0;font-weight:700;">ArcPay Payments</span>
         </div>
-        <span style="color:#4a6490;">Single on-chain ERC-20 transfer</span>
-        <span class="ml-auto" style="color:#252a40;">Arc Testnet · Chain 5042002 · No real funds</span>
+        <span style="color:#7aaad0;">Single on-chain ERC-20 transfer</span>
+        <span class="ml-auto" style="color:#6a90b8;">Arc Testnet · Chain 5042002 · No real funds</span>
       </div>
 
       <div id="pay-page">
@@ -1095,7 +1097,7 @@ app.get('/', (c) => {
                   </div>
                   <div>
                     <p style="color:#dde2f0;font-size:14px;font-weight:800;margin:0;">Send Payment</p>
-                    <p style="color:#3a4870;font-size:10px;margin:0;">Single on-chain transfer · Arc Testnet</p>
+                    <p style="color:#8aaac8;font-size:10px;margin:0;">Single on-chain transfer · Arc Testnet</p>
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:5px;">
@@ -1116,7 +1118,7 @@ app.get('/', (c) => {
                 <div class="grid grid-cols-2 gap-2">
                   <div>
                     <label class="pay-cf-label">
-                      <i class="fas fa-user" style="color:#3a4870;"></i>
+                      <i class="fas fa-user" style="color:#90bce0;"></i>
                       SENDER NAME
                       <span class="opt">(optional)</span>
                     </label>
@@ -1128,7 +1130,7 @@ app.get('/', (c) => {
                   </div>
                   <div>
                     <label class="pay-cf-label">
-                      <i class="fas fa-envelope" style="color:#3a4870;"></i>
+                      <i class="fas fa-envelope" style="color:#90bce0;"></i>
                       EMAIL
                       <span class="opt">(optional)</span>
                     </label>
@@ -1158,7 +1160,7 @@ app.get('/', (c) => {
                   <label class="pay-cf-label">
                     <i class="fas fa-coins" style="color:#1D9E75;"></i>
                     AMOUNT (<span id="pay-label-token">USDC</span>)
-                    <span id="pay-max-hint" style="font-size:10px;color:#3a4870;font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto;"></span>
+                    <span id="pay-max-hint" style="font-size:10px;color:#8aaac8;font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto;"></span>
                   </label>
                   <div style="position:relative;">
                     <input type="number" id="pay-amount" class="pay-cf-input px-3 py-2.5 text-sm pr-24"
@@ -1185,7 +1187,7 @@ app.get('/', (c) => {
                 <div id="pay-error-box">
                   <i class="fas fa-exclamation-circle" style="color:#f87171;flex-shrink:0;"></i>
                   <span id="pay-error-text" style="color:#fca5a5;font-size:12px;flex:1;"></span>
-                  <button onclick="hidePayError()" style="background:none;border:none;color:#3a4870;cursor:pointer;font-size:14px;padding:0;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#3a4870'">✕</button>
+                  <button onclick="hidePayError()" style="background:none;border:none;color:#8aaac8;cursor:pointer;font-size:14px;padding:0;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#8aaac8'">✕</button>
                 </div>
 
                 <!-- Submit button -->
@@ -1195,7 +1197,7 @@ app.get('/', (c) => {
                   <span id="pay-send-btn-text">Sign &amp; Send</span>
                 </button>
 
-                <p style="font-size:10px;color:#252a40;text-align:center;margin-top:4px;">
+                <p style="font-size:10px;color:#7a9cc0;text-align:center;margin-top:4px;">
                   ERC-20 · Arc Testnet (5042002) · No real funds
                 </p>
               </div><!-- end space-y-3 -->
@@ -1205,7 +1207,7 @@ app.get('/', (c) => {
 
           <!-- Transaction Steps -->
           <div id="pay-steps-panel" style="display:none;">
-            <p style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;margin:0 0 10px;">TRANSACTION PIPELINE</p>
+            <p style="font-size:10px;color:#8aaac8;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;margin:0 0 10px;">TRANSACTION PIPELINE</p>
             <div id="pay-step-0" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-network-wired"></i></div><span id="pay-step-label-0" class="pstep-label">Verify Arc Testnet network</span></div>
             <div id="pay-step-1" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-coins"></i></div><span id="pay-step-label-1" class="pstep-label">Read token balance</span></div>
             <div id="pay-step-2" class="pstep pstep-idle"><div class="pstep-icon"><i class="fas fa-check-double"></i></div><span id="pay-step-label-2" class="pstep-label">Token approval (if needed)</span></div>
@@ -1222,7 +1224,7 @@ app.get('/', (c) => {
               </div>
               <div>
                 <p style="color:#34d399;font-size:14px;font-weight:800;margin:0;">Payment Confirmed!</p>
-                <p style="color:#3a4870;font-size:11px;margin:2px 0 0;">Transaction submitted to Arc Testnet</p>
+                <p style="color:#7a9ab8;font-size:11px;margin:2px 0 0;">Transaction submitted to Arc Testnet</p>
               </div>
             </div>
             <div id="pay-receipt-content"></div>
@@ -1240,14 +1242,14 @@ app.get('/', (c) => {
                 <i class="fas fa-history" style="color:#378ADD;"></i> Transaction History
               </span>
               <button onclick="refreshPaymentBalances();renderPaymentHistory()"
-                style="font-size:10px;color:#3a4870;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.3)'" onmouseout="this.style.color='#3a4870';this.style.borderColor='rgba(55,138,221,0.15)'">
+                style="font-size:10px;color:#8aaac8;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.5)'" onmouseout="this.style.color='#8aaac8';this.style.borderColor='rgba(55,138,221,0.28)'">
                 <i class="fas fa-sync" style="font-size:9px;"></i> Refresh
               </button>
             </div>
             <div id="pay-history-list" style="padding:12px;display:flex;flex-direction:column;gap:6px;">
-              <div style="color:#3a4870;font-size:11px;text-align:center;padding:24px 0;">
-                <i class="fas fa-clock" style="font-size:20px;display:block;margin-bottom:8px;color:#252a40;"></i>
+              <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
+                <i class="fas fa-clock" style="font-size:20px;display:block;margin-bottom:8px;color:#5a7898;"></i>
                 No transactions yet
               </div>
             </div>
@@ -1260,14 +1262,14 @@ app.get('/', (c) => {
                 <i class="fas fa-robot" style="color:#1D9E75;"></i> Agent Payment Queue
               </span>
               <button onclick="loadPayments()"
-                style="font-size:10px;color:#3a4870;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.3)'" onmouseout="this.style.color='#3a4870';this.style.borderColor='rgba(55,138,221,0.15)'">
+                style="font-size:10px;color:#8aaac8;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.5)'" onmouseout="this.style.color='#8aaac8';this.style.borderColor='rgba(55,138,221,0.28)'">
                 <i class="fas fa-sync" style="font-size:9px;"></i> Update
               </button>
             </div>
             <div id="payments-list" style="padding:12px;">
-              <div style="color:#3a4870;font-size:11px;text-align:center;padding:24px 0;">
-                <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#252a40;"></i>
+              <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
+                <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#5a7898;"></i>
                 No payments in queue
               </div>
             </div>
@@ -1284,17 +1286,18 @@ app.get('/', (c) => {
       <style>
         .cf-panel { background:rgba(10,12,24,0.98); border:1px solid rgba(55,138,221,0.18); border-radius:18px; position:relative; overflow:hidden; }
         .cf-panel::after { content:''; position:absolute; top:0; left:0; right:0; height:1px; pointer-events:none; background:linear-gradient(90deg,transparent,rgba(55,138,221,0.6) 40%,rgba(29,158,117,0.5) 60%,transparent); }
-        .cf-input { background:rgba(255,255,255,0.04) !important; border:1px solid rgba(55,138,221,0.2) !important; border-radius:12px !important; color:#dde2f0 !important; transition:all 0.2s; outline:none !important; }
-        .cf-input::placeholder { color:#2a3450 !important; }
-        .cf-input:focus { border-color:rgba(55,138,221,0.6) !important; box-shadow:0 0 0 3px rgba(55,138,221,0.1) !important; background:rgba(55,138,221,0.05) !important; }
-        .cf-label { font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#3a4870; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
-        .ct-step-idle  .ct-step-icon { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:#252a40; }
+        .cf-input { background:rgba(255,255,255,0.06) !important; border:1px solid rgba(55,138,221,0.32) !important; border-radius:12px !important; color:#e8edf8 !important; transition:all 0.2s; outline:none !important; }
+        .cf-input::placeholder { color:#6a85aa !important; }
+        .cf-input:hover { border-color:rgba(55,138,221,0.55) !important; background:rgba(255,255,255,0.07) !important; }
+        .cf-input:focus { border-color:rgba(55,138,221,0.75) !important; box-shadow:0 0 0 3px rgba(55,138,221,0.16) !important; background:rgba(55,138,221,0.07) !important; color:#f0f4ff !important; }
+        .cf-label { font-size:10px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:#a8c4e0; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+        .ct-step-idle  .ct-step-icon { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.2); color:#7a90a8; }
         .ct-step-active .ct-step-icon { background:rgba(55,138,221,0.2); border:1px solid rgba(55,138,221,0.5); color:#60b4ff; box-shadow:0 0 12px rgba(55,138,221,0.3); animation:cfStepPulse 1.5s infinite; }
         .ct-step-done  .ct-step-icon { background:rgba(29,158,117,0.2); border:1px solid rgba(29,158,117,0.5); color:#34d399; }
         .ct-step-error .ct-step-icon { background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#f87171; }
-        .ct-step-idle  span { color:#252a40; }
-        .ct-step-active span { color:#c5d8f0; }
-        .ct-step-done  span { color:#4b5675; text-decoration:line-through; }
+        .ct-step-idle  span { color:#8aaac8; }
+        .ct-step-active span { color:#d0e4f8; font-weight:600; }
+        .ct-step-done  span { color:#7a9cc0; text-decoration:line-through; }
         .ct-step-error span { color:#f87171; }
         @keyframes cfStepPulse { 0%,100%{box-shadow:0 0 10px rgba(55,138,221,0.3)} 50%{box-shadow:0 0 20px rgba(55,138,221,0.6)} }
         .cf-proof-drop { border:2px dashed rgba(55,138,221,0.25); border-radius:14px; transition:all 0.2s; background:rgba(55,138,221,0.03); }
@@ -1317,7 +1320,7 @@ app.get('/', (c) => {
         .cf-btn-receive:hover { background:rgba(52,211,153,0.18); }
         .cf-btn-complete { background:rgba(52,211,153,0.12);border-color:rgba(52,211,153,0.4);color:#6ee7b7;box-shadow:0 0 12px rgba(52,211,153,0.15); }
         .cf-btn-complete:hover { background:rgba(52,211,153,0.22);box-shadow:0 0 20px rgba(52,211,153,0.25); }
-        .cf-btn-disabled { background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.06);color:#3a4870;cursor:not-allowed; }
+        .cf-btn-disabled { background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.14);color:#7a90a8;cursor:not-allowed; }
         .cf-btn-cancel   { background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.2);color:#f87171; }
         .cf-btn-cancel:hover { background:rgba(239,68,68,0.15); }
         .cf-btn-receipt  { background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);color:#93c5fd; }
@@ -1331,13 +1334,13 @@ app.get('/', (c) => {
       <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:10px 16px;">
         <div class="flex items-center gap-2">
           <div class="w-2 h-2 rounded-full bg-green-400" style="animation:pulse 2s infinite;box-shadow:0 0 6px #4ade80;"></div>
-          <span style="color:#3a5a8a;font-weight:700;">ContractFactory</span>
+          <span style="color:#90bce0;font-weight:700;">ContractFactory</span>
         </div>
-        <span style="font-family:monospace;color:#4a6490;">0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A</span>
+        <span style="font-family:monospace;color:#8aaac8;">0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A</span>
         <a href="https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A" target="_blank" rel="noopener" style="color:#378ADD;">
           <i class="fas fa-external-link-alt mr-1"></i>ArcScan
         </a>
-        <span class="ml-auto" style="color:#252a40;">Arc Testnet · Chain 5042002 · 0.2% Platform Fee</span>
+        <span class="ml-auto" style="color:#6a90b8;">Arc Testnet · Chain 5042002 · 0.2% Platform Fee</span>
       </div>
 
       <div class="grid grid-cols-1 xl:grid-cols-5 gap-5">
@@ -1354,7 +1357,7 @@ app.get('/', (c) => {
                 </div>
                 <div>
                   <p style="color:#dde2f0;font-size:14px;font-weight:800;margin:0;">New On-Chain Contract</p>
-                  <p style="color:#3a4870;font-size:10px;margin:0;">Escrow · USDC · Arc Testnet</p>
+                  <p style="color:#8aaac8;font-size:10px;margin:0;">Escrow · USDC · Arc Testnet</p>
                 </div>
               </div>
 
@@ -1402,7 +1405,7 @@ app.get('/', (c) => {
                       class="cf-input w-full px-3 py-2.5 text-sm pr-24" />
                     <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:#378ADD;background:rgba(55,138,221,0.12);padding:2px 8px;border-radius:8px;border:1px solid rgba(55,138,221,0.25);">USDC</span>
                   </div>
-                  <div id="cf-fee-preview" style="font-size:11px;color:#3a4870;margin-top:4px;"></div>
+                  <div id="cf-fee-preview" style="font-size:11px;color:#8aaac8;margin-top:4px;"></div>
                 </div>
 
                 <!-- OTC Toggle -->
@@ -1416,7 +1419,7 @@ app.get('/', (c) => {
                     <label style="position:relative;display:inline-block;width:36px;height:20px;cursor:pointer;">
                       <input type="checkbox" id="cf-otc-toggle" onchange="cfToggleOTC()" style="opacity:0;width:0;height:0;">
                       <span id="cf-otc-slider" style="position:absolute;inset:0;border-radius:20px;background:rgba(255,255,255,0.08);transition:all 0.3s;border:1px solid rgba(255,255,255,0.12);">
-                        <span id="cf-otc-knob" style="position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#4b5675;transition:all 0.3s;"></span>
+                        <span id="cf-otc-knob" style="position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#7a9cc0;transition:all 0.3s;"></span>
                       </span>
                     </label>
                   </div>
@@ -1454,7 +1457,7 @@ app.get('/', (c) => {
                       </button>
                     </div>
                   </div>
-                  <div id="cf-ms-sum" style="font-size:11px;color:#3a4870;margin-top:6px;">Milestones sum: $0.00 USDC</div>
+                  <div id="cf-ms-sum" style="font-size:11px;color:#8aaac8;margin-top:6px;">Milestones sum: $0.00 USDC</div>
                 </div>
 
                 <!-- Submit button -->
@@ -1467,7 +1470,7 @@ app.get('/', (c) => {
 
               <!-- Tx steps panel -->
               <div id="cf-steps-panel" class="hidden mt-4 space-y-1.5" style="background:rgba(255,255,255,0.02);border:1px solid rgba(55,138,221,0.1);border-radius:12px;padding:14px;">
-                <p style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;margin-bottom:10px;">TRANSACTION PIPELINE</p>
+                <p style="font-size:10px;color:#8aaac8;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;margin-bottom:10px;">TRANSACTION PIPELINE</p>
                 <div id="cf-step-0" class="ct-step ct-step-idle flex items-center gap-2.5">
                   <div class="ct-step-icon w-6 h-6 rounded-lg flex items-center justify-center text-xs flex-shrink-0"><i class="fas fa-network-wired"></i></div>
                   <span class="text-xs">Verify Arc Testnet network</span>
@@ -1524,9 +1527,9 @@ app.get('/', (c) => {
           <div id="cf-contracts-list">
             <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px 0;text-align:center;">
               <div style="width:56px;height:56px;border-radius:16px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.12);display:flex;align-items:center;justify-content:center;">
-                <i class="fas fa-wallet" style="color:#3a4870;font-size:22px;"></i>
+                <i class="fas fa-wallet" style="color:#7a9ab8;font-size:22px;"></i>
               </div>
-              <p style="color:#3a4870;font-size:13px;">Connect your wallet to load on-chain contracts.</p>
+              <p style="color:#8aaac8;font-size:13px;">Connect your wallet to load on-chain contracts.</p>
             </div>
           </div>
         </div>

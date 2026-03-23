@@ -515,8 +515,8 @@ details > summary .fa-chevron-down { transition: transform 0.2s ease; }
   background: rgba(31,41,55,0.6);
   flex-shrink: 0;
 }
-.ct-step.ct-step-idle .ct-step-icon i { color: #4b5563; }
-.ct-step.ct-step-idle { color: #6b7280; }
+.ct-step.ct-step-idle .ct-step-icon i { color: #5a7090; }
+.ct-step.ct-step-idle { color: #6080a0; }
 
 .ct-step.ct-step-active .ct-step-icon {
   border-color: #22c55e;
@@ -1460,15 +1460,18 @@ body.light-mode .cf-panel {
 }
 body.light-mode .cf-input {
   background: #f8faff !important;
-  border-color: var(--lm-border) !important;
+  border-color: #b8c8dc !important;
   color: var(--lm-text-hi) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
 }
+body.light-mode .cf-input::placeholder { color: #6b8fb5 !important; }
+body.light-mode .cf-input:hover { border-color: #8aaace !important; }
 body.light-mode .cf-input:focus {
   border-color: #378ADD !important;
-  box-shadow: 0 0 0 3px rgba(55,138,221,0.12) !important;
+  box-shadow: 0 0 0 3px rgba(55,138,221,0.14) !important;
   background: #ffffff !important;
 }
-body.light-mode .cf-label { color: #607090 !important; }
+body.light-mode .cf-label { color: #2d5480 !important; font-weight: 700 !important; }
 body.light-mode .cf-card {
   background: var(--lm-bg-raised) !important;
   border-color: var(--lm-border) !important;
@@ -1483,16 +1486,19 @@ body.light-mode .pay-cf-panel {
 }
 body.light-mode .pay-cf-input {
   background: #f8faff !important;
-  border-color: var(--lm-border) !important;
+  border-color: #b8c8dc !important;
   color: var(--lm-text-hi) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
 }
+body.light-mode .pay-cf-input::placeholder { color: #6b8fb5 !important; }
+body.light-mode .pay-cf-input:hover { border-color: #8aaace !important; }
 body.light-mode .pay-cf-input:focus {
   border-color: #378ADD !important;
-  box-shadow: 0 0 0 3px rgba(55,138,221,0.12) !important;
+  box-shadow: 0 0 0 3px rgba(55,138,221,0.14) !important;
   background: #ffffff !important;
+  color: #0f172a !important;
 }
-body.light-mode .pay-cf-input::placeholder { color: #9baabb !important; }
-body.light-mode .pay-cf-label { color: #607090 !important; }
+body.light-mode .pay-cf-label { color: #2d5480 !important; font-weight: 700 !important; }
 body.light-mode .pay-side-panel {
   background: var(--lm-bg-card) !important;
   border-color: var(--lm-border) !important;
@@ -1507,7 +1513,7 @@ body.light-mode #pay-preview-box {
   border-color: var(--lm-border-soft) !important;
 }
 body.light-mode #pay-preview-box .prow { border-bottom-color: var(--lm-border-soft) !important; }
-body.light-mode #pay-preview-box .pk { color: #8090a8 !important; }
+body.light-mode #pay-preview-box .pk { color: #4a6888 !important; }
 body.light-mode #pay-preview-box .pv { color: var(--lm-text-hi) !important; }
 
 /* ── Chat widget in light mode ── */
@@ -1636,8 +1642,43 @@ body.light-mode #cf-steps-panel {
   background: var(--lm-bg-raised) !important;
   border-color: var(--lm-border) !important;
 }
-body.light-mode .pstep-idle  .pstep-label { color: #94a3b8 !important; }
-body.light-mode .pstep-done  .pstep-label { color: #a8b5c8 !important; }
+body.light-mode .pstep-idle  .pstep-label { color: #4a6888 !important; font-weight: 500 !important; }
+body.light-mode .pstep-done  .pstep-label { color: #7090b0 !important; }
+body.light-mode .pstep-idle  .pstep-icon { background: #eef3fa !important; border-color: #c8d8e8 !important; color: #4a6888 !important; }
+body.light-mode .ct-step-idle .ct-step-icon i { color: #4a6888 !important; }
+body.light-mode .ct-step-idle { color: #4a6888 !important; }
+body.light-mode .ct-step-done span { color: #7090b0 !important; }
+
+/* ── Preview box in light mode ── */
+body.light-mode #pay-preview-box {
+  background: #f0f5ff !important;
+  border-color: #c8d8ec !important;
+}
+body.light-mode #pay-preview-box .prow { border-bottom-color: #dde8f4 !important; }
+body.light-mode #pay-preview-box .pk { color: #4a6888 !important; font-weight: 600 !important; }
+body.light-mode #pay-preview-box .pv { color: #0f172a !important; font-weight: 700 !important; }
+
+/* ── Field hints in light mode ── */
+body.light-mode .pay-field-hint.ok  { color: #16803a !important; }
+body.light-mode .pay-field-hint.err { color: #dc2626 !important; }
+body.light-mode .pay-field-hint.info { color: #4a6888 !important; }
+
+/* ── Token buttons in light mode ── */
+body.light-mode .pay-tok-btn.tok-off { border-color: #c8d5e5 !important; color: #5070a0 !important; background: #f0f5ff !important; }
+
+/* ── Disabled send button in light mode ── */
+body.light-mode #pay-send-btn:disabled {
+  background: #e8eef8 !important;
+  border-color: #b8cce0 !important;
+  color: #6888a8 !important;
+}
+
+/* ── Fee preview & milestone sum ── */
+body.light-mode #cf-fee-preview,
+body.light-mode #cf-ms-sum { color: #4a6888 !important; }
+
+/* ── Cf-btn-disabled in light mode ── */
+body.light-mode .cf-btn-disabled { color: #6888a8 !important; background: #eef3fa !important; border-color: #c8d8e8 !important; }
 
 /* ── Amber / testnet banner — keep as-is (good contrast either mode) ── */
 body.light-mode #testnet-banner { /* no override — amber looks fine in light */ }
