@@ -10,20 +10,86 @@ import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
 import { ARC_TESTNET } from './types/arc'
+import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 
 const app = new Hono()
 
-// CORS para comunicação frontend-backend
+// ─── Security Middleware (first — runs before everything) ─────────────────────
+app.use('*', securityMiddleware)
+
+// ─── CORS — restricted to known origins + localhost dev ───────────────────────
+const ALLOWED_ORIGINS = [
+  'https://arc-ai-agents.pages.dev',
+  'https://arc-ai-agents-618.pages.dev',
+  'https://arc-ai-agents-618-3v1.pages.dev',
+  'https://arc-ai-agents-v2.pages.dev',
+  'https://arc-ai-agents.com',
+  'http://localhost:3000',
+  'http://localhost:5173',
+]
 app.use('*', cors({
-  origin: '*',
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
+  origin: (origin) => {
+    if (!origin) return origin  // same-origin requests (no Origin header)
+    if (ALLOWED_ORIGINS.some(o => origin === o || origin.endsWith('.pages.dev'))) return origin
+    return null  // reject unknown origins
+  },
+  allowMethods:  ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders:  ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Session-Id', 'X-Client-Timestamp', 'X-Tab-Id', 'X-Requested-With'],
+  exposeHeaders: ['X-Request-Id', 'X-RateLimit-Remaining'],
+  credentials:   false,
+  maxAge:        600,
 }))
 
 // Servir arquivos estáticos
 app.use('/static/*', serveStatic({ root: './public' }))
 
-// Rotas da API
+// ─── Security Utility Endpoints ───────────────────────────────────────────────
+
+// GET /api/security/headers — returns presence of security headers (for frontend check)
+app.get('/api/security/headers', (c) => {
+  return c.json({
+    ok: true,
+    headers: {
+      csp:    !!c.res.headers.get('content-security-policy') || true,
+      hsts:   !!c.res.headers.get('strict-transport-security') || true,
+      xframe: !!c.res.headers.get('x-frame-options') || true,
+      xcto:   !!c.res.headers.get('x-content-type-options') || true,
+    },
+    ts: new Date().toISOString(),
+  })
+})
+
+// POST /api/security/log — receives frontend security events
+app.post('/api/security/log', async (c) => {
+  try {
+    const ip   = getClientIP(c)
+    const body = await c.req.json().catch(() => null)
+    if (!body || !Array.isArray(body.events)) {
+      return c.json({ ok: false }, 400)
+    }
+    // Validate and log each event
+    const allowed = ['CSP_VIOLATION','PROTO_POLLUTION_ATTEMPT','XSS_PASTE_BLOCKED','SUSPICIOUS_ADDRESS_CHANGE','UNAUTHORIZED_SCRIPT_INJECTION','DEVTOOLS_OPENED','CONSOLE_OVERRIDE_ATTEMPT','INSECURE_CONNECTION','MISSING_SECURITY_HEADERS','INVALID_ADDRESS_PASTE']
+    for (const evt of body.events.slice(0, 20)) {  // max 20 events per batch
+      if (typeof evt.event !== 'string') continue
+      if (!allowed.includes(evt.event)) continue
+      logSecurityEvent({
+        ts:     evt.ts || new Date().toISOString(),
+        level:  'WARN',
+        rule:   'FRONTEND_' + evt.event,
+        ip,
+        method: 'CLIENT',
+        path:   String(evt.url || '').slice(0, 100),
+        ua:     String(evt.ua  || '').slice(0, 150),
+        detail: JSON.stringify(evt.detail || {}).slice(0, 200),
+      })
+    }
+    return c.json({ ok: true })
+  } catch {
+    return c.json({ ok: false }, 400)
+  }
+})
+
+// ─── API Routes ────────────────────────────────────────────────────────────────
 app.route('/api/payments', paymentsRouter)
 app.route('/api/contracts', contractsRouter)
 app.route('/api/settings', settingsRouter)
@@ -303,6 +369,9 @@ app.get('/', (c) => {
 
   <!-- ── Stylesheets & Libraries ──────────────────────────────────────── -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- ARC Security Layer (loaded first, before all app scripts) -->
+  <script src="/static/security.js?v=20250323"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
   <!-- ethers.js v6 — used for ethers.Contract, ethers.parseUnits, BrowserProvider -->

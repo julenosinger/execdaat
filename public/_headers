@@ -1,17 +1,73 @@
+# ARC AI Agents — Cloudflare Pages Security Headers
+# Applied at the CDN edge — runs BEFORE the Worker
+# These complement the headers set by the Hono security middleware
+
 /*
-  X-Frame-Options: DENY
-  X-Content-Type-Options: nosniff
-  X-XSS-Protection: 1; mode=block
-  Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  # Strict Transport Security — 2-year max-age, all subdomains, preload list
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src *; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';
+
+  # Prevent MIME-type sniffing (stops Content-Type confusion attacks)
+  X-Content-Type-Options: nosniff
+
+  # Clickjacking protection — only self-origin embeds allowed
+  X-Frame-Options: SAMEORIGIN
+
+  # Legacy XSS filter for IE/old Edge
+  X-XSS-Protection: 1; mode=block
+
+  # Referrer policy — don't leak path/query to third parties
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # Permissions Policy — disable unnecessary browser APIs
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(self), usb=(), magnetometer=(), accelerometer=(), gyroscope=(), fullscreen=(self), interest-cohort=()
+
+  # Cross-Origin policies
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+
+  # No cross-domain Flash/PDF policies
   X-Permitted-Cross-Domain-Policies: none
 
-/api/*
-  Access-Control-Allow-Origin: *
-  Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
-  Access-Control-Allow-Headers: Content-Type, Authorization
+  # Remove server fingerprinting
+  Server: ARC/1.0
 
+  # Content Security Policy
+  # - Scripts: self + known CDNs only (Tailwind, JSDelivr, cdnjs)
+  # - Styles:  self + CDNs + Google Fonts
+  # - Fonts:   self + JSDelivr + Google Fonts
+  # - Images:  self + data: + blob: (receipt viewer)
+  # - Connect: self + Arc Testnet RPCs + ArcScan
+  # - Frames:  self only (wallet providers)
+  # - Objects: none (no Flash/Java)
+  # - Workers: self + blob (service workers)
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.arcscan.app; connect-src 'self' https://rpc.testnet.arc.network https://rpc.blockdaemon.testnet.arc.network https://rpc.drpc.testnet.arc.network https://rpc.quicknode.testnet.arc.network wss://rpc.testnet.arc.network https://testnet.arcscan.app https://api.coingecko.com; media-src 'none'; object-src 'none'; frame-src 'self'; worker-src 'self' blob:; form-action 'self'; base-uri 'self'; manifest-src 'self'; upgrade-insecure-requests
+
+# API endpoints — no-cache, tight CORS
+/api/*
+  Cache-Control: no-store, no-cache, must-revalidate, private
+  Pragma: no-cache
+  Expires: 0
+  # CORS restricted to Pages origins — wildcard removed
+  Access-Control-Allow-Origin: https://arc-ai-agents.pages.dev
+  Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
+  Access-Control-Allow-Headers: Content-Type, Authorization, X-CSRF-Token, X-Session-Id, X-Client-Timestamp, X-Tab-Id, X-Requested-With
+  Access-Control-Max-Age: 600
+  Vary: Origin
+
+# Static assets — long cache with immutable flag (versioned filenames)
 /static/*
   Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+
+# Security JS — slightly shorter cache (for faster rollout of security fixes)
+/static/security.js
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+# HTML pages — no caching (always fresh)
+/*.html
+  Cache-Control: no-store
+
+# Service Worker (if added in future)
+/sw.js
+  Cache-Control: no-store, no-cache, must-revalidate
+  Service-Worker-Allowed: /

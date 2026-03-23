@@ -14,6 +14,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { isValidEthAddress, isValidTxHash, clampString, sanitizeForLog } from '../middleware/security';
 
 const dexRouter = new Hono();
 
@@ -358,27 +359,65 @@ dexRouter.post('/amm/deploy', async (c) => {
 // Records an on-chain swap (called after tx confirmed)
 const swapHistory: any[] = [];
 dexRouter.post('/swap/record', async (c) => {
-  const body = await c.req.json() as any;
-  swapHistory.unshift({
-    ...body,
-    id:        `swap-${Date.now()}`,
-    timestamp: Date.now(),
-  });
-  if (swapHistory.length > 100) swapHistory.pop();
-  return c.json({ success: true });
+  try {
+    const body = await c.req.json() as any;
+    if (!body || typeof body !== 'object') {
+      return c.json({ success: false, error: 'Invalid request body' }, 400);
+    }
+    // Validate critical fields if present
+    if (body.txHash && !isValidTxHash(body.txHash)) {
+      return c.json({ success: false, error: 'Invalid txHash format' }, 400);
+    }
+    if (body.walletAddress && !isValidEthAddress(body.walletAddress)) {
+      return c.json({ success: false, error: 'Invalid wallet address' }, 400);
+    }
+    // Sanitise string fields
+    const safe = {
+      fromToken:     clampString(String(body.fromToken  || ''), 10),
+      toToken:       clampString(String(body.toToken    || ''), 10),
+      amountIn:      typeof body.amountIn  === 'number' ? body.amountIn  : 0,
+      amountOut:     typeof body.amountOut === 'number' ? body.amountOut : 0,
+      txHash:        body.txHash        ? clampString(String(body.txHash),        66) : '',
+      walletAddress: body.walletAddress ? clampString(String(body.walletAddress), 42) : '',
+      status:        clampString(String(body.status || 'completed'), 20),
+    };
+    swapHistory.unshift({ ...safe, id: `swap-${Date.now()}`, timestamp: Date.now() });
+    if (swapHistory.length > 100) swapHistory.pop();
+    return c.json({ success: true });
+  } catch {
+    return c.json({ success: false, error: 'Invalid request' }, 400);
+  }
 });
 
 // ─── POST /api/dex/liquidity/record ──────────────────────────────────────────
 const liquidityHistory: any[] = [];
 dexRouter.post('/liquidity/record', async (c) => {
-  const body = await c.req.json() as any;
-  liquidityHistory.unshift({
-    ...body,
-    id:        `liq-${Date.now()}`,
-    timestamp: Date.now(),
-  });
-  if (liquidityHistory.length > 100) liquidityHistory.pop();
-  return c.json({ success: true });
+  try {
+    const body = await c.req.json() as any;
+    if (!body || typeof body !== 'object') {
+      return c.json({ success: false, error: 'Invalid request body' }, 400);
+    }
+    if (body.txHash && !isValidTxHash(body.txHash)) {
+      return c.json({ success: false, error: 'Invalid txHash format' }, 400);
+    }
+    if (body.walletAddress && !isValidEthAddress(body.walletAddress)) {
+      return c.json({ success: false, error: 'Invalid wallet address' }, 400);
+    }
+    const safe = {
+      action:        clampString(String(body.action || 'add'), 10),
+      tokenA:        clampString(String(body.tokenA || ''), 10),
+      tokenB:        clampString(String(body.tokenB || ''), 10),
+      amountA:       typeof body.amountA === 'number' ? body.amountA : 0,
+      amountB:       typeof body.amountB === 'number' ? body.amountB : 0,
+      txHash:        body.txHash        ? clampString(String(body.txHash),        66) : '',
+      walletAddress: body.walletAddress ? clampString(String(body.walletAddress), 42) : '',
+    };
+    liquidityHistory.unshift({ ...safe, id: `liq-${Date.now()}`, timestamp: Date.now() });
+    if (liquidityHistory.length > 100) liquidityHistory.pop();
+    return c.json({ success: true });
+  } catch {
+    return c.json({ success: false, error: 'Invalid request' }, 400);
+  }
 });
 
 // ─── GET /api/dex/history ─────────────────────────────────────────────────────
@@ -424,8 +463,15 @@ dexRouter.get('/pools', async (c) => {
 
 // Keep /api/dex/liquidity/add for backward compat
 dexRouter.post('/liquidity/add', async (c) => {
-  const body = await c.req.json() as any;
-  return c.json({ success: true, message: 'Recorded', data: body });
+  try {
+    const body = await c.req.json() as any;
+    if (!body || typeof body !== 'object') {
+      return c.json({ success: false, error: 'Invalid request body' }, 400);
+    }
+    return c.json({ success: true, message: 'Recorded' });
+  } catch {
+    return c.json({ success: false, error: 'Invalid request' }, 400);
+  }
 });
 
 export default dexRouter;

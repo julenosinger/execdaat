@@ -7,6 +7,7 @@
 // ========================================================
 
 import { Hono } from 'hono';
+import { isValidEthAddress, isValidTxHash } from '../middleware/security';
 
 const swapRouter = new Hono();
 
@@ -252,6 +253,12 @@ swapRouter.post('/execute', async (c) => {
       return c.json({ success: false, error: 'Campos obrigatórios: fromToken, toToken, amountIn, walletAddress' }, 400);
     if (!['USDC','EURC'].includes(fromToken.toUpperCase()))
       return c.json({ success: false, error: 'fromToken deve ser USDC ou EURC' }, 400);
+    // Validate wallet address format
+    if (!isValidEthAddress(walletAddress))
+      return c.json({ success: false, error: 'Invalid walletAddress format' }, 400);
+    // Validate txHash if provided
+    if (txHash && !isValidTxHash(txHash))
+      return c.json({ success: false, error: 'Invalid txHash format' }, 400);
 
     const amount = parseFloat(amountIn);
     if (isNaN(amount) || amount <= 0)
@@ -320,6 +327,11 @@ swapRouter.post('/execute', async (c) => {
 swapRouter.get('/history', (c) => {
   const limit  = Math.min(parseInt(c.req.query('limit') || '20'), 100);
   const wallet = c.req.query('wallet')?.toLowerCase();
+
+  // Validate wallet address if provided
+  if (wallet && !isValidEthAddress(wallet)) {
+    return c.json({ success: false, error: 'Invalid wallet address format' }, 400);
+  }
 
   let swaps = swapHistory;
   if (wallet) swaps = swaps.filter(s => s.walletAddress === wallet);

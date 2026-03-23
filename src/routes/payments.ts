@@ -2,6 +2,14 @@
 
 import { Hono } from 'hono';
 import { PaymentAgent } from '../agents/PaymentAgent';
+import {
+  clampString,
+  isValidEthAddress,
+  isValidTxHash,
+  isValidAmount,
+  sanitizeForLog,
+  stripTags,
+} from '../middleware/security';
 
 const paymentsRouter = new Hono();
 
@@ -283,28 +291,48 @@ paymentsRouter.post('/demo', async (c) => {
 // POST /api/payments/record — Save on-chain receipt from frontend
 paymentsRouter.post('/record', async (c) => {
   try {
-    const body = await c.req.json() as Partial<OnChainReceipt>;
+    const body = await c.req.json().catch(() => null) as Partial<OnChainReceipt> | null;
+    if (!body || typeof body !== 'object') {
+      return c.json({ success: false, error: 'Invalid request body' }, 400);
+    }
     const { txHash, sender, recipient, amount, token, timestamp } = body;
 
-    if (!txHash || !sender || !recipient || amount === undefined || !token) {
-      return c.json({ success: false, error: 'Missing required fields: txHash, sender, recipient, amount, token' }, 400);
+    // ── Strict validation ──────────────────────────────────────────────────
+    if (!txHash || !isValidTxHash(String(txHash))) {
+      return c.json({ success: false, error: 'Invalid or missing txHash' }, 400);
+    }
+    if (!sender || !isValidEthAddress(String(sender))) {
+      return c.json({ success: false, error: 'Invalid or missing sender address' }, 400);
+    }
+    if (!recipient || !isValidEthAddress(String(recipient))) {
+      return c.json({ success: false, error: 'Invalid or missing recipient address' }, 400);
+    }
+    if (amount === undefined || isNaN(Number(amount)) || Number(amount) <= 0) {
+      return c.json({ success: false, error: 'Invalid amount' }, 400);
+    }
+
+    const allowedTokens = ['USDC', 'EURC'];
+    if (!token || !allowedTokens.includes(String(token).toUpperCase())) {
+      return c.json({ success: false, error: 'Invalid token — must be USDC or EURC' }, 400);
     }
 
     const receipt: OnChainReceipt = {
-      txHash: String(txHash),
-      approveTxHash: body.approveTxHash || null,
-      sender: String(sender),
-      recipient: String(recipient),
-      amount: Number(amount),
-      token: String(token),
-      description: body.description || '',
-      gasFee: String(body.gasFee || '0'),
-      gasUsed: String(body.gasUsed || '0'),
-      network: body.network || 'Arc Testnet',
-      chainId: body.chainId || 5042002,
-      timestamp: timestamp || new Date().toISOString(),
-      durationMs: body.durationMs || 0,
-      explorerUrl: body.explorerUrl || `https://testnet.arcscan.app/tx/${txHash}`,
+      txHash:         String(txHash).toLowerCase(),
+      approveTxHash:  body.approveTxHash && isValidTxHash(String(body.approveTxHash)) ? String(body.approveTxHash) : null,
+      sender:         String(sender).toLowerCase(),
+      recipient:      String(recipient).toLowerCase(),
+      amount:         Number(amount),
+      token:          String(token).toUpperCase(),
+      description:    clampString(stripTags(String(body.description || '')), 300),
+      gasFee:         clampString(String(body.gasFee || '0'), 30),
+      gasUsed:        clampString(String(body.gasUsed || '0'), 20),
+      network:        'Arc Testnet',     // force — never trust client for network
+      chainId:        5042002,           // force — never trust client for chainId
+      timestamp:      timestamp && !isNaN(Date.parse(String(timestamp)))
+                        ? String(timestamp)
+                        : new Date().toISOString(),
+      durationMs:     Math.min(Number(body.durationMs) || 0, 60000),
+      explorerUrl:    `https://testnet.arcscan.app/tx/${txHash}`,  // build from txHash, not from client
     };
 
     // Avoid duplicate txHash
@@ -316,7 +344,7 @@ paymentsRouter.post('/record', async (c) => {
 
     return c.json({ success: true, receipt });
   } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
+    return c.json({ success: false, error: 'Internal error' }, 500);
   }
 });
 

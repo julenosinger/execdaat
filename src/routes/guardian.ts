@@ -2,6 +2,7 @@
 
 import { Hono } from 'hono';
 import { GuardianAgent } from '../agents/GuardianAgent';
+import { isValidEthAddress, clampString, isValidAmount } from '../middleware/security';
 
 const guardianRouter = new Hono();
 let agent: GuardianAgent | null = null;
@@ -37,9 +38,22 @@ guardianRouter.post('/check', async (c) => {
       return c.json({ success: false, error: 'Required: txType, fromAddress, amount' }, 400);
     }
 
+    // Validate address formats
+    if (!isValidEthAddress(fromAddress)) {
+      return c.json({ success: false, error: 'Invalid fromAddress format' }, 400);
+    }
+    if (toAddress && !isValidEthAddress(toAddress)) {
+      return c.json({ success: false, error: 'Invalid toAddress format' }, 400);
+    }
+
     const validTypes = ['payment', 'swap', 'vault_deposit', 'vault_withdraw', 'contract'];
     if (!validTypes.includes(txType)) {
       return c.json({ success: false, error: `txType must be one of: ${validTypes.join(', ')}` }, 400);
+    }
+
+    const amountStr = String(amount);
+    if (!isValidAmount(amountStr)) {
+      return c.json({ success: false, error: 'amount must be a positive number' }, 400);
     }
 
     const a = getAgent();
@@ -74,17 +88,24 @@ guardianRouter.post('/kyc/submit', async (c) => {
     if (!address) {
       return c.json({ success: false, error: 'address is required' }, 400);
     }
+    if (!isValidEthAddress(address)) {
+      return c.json({ success: false, error: 'Invalid Ethereum address format' }, 400);
+    }
     if (![1, 2, 3].includes(tier)) {
       return c.json({ success: false, error: 'tier must be 1, 2, or 3' }, 400);
     }
+    // Sanitise optional text fields
+    const safeCountry  = country      ? clampString(String(country),      100) : undefined;
+    const safeDocType  = documentType ? clampString(String(documentType), 50)  : undefined;
+    const safeName     = fullName     ? clampString(String(fullName),     100) : undefined;
 
     const a = getAgent();
-    const record = a.submitKYC(address, { tier, country, documentType, name: fullName });
+    const record = a.submitKYC(address, { tier, country: safeCountry, documentType: safeDocType, name: safeName });
 
     // Simulate fast auto-approval for tier 1 (< 2 min in testnet)
     setTimeout(() => {
       const updated = a.approveKYC(address, tier);
-      if (updated) console.log(`[Guardian] Auto-approved KYC for ${address} tier ${tier}`);
+    if (updated) console.log(`[Guardian] Auto-approved KYC for ${address.slice(0,10)}… tier ${tier}`);
     }, 5000 + Math.random() * 10000); // 5-15 sec for demo
 
     return c.json({
@@ -103,6 +124,7 @@ guardianRouter.post('/kyc/verify', async (c) => {
     const body = await c.req.json();
     const { address, tier } = body;
     if (!address) return c.json({ success: false, error: 'address required' }, 400);
+    if (!isValidEthAddress(address)) return c.json({ success: false, error: 'Invalid address format' }, 400);
 
     const a = getAgent();
     const record = a.approveKYC(address, tier);
@@ -117,6 +139,9 @@ guardianRouter.post('/kyc/verify', async (c) => {
 // ─── Get KYC for address ───────────────────────────────────────────────────
 guardianRouter.get('/kyc/:address', (c) => {
   const address = c.req.param('address');
+  if (!isValidEthAddress(address)) {
+    return c.json({ success: false, error: 'Invalid address format' }, 400);
+  }
   const a = getAgent();
   const record = a.getKYC(address);
 
@@ -158,7 +183,10 @@ guardianRouter.get('/kyc', (c) => {
 
 // ─── Compliance log ────────────────────────────────────────────────────────
 guardianRouter.get('/log', (c) => {
-  const limit = parseInt(c.req.query('limit') || '20');
+  const limit = Math.min(parseInt(c.req.query('limit') || '20'), 100);
+  if (isNaN(limit) || limit < 1) {
+    return c.json({ success: false, error: 'limit must be a positive integer' }, 400);
+  }
   const a = getAgent();
   return c.json({
     success: true,
@@ -177,6 +205,11 @@ guardianRouter.post('/scan', async (c) => {
     }
     if (addresses.length > 50) {
       return c.json({ success: false, error: 'Max 50 addresses per scan' }, 400);
+    }
+    // Validate each address
+    const invalidAddr = addresses.find((a: unknown) => typeof a !== 'string' || !isValidEthAddress(a));
+    if (invalidAddr !== undefined) {
+      return c.json({ success: false, error: 'One or more addresses have invalid format' }, 400);
     }
 
     const a = getAgent();

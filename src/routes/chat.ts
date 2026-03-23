@@ -1,6 +1,12 @@
 // Rota API para o Chatbot IA integrado com todos os módulos
 
 import { Hono } from 'hono';
+import {
+  clampString,
+  isValidSessionId,
+  sanitizeForLog,
+  stripTags,
+} from '../middleware/security';
 
 const chatRouter = new Hono();
 
@@ -381,15 +387,29 @@ async function generateResponse(
 // POST /api/chat/message - Enviar mensagem
 chatRouter.post('/message', async (c) => {
   try {
-    const body = await c.req.json();
-    const { message, sessionId = 'default' } = body;
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return c.json({ success: false, error: 'Invalid request body' }, 400);
+    }
 
-    if (!message || typeof message !== 'string') {
+    // ── Input validation & sanitization ─────────────────────────────────────
+    const rawMessage   = body.message;
+    const rawSessionId = body.sessionId;
+
+    if (!rawMessage || typeof rawMessage !== 'string') {
       return c.json({ success: false, error: 'Campo "message" é obrigatório' }, 400);
     }
-    if (message.length > 1000) {
-      return c.json({ success: false, error: 'Mensagem muito longa (max 1000 chars)' }, 400);
+
+    // Sanitize: strip HTML tags, control chars, clamp length
+    const message   = clampString(stripTags(rawMessage.trim()), 500);
+    if (!message) {
+      return c.json({ success: false, error: 'Message cannot be empty after sanitization' }, 400);
     }
+
+    // Session ID: alphanumeric only, 8-128 chars, default to 'default'
+    const sessionId = rawSessionId && typeof rawSessionId === 'string' && isValidSessionId(rawSessionId)
+      ? clampString(rawSessionId, 128)
+      : 'default';
 
     const session = getOrCreateSession(sessionId);
 

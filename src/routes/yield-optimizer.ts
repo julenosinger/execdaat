@@ -106,6 +106,9 @@ yieldRouter.post('/positions/:id/close', async (c) => {
     if (!txHash) {
       return c.json({ success: false, error: 'txHash required — sign the withdrawal on Arc Testnet' }, 400);
     }
+    if (!isValidTxHash(txHash)) {
+      return c.json({ success: false, error: 'Invalid txHash format' }, 400);
+    }
 
     const a = getAgent();
     const position = await a.closePosition(posId, txHash);
@@ -124,6 +127,9 @@ yieldRouter.post('/positions/:id/close', async (c) => {
 // ─── Get positions ─────────────────────────────────────────────────────────
 yieldRouter.get('/positions', (c) => {
   const walletAddress = c.req.query('wallet');
+  if (walletAddress && !isValidEthAddress(walletAddress)) {
+    return c.json({ success: false, error: 'Invalid wallet address format' }, 400);
+  }
   const a = getAgent();
   const positions = a.getPositions(walletAddress);
   return c.json({ success: true, positions, total: positions.length });
@@ -132,6 +138,9 @@ yieldRouter.get('/positions', (c) => {
 // ─── Analyze portfolio ─────────────────────────────────────────────────────
 yieldRouter.get('/analyze/:wallet', (c) => {
   const wallet = c.req.param('wallet');
+  if (!isValidEthAddress(wallet)) {
+    return c.json({ success: false, error: 'Invalid wallet address format' }, 400);
+  }
   const a = getAgent();
   const analysis = a.analyzePortfolio(wallet);
   return c.json({ success: true, ...analysis, wallet });

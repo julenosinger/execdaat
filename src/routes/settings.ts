@@ -1,4 +1,11 @@
 import { Hono } from 'hono'
+import {
+  clampString,
+  isValidEmail,
+  isValidEthAddress,
+  sanitizeForLog,
+  stripTags,
+} from '../middleware/security'
 
 const router = new Hono()
 
@@ -131,18 +138,38 @@ router.post('/verify-pin', async (c) => {
 
 // ─── PUT /api/settings/profile ── salvar perfil ──────────────────────────────
 router.put('/profile', async (c) => {
-  const body = await c.req.json()
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== 'object') {
+    return c.json({ success: false, error: 'Invalid request body' }, 400)
+  }
   const { name, email, role, company, walletAddress } = body
+
+  // Validate & sanitize each field
+  const cleanName    = clampString(stripTags(String(name    || '').trim()), 100)
+  const cleanRole    = clampString(stripTags(String(role    || '').trim()), 50)
+  const cleanCompany = clampString(stripTags(String(company || '').trim()), 100)
+
+  // Email validation
+  const cleanEmail = email ? String(email).trim().toLowerCase() : ''
+  if (cleanEmail && !isValidEmail(cleanEmail)) {
+    return c.json({ success: false, error: 'Invalid email address format' }, 400)
+  }
+
+  // Wallet address validation
+  const cleanWallet = walletAddress ? String(walletAddress).trim() : ''
+  if (cleanWallet && !isValidEthAddress(cleanWallet)) {
+    return c.json({ success: false, error: 'Invalid wallet address format' }, 400)
+  }
 
   settingsStore.profile = {
     ...settingsStore.profile,
-    name: name?.trim() || settingsStore.profile.name,
-    email: email?.trim() || settingsStore.profile.email,
-    role: role?.trim() || settingsStore.profile.role,
-    company: company?.trim() || settingsStore.profile.company,
-    walletAddress: walletAddress?.trim() || settingsStore.profile.walletAddress,
-    avatarInitials: name ? name.trim().split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) : settingsStore.profile.avatarInitials,
-    updatedAt: new Date().toISOString(),
+    name:            cleanName    || settingsStore.profile.name,
+    email:           cleanEmail   || settingsStore.profile.email,
+    role:            cleanRole    || settingsStore.profile.role,
+    company:         cleanCompany || settingsStore.profile.company,
+    walletAddress:   cleanWallet  || settingsStore.profile.walletAddress,
+    avatarInitials:  cleanName ? cleanName.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) : settingsStore.profile.avatarInitials,
+    updatedAt:       new Date().toISOString(),
   }
   settingsStore.updatedAt = new Date().toISOString()
 
@@ -151,18 +178,27 @@ router.put('/profile', async (c) => {
 
 // ─── PUT /api/settings/circle ── salvar Circle API config ────────────────────
 router.put('/circle', async (c) => {
-  const body = await c.req.json()
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== 'object') {
+    return c.json({ success: false, error: 'Invalid request body' }, 400)
+  }
   const { apiKey, environment, webhookSecret } = body
 
-  // Só atualiza se o campo não for placeholder de mascaramento (••••••)
-  if (apiKey && !apiKey.includes('•')) {
-    settingsStore.circle.apiKey = apiKey.trim()
+  // Validate environment value against allowlist
+  const allowedEnvs = ['sandbox', 'production']
+  if (environment && !allowedEnvs.includes(String(environment))) {
+    return c.json({ success: false, error: 'Invalid environment value' }, 400)
   }
-  if (webhookSecret && !webhookSecret.includes('•')) {
-    settingsStore.circle.webhookSecret = webhookSecret.trim()
+
+  // Só atualiza se o campo não for placeholder de mascaramento (••••••)
+  if (apiKey && typeof apiKey === 'string' && !apiKey.includes('•')) {
+    settingsStore.circle.apiKey = clampString(apiKey.trim(), 256)
+  }
+  if (webhookSecret && typeof webhookSecret === 'string' && !webhookSecret.includes('•')) {
+    settingsStore.circle.webhookSecret = clampString(webhookSecret.trim(), 256)
   }
   if (environment) {
-    settingsStore.circle.environment = environment
+    settingsStore.circle.environment = String(environment)
   }
 
   // Reset conexão ao mudar config
