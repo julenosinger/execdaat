@@ -1710,6 +1710,87 @@ body { transition: background-color 0.25s ease, color 0.2s ease; }
   transition-timing-function: ease;
 }
 
+/* ── Payment Note (light mode) ── */
+body.light-mode .pay-note-input {
+  background: #f8faff !important;
+  border-color: #b8c8dc !important;
+  color: var(--lm-text-hi) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+body.light-mode .pay-note-input::placeholder { color: #6b8fb5 !important; }
+body.light-mode .pay-note-input:focus {
+  border-color: #378ADD !important;
+  box-shadow: 0 0 0 3px rgba(55,138,221,0.12) !important;
+  background: #ffffff !important;
+}
+body.light-mode .pay-note-counter { color: #4a6888 !important; }
+body.light-mode .pay-note-counter.warn { color: #b45309 !important; }
+body.light-mode .pay-note-counter.over { color: #dc2626 !important; }
+
+/* ── Schedule Panel (light mode) ── */
+body.light-mode .pay-sched-panel {
+  background: rgba(55,138,221,0.03) !important;
+  border-color: #c8d8ec !important;
+}
+body.light-mode .pay-sched-opt {
+  background: #f4f8ff !important;
+  border-color: #c8d8ec !important;
+  color: #4a6888 !important;
+}
+body.light-mode .pay-sched-opt.active-now {
+  background: rgba(55,138,221,0.1) !important;
+  border-color: #378ADD !important;
+  color: #1a4a80 !important;
+}
+body.light-mode .pay-sched-opt.active-later {
+  background: rgba(124,58,237,0.08) !important;
+  border-color: rgba(124,58,237,0.4) !important;
+  color: #5b21b6 !important;
+}
+body.light-mode .pay-sched-hint { color: #5b21b6 !important; }
+body.light-mode .pay-sched-hint.ok  { color: #15803d !important; }
+body.light-mode .pay-sched-hint.err { color: #dc2626 !important; }
+body.light-mode #pay-sched-date,
+body.light-mode #pay-sched-time,
+body.light-mode #pay-sched-tz {
+  background: #f8faff !important;
+  border-color: #b8c8dc !important;
+  color: var(--lm-text-hi) !important;
+}
+body.light-mode #pay-sched-date:focus,
+body.light-mode #pay-sched-time:focus,
+body.light-mode #pay-sched-tz:focus {
+  border-color: #378ADD !important;
+  box-shadow: 0 0 0 3px rgba(55,138,221,0.12) !important;
+  background: #ffffff !important;
+}
+
+/* ── Status badges (light mode) ── */
+body.light-mode .pay-status-scheduled  { background: rgba(124,58,237,0.08) !important; border-color: rgba(124,58,237,0.3) !important; color: #5b21b6 !important; }
+body.light-mode .pay-status-processing { background: rgba(37,99,235,0.08) !important; border-color: rgba(37,99,235,0.3) !important; color: #1d4ed8 !important; }
+body.light-mode .pay-status-completed  { background: rgba(22,163,74,0.08) !important; border-color: rgba(22,163,74,0.3) !important; color: #15803d !important; }
+body.light-mode .pay-status-failed     { background: rgba(220,38,38,0.07) !important; border-color: rgba(220,38,38,0.25) !important; color: #dc2626 !important; }
+
+/* ── Receipt Modal (light mode) ── */
+body.light-mode #pay-receipt-modal { background: rgba(10,20,50,0.65) !important; }
+body.light-mode .pay-receipt-modal-inner {
+  background: #ffffff !important;
+  border-color: #c8d8ec !important;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.18) !important;
+}
+body.light-mode .pay-receipt-modal-inner::-webkit-scrollbar-thumb { background: rgba(55,138,221,0.2) !important; }
+
+/* ── History cards in light mode ── */
+body.light-mode #pay-history-list > div,
+body.light-mode #payments-list > div {
+  background: rgba(55,138,221,0.03) !important;
+  border-color: #c8d8ec !important;
+}
+body.light-mode #pay-history-list > div:hover,
+body.light-mode #payments-list > div:hover {
+  border-color: #378ADD !important;
+}
+
 /* History tx row */
 .history-tx-row {
   transition: all 0.15s ease;

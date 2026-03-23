@@ -309,7 +309,7 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20250323b" rel="stylesheet">
+  <link href="/static/styles.css?v=20250323c" rel="stylesheet">
   <script src="/static/i18n.js?v=20250322"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
@@ -961,6 +961,69 @@ app.get('/', (c) => {
         .pay-field-hint.err  { color:#f87171; font-weight:600; }
         .pay-field-hint.info { color:#8aaccc; }
 
+        /* ── Note textarea ── */
+        .pay-note-input {
+          background:rgba(255,255,255,0.05) !important;
+          border:1px solid rgba(55,138,221,0.28) !important;
+          border-radius:12px !important;
+          color:#e8edf8 !important;
+          resize:vertical; min-height:64px; max-height:120px;
+          transition:all 0.2s; outline:none !important;
+          width:100%; box-sizing:border-box; font-size:12px !important;
+          font-family:inherit !important;
+        }
+        .pay-note-input::placeholder { color:#6a85aa !important; }
+        .pay-note-input:hover  { border-color:rgba(55,138,221,0.5) !important; }
+        .pay-note-input:focus  { border-color:rgba(55,138,221,0.75) !important; box-shadow:0 0 0 3px rgba(55,138,221,0.14) !important; background:rgba(55,138,221,0.06) !important; }
+        .pay-note-counter { font-size:10px; color:#7a9cc0; text-align:right; margin-top:3px; }
+        .pay-note-counter.warn { color:#fbbf24; }
+        .pay-note-counter.over { color:#f87171; }
+
+        /* ── Schedule section ── */
+        .pay-sched-panel {
+          background:rgba(55,138,221,0.04);
+          border:1px solid rgba(55,138,221,0.18);
+          border-radius:14px; padding:14px 16px;
+          transition:all 0.3s;
+        }
+        .pay-sched-toggle { display:flex; gap:6px; }
+        .pay-sched-opt {
+          flex:1; padding:7px 10px; border-radius:9px;
+          border:1px solid rgba(55,138,221,0.22);
+          background:rgba(255,255,255,0.03);
+          color:#8aaac8; font-size:11px; font-weight:700;
+          cursor:pointer; transition:all 0.2s; text-align:center;
+        }
+        .pay-sched-opt.active-now   { background:rgba(55,138,221,0.18); border-color:rgba(55,138,221,0.6); color:#60b4ff; }
+        .pay-sched-opt.active-later { background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.5); color:#c4b5fd; }
+        .pay-sched-opt:hover:not(.active-now):not(.active-later) { border-color:rgba(55,138,221,0.4); color:#a8c4e0; }
+        #pay-sched-inputs { margin-top:12px; display:grid; grid-template-columns:1fr 1fr; gap:8px; animation:fadeIn 0.25s ease; }
+        .pay-sched-hint { font-size:10px; color:#c4b5fd; margin-top:4px; display:flex; align-items:center; gap:5px; }
+        .pay-sched-hint.err { color:#f87171; }
+        .pay-sched-hint.ok  { color:#34d399; }
+
+        /* ── Status badges (history) ── */
+        .pay-status-scheduled  { background:rgba(167,139,250,0.12); border:1px solid rgba(167,139,250,0.35); color:#c4b5fd; border-radius:20px; padding:2px 9px; font-size:9px; font-weight:700; letter-spacing:0.04em; }
+        .pay-status-processing  { background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.35); color:#93c5fd; border-radius:20px; padding:2px 9px; font-size:9px; font-weight:700; letter-spacing:0.04em; }
+        .pay-status-completed   { background:rgba(52,211,153,0.1); border:1px solid rgba(52,211,153,0.35); color:#34d399; border-radius:20px; padding:2px 9px; font-size:9px; font-weight:700; letter-spacing:0.04em; }
+        .pay-status-failed      { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#f87171; border-radius:20px; padding:2px 9px; font-size:9px; font-weight:700; letter-spacing:0.04em; }
+
+        /* ── Receipt Modal ── */
+        #pay-receipt-modal {
+          position:fixed; inset:0; z-index:9999;
+          background:rgba(5,5,20,0.88); backdrop-filter:blur(8px);
+          display:none; align-items:center; justify-content:center; padding:16px;
+        }
+        #pay-receipt-modal.open { display:flex; animation:modal-in 0.25s ease; }
+        .pay-receipt-modal-inner {
+          background:rgba(10,12,24,0.99);
+          border:1px solid rgba(55,138,221,0.25);
+          border-radius:20px; width:100%; max-width:520px;
+          max-height:90vh; overflow-y:auto; position:relative;
+        }
+        .pay-receipt-modal-inner::-webkit-scrollbar { width:4px; }
+        .pay-receipt-modal-inner::-webkit-scrollbar-thumb { background:rgba(55,138,221,0.3); border-radius:4px; }
+
         /* ── Token selector buttons ── */
         .pay-tok-btn {
           padding:5px 14px; border-radius:8px;
@@ -1173,6 +1236,62 @@ app.get('/', (c) => {
                   <div id="pay-hint-amount" class="pay-field-hint"></div>
                 </div>
 
+                <!-- Payment Note -->
+                <div>
+                  <label class="pay-cf-label">
+                    <i class="fas fa-sticky-note" style="color:#a78bfa;"></i>
+                    PAYMENT NOTE
+                    <span class="opt">(optional)</span>
+                  </label>
+                  <textarea id="pay-note" class="pay-note-input px-3 py-2"
+                    placeholder="e.g. Freelance payment, invoice #123, salary…"
+                    maxlength="300"
+                    oninput="payUpdateNoteCounter(); updatePayPreview(); payValidateForm()"
+                    rows="2"></textarea>
+                  <div class="pay-note-counter"><span id="pay-note-count">0</span>/300</div>
+                </div>
+
+                <!-- Schedule Payment -->
+                <div class="pay-sched-panel">
+                  <div class="pay-cf-label" style="margin-bottom:10px;">
+                    <i class="fas fa-clock" style="color:#a78bfa;"></i>
+                    SEND TIMING
+                  </div>
+                  <div class="pay-sched-toggle">
+                    <button type="button" class="pay-sched-opt active-now" id="pay-sched-now" onclick="paySetSchedule('now')">
+                      <i class="fas fa-bolt" style="margin-right:4px;"></i>Send Now
+                    </button>
+                    <button type="button" class="pay-sched-opt" id="pay-sched-later" onclick="paySetSchedule('later')">
+                      <i class="fas fa-calendar-alt" style="margin-right:4px;"></i>Schedule for Later
+                    </button>
+                  </div>
+                  <div id="pay-sched-inputs" style="display:none;">
+                    <div>
+                      <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;margin-top:2px;">
+                        <i class="fas fa-calendar" style="color:#60b4ff;"></i>DATE
+                      </label>
+                      <input type="date" id="pay-sched-date" class="pay-cf-input px-3 py-2 text-sm"
+                        oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
+                    </div>
+                    <div>
+                      <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;margin-top:2px;">
+                        <i class="fas fa-clock" style="color:#60b4ff;"></i>TIME
+                      </label>
+                      <input type="time" id="pay-sched-time" class="pay-cf-input px-3 py-2 text-sm"
+                        oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
+                    </div>
+                    <div style="grid-column:1/-1;">
+                      <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;">
+                        <i class="fas fa-globe" style="color:#34d399;"></i>TIMEZONE
+                      </label>
+                      <select id="pay-sched-tz" class="pay-cf-input px-3 py-2 text-sm"
+                        oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
+                      </select>
+                    </div>
+                    <div id="pay-sched-hint" class="pay-sched-hint" style="grid-column:1/-1;"></div>
+                  </div>
+                </div>
+
                 <!-- Preview box -->
                 <div id="pay-preview-box">
                   <div class="prow"><span class="pk">Token</span><span id="prev-token" class="pv" style="color:#60b4ff;">USDC</span></div>
@@ -1180,6 +1299,8 @@ app.get('/', (c) => {
                   <div class="prow"><span class="pk">To</span><span id="prev-recipient" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
                   <div class="prow"><span class="pk">From</span><span id="pay-from-display" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
                   <div class="prow"><span class="pk">Network</span><span id="prev-network" class="pv" style="color:#34d399;">Arc Testnet</span></div>
+                  <div class="prow" id="prev-sched-row" style="display:none;"><span class="pk">Scheduled</span><span id="prev-sched" class="pv" style="color:#c4b5fd;">—</span></div>
+                  <div class="prow" id="prev-note-row" style="display:none;"><span class="pk">Note</span><span id="prev-note" class="pv" style="color:#a8c4e0;font-style:italic;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span></div>
                   <div class="prow"><span class="pk">Est. Fee</span><span id="prev-gas" class="pv" style="color:#fbbf24;">~1 tx</span></div>
                 </div>
 
@@ -1218,14 +1339,21 @@ app.get('/', (c) => {
 
           <!-- Success + Receipt -->
           <div id="pay-success-panel">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-              <div style="width:36px;height:36px;border-radius:10px;background:rgba(29,158,117,0.15);border:1px solid rgba(29,158,117,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                <i class="fas fa-check" style="color:#34d399;font-size:14px;"></i>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;border-radius:10px;background:rgba(29,158,117,0.15);border:1px solid rgba(29,158,117,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <i class="fas fa-check" style="color:#34d399;font-size:14px;"></i>
+                </div>
+                <div>
+                  <p style="color:#34d399;font-size:14px;font-weight:800;margin:0;">Payment Confirmed!</p>
+                  <p style="color:#7a9ab8;font-size:11px;margin:2px 0 0;">Transaction submitted to Arc Testnet</p>
+                </div>
               </div>
-              <div>
-                <p style="color:#34d399;font-size:14px;font-weight:800;margin:0;">Payment Confirmed!</p>
-                <p style="color:#7a9ab8;font-size:11px;margin:2px 0 0;">Transaction submitted to Arc Testnet</p>
-              </div>
+              <button onclick="payOpenReceiptModal()"
+                style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.35);border-radius:10px;color:#60b4ff;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;"
+                onmouseover="this.style.background='rgba(55,138,221,0.22)'" onmouseout="this.style.background='rgba(55,138,221,0.12)'">
+                <i class="fas fa-eye"></i> View Receipt
+              </button>
             </div>
             <div id="pay-receipt-content"></div>
           </div>
@@ -1277,9 +1405,24 @@ app.get('/', (c) => {
 
         </div><!-- end right col -->
       </div><!-- end #pay-page -->
-    </div>
 
-    <!-- CONTRACTS TAB -->
+      <!-- ══ RECEIPT MODAL ══ -->
+      <div id="pay-receipt-modal" onclick="if(event.target===this)payCloseReceiptModal()">
+        <div class="pay-receipt-modal-inner">
+          <div style="height:2px;background:linear-gradient(90deg,transparent,#378ADD 40%,#1D9E75 60%,transparent);border-radius:20px 20px 0 0;"></div>
+          <div style="padding:20px 22px 0;display:flex;align-items:center;justify-content:space-between;">
+            <span style="color:#dde2f0;font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-receipt" style="color:#34d399;"></i>Payment Receipt
+            </span>
+            <button onclick="payCloseReceiptModal()"
+              style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#8aaac8;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all 0.2s;"
+              onmouseover="this.style.background='rgba(239,68,68,0.12)';this.style.color='#f87171'" onmouseout="this.style.background='rgba(255,255,255,0.05)';this.style.color='#8aaac8'">✕</button>
+          </div>
+          <div id="pay-receipt-modal-body" style="padding:18px 22px 22px;"></div>
+        </div>
+      </div>
+
+    </div><!-- end tab-content-payments -->
     <div id="tab-content-contracts" class="tab-content hidden">
 
       <!-- ══ CONTRACTS STYLES ══ -->
@@ -3428,7 +3571,7 @@ app.get('/', (c) => {
   <script src="/static/wallet.js?v=20250322"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/app.js?v=20250322"></script>
-  <script src="/static/payments.js?v=20250322e"></script>
+  <script src="/static/payments.js?v=20250323a"></script>
   <script src="/static/contracts.js?v=20250322"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
