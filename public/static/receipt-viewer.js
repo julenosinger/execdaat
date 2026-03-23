@@ -126,14 +126,16 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:
 </div>
 
 <div class="sec">Sender Information</div>
-${row('Full Name', r.fullname || '—')}
-${row('Email', r.email || '—')}
+${r.fullname ? row('Sender Name', r.fullname) : ''}
+${r.email    ? row('Sender Email', r.email)   : ''}
 ${row('From Wallet', `<span class="mono">${r.sender || r.from || '—'}</span>`)}
 
 <div class="sec">Payment Details</div>
 ${row('Token', `<span style="color:#2563eb;font-weight:700">${r.token}</span>`)}
 ${row('Amount', `<strong>${Number(r.amount).toFixed(6)} ${r.token}</strong>`)}
 ${row('Recipient', `<span class="mono">${r.recipient || '—'}</span>`)}
+${r.recipientName  ? row('Recipient Name',  r.recipientName)  : ''}
+${r.recipientEmail ? row('Recipient Email', r.recipientEmail) : ''}
 ${row('Network', `<span style="color:#059669">${r.network || 'Arc Testnet'}</span>`)}
 ${r.note ? row('Note', `<em>${r.note}</em>`) : ''}
 ${r.scheduledAt ? row('Scheduled For', new Date(r.scheduledAt).toLocaleString()) : ''}

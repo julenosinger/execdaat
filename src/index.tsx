@@ -1269,6 +1269,43 @@ app.get('/', (c) => {
                   <div id="pay-hint-recipient" class="pay-field-hint"></div>
                 </div>
 
+                <!-- Recipient name + email (optional) -->
+                <div style="background:rgba(29,158,117,0.05);border:1px solid rgba(29,158,117,0.18);border-radius:12px;padding:12px 14px 10px;">
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;">
+                    <div style="width:22px;height:22px;border-radius:7px;background:rgba(29,158,117,0.14);border:1px solid rgba(29,158,117,0.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                      <i class="fas fa-user-check" style="color:#34d399;font-size:10px;"></i>
+                    </div>
+                    <span style="color:#34d399;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Recipient Info</span>
+                    <span style="color:#5a8070;font-size:9px;font-weight:400;text-transform:none;letter-spacing:0;">(optional — for records &amp; receipt)</span>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div>
+                      <label class="pay-cf-label" style="color:#4a9470;">
+                        <i class="fas fa-user" style="color:#34d399;"></i>
+                        RECIPIENT NAME
+                        <span class="opt">(optional)</span>
+                      </label>
+                      <input type="text" id="pay-recipient-name" class="pay-cf-input px-3 py-2 text-sm"
+                        placeholder="Recipient's name"
+                        autocomplete="off"
+                        oninput="updatePayPreview(); payValidateForm()">
+                      <div id="pay-hint-recipient-name" class="pay-field-hint"></div>
+                    </div>
+                    <div>
+                      <label class="pay-cf-label" style="color:#4a9470;">
+                        <i class="fas fa-envelope" style="color:#34d399;"></i>
+                        RECIPIENT EMAIL
+                        <span class="opt">(optional)</span>
+                      </label>
+                      <input type="email" id="pay-recipient-email" class="pay-cf-input px-3 py-2 text-sm"
+                        placeholder="recipient@example.com"
+                        autocomplete="off"
+                        oninput="payValidateField('recipientEmail'); updatePayPreview(); payValidateForm()">
+                      <div id="pay-hint-recipient-email" class="pay-field-hint"></div>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Amount -->
                 <div>
                   <label class="pay-cf-label">
@@ -1348,6 +1385,8 @@ app.get('/', (c) => {
                   <div class="prow"><span class="pk">Token</span><span id="prev-token" class="pv" style="color:#60b4ff;">USDC</span></div>
                   <div class="prow"><span class="pk">Amount</span><span id="prev-amount" class="pv">—</span></div>
                   <div class="prow"><span class="pk">To</span><span id="prev-recipient" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
+                  <div class="prow" id="prev-recipient-name-row" style="display:none;"><span class="pk">Recipient</span><span id="prev-recipient-name" class="pv" style="color:#34d399;">—</span></div>
+                  <div class="prow" id="prev-recipient-email-row" style="display:none;"><span class="pk">Recip. Email</span><span id="prev-recipient-email-display" class="pv" style="color:#34d399;">—</span></div>
                   <div class="prow"><span class="pk">From</span><span id="pay-from-display" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
                   <div class="prow"><span class="pk">Network</span><span id="prev-network" class="pv" style="color:#34d399;">Arc Testnet</span></div>
                   <div class="prow" id="prev-sched-row" style="display:none;"><span class="pk">Scheduled</span><span id="prev-sched" class="pv" style="color:#c4b5fd;">—</span></div>
@@ -3643,9 +3682,9 @@ app.get('/', (c) => {
   <script src="/static/wallet.js?v=20250322"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.js?v=20250323"></script>
-  <script src="/static/receipt-viewer.js?v=20250323"></script>
+  <script src="/static/receipt-viewer.js?v=20250323b"></script>
   <script src="/static/app.js?v=20250322"></script>
-  <script src="/static/payments.js?v=20250323c"></script>
+  <script src="/static/payments.js?v=20250323d"></script>
   <script src="/static/contracts.js?v=20250323c"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
