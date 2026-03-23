@@ -108,6 +108,9 @@ const CHAT_SIZES = {
                   border-radius 0.3s ease,
                   opacity 0.25s ease, transform 0.25s ease;
     }
+    /* Drag handle cursor */
+    #chat-header { cursor: grab; user-select: none; }
+    #chat-header:active { cursor: grabbing; }
     #chat-messages { scrollbar-width: thin; scrollbar-color: #4c1d95 #111827; }
     #chat-messages::-webkit-scrollbar { width: 4px; }
     #chat-messages::-webkit-scrollbar-track { background: #111827; }
@@ -249,6 +252,8 @@ function toggleChat() {
   if (chatOpen) {
     applyChatSize(chatSize, false);
     widget.classList.remove('hidden');
+    // Restore dragged position if saved
+    if (typeof window._chatRestorePos === 'function') window._chatRestorePos();
     widget.style.opacity = '0';
     widget.style.transform = 'translateY(16px) scale(0.97)';
     requestAnimationFrame(() => {
@@ -297,6 +302,161 @@ function applyChatSize(size, animate = true) {
   widget.setAttribute('data-size', size);
   if (!animate) requestAnimationFrame(() => { widget.style.transition = ''; });
 }
+
+// ── Drag-to-move logic ─────────────────────────────────────────────────────────
+(function initChatDrag() {
+  const STORAGE_KEY = 'arc-chat-pos';
+
+  // State
+  let dragging    = false;
+  let offsetX     = 0;
+  let offsetY     = 0;
+  let dragWidget  = null;
+
+  // Clamp a value between min and max
+  function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+
+  // Convert bottom/right (default) into top/left for absolute positioning
+  function pinToTopLeft(widget) {
+    const rect = widget.getBoundingClientRect();
+    widget.style.top    = rect.top  + 'px';
+    widget.style.left   = rect.left + 'px';
+    widget.style.bottom = 'auto';
+    widget.style.right  = 'auto';
+  }
+
+  // Keep widget inside viewport
+  function clampToViewport(widget, left, top) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const w  = widget.offsetWidth  || 400;
+    const h  = widget.offsetHeight || 560;
+    return {
+      left: clamp(left, 0, vw - w),
+      top:  clamp(top,  0, vh - h),
+    };
+  }
+
+  // Persist position
+  function savePos(left, top) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ left, top })); } catch {}
+  }
+
+  // Restore persisted position
+  function restorePos(widget) {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const { left, top } = JSON.parse(raw);
+      const clamped = clampToViewport(widget, left, top);
+      widget.style.left   = clamped.left + 'px';
+      widget.style.top    = clamped.top  + 'px';
+      widget.style.bottom = 'auto';
+      widget.style.right  = 'auto';
+    } catch {}
+  }
+
+  function onPointerDown(e) {
+    // Only drag on primary button / single touch; ignore if target is a button/input
+    const tag = (e.target || e.srcElement).tagName;
+    if (['BUTTON','INPUT','SELECT','TEXTAREA','A','I'].includes(tag)) return;
+
+    dragWidget = document.getElementById('chat-widget');
+    if (!dragWidget || dragWidget.classList.contains('hidden')) return;
+
+    // For "full" size don't drag
+    if (dragWidget.getAttribute('data-size') === 'full') return;
+
+    // Convert to top/left if still using bottom/right
+    pinToTopLeft(dragWidget);
+
+    const rect = dragWidget.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    offsetX = clientX - rect.left;
+    offsetY = clientY - rect.top;
+    dragging = true;
+
+    // Disable size transitions while dragging
+    dragWidget.style.transition = 'opacity 0.25s ease, transform 0.25s ease, box-shadow 0.2s ease';
+    dragWidget.style.boxShadow  = '0 24px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(139,92,246,0.35)';
+    dragWidget.style.transform  = 'scale(1.02)';
+    document.body.style.userSelect = 'none';
+
+    const header = document.getElementById('chat-header');
+    if (header) header.style.cursor = 'grabbing';
+
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function onPointerMove(e) {
+    if (!dragging || !dragWidget) return;
+
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const rawLeft = clientX - offsetX;
+    const rawTop  = clientY - offsetY;
+
+    const { left, top } = clampToViewport(dragWidget, rawLeft, rawTop);
+
+    dragWidget.style.left = left + 'px';
+    dragWidget.style.top  = top  + 'px';
+
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function onPointerUp(e) {
+    if (!dragging || !dragWidget) return;
+    dragging = false;
+
+    // Restore normal shadow / scale
+    dragWidget.style.transition = '';
+    dragWidget.style.boxShadow  = '';
+    dragWidget.style.transform  = '';
+    document.body.style.userSelect = '';
+
+    const header = document.getElementById('chat-header');
+    if (header) header.style.cursor = 'grab';
+
+    // Persist position
+    savePos(parseFloat(dragWidget.style.left), parseFloat(dragWidget.style.top));
+    dragWidget = null;
+  }
+
+  // Wait for DOM to be ready then attach listeners
+  function attachDragListeners() {
+    const header = document.getElementById('chat-header');
+    if (!header) { setTimeout(attachDragListeners, 200); return; }
+
+    // Mouse events
+    header.addEventListener('mousedown',  onPointerDown, { passive: false });
+    document.addEventListener('mousemove', onPointerMove, { passive: false });
+    document.addEventListener('mouseup',   onPointerUp);
+
+    // Touch events
+    header.addEventListener('touchstart', onPointerDown, { passive: false });
+    document.addEventListener('touchmove', onPointerMove, { passive: false });
+    document.addEventListener('touchend',  onPointerUp);
+
+    // Restore saved position when chat opens
+    const widget = document.getElementById('chat-widget');
+    if (widget) restorePos(widget);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachDragListeners);
+  } else {
+    attachDragListeners();
+  }
+
+  // Expose restore so toggleChat can call it
+  window._chatRestorePos = function() {
+    const w = document.getElementById('chat-widget');
+    if (w) restorePos(w);
+  };
+})();
 
 function openChatNewTab() {
   const msgs = [];

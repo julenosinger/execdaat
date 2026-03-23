@@ -1239,107 +1239,434 @@ details > summary .fa-chevron-down { transition: transform 0.2s ease; }
 }
 
 /* ============================================================
-   LIGHT MODE
+   LIGHT MODE — Clean, modern, Web3-trustworthy
+   Scope: body.light-mode only. Dark mode untouched.
    ============================================================ */
+
+/* ── CSS custom properties for light mode ── */
 body.light-mode {
-  background-color: #f3f4f6 !important;
-  color: #111827 !important;
+  --lm-bg:          #f0f2f7;
+  --lm-bg-card:     #ffffff;
+  --lm-bg-raised:   #f7f9fc;
+  --lm-bg-sunken:   #eef1f7;
+  --lm-border:      #dde3ee;
+  --lm-border-soft: #e8ecf5;
+  --lm-text-hi:     #0f172a;
+  --lm-text-md:     #334155;
+  --lm-text-lo:     #64748b;
+  --lm-text-dim:    #94a3b8;
+  --lm-accent:      #7c3aed;
+  --lm-accent-soft: rgba(124,58,237,0.08);
+  --lm-shadow-sm:   0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+  --lm-shadow-md:   0 4px 12px rgba(15,23,42,0.08), 0 2px 4px rgba(15,23,42,0.05);
+  --lm-shadow-lg:   0 8px 28px rgba(15,23,42,0.10), 0 4px 8px rgba(15,23,42,0.06);
+
+  background-color: var(--lm-bg) !important;
+  color: var(--lm-text-hi) !important;
 }
-body.light-mode .bg-gray-950,
-body.light-mode .bg-gray-900\/95,
-body.light-mode .bg-gray-900\/60,
-body.light-mode .bg-gray-900\/80 {
-  background-color: #ffffff !important;
+
+/* ── Body & main background ── */
+body.light-mode main,
+body.light-mode #app-shell {
+  background-color: var(--lm-bg) !important;
 }
+
+/* ── Header ── */
 body.light-mode header {
-  background: rgba(255,255,255,0.97) !important;
-  border-bottom-color: #e5e7eb !important;
+  background: rgba(255,255,255,0.96) !important;
+  backdrop-filter: blur(12px) !important;
+  border-bottom: 1px solid var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+body.light-mode header .text-white,
+body.light-mode header .text-gray-100,
+body.light-mode header .text-gray-200,
+body.light-mode header .text-gray-300 { color: var(--lm-text-hi) !important; }
+body.light-mode header .text-gray-400,
+body.light-mode header .text-gray-500 { color: var(--lm-text-lo) !important; }
+
+/* ── Card / Panel backgrounds ── */
+body.light-mode .bg-gray-950,
+body.light-mode .bg-gray-950\/90,
+body.light-mode .bg-gray-900\/95,
+body.light-mode .bg-gray-900\/80,
+body.light-mode .bg-gray-900\/60 {
+  background-color: var(--lm-bg-card) !important;
+  box-shadow: var(--lm-shadow-md) !important;
 }
 body.light-mode .bg-gray-900 {
-  background-color: #f9fafb !important;
+  background-color: var(--lm-bg-raised) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
 }
 body.light-mode .bg-gray-800 {
-  background-color: #f3f4f6 !important;
+  background-color: var(--lm-bg-sunken) !important;
 }
 body.light-mode .bg-gray-800\/60,
 body.light-mode .bg-gray-800\/40,
+body.light-mode .bg-gray-800\/20,
 body.light-mode .bg-gray-800\/80 {
-  background-color: rgba(229,231,235,0.8) !important;
+  background-color: rgba(238,241,247,0.85) !important;
 }
-body.light-mode .text-white {
-  color: #111827 !important;
+body.light-mode .bg-gray-700 {
+  background-color: var(--lm-border) !important;
 }
+
+/* ── Text ── */
+body.light-mode .text-white      { color: var(--lm-text-hi) !important; }
 body.light-mode .text-gray-100,
-body.light-mode .text-gray-200,
-body.light-mode .text-gray-300 {
-  color: #374151 !important;
-}
-body.light-mode .text-gray-400 {
-  color: #6b7280 !important;
-}
-body.light-mode .text-gray-500 {
-  color: #9ca3af !important;
-}
-body.light-mode .text-gray-600 {
-  color: #d1d5db !important;
-}
+body.light-mode .text-gray-200   { color: var(--lm-text-md) !important; }
+body.light-mode .text-gray-300   { color: #475569 !important; }
+body.light-mode .text-gray-400   { color: var(--lm-text-lo) !important; }
+body.light-mode .text-gray-500   { color: #7b8fa8 !important; }
+body.light-mode .text-gray-600   { color: #94a3b8 !important; }
+body.light-mode .text-gray-700   { color: #b0bac9 !important; }
+
+/* ── Borders ── */
 body.light-mode .border-gray-700,
 body.light-mode .border-gray-700\/40,
+body.light-mode .border-gray-700\/60,
 body.light-mode .border-gray-800,
 body.light-mode .border-gray-800\/60 {
-  border-color: #e5e7eb !important;
+  border-color: var(--lm-border) !important;
 }
-body.light-mode .tab-btn {
-  color: #6b7280;
+body.light-mode .border-gray-600 { border-color: #c5cedc !important; }
+body.light-mode .border-gray-900 { border-color: var(--lm-border-soft) !important; }
+
+/* ── Dividers ── */
+body.light-mode hr,
+body.light-mode [class*="divide-gray"] > * + * {
+  border-color: var(--lm-border) !important;
 }
-body.light-mode .tab-btn.active {
-  color: #7c3aed !important;
-  border-color: #7c3aed !important;
-}
+
+/* ── Inputs, Selects, Textareas ── */
 body.light-mode input,
 body.light-mode select,
 body.light-mode textarea {
   background-color: #ffffff !important;
-  border-color: #d1d5db !important;
-  color: #111827 !important;
+  border: 1px solid var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
 }
-body.light-mode .bg-gray-950\/90 {
-  background-color: rgba(255,255,255,0.97) !important;
+body.light-mode input::placeholder,
+body.light-mode textarea::placeholder { color: var(--lm-text-dim) !important; }
+body.light-mode input:focus,
+body.light-mode select:focus,
+body.light-mode textarea:focus {
+  border-color: var(--lm-accent) !important;
+  box-shadow: 0 0 0 3px rgba(124,58,237,0.12) !important;
+  outline: none !important;
 }
-body.light-mode #toast .bg-gray-800 {
-  background: #ffffff !important;
-  border-color: #e5e7eb !important;
-  color: #111827 !important;
+body.light-mode input:hover,
+body.light-mode select:hover,
+body.light-mode textarea:hover {
+  border-color: #b5bfcf !important;
 }
-/* Settings/Modal in light mode */
-body.light-mode #settings-modal .bg-gray-900,
-body.light-mode #profile-modal .bg-gray-900,
-body.light-mode #wallet-modal .bg-gray-900,
-body.light-mode #pin-modal .bg-gray-900 {
-  background: #ffffff !important;
+
+/* ── Tabs ── */
+body.light-mode .tab-btn {
+  color: var(--lm-text-lo) !important;
+  border-color: transparent !important;
 }
-/* History filter button active */
+body.light-mode .tab-btn:hover:not(.active) {
+  color: var(--lm-text-md) !important;
+  background: var(--lm-bg-sunken) !important;
+}
+body.light-mode .tab-btn.active {
+  color: var(--lm-accent) !important;
+  border-color: var(--lm-accent) !important;
+  background: var(--lm-accent-soft) !important;
+}
+
+/* ── Buttons ── */
+body.light-mode .hover\:bg-gray-800:hover,
+body.light-mode .hover\:bg-gray-700:hover {
+  background-color: var(--lm-bg-sunken) !important;
+}
+body.light-mode button:not([class*="bg-purple"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-gradient"]):not([style*="background"]):not(.pay-tok-btn):not(.pay-cf-input) {
+  color: var(--lm-text-md);
+}
+
+/* ── Stat / Info cards ── */
+body.light-mode [class*="rounded"][class*="border"],
+body.light-mode [class*="rounded-xl"],
+body.light-mode [class*="rounded-2xl"] {
+  border-color: var(--lm-border) !important;
+}
+
+/* ── History rows ── */
+body.light-mode .history-tx-row {
+  background: var(--lm-bg-card) !important;
+  border-color: var(--lm-border-soft) !important;
+}
+body.light-mode .history-tx-row:hover {
+  background: var(--lm-bg-sunken) !important;
+  border-color: rgba(124,58,237,0.25) !important;
+}
+body.light-mode .history-filter-btn {
+  background: var(--lm-bg-sunken) !important;
+  border-color: var(--lm-border) !important;
+  color: var(--lm-text-lo) !important;
+}
 body.light-mode .history-filter-btn.active {
-  background: rgba(109,40,217,0.15) !important;
-  border-color: rgba(109,40,217,0.4) !important;
+  background: rgba(124,58,237,0.1) !important;
+  border-color: rgba(124,58,237,0.4) !important;
   color: #5b21b6 !important;
 }
 
-/* Theme toggle buttons */
+/* ── Modals / Overlays ── */
+body.light-mode #settings-modal .bg-gray-900,
+body.light-mode #profile-modal  .bg-gray-900,
+body.light-mode #wallet-modal   .bg-gray-900,
+body.light-mode #pin-modal      .bg-gray-900 {
+  background: var(--lm-bg-card) !important;
+  box-shadow: var(--lm-shadow-lg) !important;
+  border-color: var(--lm-border) !important;
+}
+body.light-mode #settings-modal .bg-gray-800,
+body.light-mode #profile-modal  .bg-gray-800,
+body.light-mode #wallet-modal   .bg-gray-800,
+body.light-mode #pin-modal      .bg-gray-800 {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border-soft) !important;
+}
+
+/* ── Toast ── */
+body.light-mode #toast .bg-gray-800 {
+  background: var(--lm-bg-card) !important;
+  border-color: var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+  box-shadow: var(--lm-shadow-lg) !important;
+}
+
+/* ── Sidebar / Navigation panels ── */
+body.light-mode .settings-tab-btn {
+  color: var(--lm-text-lo) !important;
+}
+body.light-mode .settings-tab-btn.active {
+  background: var(--lm-accent-soft) !important;
+  color: var(--lm-accent) !important;
+  border-color: var(--lm-accent) !important;
+}
+body.light-mode .settings-tab-btn:hover:not(.active) {
+  background: var(--lm-bg-sunken) !important;
+  color: var(--lm-text-md) !important;
+}
+
+/* ── Contracts tab in light mode ── */
+body.light-mode .cf-panel {
+  background: var(--lm-bg-card) !important;
+  border-color: var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+body.light-mode .cf-input {
+  background: #f8faff !important;
+  border-color: var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+}
+body.light-mode .cf-input:focus {
+  border-color: #378ADD !important;
+  box-shadow: 0 0 0 3px rgba(55,138,221,0.12) !important;
+  background: #ffffff !important;
+}
+body.light-mode .cf-label { color: #607090 !important; }
+body.light-mode .cf-card {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border) !important;
+}
+body.light-mode .cf-card:hover { border-color: rgba(55,138,221,0.4) !important; }
+
+/* ── Payments tab in light mode ── */
+body.light-mode .pay-cf-panel {
+  background: var(--lm-bg-card) !important;
+  border-color: var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+body.light-mode .pay-cf-input {
+  background: #f8faff !important;
+  border-color: var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+}
+body.light-mode .pay-cf-input:focus {
+  border-color: #378ADD !important;
+  box-shadow: 0 0 0 3px rgba(55,138,221,0.12) !important;
+  background: #ffffff !important;
+}
+body.light-mode .pay-cf-input::placeholder { color: #9baabb !important; }
+body.light-mode .pay-cf-label { color: #607090 !important; }
+body.light-mode .pay-side-panel {
+  background: var(--lm-bg-card) !important;
+  border-color: var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+body.light-mode .pay-side-hdr {
+  background: rgba(55,138,221,0.04) !important;
+  border-bottom-color: var(--lm-border) !important;
+}
+body.light-mode #pay-preview-box {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border-soft) !important;
+}
+body.light-mode #pay-preview-box .prow { border-bottom-color: var(--lm-border-soft) !important; }
+body.light-mode #pay-preview-box .pk { color: #8090a8 !important; }
+body.light-mode #pay-preview-box .pv { color: var(--lm-text-hi) !important; }
+
+/* ── Chat widget in light mode ── */
+body.light-mode #chat-widget {
+  background: var(--lm-bg-card) !important;
+  border-color: rgba(124,58,237,0.2) !important;
+  box-shadow: var(--lm-shadow-lg), 0 0 0 1px rgba(124,58,237,0.1) !important;
+  color: var(--lm-text-hi) !important;
+}
+body.light-mode #chat-header {
+  background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(59,130,246,0.06)) !important;
+  border-bottom-color: rgba(124,58,237,0.15) !important;
+}
+body.light-mode #chat-header .text-white,
+body.light-mode #chat-header [class*="text-white"] { color: var(--lm-text-hi) !important; }
+body.light-mode #chat-header .text-green-400 { color: #16a34a !important; }
+body.light-mode #chat-arcpay-bar.unauthorized {
+  background: rgba(124,58,237,0.06) !important;
+  border-bottom-color: rgba(124,58,237,0.15) !important;
+}
+body.light-mode #chat-arcpay-bar.authorized {
+  background: rgba(22,163,74,0.07) !important;
+  border-bottom-color: rgba(22,163,74,0.2) !important;
+}
+body.light-mode #chat-messages {
+  background: var(--lm-bg-raised) !important;
+}
+body.light-mode #chat-messages .bg-gray-800,
+body.light-mode #chat-messages [class*="bg-gray-8"] {
+  background: #ffffff !important;
+  border: 1px solid var(--lm-border-soft) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+body.light-mode #chat-messages .text-gray-300,
+body.light-mode #chat-messages .text-gray-400 { color: var(--lm-text-md) !important; }
+body.light-mode #chat-messages .text-gray-500,
+body.light-mode #chat-messages .text-gray-600 { color: var(--lm-text-lo) !important; }
+body.light-mode #chat-quick-actions .chat-quick-btn,
+body.light-mode .chat-quick-btn {
+  background: var(--lm-bg-sunken) !important;
+  border-color: var(--lm-border) !important;
+  color: var(--lm-text-lo) !important;
+}
+body.light-mode #chat-quick-actions .chat-quick-btn:hover,
+body.light-mode .chat-quick-btn:hover {
+  background: var(--lm-bg-card) !important;
+  border-color: rgba(124,58,237,0.3) !important;
+  color: var(--lm-accent) !important;
+}
+body.light-mode #chat-widget .bg-gray-800,
+body.light-mode #chat-widget [class*="focus-within\:border-purple"] {
+  background: #f4f6fb !important;
+  border-color: var(--lm-border) !important;
+}
+body.light-mode #chat-input {
+  background: transparent !important;
+  color: var(--lm-text-hi) !important;
+}
+body.light-mode #chat-input::placeholder { color: var(--lm-text-dim) !important; }
+body.light-mode #chat-widget .text-gray-700 { color: #94a3b8 !important; }
+body.light-mode .chat-size-btn {
+  background: rgba(15,23,42,0.05) !important;
+  border-color: var(--lm-border) !important;
+  color: var(--lm-text-lo) !important;
+}
+body.light-mode .chat-size-btn:hover,
+body.light-mode .chat-size-btn.active {
+  background: rgba(124,58,237,0.12) !important;
+  border-color: rgba(124,58,237,0.4) !important;
+  color: var(--lm-accent) !important;
+}
+body.light-mode #chat-widget button.hover\:bg-gray-800:hover {
+  background: var(--lm-bg-sunken) !important;
+}
+
+/* ── Dashboard stat cards ── */
+body.light-mode .stat-card,
+body.light-mode [id*="stat-"] {
+  background: var(--lm-bg-card) !important;
+  border-color: var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+
+/* ── Scrollbars ── */
+body.light-mode ::-webkit-scrollbar-track { background: var(--lm-bg-sunken) !important; }
+body.light-mode ::-webkit-scrollbar-thumb { background: #c5cedc !important; border-radius: 4px; }
+body.light-mode ::-webkit-scrollbar-thumb:hover { background: #a8b5c8 !important; }
+
+/* ── Selection ── */
+body.light-mode ::selection { background: rgba(124,58,237,0.15); color: var(--lm-text-hi); }
+
+/* ── Theme toggle buttons ── */
 #theme-dark-btn, #theme-light-btn {
   cursor: pointer;
   user-select: none;
   transition: all 0.2s ease;
 }
 body.light-mode #theme-dark-btn {
-  border-color: #9ca3af !important;
-  background: rgba(209,213,219,0.3) !important;
-  color: #6b7280 !important;
+  border-color: #c5cedc !important;
+  background: rgba(196,206,220,0.2) !important;
+  color: var(--lm-text-lo) !important;
 }
 body.light-mode #theme-light-btn {
   border-color: #f59e0b !important;
-  background: rgba(251,191,36,0.15) !important;
-  color: #d97706 !important;
+  background: rgba(245,158,11,0.1) !important;
+  color: #b45309 !important;
+}
+
+/* ── Gradient text preserves in light (keep purple brand) ── */
+body.light-mode .bg-gradient-to-r.from-purple-400,
+body.light-mode [class*="bg-clip-text"] {
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+}
+
+/* ── App info / info bar ── */
+body.light-mode [style*="background:rgba(8,11,24"],
+body.light-mode [style*="background:rgba(10,12,24"] {
+  background: var(--lm-bg-card) !important;
+  border-color: var(--lm-border) !important;
+}
+
+/* ── Steps panels ── */
+body.light-mode #pay-steps-panel,
+body.light-mode #cf-steps-panel {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border) !important;
+}
+body.light-mode .pstep-idle  .pstep-label { color: #94a3b8 !important; }
+body.light-mode .pstep-done  .pstep-label { color: #a8b5c8 !important; }
+
+/* ── Amber / testnet banner — keep as-is (good contrast either mode) ── */
+body.light-mode #testnet-banner { /* no override — amber looks fine in light */ }
+
+/* ── FAB button stays vivid in both modes ── */
+body.light-mode #chat-fab {
+  box-shadow: 0 4px 20px rgba(124,58,237,0.35), 0 2px 8px rgba(0,0,0,0.12) !important;
+}
+
+/* ── Wallet modal / connect button ── */
+body.light-mode #wallet-modal .rounded-xl,
+body.light-mode #wallet-modal .rounded-2xl {
+  border-color: var(--lm-border) !important;
+}
+
+/* ── Pin modal ── */
+body.light-mode #pin-modal input[type="password"] {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+  letter-spacing: 0.3em;
+}
+
+/* ── Transition on theme switch ── */
+body { transition: background-color 0.25s ease, color 0.2s ease; }
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
 }
 
 /* History tx row */

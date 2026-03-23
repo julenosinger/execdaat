@@ -309,7 +309,7 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20250322" rel="stylesheet">
+  <link href="/static/styles.css?v=20250323" rel="stylesheet">
   <script src="/static/i18n.js?v=20250322"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
@@ -2832,8 +2832,8 @@ app.get('/', (c) => {
     data-size="medium"
     style="width:400px;height:560px;bottom:70px;right:20px;max-width:calc(100vw - 16px);">
 
-    <!-- Header -->
-    <div class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 rounded-t-2xl flex-shrink-0">
+    <!-- Header (drag handle) -->
+    <div id="chat-header" class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 rounded-t-2xl flex-shrink-0" style="cursor:grab;user-select:none;">
       <!-- Left: identity -->
       <div class="flex items-center gap-2 min-w-0">
         <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
@@ -3435,7 +3435,7 @@ app.get('/', (c) => {
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250322"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
-  <script src="/static/chat.js?v=20250322"></script>
+  <script src="/static/chat.js?v=20250323"></script>
   <script>
     // ── Platform initialization ───────────────────────────────────────────────
     window.addEventListener('load', () => {
