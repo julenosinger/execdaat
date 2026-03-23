@@ -1,5 +1,45 @@
 /* ARC AI Agents - Estilos customizados */
 
+/* ── CSS Variables ────────────────────────────────────────────────────────── */
+:root {
+  /* Height of the sticky top-bar (banner + header). Updated by updateTopbarHeight().
+     Used as the `top` value for the tab nav so it always sticks just below the
+     top-bar regardless of whether the banner is visible or not. */
+  --topbar-h: 0px;
+}
+
+/* ── Sticky top-bar: banner + header wrapper ─────────────────────────────── */
+#sticky-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  /* Ensure the wrapper never collapses to zero when banner is hidden */
+  min-height: 0;
+}
+
+/* ── Testnet banner collapse transition ──────────────────────────────────── */
+#testnet-banner {
+  overflow: hidden;
+  /* Smooth collapse handled by JS (max-height + opacity + padding) */
+}
+
+/* ── Tab navigation ──────────────────────────────────────────────────────── */
+#tab-nav {
+  position: sticky;
+  /* top is set inline via var(--topbar-h) and updated by updateTopbarHeight() */
+  z-index: 40;
+  /* Ensure the tab bar is never hidden behind other elements */
+  isolation: isolate;
+}
+
+/* Scrollable tab bar on small screens */
+.tab-nav-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+}
+.tab-nav-wrapper::-webkit-scrollbar { display: none; }
+
 /* Animações */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }

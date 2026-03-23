@@ -309,33 +309,82 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20250323d" rel="stylesheet">
+  <link href="/static/styles.css?v=20250323e" rel="stylesheet">
   <script src="/static/i18n.js?v=20250322"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
 
   <!-- ══════════════════════════════════════════════════════════════════════
-       PERSISTENT TESTNET WARNING — dismissible
+       HEADER LAYOUT CONTROLLER — inline script runs immediately
+       Manages banner dismiss animation + CSS variable for tab-nav sticky offset
        ══════════════════════════════════════════════════════════════════════ -->
-  <div id="testnet-banner" style="background:#111;border-bottom:1px solid #2a2a2a;color:#fff;font-size:12px;padding:7px 16px;display:flex;align-items:center;justify-content:center;gap:8px;position:sticky;top:0;z-index:100;">
+  <script>
+    // Update --topbar-h so the tab nav always sticks directly below the topbar
+    function updateTopbarHeight() {
+      var tb = document.getElementById('sticky-topbar');
+      if (!tb) return;
+      var h = tb.getBoundingClientRect().height;
+      document.documentElement.style.setProperty('--topbar-h', h + 'px');
+    }
+
+    // Dismiss the testnet banner with a smooth collapse animation
+    function dismissBanner() {
+      var banner = document.getElementById('testnet-banner');
+      if (!banner) return;
+      // Collapse: fade out then remove height
+      banner.style.transition = 'max-height 0.25s ease, padding 0.2s ease, opacity 0.15s ease';
+      banner.style.opacity    = '0';
+      banner.style.maxHeight  = '0';
+      banner.style.padding    = '0 16px';
+      // After animation ends, hide completely and sync height var
+      setTimeout(function() {
+        banner.style.display = 'none';
+        updateTopbarHeight();
+      }, 270);
+      // Remember preference
+      try { sessionStorage.setItem('arc-banner-dismissed', '1'); } catch(e){}
+    }
+
+    // Restore banner state on page load (if dismissed in this session)
+    document.addEventListener('DOMContentLoaded', function() {
+      try {
+        if (sessionStorage.getItem('arc-banner-dismissed') === '1') {
+          var banner = document.getElementById('testnet-banner');
+          if (banner) banner.style.display = 'none';
+        }
+      } catch(e){}
+      // Set initial topbar height after DOM is ready
+      updateTopbarHeight();
+      // Also update on resize (handles mobile orientation change etc.)
+      window.addEventListener('resize', updateTopbarHeight, { passive: true });
+    });
+  </script>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       STICKY TOP-BAR WRAPPER — banner + header in one sticky block
+       Sticks at top:0. When banner is dismissed, header moves up naturally.
+       No hardcoded pixel offsets needed anywhere.
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div id="sticky-topbar" style="position:sticky;top:0;z-index:100;">
+
+  <!-- TESTNET WARNING BANNER — dismissible -->
+  <div id="testnet-banner" style="background:#111;border-bottom:1px solid #2a2a2a;color:#fff;font-size:12px;padding:7px 16px;display:flex;align-items:center;justify-content:center;gap:8px;overflow:hidden;transition:max-height 0.25s ease,padding 0.25s ease,opacity 0.2s ease;max-height:48px;opacity:1;">
     <span style="color:#f59e0b;font-size:14px;">⚠</span>
     <span style="color:#f59e0b;font-weight:700;letter-spacing:0.03em;">TESTNET ONLY —</span>
     <span style="color:#ccc;font-weight:400;" class="hidden sm:inline">This application runs exclusively on Arc Testnet. No real funds are used. Do not send mainnet assets.</span>
     <span style="color:#ccc;font-weight:400;" class="sm:hidden">Arc Testnet only. No real funds.</span>
     <a href="/about" style="color:#ccc;text-decoration:underline;margin-left:4px;opacity:0.8;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" class="hidden sm:inline">Learn more</a>
     <button
-      onclick="document.getElementById('testnet-banner').style.display='none'"
-      title="Fechar"
-      style="margin-left:12px;background:none;border:none;color:#888;font-size:14px;cursor:pointer;padding:0 2px;line-height:1;display:flex;align-items:center;"
+      onclick="dismissBanner()"
+      title="Dismiss"
+      style="margin-left:12px;background:none;border:none;color:#888;font-size:14px;cursor:pointer;padding:0 2px;line-height:1;display:flex;align-items:center;flex-shrink:0;"
       onmouseover="this.style.color='#fff'"
       onmouseout="this.style.color='#888'"
     >✕</button>
   </div>
 
-  <!-- ══════════════════════════════════════════════════════════════════════
-       HEADER — always visible
-       ══════════════════════════════════════════════════════════════════════ -->
-  <header class="bg-gray-900/95 border-b border-purple-800/30 px-6 py-3 sticky top-[32px] z-50 backdrop-blur-sm">
+  <!-- HEADER — stacks directly below banner inside sticky wrapper -->
+  <header id="main-header" class="bg-gray-900/95 border-b border-purple-800/30 px-6 py-3 backdrop-blur-sm" style="position:relative;z-index:50;">
     <div class="max-w-7xl mx-auto flex items-center justify-between">
       <button onclick="showLanding()" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
         <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
@@ -410,6 +459,8 @@ app.get('/', (c) => {
       </div>
     </div>
   </header>
+
+  </div><!-- /#sticky-topbar -->
 
   <!-- ══════════════════════════════════════════════════════════════════════
        LANDING PAGE — shown by default, hidden after "Enter App"
@@ -684,7 +735,7 @@ app.get('/', (c) => {
   <div id="app-shell" class="hidden">
 
   <!-- Tabs -->
-  <div class="bg-gray-900/60 border-b border-gray-800 sticky top-[32px] z-40">
+  <div id="tab-nav" class="bg-gray-900/60 border-b border-gray-800" style="position:sticky;top:var(--topbar-h,0px);z-index:40;transition:top 0.25s ease;">
     <div class="max-w-7xl mx-auto tab-nav-wrapper">
       <div class="flex gap-0 min-w-max">
         <button onclick="switchTab('agents')" id="tab-agents" class="tab-btn active px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
@@ -3608,6 +3659,9 @@ app.get('/', (c) => {
   <script>
     // ── Platform initialization ───────────────────────────────────────────────
     window.addEventListener('load', () => {
+
+      // 0. Sync --topbar-h CSS variable on load (in case banner was pre-dismissed)
+      if (typeof updateTopbarHeight === 'function') updateTopbarHeight();
 
       // 1. ArcPay status bar — delegate fully to chat.js v3 updateArcPayBar()
       //    The bar is visible by default (no hidden class) and chat.js v3 owns it.
