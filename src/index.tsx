@@ -3055,7 +3055,7 @@ app.get('/', (c) => {
   <!-- Floating Action Button -->
   <button id="chat-fab"
     onclick="toggleChat()"
-    class="fixed bottom-5 right-5 z-[90] flex items-center gap-2 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 px-4 py-3 transition-all hover:scale-105 active:scale-95"
+    class="fixed bottom-5 right-5 z-[110] flex items-center gap-2 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 px-4 py-3 transition-all hover:scale-105 active:scale-95"
     style="bottom:20px;right:20px;">
     <i class="fas fa-robot text-white text-base" id="chat-fab-icon"></i>
     <span id="chat-fab-label" class="text-white text-sm font-medium">Ask me</span>
@@ -3064,7 +3064,7 @@ app.get('/', (c) => {
 
   <!-- Chat Panel -->
   <div id="chat-widget"
-    class="hidden fixed z-[85] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60"
+    class="hidden fixed z-[110] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60"
     data-size="medium"
     style="width:400px;height:560px;bottom:70px;right:20px;max-width:calc(100vw - 16px);">
 
@@ -3086,13 +3086,10 @@ app.get('/', (c) => {
       <!-- Right: controls -->
       <div class="flex items-center gap-0.5 flex-shrink-0">
         <!-- Size buttons -->
-        <button id="chat-size-mini"   onclick="setChatSize('mini')"   class="chat-size-btn" title="Mini"><i class="fas fa-compress-alt"></i></button>
-        <button id="chat-size-medium" onclick="setChatSize('medium')" class="chat-size-btn active" title="Medium"><i class="fas fa-expand-alt"></i></button>
-        <button id="chat-size-full"   onclick="setChatSize('full')"   class="chat-size-btn" title="Fullscreen"><i class="fas fa-expand"></i></button>
-        <!-- New tab -->
-        <button onclick="openChatNewTab()" title="Open in new tab" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all ml-1">
-          <i class="fas fa-external-link-alt text-xs"></i>
-        </button>
+        <button id="chat-size-mini"   onclick="setChatSize('mini')"   class="chat-size-btn" title="Compacto"><i class="fas fa-compress-alt"></i></button>
+        <button id="chat-size-medium" onclick="setChatSize('medium')" class="chat-size-btn active" title="Médio"><i class="fas fa-expand-alt"></i></button>
+        <button id="chat-size-wide"   onclick="setChatSize('wide')"   class="chat-size-btn" title="Expandir (+12% largura)"><i class="fas fa-arrows-alt-h"></i></button>
+        <button id="chat-size-full"   onclick="setChatSize('full')"   class="chat-size-btn" title="Tela cheia"><i class="fas fa-expand"></i></button>
         <!-- Clear -->
         <button onclick="clearChatHistory()" title="Clear chat" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
           <i class="fas fa-trash text-xs"></i>
@@ -3694,7 +3691,7 @@ app.get('/', (c) => {
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
-  <script src="/static/chat.js?v=20250323"></script>
+  <script src="/static/chat.js?v=20250323b"></script>
   <script>
     // ── Platform initialization ───────────────────────────────────────────────
     window.addEventListener('load', () => {

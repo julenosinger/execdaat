@@ -91,6 +91,8 @@ function isAgentActive() {
 const CHAT_SIZES = {
   mini:   { width: '300px',  height: '420px', bottom: '70px', right: '20px' },
   medium: { width: '400px',  height: '580px', bottom: '70px', right: '20px' },
+  // wide = medium + 12% of viewport width, capped at 92vw
+  wide:   { width: 'calc(min(400px + 12vw, 92vw))',  height: '600px', bottom: '70px', right: '20px' },
   full:   { width: '100vw',  height: '100vh', bottom: '0',    right: '0', borderRadius: '0' },
 };
 
@@ -282,7 +284,7 @@ function setChatSize(size) {
   chatSize = size;
   localStorage.setItem('arc-chat-size', size);
   applyChatSize(size, true);
-  ['mini','medium','full'].forEach(s => {
+  ['mini','medium','wide','full'].forEach(s => {
     document.getElementById(`chat-size-${s}`)?.classList.toggle('active', s === size);
   });
 }
@@ -298,7 +300,15 @@ function applyChatSize(size, animate = true) {
     bottom:       cfg.bottom,
     right:        cfg.right,
     borderRadius: cfg.borderRadius || '16px',
+    // Remove any dragged top/left so the preset bottom/right take effect
+    ...(size !== 'full' ? {} : { top: '', left: '', bottom: '0', right: '0' }),
   });
+  // For 'wide' size, also update max-width to allow the full computed width
+  if (size === 'wide') {
+    widget.style.maxWidth = 'calc(min(400px + 12vw, 92vw))';
+  } else {
+    widget.style.maxWidth = 'calc(100vw - 16px)';
+  }
   widget.setAttribute('data-size', size);
   if (!animate) requestAnimationFrame(() => { widget.style.transition = ''; });
 }
@@ -325,15 +335,17 @@ function applyChatSize(size, animate = true) {
     widget.style.right  = 'auto';
   }
 
-  // Keep widget inside viewport
+  // Keep widget inside viewport (allow full viewport coverage, no hard boundary clipping)
   function clampToViewport(widget, left, top) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const w  = widget.offsetWidth  || 400;
     const h  = widget.offsetHeight || 560;
+    // Allow the widget to be dragged anywhere: keep at least 60px visible on each edge
+    const minVisible = 60;
     return {
-      left: clamp(left, 0, vw - w),
-      top:  clamp(top,  0, vh - h),
+      left: clamp(left, -(w - minVisible), vw - minVisible),
+      top:  clamp(top,  0, vh - minVisible),
     };
   }
 
