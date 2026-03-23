@@ -1005,7 +1005,10 @@ async function msExecute() {
     msRenderReceipts();
     msShowFinalResult(finEl, receiptObj, allOk);
 
-    setTimeout(() => msPdfReceipt(receiptObj.id), 800);
+    // Persist receipt after batch completes — do NOT auto-open
+    setTimeout(() => {
+      if (typeof arcSaveMultisendReceipt === 'function') arcSaveMultisendReceipt(receiptObj).catch(() => {});
+    }, 200);
 
     showToast(
       allOk
@@ -1111,9 +1114,9 @@ function msShowFinalResult(finEl, r, allOk) {
           ${r.approvalTxHash ? `<div>Approval tx: <a href="${MS_EXPLORER}/tx/${r.approvalTxHash}" target="_blank" class="text-cyan-400/70 hover:underline font-mono">${r.approvalTxHash.slice(0,24)}…</a></div>` : ''}
         </div>
         <div class="flex gap-2 mt-3 flex-wrap">
-          <button onclick="msPdfReceipt('${r.id}')"
-            class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700/40 hover:bg-blue-700/60 border border-blue-600/40 text-blue-300 hover:text-white text-xs rounded-xl transition font-semibold">
-            <i class="fas fa-file-pdf text-xs"></i>Download PDF Receipt
+          <button onclick="arcViewMultisendReceipt ? arcViewMultisendReceipt('${r.id}') : msPdfReceipt('${r.id}')"
+            class="flex items-center gap-1.5 px-3 py-1.5 bg-green-700/40 hover:bg-green-700/60 border border-green-600/40 text-green-300 hover:text-white text-xs rounded-xl transition font-semibold">
+            <i class="fas fa-eye text-xs"></i>View Receipt
           </button>
           ${r.txHash ? `<a href="${r.explorerUrl}" target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/40 border border-gray-600/40 text-gray-400 text-xs rounded-xl transition"><i class="fas fa-external-link-alt text-xs"></i>ArcScan</a>` : ''}
         </div>
@@ -1130,6 +1133,11 @@ function msPdfReceipt(receiptId) {
 
   const jsPDFCtor = window.jspdf?.jsPDF || window.jsPDF;
   if (!jsPDFCtor) {
+    // If receipt-viewer is available, open HTML receipt directly instead of waiting for jsPDF
+    if (typeof arcViewMultisendReceipt === 'function') {
+      arcViewMultisendReceipt(receiptId);
+      return;
+    }
     showToast('PDF library loading… please try again in a moment.', 'warning');
     setTimeout(() => msPdfReceipt(receiptId), 1500);
     return;
@@ -1297,12 +1305,25 @@ function msPdfReceipt(receiptId) {
       text(`Page ${pg} of ${totalPages}  ·  Generated ${new Date().toLocaleString()}`, pW - margin, pH - 5, { align: 'right' });
     }
 
-    const filename = `arc_receipt_${r.batchId}.pdf`;
-    doc.save(filename);
-    showToast('📄 PDF receipt downloaded.', 'success');
-
+    // No auto-download — open in new tab with print dialog
     const idx = msReceipts.findIndex(x => x.id === receiptId);
-    if (idx >= 0) { msReceipts[idx].pdfGenerated = true; msRenderReceipts(); }
+    if (idx >= 0) { msReceipts[idx].pdfGenerated = true; }
+    // Persist receipt for future access
+    if (typeof arcSaveMultisendReceipt === 'function') arcSaveMultisendReceipt(r).catch(() => {});
+    // Open HTML receipt in new tab (better cross-browser support)
+    if (typeof arcBuildMultisendReceiptHTML === 'function' && typeof arcOpenReceiptTab === 'function') {
+      arcOpenReceiptTab(arcBuildMultisendReceiptHTML(r), 'Multisend Receipt');
+      showToast('✅ Receipt opened in new tab.', 'success');
+      if (idx >= 0) msRenderReceipts();
+      return;
+    }
+    // Fallback: open PDF blob in new tab
+    const pdfBlob = doc.output('blob');
+    const pdfUrl  = URL.createObjectURL(pdfBlob);
+    const pdfWin  = window.open(pdfUrl, '_blank');
+    if (pdfWin) setTimeout(() => URL.revokeObjectURL(pdfUrl), 30000);
+    showToast('✅ Receipt opened in new tab.', 'success');
+    if (idx >= 0) msRenderReceipts();
 
   } catch (err) {
     console.error('[MULTISEND v7] PDF error:', err);
@@ -1381,13 +1402,9 @@ function msRenderReceipts() {
         </div>
       </details>
       <div class="flex gap-2 mt-2 flex-wrap">
-        <button onclick="msPdfReceipt('${r.id}')"
-          class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700/30 hover:bg-blue-700/50 border border-blue-600/40 text-blue-300 hover:text-white text-xs rounded-xl transition font-medium">
-          <i class="fas fa-file-pdf text-xs"></i>${r.pdfGenerated ? 'Re-download PDF' : 'Download PDF Receipt'}
-        </button>
-        <button onclick="msDownloadReceipt('${r.id}')"
-          class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/40 hover:bg-gray-700/60 border border-gray-600/40 text-gray-400 hover:text-white text-xs rounded-xl transition">
-          <i class="fas fa-download text-xs"></i>JSON
+        <button onclick="typeof arcViewMultisendReceipt === 'function' ? arcViewMultisendReceipt('${r.id}') : msPdfReceipt('${r.id}')"
+          class="flex items-center gap-1.5 px-3 py-1.5 bg-green-700/30 hover:bg-green-700/50 border border-green-600/40 text-green-300 hover:text-white text-xs rounded-xl transition font-medium">
+          <i class="fas fa-eye text-xs"></i>Open Receipt
         </button>
         ${r.txHash ? `<a href="${r.explorerUrl}" target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800/40 border border-gray-700/30 text-gray-500 text-xs rounded-xl transition ml-auto"><i class="fas fa-external-link-alt text-xs"></i>ArcScan</a>` : ''}
       </div>
@@ -1396,8 +1413,20 @@ function msRenderReceipts() {
 
 // ─── JSON download ─────────────────────────────────────────────────────────────
 function msDownloadReceipt(receiptId) {
+  // No auto-download — open receipt in new tab with print dialog
   const r = msReceipts.find(x => x.id === receiptId);
   if (!r) { showToast('Receipt not found.', 'error'); return; }
+  if (typeof arcViewMultisendReceipt === 'function') {
+    arcViewMultisendReceipt(r);
+  } else {
+    msPdfReceipt(receiptId);
+  }
+}
+
+// Legacy JSON export (kept for external calls only — not triggered by UI)
+function msExportReceiptJSON(receiptId) {
+  const r = msReceipts.find(x => x.id === receiptId);
+  if (!r) return;
   const doc = {
     receiptType: 'ARC_MULTISEND_BATCH_RECEIPT', version: '7.0',
     generatedAt: new Date().toISOString(),
@@ -1410,7 +1439,7 @@ function msDownloadReceipt(receiptId) {
     recipientCount: r.count, txHash: r.txHash, feeTxHash: r.feeTxHash,
     approvalTxHash: r.approvalTxHash,
     allTxHashes: r.allHashes, explorerUrl: r.explorerUrl, status: r.status,
-    recipients: r.recipients.map(p => ({
+    recipients: (r.recipients || []).map(p => ({
       address: p.address, amount: msFmt2(p.amount), note: p.note || '',
       txHash: p.txHash || null, status: p.status || 'unknown', gasUsed: p.gasUsed || null,
     })),
@@ -1418,7 +1447,7 @@ function msDownloadReceipt(receiptId) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }));
   const a   = Object.assign(document.createElement('a'), { href: url, download: `arc_receipt_${r.batchId}.json` });
   a.click(); URL.revokeObjectURL(url);
-  showToast('JSON receipt downloaded.', 'success');
+  showToast('JSON receipt exported.', 'success');
 }
 
 // ─── Init ──────────────────────────────────────────────────────────────────────

@@ -715,9 +715,9 @@ function histRenderRow(item, wallet) {
         <span class="text-xs text-gray-600">·</span>
         <span class="text-xs text-gray-500">Fee: <span class="text-yellow-300">$${bd.fee} USDC</span></span>
         ${bd.feeTxHash ? `<a href="${HIST_EXPLORER}/tx/${bd.feeTxHash}" target="_blank" class="text-yellow-400 text-[10px] hover:underline"><i class="fas fa-external-link-alt"></i> fee tx</a>` : ''}
-        <button onclick="if(typeof msPdfReceipt==='function') msPdfReceipt('${bd.id}')"
-          class="ml-auto flex items-center gap-1 px-2 py-0.5 bg-blue-800/40 hover:bg-blue-700/50 border border-blue-700/40 text-blue-300 text-[10px] rounded-lg transition">
-          <i class="fas fa-file-pdf text-[9px]"></i>${bd.pdfGenerated ? 'Re-download PDF' : 'Download PDF'}
+        <button onclick="typeof arcViewMultisendReceipt === 'function' ? arcViewMultisendReceipt('${bd.id}') : (typeof msPdfReceipt==='function' && msPdfReceipt('${bd.id}'))"
+          class="ml-auto flex items-center gap-1 px-2 py-0.5 bg-green-800/40 hover:bg-green-700/50 border border-green-700/40 text-green-300 text-[10px] rounded-lg transition">
+          <i class="fas fa-eye text-[9px]"></i>View Receipt
         </button>
       </div>
       <details>
@@ -773,6 +773,11 @@ function histRenderRow(item, wallet) {
           class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline font-mono flex items-center gap-1 justify-end">
           ${item.txHash.slice(0, 10)}… <i class="fas fa-external-link-alt text-[9px]"></i>
         </a>` : '<div class="text-xs text-gray-600">—</div>'}
+        ${item.receiptId || item._receiptId ? `
+        <button onclick="typeof arcViewReceipt==='function' && arcViewReceipt('${item.receiptId || item._receiptId}')"
+          class="mt-1 flex items-center gap-1 px-2 py-0.5 bg-green-900/40 hover:bg-green-800/50 border border-green-700/30 text-green-400 text-[10px] rounded-lg transition ml-auto">
+          <i class="fas fa-eye text-[9px]"></i>Receipt
+        </button>` : ''}
       </div>
     </div>
   </div>`;

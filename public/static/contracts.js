@@ -714,7 +714,7 @@ function cfContractCard(c, wallet) {
   if ((uiStatus === 'Pending' || uiStatus === 'Funded') && isClient)
     actionBtns += `<button onclick="cfCancelContract(${c.id})" class="cf-action-btn cf-btn-cancel"><i class="fas fa-times mr-1.5"></i>Cancel</button>`;
   if (uiStatus === 'Completed')
-    actionBtns += `<button onclick="cfDownloadReceipt(${c.id})" class="cf-action-btn cf-btn-receipt"><i class="fas fa-file-pdf mr-1.5"></i>Download Receipt</button>`;
+    actionBtns += `<button onclick="cfOpenReceipt(${c.id})" class="cf-action-btn cf-btn-receipt"><i class="fas fa-eye mr-1.5"></i>View Receipt</button>`;
 
   // Milestones rows
   const msHtml = milestones.length ? `
@@ -1067,7 +1067,44 @@ async function cfMarkComplete(contractId) {
   }
 }
 
-// ─── Download PDF Receipt ──────────────────────────────────────────────────────
+// ─── Open Receipt in new tab (replaces Download PDF Receipt) ────────────────────
+function cfOpenReceipt(contractId) {
+  const c    = cfState.contracts.find(x => x.id === contractId);
+  const meta = cfGetMeta(contractId);
+  const r    = meta.receiptData || {};
+
+  const receiptObj = {
+    id:              'cf-' + contractId + '-' + Date.now(),
+    contractId,
+    title:           c?.title || r.title || 'Contract',
+    network:         CF_NETWORK_NAME,
+    chainId:         CF_CHAIN_ID,
+    factory:         CF_FACTORY_ADDR,
+    client:          c?.client || r.client || '',
+    contractor:      c?.contractor || r.contractor || '',
+    clientEmail:     meta.clientEmail || r.clientEmail || '',
+    contractorEmail: meta.contractorEmail || r.contractorEmail || '',
+    totalValue:      c ? cfFmtUsdc(c.totalValue) : r.totalValue || '?',
+    feeValue:        c ? cfFmtUsdc(cfCalcFee(BigInt(c?.totalValue || 0))) : r.feeValue || '?',
+    netValue:        c ? cfFmtUsdc(cfNetAmount(BigInt(c?.totalValue || 0))) : r.netValue || '?',
+    otcPoints:       meta.otcPoints || '',
+    otcTerms:        meta.otcTerms  || '',
+    proofs:          meta.proofs    || [],
+    completedAt:     r.completedAt  || new Date().toLocaleString(),
+    _type:           'contract',
+  };
+
+  if (typeof arcSaveContractReceipt === 'function') arcSaveContractReceipt(receiptObj).catch(() => {});
+
+  if (typeof arcViewContractReceipt === 'function') {
+    arcViewContractReceipt(receiptObj);
+    return;
+  }
+  // Fallback to legacy HTML receipt
+  cfDownloadReceipt(contractId);
+}
+
+// ─── Download Receipt (legacy — now opens in new tab) ───────────────────────────
 function cfDownloadReceipt(contractId) {
   const c    = cfState.contracts.find(x => x.id === contractId);
   const meta = cfGetMeta(contractId);
@@ -1155,19 +1192,23 @@ ${meta.otcPoints ? `<div class="section">
 </div>
 </body></html>`;
 
-  // Open in new window for printing/saving as PDF
+  // Open in new tab (no auto-download)
+  if (typeof arcOpenReceiptTab === 'function') {
+    arcOpenReceiptTab(html, `Contract Receipt #${contractId}`);
+    return;
+  }
+  // Fallback: write to new window
   const win = window.open('', '_blank');
   if (win) {
     win.document.write(html);
     win.document.close();
     setTimeout(() => win.print(), 500);
   } else {
-    // Fallback: download as HTML
     const blob = new Blob([html], { type: 'text/html' });
+    const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href     = URL.createObjectURL(blob);
-    a.download = `arc-contract-${contractId}-receipt.html`;
-    a.click();
+    a.href     = url; a.download = `arc-contract-${contractId}-receipt.html`; a.click();
+    URL.revokeObjectURL(url);
   }
 }
 
@@ -1950,7 +1991,8 @@ window.cfShowProofUpload      = cfShowProofUpload;
 window.cfHandleProofDrop      = cfHandleProofDrop;
 window.cfHandleProofFiles     = cfHandleProofFiles;
 window.cfExecuteProofUpload   = cfExecuteProofUpload;
-window.cfDownloadReceipt      = cfDownloadReceipt;
+window.cfDownloadReceipt      = cfDownloadReceipt;   // legacy — kept for compat
+window.cfOpenReceipt          = cfOpenReceipt;
 window.cfAddMilestone         = cfAddMilestone;
 window.cfUpdateMilestoneSum   = cfUpdateMilestoneSum;
 window.cfUpdateFeePreview     = cfUpdateFeePreview;
