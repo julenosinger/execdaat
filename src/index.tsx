@@ -487,13 +487,7 @@ app.get('/', (c) => {
           <span class="text-xs text-green-400 font-medium">Arc Testnet</span>
         </div>
 
-        <!-- Explorer / Faucet quick links -->
-        <a href="https://testnet.arcscan.app" target="_blank" class="hidden lg:block text-xs text-gray-400 hover:text-purple-400 transition-colors">
-          <i class="fas fa-external-link-alt mr-1"></i>Explorer
-        </a>
-        <a href="https://faucet.circle.com" target="_blank" class="hidden lg:block text-xs text-gray-400 hover:text-blue-400 transition-colors">
-          <i class="fas fa-faucet mr-1"></i>Faucet
-        </a>
+
 
         <!-- Wallet info (when connected) -->
         <div id="wallet-info" class="hidden items-center gap-2 bg-gray-800/80 border border-gray-700/50 rounded-xl px-3 py-2 cursor-pointer hover:border-purple-600/50 transition-all" onclick="openWalletModal()">
@@ -562,7 +556,7 @@ app.get('/', (c) => {
 
         <!-- Description -->
         <p class="text-gray-400 text-base max-w-2xl mx-auto mb-10 leading-relaxed">
-          A decentralized platform that allows users and organizations to automate financial operations using smart contracts and AI agents on the Arc Network.
+          A decentralized platform that allows users to automate financial operations using smart contracts and AI agents on the Arc Network.
           Built entirely open-source — no private keys ever leave your wallet.
         </p>
 
