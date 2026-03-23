@@ -549,8 +549,9 @@ function hidePayError() {
   if (box) box.style.display = 'none';
 }
 
-// ─── Scheduled payments persistence ───────────────────────────────────────────
+// ─── Scheduled payments persistence (hybrid IndexedDB + localStorage) ─────────
 function payLoadScheduled() {
+  // Sync load from localStorage (scheduled jobs need synchronous access for poller)
   try {
     const raw = localStorage.getItem(PAY_SCHEDULED_KEY);
     return raw ? JSON.parse(raw) : [];
@@ -559,6 +560,15 @@ function payLoadScheduled() {
 
 function paySaveScheduled(list) {
   try { localStorage.setItem(PAY_SCHEDULED_KEY, JSON.stringify(list)); } catch (_) {}
+
+  // Also persist each scheduled job to IndexedDB via arcSave
+  if (typeof arcSave === 'function') {
+    for (const job of list) {
+      if (job.status === 'scheduled' || job.status === 'cancelled') {
+        arcSave(window.ARC_STORE_PAY || 'payments', { ...job, type: 'payment' }).catch(() => {});
+      }
+    }
+  }
 }
 
 function payAddScheduled(job) {
@@ -740,12 +750,21 @@ async function executePaymentCore({ fullname, email, recipient, amountStr, token
   payState.receipt = receiptData;
   payState.history.unshift(receiptData);
 
-  // Persist in localStorage
+  // Persist hybrid: IndexedDB + localStorage
   try {
     const stored = JSON.parse(localStorage.getItem('arc_pay_history') || '[]');
     stored.unshift(receiptData);
     localStorage.setItem('arc_pay_history', JSON.stringify(stored.slice(0, 50)));
   } catch (_) {}
+
+  // Save to IndexedDB via persistence layer
+  if (typeof arcSave === 'function') {
+    arcSave(window.ARC_STORE_PAY || 'payments', {
+      ...receiptData,
+      type: 'payment',
+      wallet: receiptData.sender || receiptData.from,
+    }).catch(() => {});
+  }
 
   showToast('✅ Payment confirmed! <a href="' + receiptData.explorerUrl + '" target="_blank" class="underline">View on ArcScan ↗</a>', 'success');
   if (typeof showTXConfirmationBadge === 'function')
@@ -1114,10 +1133,12 @@ function renderPaymentHistory() {
   }).slice(0, 25);
 
   if (allItems.length === 0) {
+    // Show "no data" only if we're certain there's nothing locally
+    const hasLocal = typeof arcLoad === 'function';
     container.innerHTML = `
       <div style="color:#8aaac8;font-size:11px;text-align:center;padding:28px 0;">
         <i class="fas fa-clock" style="font-size:22px;display:block;margin-bottom:8px;color:#5a7898;"></i>
-        No transactions yet
+        ${window.walletState?.address ? 'No transactions yet' : 'Connect wallet to view history'}
       </div>`;
     return;
   }
@@ -1127,16 +1148,24 @@ function renderPaymentHistory() {
     const isProcessing = r.status === 'processing';
     const isFailed     = r.status === 'failed';
     const isCancelled  = r.status === 'cancelled';
+    const isCached     = r._source === 'local' && !r.txHash && !isScheduled;
 
-    const statusBadge = isScheduled
-      ? '<span class="pay-status-scheduled">⏰ Scheduled</span>'
-      : isProcessing
-        ? '<span class="pay-status-processing">⚡ Processing</span>'
-        : isFailed
-          ? '<span class="pay-status-failed">✗ Failed</span>'
-          : isCancelled
-            ? '<span style="color:#8aaac8;font-size:9px;">Cancelled</span>'
-            : '<span class="pay-status-completed">✓ Completed</span>';
+    // Use unified arcStatusBadge if available, else fallback
+    let statusBadge;
+    if (typeof arcStatusBadge === 'function') {
+      const st = isCached ? 'cached' : (r.status || 'pending');
+      statusBadge = arcStatusBadge(st);
+    } else {
+      statusBadge = isScheduled
+        ? '<span class="pay-status-scheduled">⏰ Scheduled</span>'
+        : isProcessing
+          ? '<span class="pay-status-processing">⚡ Processing</span>'
+          : isFailed
+            ? '<span class="pay-status-failed">✗ Failed</span>'
+            : isCancelled
+              ? '<span class="arc-badge-cancelled">— Cancelled</span>'
+              : '<span class="pay-status-completed">✓ Completed</span>';
+    }
 
     const dateLabel = isScheduled
       ? '📅 ' + new Date(r.scheduledAt).toLocaleString()
@@ -1154,6 +1183,9 @@ function renderPaymentHistory() {
     const cancelBtn = isScheduled
       ? `<button onclick="payCancelScheduled('${r.id}')" title="Cancel" style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:6px;color:#f87171;font-size:10px;padding:2px 7px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='rgba(239,68,68,0.07)'"><i class="fas fa-times"></i></button>`
       : '';
+    const retryBtn = isFailed && typeof arcRetryBtn === 'function'
+      ? arcRetryBtn(window.ARC_STORE_PAY || 'payments', r.id)
+      : '';
     const viewBtn = `<button onclick="payOpenReceiptModal(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="View Receipt" style="background:rgba(29,158,117,0.07);border:1px solid rgba(29,158,117,0.22);border-radius:6px;color:#34d399;font-size:10px;padding:2px 7px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(29,158,117,0.15)'" onmouseout="this.style.background='rgba(29,158,117,0.07)'"><i class="fas fa-eye"></i></button>`;
 
     return `
@@ -1170,23 +1202,66 @@ function renderPaymentHistory() {
       ${noteSnip}
       ${r.fullname ? `<div style="font-size:10px;color:#7a9cc0;margin-top:3px;">${r.fullname}${r.email ? ' · ' + r.email : ''}</div>` : ''}
       <div style="display:flex;align-items:center;gap:4px;margin-top:7px;justify-content:flex-end;">
-        ${editBtn}${cancelBtn}${viewBtn}
+        ${editBtn}${cancelBtn}${retryBtn}${viewBtn}
       </div>
     </div>`;
   }).join('');
 }
 
-// ─── Load history from localStorage on startup ─────────────────────────────────
-function payLoadLocalHistory() {
+// ─── Load history from IndexedDB / localStorage on startup ──────────────────────
+async function payLoadLocalHistory() {
+  const wallet = window.walletState?.address;
+
+  // Try IndexedDB first
+  if (typeof arcLoad === 'function' && wallet) {
+    try {
+      const items = await arcLoad(window.ARC_STORE_PAY || 'payments');
+      if (items && items.length > 0) {
+        // Separate completed history from scheduled
+        const completed = items.filter(r =>
+          r.status === 'completed' || r.status === 'confirmed' || r.status === 'failed'
+        );
+        const scheduled = items.filter(r =>
+          r.status === 'scheduled' || r.status === 'processing'
+        );
+        payState.history = completed;
+        // Merge scheduled back into localStorage-based list
+        if (scheduled.length > 0) {
+          const lsScheduled = payLoadScheduled();
+          const lsIds = new Set(lsScheduled.map(j => j.id));
+          const newSched = scheduled.filter(j => !lsIds.has(j.id));
+          if (newSched.length > 0) {
+            paySaveScheduled([...lsScheduled, ...newSched]);
+          }
+        }
+        console.log('[PAY] Loaded', completed.length, 'records from IndexedDB');
+        return;
+      }
+    } catch (e) {
+      console.warn('[PAY] IndexedDB load failed, falling back to localStorage:', e.message);
+    }
+  }
+
+  // Fallback to localStorage
   try {
     const raw = JSON.parse(localStorage.getItem('arc_pay_history') || '[]');
     payState.history = raw;
+    console.log('[PAY] Loaded', raw.length, 'records from localStorage');
   } catch (_) { payState.history = []; }
 }
 
+// ─── Background sync handler ─────────────────────────────────────────────────
+window.addEventListener('arcSyncRequest', async (e) => {
+  if (!window.walletState?.address) return;
+  // Re-load history from persistence layer and merge with in-memory state
+  await payLoadLocalHistory();
+  renderPaymentHistory();
+  console.log('[PAY] arcSyncRequest: history refreshed from local store');
+});
+
 // ─── Init ──────────────────────────────────────────────────────────────────────
 async function initPayments() {
-  payLoadLocalHistory();
+  await payLoadLocalHistory();
   payInitTimezones();
   selectPayToken(payState.token || 'USDC');
   updatePayPreview();
@@ -1249,4 +1324,4 @@ window.addEventListener('accountsChanged', () => {
 
 // ─── Boot log ──────────────────────────────────────────────────────────────────
 console.log('[PAY v3] Payments module loaded — Arc Testnet ChainID:', PAY_CHAIN_ID);
-console.log('[PAY v3] Features: Scheduled Payments · Notes · Receipt Modal · Status Labels');
+console.log('[PAY v3] Features: Scheduled Payments · Notes · Receipt Modal · Status Labels · Hybrid Persistence');

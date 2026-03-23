@@ -387,15 +387,19 @@ async function historyInit() {
   if (histState.loading) return;  // prevent concurrent loads
 
   if (gateEl)     gateEl.classList.add('hidden');
-  if (loadEl)     loadEl.classList.remove('hidden');
-  if (listEl)     listEl.innerHTML = '';
   if (emptyEl)    emptyEl.classList.add('hidden');
   if (loadMoreEl) loadMoreEl.classList.add('hidden');
 
   histState.wallet  = wallet;
-  histState.loading = true;
-  histState.items   = [];
   histState.page    = 1;
+
+  // — Phase 1: Show cached data immediately (instant feedback) —
+  await histLoadCached(wallet, listEl, loadEl);
+
+  // — Phase 2: Fetch on-chain data in background —
+  if (histState.loading) return;
+  histState.loading = true;
+  if (loadEl) loadEl.classList.remove('hidden');
 
   try {
     const ethersLib = window.ethers;
@@ -414,9 +418,12 @@ async function historyInit() {
     // In-memory receipts from session
     const receipts = histMergeReceipts();
 
+    // Also load from persistence layer
+    const localItems = await histLoadFromPersistence(wallet);
+
     // Merge, deduplicate
     const seen = new Set();
-    let all    = [...transfers, ...swaps, ...receipts].filter(item => {
+    let all    = [...transfers, ...swaps, ...receipts, ...localItems].filter(item => {
       const key = item.id || (item.txHash + '_' + item.type);
       if (!key || seen.has(key)) return false;
       seen.add(key);
@@ -427,17 +434,37 @@ async function historyInit() {
     all = histGroupMultisend(all);
 
     // Sort newest first
-    all.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    all.sort((a, b) => (b.ts || b._savedAtMs || 0) - (a.ts || a._savedAtMs || 0));
     histState.items = all;
+
+    // Save new on-chain items to persistence
+    if (typeof arcSave === 'function') {
+      const onChainItems = [...transfers, ...swaps];
+      for (const item of onChainItems.slice(0, 50)) {
+        arcSave(window.ARC_STORE_HIST || 'history', {
+          ...item,
+          wallet: wallet.toLowerCase(),
+          _source: 'onchain',
+          _savedAtMs: Date.now(),
+        }).catch(() => {});
+      }
+    }
 
   } catch (err) {
     console.error('[HISTORY] Load error:', err);
     const msg = err.message || String(err);
-    // Show partial results if any were loaded
-    if (histState.items.length === 0) {
-      showToast('History load error: ' + msg, 'error');
+    // If we already have cached data shown, just warn
+    if (histState.items.length > 0) {
+      const listEl2 = histEl('history-list');
+      if (listEl2 && !listEl2.querySelector('.hist-offline-bar')) {
+        const bar = document.createElement('div');
+        bar.className = 'hist-offline-bar';
+        bar.style.cssText = 'background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.18);border-radius:8px;padding:7px 12px;margin-bottom:8px;font-size:11px;color:#fbbf24;display:flex;align-items:center;gap:6px;';
+        bar.innerHTML = '<i class="fas fa-database"></i> Exibindo dados em cache — sincronização on-chain falhou. <button onclick="historyInit()" style="margin-left:auto;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:10px;">Tentar novamente</button>';
+        listEl2.insertBefore(bar, listEl2.firstChild);
+      }
     } else {
-      showToast('Partial history loaded. Some items may be missing.', 'warning');
+      showToast('History load error: ' + msg, 'error');
     }
   } finally {
     histState.loading = false;
@@ -445,6 +472,106 @@ async function historyInit() {
     histRender();
     histStartPolling();
   }
+}
+
+// ─── Load cached data from persistence layer ──────────────────────────────────
+async function histLoadCached(wallet, listEl, loadEl) {
+  if (typeof arcLoad !== 'function') return;
+
+  try {
+    const [histItems, payItems, cfItems] = await Promise.all([
+      arcLoad(window.ARC_STORE_HIST || 'history'),
+      arcLoad(window.ARC_STORE_PAY  || 'payments'),
+      arcLoad(window.ARC_STORE_CF   || 'contracts'),
+    ]);
+
+    // Convert payment records to history-compatible format
+    const payAsHist = payItems
+      .filter(p => p.status === 'completed' || p.status === 'confirmed')
+      .map(p => ({
+        id:       p.id,
+        txHash:   p.txHash || null,
+        blockNum: 0,
+        ts:       p.timestamp ? Math.floor(new Date(p.timestamp).getTime() / 1000) : 0,
+        _savedAtMs: p.timestamp ? new Date(p.timestamp).getTime() : 0,
+        type:     'payment',
+        token:    p.token || 'USDC',
+        amount:   p.amount ? Number(p.amount).toFixed(4) : '0',
+        from:     p.sender || p.from || wallet,
+        to:       p.recipient || '—',
+        status:   p.status || 'confirmed',
+        _source:  p._source || 'local',
+        _payData: p,
+      }));
+
+    // Convert contract TX records to history-compatible format
+    const cfAsHist = cfItems
+      .filter(c => c.txHash && c.type === 'contract')
+      .map(c => ({
+        id:       c.id,
+        txHash:   c.txHash,
+        blockNum: 0,
+        ts:       c.timestamp ? Math.floor(new Date(c.timestamp).getTime() / 1000) : 0,
+        _savedAtMs: c.timestamp ? new Date(c.timestamp).getTime() : 0,
+        type:     'contract',
+        token:    'USDC',
+        amount:   c.amount || '—',
+        from:     c.wallet || wallet,
+        to:       c.contractId ? 'Contract #' + c.contractId : '—',
+        status:   c.status || 'confirmed',
+        _source:  'local',
+      }));
+
+    const allCached = [...histItems, ...payAsHist, ...cfAsHist];
+    if (allCached.length === 0) return;
+
+    // Deduplicate
+    const seen = new Set();
+    const deduped = allCached.filter(item => {
+      const key = item.id || (item.txHash + '_' + item.type);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    deduped.sort((a, b) => (b.ts || b._savedAtMs || 0) - (a.ts || a._savedAtMs || 0));
+    histState.items = deduped;
+
+    // Show immediately with "Cached" indicator
+    if (loadEl) loadEl.classList.add('hidden');
+    histRender();
+
+    // Add cache indicator to list
+    if (listEl && deduped.length > 0) {
+      const existing = listEl.querySelector('.hist-cache-bar');
+      if (!existing) {
+        const bar = document.createElement('div');
+        bar.className = 'hist-cache-bar';
+        bar.style.cssText = 'background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.12);border-radius:8px;padding:6px 12px;margin-bottom:8px;font-size:10px;color:#8aaac8;display:flex;align-items:center;gap:6px;';
+        bar.innerHTML = '<i class="fas fa-database" style="color:#60b4ff;"></i> Carregando dados em cache... Sincronizando blockchain em segundo plano.';
+        listEl.insertBefore(bar, listEl.firstChild);
+        // Remove after full sync completes
+        setTimeout(() => { if (bar.parentNode) bar.remove(); }, 10000);
+      }
+    }
+
+    console.log('[HISTORY] Cached data shown immediately:', deduped.length, 'items');
+  } catch (e) {
+    console.warn('[HISTORY] Cache load error:', e.message);
+  }
+}
+
+// ─── Load items from persistence for merging ──────────────────────────────────
+async function histLoadFromPersistence(wallet) {
+  if (typeof arcLoad !== 'function') return [];
+  try {
+    const stored = await arcLoad(window.ARC_STORE_HIST || 'history');
+    // Filter to only items with txHash that we haven't seen on-chain
+    return stored.filter(s => s.txHash).map(s => ({
+      ...s,
+      _source: s._source || 'local',
+    }));
+  } catch (_) { return []; }
 }
 
 // ─── Incremental refresh (new blocks only) ────────────────────────────────
@@ -676,9 +803,14 @@ function histRender() {
   if (countEl) countEl.textContent = filtered.length + ' transaction' + (filtered.length !== 1 ? 's' : '');
 
   if (!filtered.length) {
-    if (emptyEl)    emptyEl.classList.remove('hidden');
+    if (emptyEl) {
+      // Only show empty state if we have no cached data either
+      if (!histState.items.length) {
+        emptyEl.classList.remove('hidden');
+        listEl.innerHTML = '';
+      }
+    }
     if (loadMoreEl) loadMoreEl.classList.add('hidden');
-    listEl.innerHTML = '';
     return;
   }
 
@@ -692,6 +824,15 @@ function histRender() {
 
   listEl.innerHTML = visible.map(item => histRenderRow(item, wallet)).join('');
 }
+
+// ─── Background sync handler ─────────────────────────────────────────────────
+window.addEventListener('arcSyncRequest', () => {
+  if (!histState.wallet) return;
+  const tabEl = document.getElementById('tab-content-history');
+  if (tabEl && !tabEl.classList.contains('hidden')) {
+    histRefreshNew();
+  }
+});
 
 // ─── Wallet events ───────────────────────────────────────────────────────────
 window.addEventListener('walletConnected', () => {
@@ -716,9 +857,11 @@ window.addEventListener('walletDisconnected', () => {
 });
 
 // ─── Expose globals ───────────────────────────────────────────────────────────
-window.historyInit     = historyInit;
-window.historyFilter   = historyFilter;
-window.historyLoadMore = historyLoadMore;
-window.histRefreshNew  = histRefreshNew;
+window.historyInit       = historyInit;
+window.historyFilter     = historyFilter;
+window.historyLoadMore   = historyLoadMore;
+window.histRefreshNew    = histRefreshNew;
+window.histLoadCached    = histLoadCached;
+window.histLoadFromPersistence = histLoadFromPersistence;
 
-console.log('[HISTORY] Module v2 loaded — Arc Testnet', HIST_CHAIN_ID, '| RPC:', HIST_RPC);
+console.log('[HISTORY] Module v2 loaded — Arc Testnet', HIST_CHAIN_ID, '| RPC:', HIST_RPC, '| Hybrid Persistence: IndexedDB + localStorage');

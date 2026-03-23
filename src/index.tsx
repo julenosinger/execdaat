@@ -309,7 +309,7 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20250323c" rel="stylesheet">
+  <link href="/static/styles.css?v=20250323d" rel="stylesheet">
   <script src="/static/i18n.js?v=20250322"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
@@ -3332,14 +3332,35 @@ app.get('/', (c) => {
               <i class="fas fa-lock"></i> Save PIN
             </button>
           </div>
+
+          <!-- Local Data Management -->
+          <div class="border border-gray-700/40 rounded-xl p-4 space-y-3 mt-2">
+            <div class="flex items-center gap-2 mb-1">
+              <i class="fas fa-database text-blue-400 text-sm"></i>
+              <span class="text-xs text-gray-200 font-semibold uppercase tracking-wider">Local Data Storage</span>
+            </div>
+            <p class="text-xs text-gray-500">Transaction history, payment records, and contracts are stored locally in IndexedDB for offline access. On-chain data remains the source of truth.</p>
+            <div id="arc-persist-stats" class="bg-gray-800/50 rounded-lg p-3 text-xs text-gray-400 space-y-1">
+              <div class="flex justify-between"><span>Payments cached:</span><span id="ps-payments" class="text-blue-400">—</span></div>
+              <div class="flex justify-between"><span>Contracts cached:</span><span id="ps-contracts" class="text-blue-400">—</span></div>
+              <div class="flex justify-between"><span>History cached:</span><span id="ps-history" class="text-blue-400">—</span></div>
+              <div class="flex justify-between"><span>Storage engine:</span><span id="ps-db" class="text-green-400">—</span></div>
+              <div class="flex justify-between"><span>Network:</span><span id="ps-online" class="text-green-400">—</span></div>
+            </div>
+            <div class="flex gap-2 flex-wrap">
+              <button onclick="arcShowPersistStats()"
+                class="flex items-center gap-1.5 bg-blue-900/30 hover:bg-blue-800/40 border border-blue-700/30 text-blue-300 rounded-lg px-4 py-2 text-xs font-semibold transition-all">
+                <i class="fas fa-sync-alt"></i> Refresh Stats
+              </button>
+              <button onclick="arcClearLocal()"
+                class="flex items-center gap-1.5 bg-red-900/20 hover:bg-red-900/40 border border-red-700/30 text-red-400 rounded-lg px-4 py-2 text-xs font-semibold transition-all">
+                <i class="fas fa-trash"></i> Clear Local Data
+              </button>
+            </div>
+            <p class="text-xs text-gray-600">⚠ Clearing local data only removes cached records. On-chain transactions remain permanently on the blockchain.</p>
+          </div>
         </div>
-
       </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════
-       PROFILE MODAL
        ═══════════════════════════════════════════════════════════ -->
   <div id="profile-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/70 backdrop-blur-sm">
     <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl mx-4">
@@ -3570,16 +3591,17 @@ app.get('/', (c) => {
 
   <script src="/static/wallet.js?v=20250322"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
+  <script src="/static/persistence.js?v=20250323"></script>
   <script src="/static/app.js?v=20250322"></script>
-  <script src="/static/payments.js?v=20250323a"></script>
-  <script src="/static/contracts.js?v=20250322"></script>
+  <script src="/static/payments.js?v=20250323b"></script>
+  <script src="/static/contracts.js?v=20250323b"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250322"></script>
   <script src="/static/multisend.js?v=20250322"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
-  <script src="/static/history.js?v=20250322"></script>
+  <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
   <script src="/static/chat.js?v=20250323"></script>
   <script>

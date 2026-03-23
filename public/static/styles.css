@@ -2216,3 +2216,140 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 
 /* ── Better text selection ── */
 ::selection { background: rgba(139,92,246,0.3); color: #fff; }
+
+/* ════════════════════════════════════════════════════════════════
+   ARC PERSISTENCE — Unified Status Badges, Offline Bar, Retry
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Unified arc- status badges ─────────────────────────────── */
+[class^="arc-badge-"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.arc-badge-pending    { background: rgba(245,158,11,0.12);  border-color: rgba(245,158,11,0.3);  color: #fbbf24; }
+.arc-badge-scheduled  { background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.3); color: #c4b5fd; }
+.arc-badge-processing { background: rgba(55,138,221,0.12);  border-color: rgba(55,138,221,0.3);  color: #60b4ff; }
+.arc-badge-completed  { background: rgba(52,211,153,0.12);  border-color: rgba(52,211,153,0.3);  color: #34d399; }
+.arc-badge-failed     { background: rgba(239,68,68,0.10);   border-color: rgba(239,68,68,0.3);   color: #f87171; }
+.arc-badge-cancelled  { background: rgba(156,163,175,0.10); border-color: rgba(156,163,175,0.2); color: #9ca3af; }
+.arc-badge-cached     { background: rgba(55,138,221,0.07);  border-color: rgba(55,138,221,0.18); color: #7aaae0; }
+.arc-badge-synced     { background: rgba(52,211,153,0.08);  border-color: rgba(52,211,153,0.2);  color: #6ee7b7; }
+.arc-badge-partial    { background: rgba(245,158,11,0.08);  border-color: rgba(245,158,11,0.2);  color: #fcd34d; }
+
+/* Light mode badge adjustments */
+body.light-mode .arc-badge-pending    { background: rgba(217,119,6,0.08);   border-color: rgba(217,119,6,0.25);  color: #92400e; }
+body.light-mode .arc-badge-scheduled  { background: rgba(109,40,217,0.08);  border-color: rgba(109,40,217,0.2);  color: #5b21b6; }
+body.light-mode .arc-badge-processing { background: rgba(37,99,235,0.08);   border-color: rgba(37,99,235,0.2);   color: #1e40af; }
+body.light-mode .arc-badge-completed  { background: rgba(5,150,105,0.08);   border-color: rgba(5,150,105,0.2);   color: #065f46; }
+body.light-mode .arc-badge-failed     { background: rgba(220,38,38,0.06);   border-color: rgba(220,38,38,0.2);   color: #991b1b; }
+body.light-mode .arc-badge-cancelled  { background: rgba(107,114,128,0.08); border-color: rgba(107,114,128,0.2); color: #4b5563; }
+body.light-mode .arc-badge-cached     { background: rgba(55,138,221,0.05);  border-color: rgba(55,138,221,0.15); color: #1d4ed8; }
+body.light-mode .arc-badge-synced     { background: rgba(5,150,105,0.06);   border-color: rgba(5,150,105,0.15);  color: #047857; }
+
+/* ── Offline indicator bar ──────────────────────────────────── */
+.arc-offline-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(245,158,11,0.09);
+  border-bottom: 1px solid rgba(245,158,11,0.22);
+  font-size: 12px;
+  color: #fbbf24;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  animation: arcOfflineFadeIn 0.3s ease;
+}
+.arc-offline-bar i { flex-shrink: 0; }
+.arc-offline-bar span { flex: 1; }
+.arc-offline-retry {
+  flex-shrink: 0;
+  background: rgba(245,158,11,0.15);
+  border: 1px solid rgba(245,158,11,0.35);
+  color: #fbbf24;
+  padding: 3px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: background 0.18s;
+}
+.arc-offline-retry:hover { background: rgba(245,158,11,0.28); }
+
+@keyframes arcOfflineFadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Light mode offline bar */
+body.light-mode .arc-offline-bar {
+  background: rgba(217,119,6,0.06);
+  border-bottom-color: rgba(217,119,6,0.18);
+  color: #92400e;
+}
+body.light-mode .arc-offline-retry {
+  background: rgba(217,119,6,0.10);
+  border-color: rgba(217,119,6,0.25);
+  color: #78350f;
+}
+
+/* ── Retry button ────────────────────────────────────────────── */
+.arc-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.22);
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+}
+.arc-retry-btn:hover {
+  background: rgba(245,158,11,0.18);
+  border-color: rgba(245,158,11,0.4);
+}
+body.light-mode .arc-retry-btn {
+  background: rgba(217,119,6,0.07);
+  border-color: rgba(217,119,6,0.2);
+  color: #78350f;
+}
+body.light-mode .arc-retry-btn:hover {
+  background: rgba(217,119,6,0.14);
+}
+
+/* ── Cached data notice bars ─────────────────────────────────── */
+.hist-cache-bar, .hist-offline-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 10px;
+}
+.hist-cache-bar {
+  background: rgba(55,138,221,0.04);
+  border: 1px solid rgba(55,138,221,0.12);
+  color: #8aaac8;
+}
+.hist-offline-bar {
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.18);
+  color: #fbbf24;
+}
+body.light-mode .hist-cache-bar  { background: rgba(37,99,235,0.04);  border-color: rgba(37,99,235,0.1);  color: #3b82f6; }
+body.light-mode .hist-offline-bar { background: rgba(217,119,6,0.05); border-color: rgba(217,119,6,0.15); color: #92400e; }

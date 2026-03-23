@@ -118,18 +118,37 @@ function cfLog(...a)    { if (cfState.debugMode) console.log('%c[CF v5]', 'color
 function cfWarn(...a)   { console.warn('[CF v5]', ...a); }
 function cfErr(...a)    { console.error('[CF v5]', ...a); }
 
-// ─── TX Log (debug history) ──────────────────────────────────────────────────
+// ─── TX Log (debug history + hybrid persistence) ─────────────────────────────
 function cfLogTx(action, txHash, contractId, extra = {}) {
   try {
     const log = JSON.parse(localStorage.getItem(CF_TX_LOG_KEY) || '[]');
-    log.unshift({
+    const entry = {
       action, txHash, contractId,
       ts: Date.now(),
       wallet: window.walletState?.address,
       ...extra,
-    });
+    };
+    log.unshift(entry);
     localStorage.setItem(CF_TX_LOG_KEY, JSON.stringify(log.slice(0, 50)));
     cfLog(`📝 TX LOG [${action}] contractId=${contractId} tx=${txHash}`);
+
+    // Also persist to IndexedDB via persistence layer
+    if (typeof arcSave === 'function' && txHash) {
+      const record = {
+        id: 'cf_tx_' + (txHash || contractId + '_' + action + '_' + Date.now()),
+        txHash,
+        contractId: String(contractId),
+        action,
+        type: 'contract',
+        status: extra.status || 'confirmed',
+        timestamp: new Date().toISOString(),
+        wallet: window.walletState?.address,
+        network: CF_NETWORK_NAME,
+        chainId: CF_CHAIN_ID,
+        ...extra,
+      };
+      arcSave(window.ARC_STORE_CF || 'contracts', record).catch(() => {});
+    }
   } catch { /* non-critical */ }
 }
 
@@ -492,13 +511,70 @@ async function cfLoadContracts(opts = {}) {
     cfRenderSummary(contracts, address);
     cfLog(`Rendered ${contracts.length} contracts (${ids.length} fetched)`);
 
+    // Persist contracts to IndexedDB for offline access
+    if (typeof arcSave === 'function') {
+      for (const c of contracts) {
+        arcSave(window.ARC_STORE_CF || 'contracts', {
+          id: 'cf_contract_' + c.id,
+          contractId: String(c.id),
+          type: 'contract',
+          status: cfUiStatus(c).toLowerCase(),
+          timestamp: new Date().toISOString(),
+          wallet: address,
+          network: CF_NETWORK_NAME,
+          chainId: CF_CHAIN_ID,
+          ...cfGetMeta(c.id),
+          _onChainData: c,
+        }).catch(() => {});
+      }
+    }
+
   } catch (e) {
     cfErr('cfLoadContracts error:', e);
-    cfShowListState('error', e.message);
+
+    // On error: try to show cached contracts from local store
+    const wallet2 = window.walletState?.address;
+    if (wallet2 && typeof arcLoad === 'function') {
+      arcLoad(window.ARC_STORE_CF || 'contracts').then(cached => {
+        const contractRecords = cached.filter(r => r._onChainData);
+        if (contractRecords.length > 0) {
+          const cachedContracts = contractRecords.map(r => r._onChainData).filter(Boolean);
+          if (cachedContracts.length > 0) {
+            cfRenderContracts(cachedContracts, wallet2);
+            cfRenderSummary(cachedContracts, wallet2);
+            const listEl = cfEl('cf-contracts-list');
+            if (listEl) {
+              const bar = document.createElement('div');
+              bar.style.cssText = 'background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:11px;color:#fbbf24;display:flex;align-items:center;gap:6px;';
+              bar.innerHTML = '<i class="fas fa-database"></i> Mostrando contratos em cache — sincronização on-chain falhou. <button onclick="cfLoadContracts({force:true})" style="margin-left:auto;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:10px;">Tentar novamente</button>';
+              listEl.insertBefore(bar, listEl.firstChild);
+            }
+            cfLog('Showed', cachedContracts.length, 'cached contracts from IndexedDB');
+            return;
+          }
+        }
+        cfShowListState('error', e.message);
+      }).catch(() => cfShowListState('error', e.message));
+    } else {
+      cfShowListState('error', e.message);
+    }
   } finally {
     cfState.loadingIds = false;
   }
 }
+
+// ─── Background sync handler ──────────────────────────────────────────────────
+window.addEventListener('arcSyncRequest', () => {
+  if (!window.walletState?.address) return;
+  const tabEl = document.getElementById('tab-content-contracts');
+  if (tabEl && !tabEl.classList.contains('hidden')) {
+    const age = Date.now() - cfState.lastRefresh;
+    if (age > 30000) {
+      cfLog('arcSyncRequest: refreshing contracts');
+      cfLoadContracts();
+    }
+  }
+});
 
 // ─── Summary bar ──────────────────────────────────────────────────────────────
 function cfRenderSummary(contracts, wallet) {
