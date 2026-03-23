@@ -567,11 +567,6 @@ app.get('/', (c) => {
             <i class="fas fa-rocket"></i>
             Launch App
           </button>
-          <button onclick="openCreateAccount()"
-            class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-purple-500 text-white font-semibold rounded-2xl px-8 py-3.5 text-base transition-all">
-            <i class="fas fa-user-plus text-purple-400"></i>
-            Create Account
-          </button>
           <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener"
             class="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors">
             <i class="fab fa-github"></i>
@@ -3511,7 +3506,9 @@ app.get('/', (c) => {
           </div>
         </div>
       </div>
-       ═══════════════════════════════════════════════════════════ -->
+    </div>
+  </div>
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <div id="profile-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/70 backdrop-blur-sm">
     <div class="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl mx-4">
 
