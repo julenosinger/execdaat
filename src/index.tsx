@@ -1076,37 +1076,11 @@ app.get('/', (c) => {
         <!-- ══ LEFT: Wallet + Form ══ -->
         <div>
 
-          <!-- Wallet info bar -->
-          <div style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.14);border-radius:14px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-            <div style="display:flex;align-items:center;gap:10px;">
-              <div style="width:32px;height:32px;border-radius:10px;background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                <i class="fas fa-wallet" style="color:#60b4ff;font-size:13px;"></i>
-              </div>
-              <div>
-                <p style="font-size:9px;color:#3a4870;text-transform:uppercase;letter-spacing:0.07em;margin:0 0 1px;font-weight:700;">Connected Wallet</p>
-                <p id="pay-wallet-short" style="color:#dde2f0;font-family:monospace;font-size:12px;font-weight:700;margin:0;">Not connected</p>
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
-              <div>
-                <p style="font-size:9px;color:#3a4870;margin:0 0 1px;font-weight:700;">USDC</p>
-                <p id="pay-balance-usdc" style="color:#60b4ff;font-size:13px;font-weight:700;margin:0;">—</p>
-              </div>
-              <div>
-                <p style="font-size:9px;color:#3a4870;margin:0 0 1px;font-weight:700;">EURC</p>
-                <p id="pay-balance-eurc" style="color:#34d399;font-size:13px;font-weight:700;margin:0;">—</p>
-              </div>
-              <div>
-                <p style="font-size:9px;color:#3a4870;margin:0 0 1px;font-weight:700;">Network</p>
-                <p id="pay-network-name" style="color:#34d399;font-size:10px;font-weight:700;margin:0;">—</p>
-              </div>
-              <button onclick="refreshPaymentBalances()" title="Refresh balances"
-                style="width:28px;height:28px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.18);border-radius:8px;color:#3a4870;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;"
-                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.35)'" onmouseout="this.style.color='#3a4870';this.style.borderColor='rgba(55,138,221,0.18)'">
-                <i class="fas fa-sync" style="font-size:11px;"></i>
-              </button>
-            </div>
-          </div>
+          <!-- Hidden elements to keep JS IDs alive -->
+          <span id="pay-wallet-short"  style="display:none;"></span>
+          <span id="pay-balance-usdc"  style="display:none;"></span>
+          <span id="pay-balance-eurc"  style="display:none;"></span>
+          <span id="pay-network-name"  style="display:none;"></span>
 
           <!-- Main form panel -->
           <div class="pay-cf-panel">
