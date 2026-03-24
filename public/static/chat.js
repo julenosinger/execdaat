@@ -46,6 +46,7 @@ let chatInitialized = false;
 let isTyping        = false;
 let unreadCount     = 0;
 let chatSize        = localStorage.getItem('arc-chat-size') || 'medium';
+let chatWidthExpanded = false; // width-only toggle state
 let arcPaySession   = null;   // { wallet, sig, sessionHash, expiry, authorized }
 let authInProgress  = false;  // prevent double-click on authorize
 
@@ -311,6 +312,48 @@ function applyChatSize(size, animate = true) {
   }
   widget.setAttribute('data-size', size);
   if (!animate) requestAnimationFrame(() => { widget.style.transition = ''; });
+}
+
+// ── Width-only expand toggle ─────────────────────────────────────────────────────
+// Expands panel to 1.5× its current base width via a smooth CSS transition.
+// Does NOT change height, position, or any internal layout.
+function toggleChatWidth() {
+  const widget = document.getElementById('chat-widget');
+  const btn    = document.getElementById('chat-width-toggle-btn');
+  if (!widget) return;
+
+  chatWidthExpanded = !chatWidthExpanded;
+
+  if (chatWidthExpanded) {
+    // Read the actual rendered width and scale it 1.5×
+    const currentW = widget.getBoundingClientRect().width || 400;
+    const expanded = Math.min(Math.round(currentW * 1.5), window.innerWidth - 16);
+    widget.style.width    = expanded + 'px';
+    widget.style.maxWidth = 'calc(100vw - 16px)';
+    if (btn) {
+      btn.title = 'Restaurar largura padrão';
+      btn.style.color   = '#a78bfa';
+      btn.style.background = 'rgba(167,139,250,0.15)';
+    }
+  } else {
+    // Restore: let applyChatSize reassert the size-preset width
+    applyChatSize(chatSize, true);
+    if (btn) {
+      btn.title = 'Expandir largura (1.5×)';
+      btn.style.color   = '';
+      btn.style.background = '';
+    }
+  }
+}
+window.toggleChatWidth = toggleChatWidth;
+
+// Reset expand state whenever a size preset is chosen
+const _origSetChatSize = setChatSize;
+function setChatSize(size) {
+  chatWidthExpanded = false;
+  const btn = document.getElementById('chat-width-toggle-btn');
+  if (btn) { btn.style.color = ''; btn.style.background = ''; }
+  _origSetChatSize(size);
 }
 
 // ── Drag-to-move logic ─────────────────────────────────────────────────────────

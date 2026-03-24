@@ -3197,6 +3197,12 @@ app.get('/', (c) => {
         <button id="chat-size-medium" onclick="setChatSize('medium')" class="chat-size-btn active" title="Médio"><i class="fas fa-expand-alt"></i></button>
         <button id="chat-size-wide"   onclick="setChatSize('wide')"   class="chat-size-btn" title="Expandir (+12% largura)"><i class="fas fa-arrows-alt-h"></i></button>
         <button id="chat-size-full"   onclick="setChatSize('full')"   class="chat-size-btn" title="Tela cheia"><i class="fas fa-expand"></i></button>
+        <!-- Width expand toggle -->
+        <button id="chat-width-toggle-btn"
+          onclick="toggleChatWidth()"
+          title="Expandir largura (1.5×)"
+          class="chat-size-btn"
+          style="font-size:13px;font-weight:700;letter-spacing:-0.5px;padding:0 5px;">↔</button>
         <!-- Clear -->
         <button onclick="clearChatHistory()" title="Clear chat" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
           <i class="fas fa-trash text-xs"></i>
@@ -3800,7 +3806,7 @@ app.get('/', (c) => {
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
-  <script src="/static/chat.js?v=20250323b"></script>
+  <script src="/static/chat.js?v=20250324c"></script>
   <script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
