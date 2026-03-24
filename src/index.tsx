@@ -2598,7 +2598,7 @@ app.get('/', (c) => {
       <style>
         /* ── Layout ── */
         #dex-page { display:grid; grid-template-columns:1fr; gap:14px; }
-        @media(min-width:1024px){ #dex-page { grid-template-columns:minmax(0,2fr) minmax(0,3fr); gap:14px; } }
+        @media(min-width:1024px){ #dex-page { grid-template-columns:minmax(0,2fr) minmax(0,2fr); gap:14px; } }
 
         /* ── Panel ── */
         .dex-panel {
