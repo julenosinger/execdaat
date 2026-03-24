@@ -36,21 +36,27 @@ const CF_IPFS_API      = 'https://api.web3.storage/upload';
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
 const CF_ABI = [
+  // ── Read-only ────────────────────────────────────────────────────────────
   'function contractCount() view returns (uint256)',
   'function getContract(uint256 id) view returns (uint256,address,address,string,uint256,uint256,uint8,bool,uint256,uint256,uint256,uint256,uint256)',
   'function getMilestones(uint256 id) view returns (tuple(uint256 id, string description, uint256 amount, uint8 status, uint256 releasedAt)[])',
   'function getByClient(address) view returns (uint256[])',
   'function getByContractor(address) view returns (uint256[])',
-  'function createContract(address,string,uint256,string[],uint256[]) returns (uint256)',
-  'function signContract(uint256)',
-  'function depositToContract(uint256,uint256)',
-  'function withdrawFromContract(uint256,uint256)',
-  'function completeMilestone(uint256,uint256)',
-  'function cancelContract(uint256)',
-  'event ContractCreated(uint256 indexed contractId, address indexed client, address indexed contractor, uint256 totalValue)',
-  'event FundsDeposited(uint256 indexed contractId, address indexed depositor, uint256 amount)',
-  'event MilestoneCompleted(uint256 indexed contractId, uint256 indexed milestoneId, uint256 amount)',
-  'event FundsWithdrawn(uint256 indexed contractId, address indexed recipient, uint256 amount)',
+  // ── Write ────────────────────────────────────────────────────────────────
+  // Flow: client calls USDC.approve(factory, amount) THEN createContract
+  //       contractor calls signContract → status becomes Active
+  //       client calls completeMilestone to release payment
+  //       client can cancelContract while still Draft (full refund)
+  'function createContract(address contractor, string title, uint256 totalValue, string[] milestoneDescs, uint256[] milestoneAmounts) returns (uint256)',
+  'function signContract(uint256 contractId)',
+  'function completeMilestone(uint256 contractId, uint256 milestoneIndex)',
+  'function cancelContract(uint256 contractId)',
+  // ── Events ───────────────────────────────────────────────────────────────
+  // Exact signatures from ContractFactory.sol — must match for parseLog
+  'event ContractCreated(uint256 indexed contractId, address indexed client, address indexed contractor, string title, uint256 totalValue, uint256 milestoneCount, uint256 timestamp)',
+  'event ContractSigned(uint256 indexed contractId, address indexed contractor, uint256 timestamp)',
+  'event MilestoneReleased(uint256 indexed contractId, uint256 indexed milestoneIndex, address indexed contractor, uint256 amount, uint256 timestamp)',
+  'event ContractCancelled(uint256 indexed contractId, address indexed client, uint256 refundAmount, uint256 timestamp)',
 ];
 
 const CF_USDC_ABI = [
@@ -1381,262 +1387,43 @@ function cfSetDepStep(n, status = 'active', detail = '') {
 }
 
 function cfDepositToContract(contractId) {
-  const wallet = window.walletState?.address;
-  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
-  if (cfState.pending) { showToast('Aguarde a transação atual.', 'warning'); return; }
+  // In ContractFactory.sol, USDC is pulled in full during createContract().
+  // There is no separate depositToContract function on-chain.
+  // The funds are already deposited when the contract is created.
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (!c) { showToast('Contrato não encontrado.', 'error'); return; }
-  if (c.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Apenas o cliente pode depositar.', 'error'); return; }
-  const remaining = BigInt(c.totalValue) - BigInt(c.depositedValue);
-  if (remaining <= 0n) { showToast('⚠️ Contrato já totalmente financiado.', 'warning'); return; }
-  cfShowDepositModal(contractId); // async — fetches live balance
+  const deposited = c ? `$${cfFmtUsdc(c.depositedValue)} USDC` : 'valor desconhecido';
+  showToast(`ℹ️ Contrato #${contractId} já tem ${deposited} depositado on-chain. Use "Release Milestone" para liberar pagamentos.`, 'info');
+  cfLog(`[INFO] depositToContract called but funds are already deposited at creation. Contract #${contractId} depositedValue=${c?.depositedValue}`);
 }
 
 async function cfExecuteDeposit(contractId) {
-  const c = cfState.contracts.find(x => x.id === contractId);
-  if (!c) { showToast('Contrato não encontrado.', 'error'); return; }
-
-  const humanAmount = parseFloat(document.getElementById('cf-deposit-amount')?.value || '0');
-  if (isNaN(humanAmount) || humanAmount <= 0) { showToast('Valor inválido.', 'error'); return; }
-
-  const depositAmount = cfParseUsdc(humanAmount);
-
-  // Re-fetch on-chain depositedValue for accuracy
-  let remainingAmount;
-  try {
-    const onChainDeposited = await cfReadDepositedBalance(contractId);
-    if (onChainDeposited !== null) {
-      remainingAmount = BigInt(c.totalValue) - onChainDeposited;
-      // Update cached state
-      c.depositedValue = onChainDeposited;
-      cfLog(`On-chain deposited: $${cfFmtUsdc(onChainDeposited)}, remaining: $${cfFmtUsdc(remainingAmount)}`);
-    } else {
-      remainingAmount = BigInt(c.totalValue) - BigInt(c.depositedValue);
-    }
-  } catch {
-    remainingAmount = BigInt(c.totalValue) - BigInt(c.depositedValue);
-  }
-
-  if (depositAmount > remainingAmount) {
-    showToast(`❌ Valor $${humanAmount} excede o restante $${cfFmtUsdc(remainingAmount)}.`, 'error');
-    return;
-  }
-  if (remainingAmount <= 0n) {
-    showToast('⚠️ Contrato já totalmente financiado on-chain.', 'warning');
-    return;
-  }
-
-  const btn = document.getElementById('cf-deposit-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing…'; }
-  cfState.pending = true;
-
-  try {
-    // Step 0: init provider & validate network
-    cfSetDepStep(0, 'active', 'Connecting…');
-    const init = await cfInitProvider();
-    if (!init.ok) {
-      cfSetDepStep(0, 'error', init.message.slice(0, 40));
-      showToast(`❌ ${init.message}`, 'error');
-      return;
-    }
-    cfLog(`Deposit starting: contractId=${contractId} amount=$${humanAmount} USDC wallet=${init.address}`);
-    cfSetDepStep(0, 'done');
-
-    // Step 1: check USDC balance
-    cfSetDepStep(1, 'active', 'Checking balance…');
-    const balance = await cfReadBalance(init.address);
-    cfLog(`Balance: $${cfFmtUsdc(balance)} | Need: $${humanAmount}`);
-    if (balance < depositAmount) {
-      cfSetDepStep(1, 'error', `Saldo $${cfFmtUsdc(balance)} insuf.`);
-      showToast(`❌ Saldo insuficiente: você tem $${cfFmtUsdc(balance)} USDC, precisa de $${humanAmount}.`, 'error');
-      return;
-    }
-    cfSetDepStep(1, 'done', `Balance OK: $${cfFmtUsdc(balance)}`);
-
-    // Step 2: check and set USDC allowance
-    cfSetDepStep(2, 'active', 'Checking allowance…');
-    const allowance = await cfReadAllowance(init.address, CF_FACTORY_ADDR);
-    if (allowance < depositAmount) {
-      cfLog(`Insufficient allowance $${cfFmtUsdc(allowance)} < $${humanAmount}, requesting approval...`);
-      showToast('📝 Aprovando USDC para ContractFactory — confirme na carteira…', 'info');
-      const appTx = await init.usdc.approve(CF_FACTORY_ADDR, depositAmount);
-      cfLog('Approve tx submitted:', appTx.hash);
-      cfLogTx('approve_for_deposit', appTx.hash, contractId, { amount: humanAmount });
-      cfSetDepStep(2, 'active', `Waiting approval: ${appTx.hash.slice(0, 14)}…`);
-      const ar = await appTx.wait(1);
-      if (ar.status !== 1) throw new Error('Approve revertida on-chain.');
-      cfLog('Approval confirmed at block', ar.blockNumber);
-    } else {
-      cfLog(`Allowance OK: $${cfFmtUsdc(allowance)}`);
-    }
-    cfSetDepStep(2, 'done', 'USDC approved ✓');
-
-    // Step 3: send deposit
-    cfSetDepStep(3, 'active', 'Sign deposit…');
-    showToast(`📝 Deposit $${humanAmount} USDC no contrato #${contractId} — confirme na carteira…`, 'info');
-    cfLog(`Calling depositToContract(${contractId}, ${depositAmount.toString()})`);
-    let tx;
-    try {
-      tx = await init.factory.depositToContract(contractId, depositAmount);
-    } catch (err) {
-      const rej = err.code === 4001 || err.code === 'ACTION_REJECTED';
-      cfSetDepStep(3, 'error', rej ? 'Rejected' : 'Failed');
-      showToast(rej ? '⚠️ Transação rejeitada.' : `❌ ${err.reason || err.message}`, rej ? 'warning' : 'error');
-      return;
-    }
-
-    cfLog('Deposit tx submitted:', tx.hash);
-    cfLogTx('deposit', tx.hash, contractId, { amount: humanAmount });
-    cfSetDepStep(3, 'done', `Tx: ${tx.hash.slice(0, 12)}…`);
-
-    // Show tx link immediately
-    const txLinkEl = document.getElementById('cf-dep-tx-link');
-    if (txLinkEl) {
-      txLinkEl.style.display = 'block';
-      txLinkEl.innerHTML = `<i class="fas fa-external-link-alt" style="font-size:9px;margin-right:4px;color:#60b4ff;"></i>
-        <a href="${CF_EXPLORER}/tx/${tx.hash}" target="_blank" style="color:#60b4ff;font-family:monospace;font-size:11px;">
-          View on ArcScan: ${tx.hash.slice(0, 20)}…
-        </a>`;
-    }
-
-    // Step 4: wait for confirmation
-    cfSetDepStep(4, 'active', 'Waiting confirmation…');
-    const receipt = await tx.wait(1);
-    if (receipt.status !== 1) throw new Error(`Tx revertida no bloco #${receipt.blockNumber}.`);
-    cfLog(`Deposit confirmed! Block: ${receipt.blockNumber}, Gas: ${receipt.gasUsed}`);
-    cfSetDepStep(4, 'done', `Block #${receipt.blockNumber}`);
-    cfSetDepStep(5, 'done', 'Complete!');
-
-    // Update deposited value in local state immediately (optimistic update)
-    c.depositedValue = (BigInt(c.depositedValue) + depositAmount).toString();
-
-    showToast(`✅ Depósito de $${humanAmount} USDC confirmado! Bloco #${receipt.blockNumber}.`, 'success');
-    cfShowTxBadge(receipt.hash, `Deposit $${humanAmount} USDC`);
-
-    // Auto-refresh after 2.5s
-    setTimeout(async () => {
-      document.getElementById('cf-deposit-modal')?.remove();
-      await cfLoadContracts({ force: true });
-    }, 2500);
-
-  } catch (err) {
-    cfErr('cfExecuteDeposit error:', err);
-    const rej = err.code === 4001 || err.code === 'ACTION_REJECTED';
-    showToast(rej ? '⚠️ Transação rejeitada.' : `❌ ${err.reason || err.message}`, rej ? 'warning' : 'error');
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-arrow-circle-down mr-2"></i>Retry'; }
-  } finally {
-    cfState.pending = false;
-  }
+  // Not used — depositToContract does not exist in ContractFactory.sol.
+  // Funds are deposited automatically during createContract().
+  showToast('ℹ️ O depósito ocorre automaticamente na criação do contrato. Não há função de depósito separada.', 'info');
+  cfLog('[INFO] cfExecuteDeposit: no depositToContract function on-chain — funds are deposited at createContract time.');
 }
 
-// ─── Withdraw ─────────────────────────────────────────────────────────────────
+// ─── Withdraw (informativo — fundos são enviados direto em completeMilestone) ──
 async function cfWithdrawFromContract(contractId) {
-  const wallet = window.walletState?.address;
-  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
-  if (cfState.pending) { showToast('Aguarde.', 'warning'); return; }
+  // In ContractFactory.sol there is NO withdrawFromContract function.
+  // Payment is sent to the contractor automatically when the client calls completeMilestone().
+  // Show the milestones status to the contractor so they can see what was released.
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (!c) { showToast('Contrato não encontrado.', 'error'); return; }
-  if (c.contractor?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Apenas o contratado pode sacar.', 'error'); return; }
-  if (c.status !== 'Active') { showToast('❌ Contrato não está ativo.', 'error'); return; }
-
-  const releasedAmt = (c.milestones || []).filter(m => m.status === 'Released').reduce((s, m) => s + BigInt(m.amount), 0n);
-  if (releasedAmt <= 0n) { showToast('⚠️ Nenhum milestone liberado para saque.', 'warning'); return; }
-
-  const humanAmt = (Number(releasedAmt) / 1e6).toFixed(2);
-  document.getElementById('cf-withdraw-modal')?.remove();
-  const modal = document.createElement('div');
-  modal.id = 'cf-withdraw-modal';
-  modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm';
-  modal.innerHTML = `
-  <div style="background:#0a0c18;border:1px solid rgba(52,211,153,0.3);border-radius:20px;width:100%;max-width:420px;padding:24px;box-shadow:0 0 40px rgba(52,211,153,0.1);">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-      <h3 style="color:#dde2f0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px;">
-        <i class="fas fa-arrow-circle-up" style="color:#34d399;"></i>Receive USDC — #${contractId}
-      </h3>
-      <button onclick="document.getElementById('cf-withdraw-modal').remove()"
-        style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-        <i class="fas fa-times text-xs"></i></button>
-    </div>
-    <div style="background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.2);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center;">
-      <div style="font-size:11px;color:#34d399;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Available</div>
-      <div style="font-size:28px;font-weight:800;color:#6ee7b7;">$${humanAmt} <span style="font-size:14px;color:#34d399;font-weight:600;">USDC</span></div>
-    </div>
-    <div id="cf-withdraw-steps" style="display:none;margin-bottom:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(52,211,153,0.1);border-radius:10px;padding:12px;">
-      <p style="font-size:10px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Progress</p>
-      ${[['fa-network-wired','Verify network'],['fa-paper-plane','Send withdrawal'],['fa-hourglass-half','Awaiting confirmation'],['fa-check-circle','Confirmed']].map((s,i) => `
-        <div id="cf-wd-step-${i}" class="ct-step ct-step-idle flex items-center gap-2 mb-1">
-          <div class="ct-step-icon w-5 h-5 rounded-full flex items-center justify-center text-[9px] flex-shrink-0"><i class="fas ${s[0]}"></i></div>
-          <span style="font-size:11px;">${s[1]}</span>
-        </div>`).join('')}
-      <div id="cf-wd-tx-link" style="display:none;font-size:11px;margin-top:6px;"></div>
-    </div>
-    <div style="display:flex;gap:10px;">
-      <button onclick="cfExecuteWithdraw(${contractId},${releasedAmt}n)" id="cf-withdraw-btn"
-        style="flex:1;background:linear-gradient(135deg,#065f46,#047857);color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-        <i class="fas fa-arrow-circle-up"></i>Receive $${humanAmt} USDC
-      </button>
-      <button onclick="document.getElementById('cf-withdraw-modal').remove()"
-        style="padding:12px 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280;border-radius:12px;cursor:pointer;font-size:13px;">Cancel</button>
-    </div>
-  </div>`;
-  document.body.appendChild(modal);
+  const released = (c?.milestones || []).filter(m => m.status === 'Released');
+  const pending  = (c?.milestones || []).filter(m => m.status === 'Pending');
+  const relTotal = released.reduce((s, m) => s + BigInt(m.amount), 0n);
+  cfLog(`[INFO] cfWithdrawFromContract: no separate withdraw fn. Released milestones: ${released.length}, total=$${cfFmtUsdc(relTotal)}`);
+  if (released.length > 0) {
+    showToast(`ℹ️ ${released.length} milestone(s) liberado(s) — $${cfFmtUsdc(relTotal)} USDC foram enviados diretamente ao contratado via completeMilestone(). ${pending.length} milestone(s) pendente(s).`, 'info');
+  } else {
+    showToast(`ℹ️ Nenhum milestone liberado ainda. O cliente deve chamar "Release Milestone" para enviar pagamentos ao contratado.`, 'info');
+  }
 }
 
 async function cfExecuteWithdraw(contractId, releasedAmt) {
-  const humanAmt = (Number(releasedAmt) / 1e6).toFixed(2);
-  const btn = document.getElementById('cf-withdraw-btn');
-  if (btn) { btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin mr-2"></i>Processing…'; }
-
-  function setWdStep(n, status='active', detail='') {
-    const panel = document.getElementById('cf-withdraw-steps');
-    if (panel) panel.style.display='block';
-    for (let i=0;i<=3;i++) {
-      const el = document.getElementById(`cf-wd-step-${i}`);
-      if (!el) continue;
-      el.classList.remove('ct-step-active','ct-step-done','ct-step-error','ct-step-idle');
-      if (i<n) el.classList.add('ct-step-done');
-      else if (i===n) el.classList.add(status==='error'?'ct-step-error':'ct-step-active');
-      else el.classList.add('ct-step-idle');
-      if (i===n&&detail) { const s=el.querySelector('span'); if(s){if(!s.dataset.base)s.dataset.base=s.textContent; s.textContent=detail;} }
-    }
-  }
-
-  cfState.pending = true;
-  try {
-    setWdStep(0,'active');
-    const init = await cfInitProvider();
-    if (!init.ok) { setWdStep(0,'error',init.message.slice(0,40)); showToast(`❌ ${init.message}`,'error'); return; }
-    setWdStep(0,'done');
-
-    setWdStep(1,'active','Sign withdrawal…');
-    showToast(`📝 Saque $${humanAmt} USDC — confirme na carteira…`,'info');
-    cfLog(`Withdraw: contractId=${contractId} amount=$${humanAmt} USDC`);
-    let tx;
-    try { tx = await init.factory.withdrawFromContract(contractId, releasedAmt); }
-    catch(err) { const rej=err.code===4001||err.code==='ACTION_REJECTED'; setWdStep(1,'error',rej?'Rejected':'Failed'); showToast(rej?'⚠️ Rejected.':`❌ ${err.reason||err.message}`,rej?'warning':'error'); return; }
-    cfLog('Withdraw tx submitted:', tx.hash);
-    cfLogTx('withdraw', tx.hash, contractId, { amount: humanAmt });
-    setWdStep(1,'done');
-
-    const txEl = document.getElementById('cf-wd-tx-link');
-    if(txEl){txEl.style.display='block';txEl.innerHTML=`<i class="fas fa-external-link-alt" style="font-size:9px;margin-right:4px;color:#60b4ff;"></i><a href="${CF_EXPLORER}/tx/${tx.hash}" target="_blank" style="color:#60b4ff;font-family:monospace;font-size:11px;">${tx.hash.slice(0,20)}…</a>`;}
-
-    setWdStep(2,'active','Waiting confirmation…');
-    const receipt = await tx.wait(1);
-    if(receipt.status!==1) throw new Error('Tx revertida on-chain.');
-    cfLog('Withdraw confirmed at block', receipt.blockNumber);
-    setWdStep(2,'done');
-    setWdStep(3,'done');
-
-    showToast(`✅ Saque de $${humanAmt} USDC confirmado! Bloco #${receipt.blockNumber}`,'success');
-    cfShowTxBadge(receipt.hash,`Receive $${humanAmt} USDC`);
-    setTimeout(()=>{document.getElementById('cf-withdraw-modal')?.remove(); cfLoadContracts({ force: true });},2500);
-  } catch(err) {
-    cfErr('cfExecuteWithdraw:',err);
-    const rej=err.code===4001||err.code==='ACTION_REJECTED';
-    showToast(rej?'⚠️ Rejeitada.':`❌ ${err.reason||err.message}`,rej?'warning':'error');
-    if(btn){btn.disabled=false;btn.innerHTML=`<i class="fas fa-arrow-circle-up mr-2"></i>Retry`;}
-  } finally { cfState.pending=false; }
+  // Stub — no withdrawFromContract on-chain.
+  showToast('ℹ️ Pagamentos são enviados automaticamente ao contratado via completeMilestone(). Não há saque manual.', 'info');
+  cfLog('[INFO] cfExecuteWithdraw: no withdrawFromContract function in ContractFactory.sol.');
 }
 
 // ─── Release milestone ─────────────────────────────────────────────────────────
@@ -1798,14 +1585,28 @@ async function cfCreateContract() {
     const receipt = await createTx.wait(1);
     if (receipt.status !== 1) throw new Error(`Tx revertida no bloco #${receipt.blockNumber}.`);
 
-    // Extract new contract ID from event
+    // Extract new contract ID from ContractCreated event
+    // Event sig (7 params, matches ContractFactory.sol):
+    //   ContractCreated(uint256 indexed contractId, address indexed client,
+    //                   address indexed contractor, string title,
+    //                   uint256 totalValue, uint256 milestoneCount, uint256 timestamp)
     let newId = null;
     try {
-      const iface = new window.ethers.Interface(['event ContractCreated(uint256 indexed contractId, address indexed client, address indexed contractor, uint256 totalValue)']);
+      const iface = new window.ethers.Interface([
+        'event ContractCreated(uint256 indexed contractId, address indexed client, address indexed contractor, string title, uint256 totalValue, uint256 milestoneCount, uint256 timestamp)',
+      ]);
       for (const log of receipt.logs) {
-        try { const d = iface.parseLog(log); if (d?.name==='ContractCreated') { newId = Number(d.args[0]); break; } } catch { }
+        try {
+          const d = iface.parseLog(log);
+          if (d?.name === 'ContractCreated') {
+            newId = Number(d.args[0]); // args[0] = contractId
+            cfLog(`ContractCreated event parsed: id=${newId} title="${d.args[3]}" total=${d.args[4]} milestones=${d.args[5]}`);
+            break;
+          }
+        } catch { /* log from a different contract, skip */ }
       }
-    } catch { }
+      if (newId === null) cfWarn('ContractCreated event not found in receipt logs — IDs fetched on reload');
+    } catch (e) { cfWarn('Event parse error:', e.message); }
     cfSetStep(5, 'done');
 
     // ─── Log TX ─────────────────────────────────────────────────────────────────
