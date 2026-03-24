@@ -2597,8 +2597,8 @@ app.get('/', (c) => {
       <!-- ── DEX Styles ───────────────────────────────────────────────────────── -->
       <style>
         /* ── Layout ── */
-        #dex-page { display:grid; grid-template-columns:1fr; gap:16px; }
-        @media(min-width:1024px){ #dex-page { grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:16px; } }
+        #dex-page { display:grid; grid-template-columns:1fr; gap:14px; }
+        @media(min-width:1024px){ #dex-page { grid-template-columns:minmax(0,5fr) minmax(0,2fr); gap:14px; } }
 
         /* ── Panel ── */
         .dex-panel {
@@ -3071,76 +3071,67 @@ app.get('/', (c) => {
               </div>
             </div>
 
-            <div class="p-4 space-y-3">
+            <div class="p-3 space-y-2.5">
               <!-- TVL highlight -->
-              <div class="relative bg-gradient-to-br from-cyan-900/25 to-blue-900/15 border border-cyan-700/20 rounded-12 rounded-xl p-3 text-center overflow-hidden">
+              <div class="relative bg-gradient-to-br from-cyan-900/20 to-blue-900/10 border border-cyan-700/20 rounded-xl p-2.5 text-center overflow-hidden">
                 <div class="absolute inset-0 bg-gradient-to-br from-cyan-500/4 to-blue-500/4 pointer-events-none rounded-xl"></div>
-                <div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider mb-1">Total Value Locked</div>
-                <div class="text-2xl font-bold text-white" id="amm-tvl">—</div>
-                <div class="text-[10px] text-cyan-600 mt-1 flex items-center justify-center gap-1.5">
-                  <span class="w-1 h-1 rounded-full bg-cyan-500 animate-pulse"></span>EURC / USDC Pool
+                <div class="text-[9px] text-gray-600 font-semibold uppercase tracking-wider mb-0.5">TVL</div>
+                <div class="text-xl font-bold text-white leading-tight" id="amm-tvl">—</div>
+                <div class="text-[9px] text-cyan-600 mt-0.5 flex items-center justify-center gap-1">
+                  <span class="w-1 h-1 rounded-full bg-cyan-500 animate-pulse"></span>EURC / USDC
                 </div>
               </div>
 
               <!-- Reserves -->
-              <div class="space-y-1.5">
-                <div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider">Reserves</div>
+              <div class="space-y-1">
+                <div class="text-[9px] text-gray-600 font-semibold uppercase tracking-wider">Reserves</div>
                 <div class="dex-pool-row">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm">💶</span>
-                    <div>
-                      <div class="text-xs text-gray-400 font-semibold leading-tight">EURC</div>
-                      <div class="text-[9px] text-gray-700 font-mono">0x89B5…D72a</div>
-                    </div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs">💶</span>
+                    <span class="text-[11px] text-gray-400 font-semibold">EURC</span>
                   </div>
-                  <span class="text-white font-mono font-bold text-xs" id="amm-reserve-a">—</span>
+                  <span class="text-white font-mono font-bold text-[11px]" id="amm-reserve-a">—</span>
                 </div>
                 <div class="dex-pool-row">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm">💵</span>
-                    <div>
-                      <div class="text-xs text-gray-400 font-semibold leading-tight">USDC</div>
-                      <div class="text-[9px] text-gray-700 font-mono">0x3600…0000</div>
-                    </div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs">💵</span>
+                    <span class="text-[11px] text-gray-400 font-semibold">USDC</span>
                   </div>
-                  <span class="text-white font-mono font-bold text-xs" id="amm-reserve-b">—</span>
+                  <span class="text-white font-mono font-bold text-[11px]" id="amm-reserve-b">—</span>
                 </div>
               </div>
 
               <!-- Live prices row -->
-              <div class="space-y-1.5">
-                <div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                  <i class="fas fa-circle text-green-500 text-[6px] animate-pulse"></i>Live Prices
+              <div class="space-y-1">
+                <div class="text-[9px] text-gray-600 font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <i class="fas fa-circle text-green-500 text-[5px] animate-pulse"></i>Prices
                 </div>
-                <div class="grid grid-cols-2 gap-1.5">
-                  <div class="dex-pool-row flex-col items-start gap-0.5">
-                    <span class="text-[9px] text-gray-600">1 <span class="text-cyan-500 font-semibold">EURC</span> =</span>
-                    <span class="text-cyan-400 font-mono font-bold text-xs" id="amm-price-a">—</span>
+                <div class="space-y-1">
+                  <div class="dex-pool-row">
+                    <span class="text-[9px] text-gray-600">1 <span class="text-cyan-500 font-semibold">EURC</span></span>
+                    <span class="text-cyan-400 font-mono font-bold text-[11px]" id="amm-price-a">—</span>
                   </div>
-                  <div class="dex-pool-row flex-col items-start gap-0.5">
-                    <span class="text-[9px] text-gray-600">1 <span class="text-purple-400 font-semibold">USDC</span> =</span>
-                    <span class="text-purple-400 font-mono font-bold text-xs" id="amm-price-b">—</span>
+                  <div class="dex-pool-row">
+                    <span class="text-[9px] text-gray-600">1 <span class="text-purple-400 font-semibold">USDC</span></span>
+                    <span class="text-purple-400 font-mono font-bold text-[11px]" id="amm-price-b">—</span>
                   </div>
                 </div>
               </div>
 
               <!-- Pool meta: fee + contract -->
               <div class="dex-divider"></div>
-              <div class="flex items-center justify-between text-[11px]">
-                <div class="flex items-center gap-1.5 text-gray-600">
-                  <i class="fas fa-percent text-gray-700 text-[9px]"></i>Fee
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1 text-[10px] text-gray-600">
+                  <i class="fas fa-percent text-gray-700 text-[8px]"></i>Fee
                 </div>
-                <span class="text-green-400 font-semibold">0.30%</span>
+                <span class="text-green-400 font-semibold text-[10px]">0.30%</span>
               </div>
-              <div class="space-y-1">
-                <div class="text-[10px] text-gray-700 uppercase tracking-wider font-semibold">SimpleAMM</div>
-                <div class="flex items-center justify-between gap-2">
-                  <code class="text-[10px] font-mono text-gray-600 truncate" id="amm-addr-display">—</code>
-                  <button onclick="navigator.clipboard.writeText(document.getElementById('amm-addr-display')?.textContent||'')"
-                    class="text-gray-700 hover:text-gray-400 transition-colors flex-shrink-0" title="Copy">
-                    <i class="fas fa-copy text-[10px]"></i>
-                  </button>
-                </div>
+              <div class="flex items-center justify-between gap-1">
+                <code class="text-[9px] font-mono text-gray-700 truncate" id="amm-addr-display">—</code>
+                <button onclick="navigator.clipboard.writeText(document.getElementById('amm-addr-display')?.textContent||'')"
+                  class="text-gray-700 hover:text-gray-400 transition-colors flex-shrink-0" title="Copy">
+                  <i class="fas fa-copy text-[9px]"></i>
+                </button>
               </div>
             </div>
           </div>
@@ -3148,41 +3139,32 @@ app.get('/', (c) => {
           <!-- Your Balances card -->
           <div class="dex-panel">
             <div class="dex-panel-hd">
-              <span class="dex-panel-title"><i class="fas fa-wallet text-purple-400"></i>Your Balances</span>
+              <span class="dex-panel-title"><i class="fas fa-wallet text-purple-400"></i>Balances</span>
               <button onclick="ammRefreshAll()" class="text-gray-600 hover:text-purple-400 transition-colors" title="Refresh">
                 <i class="fas fa-sync-alt text-xs"></i>
               </button>
             </div>
-            <div class="p-3 space-y-1.5">
+            <div class="p-3 space-y-1">
               <div class="dex-pool-row">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm">💶</span>
-                  <div>
-                    <div class="text-xs text-gray-400 font-semibold leading-tight">EURC</div>
-                    <div class="text-[9px] text-gray-700">Euro Coin</div>
-                  </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs">💶</span>
+                  <span class="text-[11px] text-gray-400 font-semibold">EURC</span>
                 </div>
-                <span class="text-blue-300 font-mono font-bold text-xs" id="amm-bal-eurc">—</span>
+                <span class="text-blue-300 font-mono font-bold text-[11px]" id="amm-bal-eurc">—</span>
               </div>
               <div class="dex-pool-row">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm">💵</span>
-                  <div>
-                    <div class="text-xs text-gray-400 font-semibold leading-tight">USDC</div>
-                    <div class="text-[9px] text-gray-700">USD Coin</div>
-                  </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs">💵</span>
+                  <span class="text-[11px] text-gray-400 font-semibold">USDC</span>
                 </div>
-                <span class="text-green-300 font-mono font-bold text-xs" id="amm-bal-usdc">—</span>
+                <span class="text-green-300 font-mono font-bold text-[11px]" id="amm-bal-usdc">—</span>
               </div>
               <div class="dex-pool-row">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm">🏊</span>
-                  <div>
-                    <div class="text-xs text-gray-400 font-semibold leading-tight">LP Token</div>
-                    <div class="text-[9px] text-gray-700 font-mono">ARC-LP-EURC-USDC</div>
-                  </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs">🏊</span>
+                  <span class="text-[11px] text-gray-400 font-semibold">LP</span>
                 </div>
-                <span class="text-cyan-300 font-mono font-bold text-xs" id="amm-bal-lp">—</span>
+                <span class="text-cyan-300 font-mono font-bold text-[11px]" id="amm-bal-lp">—</span>
               </div>
               <div class="pt-1">
                 <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer"
