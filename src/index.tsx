@@ -2632,10 +2632,11 @@ app.get('/', (c) => {
       </div>
 
       <!-- ── Main 2-column layout ────────────────────────────────────────────── -->
-      <div class="grid grid-cols-1 xl:grid-cols-5 gap-5 items-start">
+      <div id="dex-main-grid" class="grid grid-cols-1 gap-5 items-start">
+        <style>@media(min-width:1280px){#dex-main-grid{grid-template-columns:minmax(0,1.6fr) minmax(0,2fr);}}</style>
 
-        <!-- LEFT — Swap / Liquidity tabs (3/5 width on xl) -->
-        <div class="xl:col-span-3 space-y-4">
+        <!-- LEFT — Swap / Liquidity tabs -->
+        <div class="space-y-4">
 
           <!-- Tab switcher -->
           <div class="flex gap-1.5 bg-gray-900/70 border border-gray-700/40 rounded-2xl p-1.5">
@@ -2924,8 +2925,8 @@ app.get('/', (c) => {
 
         </div><!-- end LEFT col -->
 
-        <!-- RIGHT — Pool Status sidebar (2/5 width on xl) -->
-        <div class="xl:col-span-2 space-y-4">
+        <!-- RIGHT — Pool Status sidebar -->
+        <div class="space-y-4">
 
           <!-- Pool Stats Card -->
           <div class="bg-gray-900/80 border border-cyan-700/20 rounded-2xl overflow-hidden shadow-xl">
