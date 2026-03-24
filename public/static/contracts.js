@@ -35,24 +35,32 @@ const CF_TX_LOG_KEY    = 'arc_cf_txlog_v5'; // localStorage tx history log
 const CF_IPFS_API      = 'https://api.web3.storage/upload';
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ROOT CAUSE FIX: getContract() returns a WorkContract STRUCT in Solidity,
+// which ABI-encodes as a tuple with a dynamic offset prefix (0x20...).
+// ethers v6 REQUIRES the return type declared as 'tuple(...)' — using flat
+// 'returns (uint256,address,...)' causes BAD_DATA on every single decode call.
+// getMilestones elements are also Milestone structs → must be tuple[].
+// ─────────────────────────────────────────────────────────────────────────────
 const CF_ABI = [
   // ── Read-only ────────────────────────────────────────────────────────────
   'function contractCount() view returns (uint256)',
-  'function getContract(uint256 id) view returns (uint256,address,address,string,uint256,uint256,uint8,bool,uint256,uint256,uint256,uint256,uint256)',
+  // CRITICAL: must be tuple — WorkContract is a Solidity struct
+  'function getContract(uint256 id) view returns (tuple(uint256 id, address client, address contractor, string title, uint256 totalValue, uint256 depositedValue, uint8 status, bool contractorSigned, uint256 createdAt, uint256 startedAt, uint256 completedAt, uint256 milestoneCount, uint256 completedMilestones))',
+  // CRITICAL: must be tuple[] — Milestone is a Solidity struct
   'function getMilestones(uint256 id) view returns (tuple(uint256 id, string description, uint256 amount, uint8 status, uint256 releasedAt)[])',
   'function getByClient(address) view returns (uint256[])',
   'function getByContractor(address) view returns (uint256[])',
   // ── Write ────────────────────────────────────────────────────────────────
-  // Flow: client calls USDC.approve(factory, amount) THEN createContract
-  //       contractor calls signContract → status becomes Active
-  //       client calls completeMilestone to release payment
-  //       client can cancelContract while still Draft (full refund)
+  // Flow: client → USDC.approve(factory, totalValue) → createContract()
+  //       contractor → signContract()   [Draft → Active]
+  //       client     → completeMilestone() [releases USDC to contractor]
+  //       client     → cancelContract()  [refund while Draft]
   'function createContract(address contractor, string title, uint256 totalValue, string[] milestoneDescs, uint256[] milestoneAmounts) returns (uint256)',
   'function signContract(uint256 contractId)',
   'function completeMilestone(uint256 contractId, uint256 milestoneIndex)',
   'function cancelContract(uint256 contractId)',
-  // ── Events ───────────────────────────────────────────────────────────────
-  // Exact signatures from ContractFactory.sol — must match for parseLog
+  // ── Events (exact Solidity signatures — required for parseLog) ────────────
   'event ContractCreated(uint256 indexed contractId, address indexed client, address indexed contractor, string title, uint256 totalValue, uint256 milestoneCount, uint256 timestamp)',
   'event ContractSigned(uint256 indexed contractId, address indexed contractor, uint256 timestamp)',
   'event MilestoneReleased(uint256 indexed contractId, uint256 indexed milestoneIndex, address indexed contractor, uint256 amount, uint256 timestamp)',
@@ -346,10 +354,10 @@ async function cfReadAllowance(owner, spender) {
 // ─── Read deposited balance directly from chain ───────────────────────────────
 async function cfReadDepositedBalance(contractId) {
   try {
-    // Use eth_call to read depositedValue from getContract
     if (!cfState._factory) return null;
     const r = await cfState._factory.getContract(contractId);
-    const deposited = BigInt(r[5]);
+    // r is a named tuple — use .depositedValue (not r[5])
+    const deposited = BigInt(r.depositedValue);
     cfLog(`Contract #${contractId} depositedValue on-chain: $${cfFmtUsdc(deposited)}`);
     return deposited;
   } catch (e) {
@@ -358,30 +366,60 @@ async function cfReadDepositedBalance(contractId) {
   }
 }
 
-// ─── Fetch contract data ────────────────────────────────────────────────────────
+// ─── Fetch contract data ──────────────────────────────────────────────────────
+// ROOT CAUSE FIX: getContract() returns a WorkContract STRUCT (tuple).
+// ethers v6 decodes tuple returns as objects with NAMED properties.
+// We MUST access r.fieldName — using r[index] was wrong because the dynamic
+// 'title' field shifts numeric offsets unpredictably.
 async function cfFetchContract(factory, id) {
-  const r = await factory.getContract(id);
-  const statusCode = Number(r[6]);
+  let r;
+  try {
+    r = await factory.getContract(id);
+  } catch (e) {
+    cfErr(`cfFetchContract(#${id}) DECODE ERROR — likely wrong ABI:`, e.message);
+    throw e;
+  }
+  const statusCode = Number(r.status);
   const status = CF_STATUS_LABELS[statusCode] || 'Unknown';
   const c = {
-    id, client: r[1], contractor: r[2], title: r[3],
-    totalValue: r[4], depositedValue: r[5],
-    statusCode, status,
-    contractorSigned: r[7],
-    createdAt: Number(r[8]), startedAt: Number(r[9]), completedAt: Number(r[10]),
-    milestoneCount: Number(r[11]), completedMilestones: Number(r[12]),
-    _fetchedAt: Date.now(),
+    id:                  Number(r.id),
+    client:              r.client,
+    contractor:          r.contractor,
+    title:               r.title,
+    totalValue:          r.totalValue,        // BigInt
+    depositedValue:      r.depositedValue,    // BigInt
+    statusCode,
+    status,
+    contractorSigned:    r.contractorSigned,
+    createdAt:           Number(r.createdAt),
+    startedAt:           Number(r.startedAt),
+    completedAt:         Number(r.completedAt),
+    milestoneCount:      Number(r.milestoneCount),
+    completedMilestones: Number(r.completedMilestones),
+    _fetchedAt:          Date.now(),
   };
-  cfLog(`Contract #${id}: status=${status} deposited=$${cfFmtUsdc(r[5])} total=$${cfFmtUsdc(r[4])}`);
+  cfLog(
+    `✅ Contract #${id}: "${c.title}" | ${status}(${statusCode})` +
+    ` | deposited=$${cfFmtUsdc(c.depositedValue)}/$${cfFmtUsdc(c.totalValue)}` +
+    ` | client=${cfShort(c.client)}`
+  );
   return c;
 }
 
 async function cfFetchMilestones(factory, id) {
-  const rows = await factory.getMilestones(id);
+  let rows;
+  try {
+    rows = await factory.getMilestones(id);
+  } catch (e) {
+    cfErr(`cfFetchMilestones(#${id}) error:`, e.message);
+    return [];
+  }
   return rows.map((m, i) => ({
-    id: i, description: m.description, amount: m.amount,
-    status: Number(m.status) === 1 ? 'Released' : 'Pending',
-    releasedAt: Number(m.releasedAt),
+    id:          Number(m.id) || i,
+    description: m.description,
+    amount:      m.amount,   // BigInt
+    status:      Number(m.status) === 1 ? 'Released' : 'Pending',
+    releasedAt:  Number(m.releasedAt),
   }));
 }
 
@@ -441,9 +479,13 @@ function cfShowListState(state, message = '') {
 // ─── Load contracts ────────────────────────────────────────────────────────────
 async function cfLoadContracts(opts = {}) {
   const wallet = window.walletState?.address;
-  if (!wallet) { cfShowListState('no_wallet'); cfRenderSummary([], null); cfUpdateNetworkBanner(false); return; }
+  if (!wallet) {
+    cfShowListState('no_wallet');
+    cfRenderSummary([], null);
+    cfUpdateNetworkBanner(false);
+    return;
+  }
 
-  // Prevent concurrent loads unless forced
   if (cfState.loadingIds && !opts.force) {
     cfLog('cfLoadContracts: already loading, skip');
     return;
@@ -451,63 +493,89 @@ async function cfLoadContracts(opts = {}) {
 
   cfState.loadingIds = true;
   cfShowListState('loading');
-  cfLog('Loading contracts for wallet:', wallet);
+  cfLog('━━━ cfLoadContracts START ━━━ wallet:', wallet);
 
   try {
+    // ── 1. Init provider & validate network ──────────────────────────────────
     const init = await cfInitProvider();
+    cfLog('cfInitProvider:', init.ok ? `OK (${init.address})` : `FAIL(${init.error}): ${init.message}`);
+
     if (!init.ok) {
       cfState.networkOk = false;
       cfUpdateNetworkBanner(false);
-      if (init.error === 'wrong_network') {
-        cfShowListState('wrong_network', init.message);
-        cfLog('Wrong network:', init.message);
-      } else {
-        cfShowListState('error', init.message);
-      }
+      cfShowListState(init.error === 'wrong_network' ? 'wrong_network' : 'error', init.message);
       return;
     }
     cfUpdateNetworkBanner(true);
-
     const { factory, address } = init;
 
-    // Fetch IDs — try on-chain first, fallback to cache
+    // ── 2. Sanity check: read contractCount ───────────────────────────────────
+    let totalOnChain = 0;
+    try {
+      totalOnChain = Number(await factory.contractCount());
+      cfLog(`contractCount on-chain: ${totalOnChain} contracts exist`);
+    } catch (e) {
+      cfWarn('contractCount read failed:', e.message);
+    }
+
+    // ── 3. Fetch IDs via getByClient + getByContractor ────────────────────────
     let ids;
     try {
       ids = await cfFetchMyIds(address);
+      cfLog(`IDs for ${address}: [${ids.join(', ')}] (${ids.length} total)`);
     } catch (e) {
       cfWarn('cfFetchMyIds failed, using cache:', e.message);
       ids = cfGetCachedIds(address) || [];
+      cfLog(`IDs from cache: [${ids.join(', ')}]`);
     }
 
-    cfLog(`Found ${ids.length} contract IDs:`, ids);
-
+    // ── 4. Debug: if 0 IDs report state clearly ───────────────────────────────
     if (!ids.length) {
+      cfLog(`🔍 No contracts found for wallet ${address}`);
+      cfLog(`   contractCount = ${totalOnChain} (other wallets may have contracts)`);
       cfShowListState('empty');
       cfRenderSummary([], address);
       cfState.contracts = [];
       cfState.lastRefresh = Date.now();
+      // Append debug card to empty list
+      const listEl = cfEl('cf-contracts-list');
+      if (listEl && totalOnChain > 0) {
+        listEl.insertAdjacentHTML('beforeend', `
+          <div style="background:rgba(55,138,221,0.04);border:1px dashed rgba(55,138,221,0.2);border-radius:10px;padding:10px 14px;margin-top:8px;font-size:11px;">
+            <div style="color:#60b4ff;font-weight:700;margin-bottom:4px;"><i class="fas fa-info-circle mr-1"></i>Debug</div>
+            <div style="color:#3a4870;">Total on-chain: <span style="color:#dde2f0;">${totalOnChain}</span></div>
+            <div style="color:#3a4870;">Wallet: <span style="font-family:monospace;color:#dde2f0;">${address}</span></div>
+            <div style="color:#3a4870;margin-top:2px;">No contracts for this wallet. Create one above.</div>
+          </div>`);
+      }
       return;
     }
 
-    // Fetch all contracts in parallel
-    const contracts = await Promise.allSettled(ids.map(id => cfFetchContract(factory, id)))
-      .then(results => results
-        .filter(r => r.status === 'fulfilled')
-        .map(r => r.value)
-      );
+    // ── 5. Fetch contract details (tuple ABI) ─────────────────────────────────
+    cfLog(`Fetching ${ids.length} contracts…`);
+    const settled = await Promise.allSettled(ids.map(id => cfFetchContract(factory, id)));
+    const contracts = settled.map((r, i) => {
+      if (r.status === 'rejected') {
+        cfErr(`Contract #${ids[i]} failed:`, r.reason?.message);
+        return null;
+      }
+      return r.value;
+    }).filter(Boolean);
+    cfLog(`Fetched ${contracts.length}/${ids.length} successfully`);
 
-    // Fetch milestones in parallel
+    // ── 6. Fetch milestones ───────────────────────────────────────────────────
     const milestones = {};
     await Promise.allSettled(contracts.map(async c => {
       try {
         milestones[c.id] = await cfFetchMilestones(factory, c.id);
         c.milestones = milestones[c.id];
       } catch (e) {
-        cfWarn('milestones fetch error', c.id, e.message);
+        cfWarn(`Milestones #${c.id}:`, e.message);
         c.milestones = [];
       }
     }));
 
+    // ── 7. Update state & render ──────────────────────────────────────────────
     cfState.contracts  = contracts;
     cfState.milestones = milestones;
     cfState.lastWallet = address;
@@ -515,9 +583,9 @@ async function cfLoadContracts(opts = {}) {
 
     cfRenderContracts(contracts, address);
     cfRenderSummary(contracts, address);
-    cfLog(`Rendered ${contracts.length} contracts (${ids.length} fetched)`);
+    cfLog(`━━━ cfLoadContracts DONE: ${contracts.length} contracts rendered ━━━`);
 
-    // Persist contracts to IndexedDB for offline access
+    // ── 8. Persist to IndexedDB (non-blocking) ────────────────────────────────
     if (typeof arcSave === 'function') {
       for (const c of contracts) {
         arcSave(window.ARC_STORE_CF || 'contracts', {
@@ -536,28 +604,23 @@ async function cfLoadContracts(opts = {}) {
     }
 
   } catch (e) {
-    cfErr('cfLoadContracts error:', e);
-
-    // On error: try to show cached contracts from local store
-    const wallet2 = window.walletState?.address;
-    if (wallet2 && typeof arcLoad === 'function') {
+    cfErr('cfLoadContracts UNEXPECTED error:', e.message);
+    cfErr(e.stack);
+    const w2 = window.walletState?.address;
+    if (w2 && typeof arcLoad === 'function') {
       arcLoad(window.ARC_STORE_CF || 'contracts').then(cached => {
-        const contractRecords = cached.filter(r => r._onChainData);
-        if (contractRecords.length > 0) {
-          const cachedContracts = contractRecords.map(r => r._onChainData).filter(Boolean);
-          if (cachedContracts.length > 0) {
-            cfRenderContracts(cachedContracts, wallet2);
-            cfRenderSummary(cachedContracts, wallet2);
-            const listEl = cfEl('cf-contracts-list');
-            if (listEl) {
-              const bar = document.createElement('div');
-              bar.style.cssText = 'background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:11px;color:#fbbf24;display:flex;align-items:center;gap:6px;';
-              bar.innerHTML = '<i class="fas fa-database"></i> Mostrando contratos em cache — sincronização on-chain falhou. <button onclick="cfLoadContracts({force:true})" style="margin-left:auto;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:10px;">Tentar novamente</button>';
-              listEl.insertBefore(bar, listEl.firstChild);
-            }
-            cfLog('Showed', cachedContracts.length, 'cached contracts from IndexedDB');
-            return;
+        const hits = (cached || []).filter(r => r._onChainData);
+        if (hits.length) {
+          cfRenderContracts(hits.map(r => r._onChainData), w2);
+          cfRenderSummary(hits.map(r => r._onChainData), w2);
+          const listEl = cfEl('cf-contracts-list');
+          if (listEl) {
+            const bar = document.createElement('div');
+            bar.style.cssText = 'background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:11px;color:#fbbf24;display:flex;align-items:center;gap:6px;';
+            bar.innerHTML = `<i class="fas fa-database"></i> Cache (sync falhou: ${e.message}). <button onclick="cfLoadContracts({force:true})" style="margin-left:auto;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:10px;">Tentar novamente</button>`;
+            listEl.insertBefore(bar, listEl.firstChild);
           }
+          return;
         }
         cfShowListState('error', e.message);
       }).catch(() => cfShowListState('error', e.message));
@@ -1806,21 +1869,51 @@ window.loadContracts          = cfLoadContracts;
 window.cfRenderProofPreview   = cfRenderProofPreview;
 window.cfUpdateNetworkBanner  = cfUpdateNetworkBanner;
 window.cfLogTx                = cfLogTx;
-// Debug helpers
+// Debug helpers — exposed on window for console/devtools use
 window.cfDebug = {
-  getState: () => cfState,
-  getTxLog:  () => JSON.parse(localStorage.getItem(CF_TX_LOG_KEY) || '[]'),
-  getMeta:   (id) => cfGetMeta(id),
+  getState:     () => cfState,
+  getTxLog:     () => JSON.parse(localStorage.getItem(CF_TX_LOG_KEY) || '[]'),
+  getMeta:      (id) => cfGetMeta(id),
   getCachedIds: (addr) => cfGetCachedIds(addr || window.walletState?.address),
-  clearCache: () => { localStorage.removeItem(CF_IDS_KEY); cfLog('ID cache cleared'); },
-  setDebug: (v) => { cfState.debugMode = v; cfLog('Debug mode:', v); },
+  clearCache:   () => { localStorage.removeItem(CF_IDS_KEY); cfLog('ID cache cleared'); },
+  setDebug:     (v) => { cfState.debugMode = v; cfLog('Debug mode:', v); },
+  // Test reading a known contract directly (no wallet needed)
+  testContract: async (id = 1) => {
+    const ethers = window.ethers;
+    if (!ethers) { console.error('[cfDebug] ethers.js not loaded'); return; }
+    const provider = new ethers.JsonRpcProvider(CF_RPC);
+    const factory  = new ethers.Contract(CF_FACTORY_ADDR, CF_ABI, provider);
+    try {
+      const count = Number(await factory.contractCount());
+      console.log('[cfDebug] contractCount:', count);
+      const c = await factory.getContract(id);
+      console.log(`[cfDebug] Contract #${id}:`, {
+        id: Number(c.id), title: c.title,
+        client: c.client, contractor: c.contractor,
+        total:    '$' + (Number(c.totalValue) / 1e6).toFixed(2),
+        deposited:'$' + (Number(c.depositedValue) / 1e6).toFixed(2),
+        status: Number(c.status), signed: c.contractorSigned,
+      });
+      const ms = await factory.getMilestones(id);
+      console.log(`[cfDebug] Milestones #${id}:`, ms.map(m => ({
+        id: Number(m.id), desc: m.description,
+        amount: '$' + (Number(m.amount)/1e6).toFixed(2),
+        status: Number(m.status),
+      })));
+      const wallet = window.walletState?.address;
+      if (wallet) {
+        const ids = await factory.getByClient(wallet);
+        console.log(`[cfDebug] getByClient(${wallet}):`, ids.map(x => Number(x)));
+      }
+    } catch (e) {
+      console.error('[cfDebug] testContract failed:', e.message);
+    }
+  },
 };
 
-console.log('%c[CF v5] Contracts Module loaded', 'color:#60b4ff;font-weight:bold',
+console.log('%c[CF v6] Contracts Module loaded', 'color:#60b4ff;font-weight:bold',
   '| Factory:', CF_FACTORY_ADDR,
-  '| Fee: 0.2%',
-  '| IPFS proof upload',
-  '| On-chain sync',
-  '| Event parsing',
-  '| Debug:', cfState.debugMode
+  '| Chain:', CF_CHAIN_ID,
+  '| ROOT FIX: tuple ABI for struct returns',
+  '| Debug: cfDebug.testContract(1)'
 );
