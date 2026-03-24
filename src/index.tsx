@@ -3066,8 +3066,8 @@ app.get('/', (c) => {
 
         </div><!-- end LEFT col -->
 
-        <!-- RIGHT col ─ Pool Status + Balances ───────────────────────────────── -->
-        <div class="space-y-4">
+        <!-- RIGHT col ─ Pool Status + Balances (visible only on Liquidity tab) -->
+        <div id="dex-pool-col" class="space-y-4 hidden">
 
           <!-- Pool Status card -->
           <div class="dex-panel">
