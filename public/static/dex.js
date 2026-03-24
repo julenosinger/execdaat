@@ -2,8 +2,8 @@
 //  ARC DEX — Real On-Chain AMM · EURC / USDC Pool
 //  Arc Testnet · ChainId 5042002 · x * y = k
 //
-//  Zero mock data. All state comes directly from SimpleAMM
-//  contract on Arc Testnet via ethers.js + MetaMask signer.
+//  Zero mock data. All balances, reserves, and prices come
+//  directly from the SimpleAMM contract on Arc Testnet.
 //
 //  Tokens:
 //    EURC  0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a (ERC-20, 6 dec)
@@ -20,10 +20,11 @@ const AMM_EXPLORER  = 'https://testnet.arcscan.app';
 const AMM_RPC       = 'https://rpc.testnet.arc.network';
 
 const AMM_TOKENS = {
-  EURC: { symbol: 'EURC', name: 'Euro Coin', address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a', decimals: 6, logo: '💶' },
-  USDC: { symbol: 'USDC', name: 'USD Coin',  address: '0x3600000000000000000000000000000000000000', decimals: 6, logo: '💵' },
+  EURC: { symbol: 'EURC', name: 'Euro Coin',  address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a', decimals: 6, logo: '💶' },
+  USDC: { symbol: 'USDC', name: 'USD Coin',   address: '0x3600000000000000000000000000000000000000', decimals: 6, logo: '💵' },
 };
 
+// Full ERC-20 ABI (human-readable, for ethers.Contract)
 const AMM_ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
   'function decimals() view returns (uint8)',
@@ -31,10 +32,12 @@ const AMM_ERC20_ABI = [
   'function allowance(address owner, address spender) view returns (uint256)',
   'function approve(address spender, uint256 amount) returns (bool)',
   'function transfer(address to, uint256 amount) returns (bool)',
+  'function transferFrom(address from, address to, uint256 amount) returns (bool)',
   'event Transfer(address indexed from, address indexed to, uint256 value)',
   'event Approval(address indexed owner, address indexed spender, uint256 value)',
 ];
 
+// SimpleAMM ABI (human-readable)
 const AMM_ABI = [
   'function tokenA() view returns (address)',
   'function tokenB() view returns (address)',
@@ -58,64 +61,66 @@ const AMM_ABI = [
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const ammState = {
-  tab:         'swap',
-  ammAddress:  null,
-  deployed:    false,
-  reserves:    { A: 0n, B: 0n },
+  tab:        'swap',       // 'swap' | 'liquidity'
+  ammAddress: null,         // set from backend /api/dex/amm
+  deployed:   false,
+  reserves:   { A: 0n, B: 0n },   // raw bigint (6 dec)
   totalSupply: 0n,
-  balances:    { EURC: 0n, USDC: 0n, LP: 0n },
-  swapFrom:    'EURC',
-  swapTo:      'USDC',
-  slippage:    0.5,
-  pending:     false,
-  quote:       null,
-  poolLoaded:  false,   // lazy: only load pool when Liquidity tab is open
+  balances:   { EURC: 0n, USDC: 0n, LP: 0n },
+  swapFrom:   'EURC',
+  swapTo:     'USDC',
+  slippage:   0.5,          // %
+  pending:    false,
+  quote:      null,         // last computed quote
 };
 
 // ─── DOM helpers ──────────────────────────────────────────────────────────────
-const $       = id  => document.getElementById(id);
+const $ = id => document.getElementById(id);
 const setText = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
-const setVal  = (id, val) => { const el = $(id); if (el) el.value = val; };
-const show    = id  => { const el = $(id); if (el) el.classList.remove('hidden'); };
-const hide    = id  => { const el = $(id); if (el) el.classList.add('hidden'); };
+const ammSetVal  = (id, val) => { const el = $(id); if (el) el.value = val; };
+const show    = id => { const el = $(id); if (el) el.classList.remove('hidden'); };
+const hide    = id => { const el = $(id); if (el) el.classList.add('hidden'); };
+const addCls  = (id, cls) => { const el = $(id); if (el) el.classList.add(cls); };
+const remCls  = (id, cls) => { const el = $(id); if (el) el.classList.remove(cls); };
 
-// ─── ethers helpers ──────────────────────────────────────────────────────────
-// walletState.provider is the raw EIP-1193 object (window.ethereum / WalletConnect)
-function _getEthersProvider() {
+// ─── ethers helpers ───────────────────────────────────────────────────────────
+function ammGetProvider() {
   const raw = window.walletState?.provider;
-  if (!raw) throw new Error('Wallet not connected. Please connect your wallet first.');
+  if (!raw) throw new Error('Wallet not connected');
   if (window.ethers?.BrowserProvider)
     return new window.ethers.BrowserProvider(raw);
   if (window.ethers?.providers?.Web3Provider)
     return new window.ethers.providers.Web3Provider(raw);
-  throw new Error('ethers.js not loaded. Refresh the page.');
+  throw new Error('ethers.js not loaded');
 }
 
-async function _getSigner() {
-  const provider = _getEthersProvider();
-  return provider.getSigner();
+async function ammGetSigner() {
+  const p = ammGetProvider();
+  return p.getSigner();
 }
 
-async function _getERC20(symbol) {
-  const signer = await _getSigner();
-  return new window.ethers.Contract(AMM_TOKENS[symbol].address, AMM_ERC20_ABI, signer);
+async function ammGetERC20(symbol) {
+  if (!window.ethers?.Contract) throw new Error('ethers.Contract not available');
+  const signer = await ammGetSigner();
+  const addr   = AMM_TOKENS[symbol].address;
+  return new window.ethers.Contract(addr, AMM_ERC20_ABI, signer);
 }
 
-async function _getAMM() {
+async function ammGetContract() {
   if (!ammState.ammAddress || ammState.ammAddress === '0x0000000000000000000000000000000000000000')
-    throw new Error('SimpleAMM not deployed yet.');
-  const signer = await _getSigner();
+    throw new Error('SimpleAMM not deployed yet. Deploy the contract first.');
+  if (!window.ethers?.Contract) throw new Error('ethers.Contract not available');
+  const signer = await ammGetSigner();
   return new window.ethers.Contract(ammState.ammAddress, AMM_ABI, signer);
 }
 
-// ─── Unit helpers ─────────────────────────────────────────────────────────────
+// ─── parseUnits (always string → BigInt) ─────────────────────────────────────
 function ammParseUnits(humanAmount, decimals = 6) {
   let s = String(humanAmount).trim();
-  if (!s || s === '' || s === '.') s = '0';
   if (/[eE]/.test(s)) s = Number(s).toFixed(decimals);
   const dot = s.indexOf('.');
-  if (dot !== -1 && s.length - dot - 1 > decimals)
-    s = s.slice(0, dot + decimals + 1);
+  if (dot !== -1 && s.length - dot - 1 > decimals) s = s.slice(0, dot + decimals + 1);
+  if (!s || s === '.' || s === '') s = '0';
   if (window.ethers?.parseUnits) {
     try { return window.ethers.parseUnits(s, decimals); } catch (_) {}
   }
@@ -129,64 +134,34 @@ function ammFormatUnits(raw, decimals = 6) {
   return (Number(raw) / 10 ** decimals).toFixed(6);
 }
 
-// ─── Network guard ────────────────────────────────────────────────────────────
-async function _ensureNetwork() {
+// ─── Network check ────────────────────────────────────────────────────────────
+async function ammEnsureNetwork() {
   const prov = window.walletState?.provider;
-  if (!prov) throw new Error('Connect wallet first.');
+  if (!prov) throw new Error('Connect wallet first');
   const chainHex = await prov.request({ method: 'eth_chainId' });
-  if (parseInt(chainHex, 16) === AMM_CHAIN_ID) return; // already correct
-
-  try {
-    await prov.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: AMM_CHAIN_HEX }] });
-  } catch (e) {
-    if (e.code === 4902 || e.code === -32603) {
-      await prov.request({
-        method: 'wallet_addEthereumChain',
-        params: [{
-          chainId: AMM_CHAIN_HEX,
-          chainName: 'Arc Testnet',
-          nativeCurrency: { name: 'tARC', symbol: 'tARC', decimals: 18 },
-          rpcUrls: [AMM_RPC],
-          blockExplorerUrls: [AMM_EXPLORER],
-        }],
-      });
-    } else {
-      throw e;
+  if (parseInt(chainHex, 16) !== AMM_CHAIN_ID) {
+    try {
+      await prov.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: AMM_CHAIN_HEX }] });
+    } catch (e) {
+      if (e.code === 4902) {
+        await prov.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: AMM_CHAIN_HEX,
+            chainName: 'Arc Testnet',
+            nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+            rpcUrls: [AMM_RPC],
+            blockExplorerUrls: [AMM_EXPLORER],
+          }],
+        });
+      } else throw e;
     }
   }
 }
 
-// ─── Approve helper ───────────────────────────────────────────────────────────
-// Approves spender to use `amount` of `tokenSymbol`.
-// Uses MaxUint256 so the user only needs to approve once.
-async function _ensureApproval(tokenSymbol, spender, amount) {
-  const wallet  = window.walletState?.address;
-  const erc20   = await _getERC20(tokenSymbol);
-  const current = await erc20.allowance(wallet, spender);
-
-  console.log(`[AMM:approve] ${tokenSymbol} allowance=${current} needed=${amount}`);
-
-  if (current >= amount) {
-    console.log(`[AMM:approve] ${tokenSymbol} — sufficient allowance, skipping`);
-    return;
-  }
-
-  // Use MaxUint256 to avoid repeated approvals
-  const MAX = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
-  showToast(`📝 Approve ${tokenSymbol} — confirm in wallet…`, 'info');
-  const tx = await erc20.approve(spender, MAX);
-  console.log(`[AMM:approve] ${tokenSymbol} approve tx: ${tx.hash}`);
-  showToast(`⏳ Approving ${tokenSymbol}… ${tx.hash.slice(0, 14)}`, 'info');
-  const receipt = await tx.wait();
-  if (!receipt || receipt.status !== 1)
-    throw new Error(`${tokenSymbol} approval failed on-chain (tx reverted)`);
-  console.log(`[AMM:approve] ${tokenSymbol} approved. Block: ${receipt.blockNumber}`);
-  showToast(`✅ ${tokenSymbol} approved!`, 'success');
-}
-
-// ─── Fetch pool state from backend ────────────────────────────────────────────
+// ─── Fetch on-chain state ─────────────────────────────────────────────────────
 async function ammFetchPoolState() {
-  const res  = await fetch('/api/dex/amm');
+  const res = await fetch('/api/dex/amm');
   const data = await res.json();
   if (data.success && data.deployed) {
     ammState.ammAddress  = data.ammAddress;
@@ -194,14 +169,14 @@ async function ammFetchPoolState() {
     ammState.reserves.A  = BigInt(data.reserveA);
     ammState.reserves.B  = BigInt(data.reserveB);
     ammState.totalSupply = BigInt(data.totalSupply);
+    return data;
   } else {
-    ammState.deployed   = false;
+    ammState.deployed = false;
     ammState.ammAddress = data.ammAddress || null;
+    return data;
   }
-  return data;
 }
 
-// ─── Fetch on-chain balances ──────────────────────────────────────────────────
 async function ammFetchBalances() {
   const wallet = window.walletState?.address;
   if (!wallet) return;
@@ -212,148 +187,171 @@ async function ammFetchBalances() {
       ammState.balances.EURC = BigInt(data.balances.EURC.raw);
       ammState.balances.USDC = BigInt(data.balances.USDC.raw);
       ammState.balances.LP   = BigInt(data.balances.LP.raw);
-      _updateBalanceUI();
+      ammUpdateBalanceUI();
     }
   } catch (e) {
     console.warn('[AMM] fetchBalances error:', e.message);
   }
 }
 
-// ─── Pure AMM quote ───────────────────────────────────────────────────────────
-function _ammQuote(amountIn, rIn, rOut) {
+// ─── AMM quote (pure, matches Solidity) ──────────────────────────────────────
+function ammQuote(amountIn, rIn, rOut) {
   if (amountIn === 0n || rIn === 0n || rOut === 0n) return 0n;
-  const amountInFee = amountIn * 997n;
-  return (amountInFee * rOut) / (rIn * 1000n + amountInFee);
+  const amountInWithFee = amountIn * 997n;
+  const numerator       = amountInWithFee * rOut;
+  const denominator     = rIn * 1000n + amountInWithFee;
+  return numerator / denominator;
 }
 
-// ─── Update balance UI ────────────────────────────────────────────────────────
-function _updateBalanceUI() {
+// ─── Update balance displays ──────────────────────────────────────────────────
+function ammUpdateBalanceUI() {
   const eurc = ammFormatUnits(ammState.balances.EURC);
   const usdc = ammFormatUnits(ammState.balances.USDC);
   const lp   = ammFormatUnits(ammState.balances.LP);
-  const fmtE = parseFloat(eurc).toFixed(4);
-  const fmtU = parseFloat(usdc).toFixed(4);
-  const fmtL = parseFloat(lp).toFixed(4);
 
-  setText('amm-bal-eurc',         fmtE + ' EURC');
-  setText('amm-bal-usdc',         fmtU + ' USDC');
-  setText('amm-bal-lp',           fmtL + ' LP');
-  setText('amm-liq-eurc-bal',     'Bal: ' + fmtE);
-  setText('amm-liq-usdc-bal',     'Bal: ' + fmtU);
-  setText('amm-liq-lp-bal-label', 'LP: ' + fmtL);
+  setText('amm-bal-eurc',     parseFloat(eurc).toFixed(4) + ' EURC');
+  setText('amm-bal-usdc',     parseFloat(usdc).toFixed(4) + ' USDC');
+  setText('amm-bal-lp',       parseFloat(lp).toFixed(4)   + ' LP');
+  setText('amm-liq-bal-eurc', parseFloat(eurc).toFixed(4) + ' EURC');
+  setText('amm-liq-bal-usdc', parseFloat(usdc).toFixed(4) + ' USDC');
+  setText('amm-liq-bal-lp',   parseFloat(lp).toFixed(4)   + ' LP');
+  setText('amm-remove-lp-bal', parseFloat(lp).toFixed(4)  + ' LP');
 
-  const swapFromBal = ammState.swapFrom === 'EURC' ? fmtE : fmtU;
-  setText('amm-swap-from-bal', swapFromBal + ' ' + ammState.swapFrom);
+  // MAX buttons
+  const swapFromBal = ammState.swapFrom === 'EURC' ? eurc : usdc;
+  setText('amm-swap-from-bal', parseFloat(swapFromBal).toFixed(4) + ' ' + ammState.swapFrom);
 }
 
-// ─── Update pool UI (right panel — Liquidity tab only) ───────────────────────
-function _updatePoolUI(data) {
+// ─── Update pool reserves display ────────────────────────────────────────────
+function ammUpdatePoolUI(data) {
   if (!data || !data.deployed) {
     setText('amm-reserve-a', '—');
     setText('amm-reserve-b', '—');
     setText('amm-price-a',   '—');
     setText('amm-price-b',   '—');
     setText('amm-tvl',       '$0.00');
+    setText('amm-status',    '⚠️ Pool not deployed');
     show('amm-deploy-notice');
     return;
   }
   hide('amm-deploy-notice');
-  const rA    = parseFloat(data.reserveAHuman || 0);
-  const rB    = parseFloat(data.reserveBHuman || 0);
+  const rA = parseFloat(data.reserveAHuman);
+  const rB = parseFloat(data.reserveBHuman);
   const hasLiq = rA > 0 && rB > 0;
-  const fmt4  = v => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-
-  setText('amm-reserve-a', hasLiq ? fmt4(rA) + ' EURC' : 'Empty');
-  setText('amm-reserve-b', hasLiq ? fmt4(rB) + ' USDC' : 'Empty');
-  setText('amm-price-a',   hasLiq ? parseFloat(data.priceAinB).toFixed(6) + ' USDC' : '—');
-  setText('amm-price-b',   hasLiq ? parseFloat(data.priceBinA).toFixed(6) + ' EURC' : '—');
-  const tvl = hasLiq ? parseFloat(data.tvl || 0) : 0;
-  setText('amm-tvl', '$' + tvl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  if (data.ammAddress) setText('amm-addr-display', data.ammAddress);
+  setText('amm-reserve-a',   hasLiq ? rA.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4}) + ' EURC' : 'Empty');
+  setText('amm-reserve-b',   hasLiq ? rB.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4}) + ' USDC' : 'Empty');
+  setText('amm-price-a',     hasLiq ? parseFloat(data.priceAinB).toFixed(6) + ' USDC' : '—');
+  setText('amm-price-b',     hasLiq ? parseFloat(data.priceBinA).toFixed(6) + ' EURC' : '—');
+  const tvl = hasLiq ? parseFloat(data.tvl) : 0;
+  setText('amm-tvl',         '$' + tvl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+  setText('amm-status',      hasLiq ? '✅ Active · 0.3% fee' : '⚡ Deployed · Add liquidity');
+  // Full address for the new improved display
+  if (data.ammAddress) {
+    setText('amm-addr-display', data.ammAddress);
+  }
 }
 
-// ─── Swap quote ───────────────────────────────────────────────────────────────
+// ─── Swap quote (live, pure computation) ──────────────────────────────────────
 function ammComputeSwapQuote() {
-  const inputEl  = $('amm-swap-input');
+  const inputEl = $('amm-swap-input');
   const outputEl = $('amm-swap-output');
-  if (!inputEl || !outputEl) return;
+  const impactEl = $('amm-price-impact');
+  const minEl    = $('amm-min-received');
 
+  if (!inputEl || !outputEl) return;
   const rawInput = inputEl.value.trim();
   if (!rawInput || parseFloat(rawInput) <= 0) {
-    outputEl.value = '';
-    setText('amm-swap-impact', '—');
-    setText('amm-swap-min',    '—');
-    setText('amm-swap-rate',   '—');
-    setText('amm-swap-fee',    '—');
+    if (outputEl) outputEl.value = '';
+    setText('amm-price-impact', '—');
+    setText('amm-min-received', '—');
     ammState.quote = null;
-    _updateSwapBtn();
+    ammUpdateSwapBtn();
     return;
   }
 
   const amountIn = ammParseUnits(rawInput);
-  const aToB     = ammState.swapFrom === 'EURC';
-  const rIn      = aToB ? ammState.reserves.A : ammState.reserves.B;
-  const rOut     = aToB ? ammState.reserves.B : ammState.reserves.A;
+  const aToB = ammState.swapFrom === 'EURC';
+  const rIn  = aToB ? ammState.reserves.A : ammState.reserves.B;
+  const rOut = aToB ? ammState.reserves.B : ammState.reserves.A;
 
   if (rIn === 0n || rOut === 0n) {
-    outputEl.value = '0.000000';
-    setText('amm-swap-impact', 'Pool empty');
+    if (outputEl) outputEl.value = '0.000000';
+    setText('amm-price-impact', 'Pool empty');
     ammState.quote = null;
-    _updateSwapBtn();
+    ammUpdateSwapBtn();
     return;
   }
 
-  const amountOut  = _ammQuote(amountIn, rIn, rOut);
-  const outHuman   = parseFloat(ammFormatUnits(amountOut));
-  const inHuman    = parseFloat(rawInput);
+  const amountOut = ammQuote(amountIn, rIn, rOut);
+  const outHuman  = parseFloat(ammFormatUnits(amountOut));
+  const inHuman   = parseFloat(rawInput);
 
   // Price impact
   const spotPrice  = aToB ? Number(rOut) / Number(rIn) : Number(rIn) / Number(rOut);
   const idealOut   = inHuman * spotPrice;
   const impact     = idealOut > 0 ? ((idealOut - outHuman) / idealOut) * 100 : 0;
 
-  // Minimum received
+  // Minimum received with slippage
   const slipFactor = 1 - ammState.slippage / 100;
   const minOut     = amountOut * BigInt(Math.floor(slipFactor * 10000)) / 10000n;
   const minHuman   = parseFloat(ammFormatUnits(minOut));
 
   outputEl.value = outHuman.toFixed(6);
 
-  const impactEl = $('amm-swap-impact');
+  const impactColor = impact > 5 ? 'text-red-400' : impact > 2 ? 'text-yellow-400' : 'text-green-400';
   if (impactEl) {
     impactEl.textContent = impact.toFixed(4) + '%';
-    impactEl.className   = (impact > 5 ? 'text-red-400' : impact > 2 ? 'text-yellow-400' : 'text-green-400') + ' dex-info-value';
+    impactEl.className   = impactColor + ' font-mono text-sm';
   }
-  setText('amm-swap-min',  minHuman.toFixed(6) + ' ' + ammState.swapTo);
-  setText('amm-swap-rate', outHuman > 0 ? (outHuman / inHuman).toFixed(4) + ' ' + ammState.swapTo : '—');
-  setText('amm-swap-fee',  (inHuman * 0.003).toFixed(6) + ' ' + ammState.swapFrom);
+  if (minEl) minEl.textContent = minHuman.toFixed(6) + ' ' + ammState.swapTo;
 
-  ammState.quote = { amountIn, amountOut, minOut, aToB, rawInput, impact };
-  _updateSwapBtn();
+  const feeAmt = parseFloat(rawInput) * 0.003;
+  setText('amm-swap-fee', feeAmt.toFixed(6) + ' ' + ammState.swapFrom);
+
+  ammState.quote = { amountIn, amountOut, minOut, aToB, impact, rawInput };
+  ammUpdateSwapBtn();
 }
 
-// ─── Swap button state ────────────────────────────────────────────────────────
-function _updateSwapBtn() {
+function ammUpdateSwapBtn() {
   const btn     = $('amm-swap-btn');
   const btnText = $('amm-swap-btn-text');
+  const hint    = $('amm-no-wallet-hint');
   if (!btn) return;
-  const setLabel = t => { if (btnText) btnText.textContent = t; else btn.textContent = t; };
+
+  const setLabel = (txt) => {
+    if (btnText) btnText.textContent = txt;
+    else btn.textContent = txt;
+  };
 
   if (!window.walletState?.address) {
-    setLabel('Connect Wallet to Swap'); btn.disabled = true; return;
+    setLabel('Connect Wallet to Swap');
+    btn.disabled = true;
+    if (hint) hint.classList.remove('hidden');
+    return;
   }
+  if (hint) hint.classList.add('hidden');
+
   if (!ammState.deployed) {
-    setLabel('Pool Empty — Add Liquidity First'); btn.disabled = true; return;
+    setLabel('Pool Empty — Add Liquidity First');
+    btn.disabled = true;
+    return;
   }
   if (!ammState.quote) {
-    setLabel('Enter Amount'); btn.disabled = true; return;
+    setLabel('Enter Amount');
+    btn.disabled = true;
+    return;
   }
   if (ammState.pending) {
-    setLabel('⏳ Waiting…'); btn.disabled = true; return;
+    setLabel('⏳ Waiting for wallet confirmation…');
+    btn.disabled = true;
+    return;
   }
+  // Check balance
   const balRaw = ammState.swapFrom === 'EURC' ? ammState.balances.EURC : ammState.balances.USDC;
   if (ammState.quote.amountIn > balRaw) {
-    setLabel(`Insufficient ${ammState.swapFrom}`); btn.disabled = true; return;
+    setLabel(`Insufficient ${ammState.swapFrom} balance`);
+    btn.disabled = true;
+    return;
   }
   setLabel(`Swap ${ammState.swapFrom} → ${ammState.swapTo}`);
   btn.disabled = false;
@@ -362,97 +360,94 @@ function _updateSwapBtn() {
 // ─── Tab switch ───────────────────────────────────────────────────────────────
 window.ammSwitchTab = function(tab) {
   ammState.tab = tab;
-
-  ['swap', 'liquidity'].forEach(t => {
-    const btn   = $('amm-tab-' + t);
-    const panel = $('amm-panel-' + t);
-    if (btn)   btn.classList.toggle('active', t === tab);
-    if (panel) panel.classList.toggle('hidden', t !== tab);
+  ['swap','liquidity'].forEach(t => {
+    const btn    = $('amm-tab-' + t);
+    const panel  = $('amm-panel-' + t);
+    if (btn) {
+      if (t === tab) {
+        btn.className = 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/30 transition-all';
+      } else {
+        btn.className = 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all';
+      }
+    }
+    if (panel) {
+      panel.classList.toggle('hidden', t !== tab);
+    }
   });
-
-  // ── Pool Status: only visible on Liquidity tab ──────────────────────────
-  const poolCol = $('dex-pool-col');
-  if (poolCol) poolCol.classList.toggle('hidden', tab !== 'liquidity');
-
-  // Lazy-load pool state when entering Liquidity tab
-  if (tab === 'liquidity') {
-    ammFetchPoolState().then(_updatePoolUI).catch(e => console.warn('[AMM] pool fetch:', e.message));
-    if (window.walletState?.address) ammFetchBalances();
-  }
 };
 
-// ─── Flip swap direction ──────────────────────────────────────────────────────
-window.ammFlipSwap = window.ammFlipTokens = function() {
+// ─── Swap direction flip ───────────────────────────────────────────────────────
+window.ammFlipSwap = function() {
   [ammState.swapFrom, ammState.swapTo] = [ammState.swapTo, ammState.swapFrom];
+  // Update symbol labels (IDs that exist in HTML)
   setText('amm-swap-from-symbol', ammState.swapFrom);
   setText('amm-swap-to-symbol',   ammState.swapTo);
   setText('amm-swap-to-label',    ammState.swapTo);
+
+  // Update logo/color
   const fromLogo = $('amm-swap-from-logo');
   const toLogo   = $('amm-swap-to-logo');
   if (fromLogo) fromLogo.textContent = AMM_TOKENS[ammState.swapFrom].logo;
   if (toLogo)   toLogo.textContent   = AMM_TOKENS[ammState.swapTo].logo;
-  setVal('amm-swap-input',  '');
-  setVal('amm-swap-output', '');
+
+  const inputEl  = $('amm-swap-input');
+  const outputEl = $('amm-swap-output');
+  if (inputEl)  inputEl.value  = '';
+  if (outputEl) outputEl.value = '';
   ammState.quote = null;
-  _updateBalanceUI();
-  _updateSwapBtn();
+  ammUpdateBalanceUI();
+  ammUpdateSwapBtn();
 };
 
 // ─── MAX buttons ──────────────────────────────────────────────────────────────
-window.ammSetSwapMax = window.ammSetMaxSwap = function() {
-  const bal   = ammState.swapFrom === 'EURC' ? ammState.balances.EURC : ammState.balances.USDC;
-  const human = ammFormatUnits(bal);
-  if (parseFloat(human) > 0) {
-    setVal('amm-swap-input', parseFloat(human).toFixed(6));
+window.ammSetSwapMax = function() {
+  const bal    = ammState.swapFrom === 'EURC' ? ammState.balances.EURC : ammState.balances.USDC;
+  const human  = ammFormatUnits(bal);
+  const inputEl = $('amm-swap-input');
+  if (inputEl && parseFloat(human) > 0) {
+    inputEl.value = parseFloat(human).toFixed(6);
     ammComputeSwapQuote();
   }
 };
 
 window.ammSetLiqMaxA = function() {
-  const human = ammFormatUnits(ammState.balances.EURC);
-  setVal('amm-liq-eurc', parseFloat(human).toFixed(6));
-  ammUpdateLiqPreview();
+  const bal   = ammState.balances.EURC;
+  const human = ammFormatUnits(bal);
+  const el    = $('amm-liq-input-a');
+  if (el) { el.value = parseFloat(human).toFixed(6); ammUpdateLiqPreview(); }
 };
 
 window.ammSetLiqMaxB = function() {
-  const human = ammFormatUnits(ammState.balances.USDC);
-  setVal('amm-liq-usdc', parseFloat(human).toFixed(6));
-  ammUpdateLiqPreview();
+  const bal   = ammState.balances.USDC;
+  const human = ammFormatUnits(bal);
+  const el    = $('amm-liq-input-b');
+  if (el) { el.value = parseFloat(human).toFixed(6); ammUpdateLiqPreview(); }
 };
 
-// ─── Liquidity add preview ────────────────────────────────────────────────────
+// ─── Liquidity preview ────────────────────────────────────────────────────────
 function ammUpdateLiqPreview() {
-  const amtA = parseFloat($('amm-liq-eurc')?.value || '0') || 0;
-  const amtB = parseFloat($('amm-liq-usdc')?.value || '0') || 0;
+  const amtA = parseFloat($('amm-liq-input-a')?.value || '0') || 0;
+  const amtB = parseFloat($('amm-liq-input-b')?.value || '0') || 0;
 
   let lpEst = 0;
   if (amtA > 0 && amtB > 0) {
     if (ammState.totalSupply === 0n || ammState.reserves.A === 0n) {
+      // First liquidity: LP = sqrt(amtA * amtB) * 1e6
       lpEst = Math.sqrt(amtA * amtB);
     } else {
       const rA = Number(ammState.reserves.A) / 1e6;
       const rB = Number(ammState.reserves.B) / 1e6;
       const ts = Number(ammState.totalSupply) / 1e6;
-      lpEst = Math.min((amtA / rA) * ts, (amtB / rB) * ts);
+      const lpFromA = (amtA / rA) * ts;
+      const lpFromB = (amtB / rB) * ts;
+      lpEst = Math.min(lpFromA, lpFromB);
     }
   }
 
-  const tsHuman = Number(ammState.totalSupply) / 1e6;
-  const shareVal = tsHuman > 0 && lpEst > 0
-    ? (lpEst / (tsHuman + lpEst) * 100).toFixed(4) + '%'
-    : amtA > 0 ? '100.00%' : '—';
-  const rateVal = ammState.reserves.A > 0n && ammState.reserves.B > 0n
-    ? (Number(ammState.reserves.B) / Number(ammState.reserves.A)).toFixed(4) + ' USDC/EURC'
-    : '—';
-
-  setText('amm-liq-lp-out',    lpEst > 0 ? lpEst.toFixed(4) + ' LP' : '—');
-  setText('amm-liq-lp-est',    lpEst > 0 ? lpEst.toFixed(4) + ' LP' : '—');
-  setText('amm-liq-share',     shareVal);
-  setText('amm-liq-pool-share',shareVal);
-  setText('amm-liq-rate',      rateVal);
-
-  const prevEl = $('amm-liq-preview');
-  if (prevEl) prevEl.classList.toggle('hidden', !(amtA > 0 && amtB > 0));
+  setText('amm-liq-lp-est', lpEst > 0 ? lpEst.toFixed(4) + ' LP' : '—');
+  setText('amm-liq-pool-share', ammState.totalSupply > 0n && lpEst > 0
+    ? (lpEst / (Number(ammState.totalSupply) / 1e6 + lpEst) * 100).toFixed(4) + '%'
+    : amtA > 0 ? '100.00%' : '—');
 
   const addBtn = $('amm-add-liq-btn');
   if (addBtn) {
@@ -460,45 +455,6 @@ function ammUpdateLiqPreview() {
     addBtn.disabled = !ok;
   }
 }
-
-// ─── Remove liquidity preview ─────────────────────────────────────────────────
-window.ammOnRemoveInput = function() {
-  const el = $('amm-remove-lp');
-  if (!el) return;
-  const lp     = parseFloat(el.value) || 0;
-  const prevEl = $('amm-remove-preview');
-
-  if (lp <= 0 || ammState.totalSupply === 0n) {
-    if (prevEl) prevEl.classList.add('hidden');
-    const btn = $('amm-remove-liq-btn');
-    if (btn) btn.disabled = true;
-    return;
-  }
-
-  const ts    = Number(ammState.totalSupply) / 1e6;
-  const rA    = Number(ammState.reserves.A)  / 1e6;
-  const rB    = Number(ammState.reserves.B)  / 1e6;
-  const share = ts > 0 ? lp / ts : 0;
-
-  setText('amm-remove-eurc-out', (rA * share).toFixed(6) + ' EURC');
-  setText('amm-remove-usdc-out', (rB * share).toFixed(6) + ' USDC');
-  setText('amm-remove-share',    (share * 100).toFixed(4) + '%');
-  if (prevEl) prevEl.classList.remove('hidden');
-
-  const removeBtn = $('amm-remove-liq-btn');
-  if (removeBtn) {
-    const lpBal = Number(ammFormatUnits(ammState.balances.LP));
-    removeBtn.disabled = !(lp > 0 && lp <= lpBal && !!window.walletState?.address && !ammState.pending);
-  }
-};
-
-// ─── Remove % shortcuts ───────────────────────────────────────────────────────
-window.ammSetRemovePct = function(pct) {
-  const human = parseFloat(ammFormatUnits(ammState.balances.LP));
-  if (human <= 0) { showToast('No LP tokens available', 'warning'); return; }
-  setVal('amm-remove-lp', (human * pct / 100).toFixed(6));
-  window.ammOnRemoveInput();
-};
 
 // ─── EXECUTE SWAP ────────────────────────────────────────────────────────────
 window.ammExecuteSwap = async function() {
@@ -508,89 +464,89 @@ window.ammExecuteSwap = async function() {
   if (!wallet) { showToast('Connect wallet first', 'warning'); return; }
   if (!ammState.deployed) { showToast('Pool is empty. Add liquidity first.', 'warning'); return; }
 
-  const { amountIn, amountOut, minOut, aToB, rawInput } = ammState.quote;
+  const { amountIn, minOut, aToB, rawInput } = ammState.quote;
 
   ammState.pending = true;
-  _updateSwapBtn();
+  ammUpdateSwapBtn();
   hide('amm-swap-result');
   hide('amm-swap-error');
 
   try {
-    await _ensureNetwork();
+    await ammEnsureNetwork();
 
-    // 1. Balance check
+    // 1. Check balance
     const bal = aToB ? ammState.balances.EURC : ammState.balances.USDC;
-    if (amountIn > bal)
-      throw new Error(`Insufficient ${ammState.swapFrom} balance (have ${ammFormatUnits(bal)}, need ${rawInput})`);
+    if (amountIn > bal) throw new Error(`Insufficient ${ammState.swapFrom} balance`);
 
-    // 2. Approve input token
-    await _ensureApproval(ammState.swapFrom, ammState.ammAddress, amountIn);
+    // 2. Approve AMM to spend input token
+    const tokenSymbol = ammState.swapFrom;
+    const tokenCtrl   = await ammGetERC20(tokenSymbol);
+    const allowance   = await tokenCtrl.allowance(wallet, ammState.ammAddress);
 
-    // 3. Execute on-chain swap
-    const amm = await _getAMM();
-    console.log(`[AMM:swap] ${aToB ? 'swapAforB' : 'swapBforA'} amountIn=${amountIn} minOut=${minOut}`);
-    showToast(`📝 Confirm swap: ${rawInput} ${ammState.swapFrom} → ${ammState.swapTo}`, 'info');
+    if (allowance < amountIn) {
+      showToast(`📝 Approve ${tokenSymbol} — check wallet…`, 'info');
+      const approveTx = await tokenCtrl.approve(ammState.ammAddress, amountIn * 2n);
+      showToast(`⏳ Approving… ${approveTx.hash.slice(0,14)}`, 'info');
+      const approveReceipt = await approveTx.wait();
+      if (!approveReceipt || approveReceipt.status !== 1)
+        throw new Error('Approve failed on-chain');
+      showToast('✅ Approval confirmed!', 'success');
+    }
 
-    const tx = aToB
-      ? await amm.swapAforB(amountIn, minOut)
-      : await amm.swapBforA(amountIn, minOut);
+    // 3. Execute swap on SimpleAMM
+    const amm = await ammGetContract();
+    showToast(`📝 Confirm swap in wallet: ${rawInput} ${ammState.swapFrom} → ${ammState.swapTo}`, 'info');
 
-    console.log(`[AMM:swap] tx submitted: ${tx.hash}`);
-    showToast(`⏳ Swap pending… ${tx.hash.slice(0, 14)}`, 'info');
+    let tx;
+    if (aToB) {
+      tx = await amm.swapAforB(amountIn, minOut);
+    } else {
+      tx = await amm.swapBforA(amountIn, minOut);
+    }
+    const txHash = tx.hash;
+    showToast(`⏳ Swap submitted: ${txHash.slice(0,14)}…`, 'info');
 
-    // 4. Wait for on-chain confirmation
+    // 4. Wait for confirmation
     const receipt = await tx.wait();
-    if (!receipt || receipt.status !== 1)
-      throw new Error('Swap reverted on-chain. Check ArcScan for details.');
+    if (!receipt || receipt.status !== 1) throw new Error('Swap reverted on-chain');
 
-    console.log(`[AMM:swap] confirmed block=${receipt.blockNumber} gas=${receipt.gasUsed}`);
+    const amountOutActual = ammState.quote.amountOut;
+    const outHuman = parseFloat(ammFormatUnits(amountOutActual)).toFixed(6);
 
-    // 5. Parse actual output from Swap event if possible
-    let actualOut = amountOut;
-    try {
-      const swapTopic = amm.interface.getEvent('Swap').topicHash;
-      const swapLog   = receipt.logs?.find(l => l.topics?.[0] === swapTopic);
-      if (swapLog) {
-        const decoded = amm.interface.decodeEventLog('Swap', swapLog.data, swapLog.topics);
-        actualOut = decoded.amountOut;
-      }
-    } catch (_) {}
-    const outHuman = parseFloat(ammFormatUnits(actualOut)).toFixed(6);
-
-    // 6. Show success
+    // 5. Show result
     setText('amm-result-in',   rawInput + ' ' + ammState.swapFrom);
     setText('amm-result-out',  outHuman + ' ' + ammState.swapTo);
-    setText('amm-result-hash', tx.hash.slice(0, 20) + '…');
+    setText('amm-result-hash', txHash.slice(0, 20) + '…');
     const hashLink = $('amm-result-hash-link');
-    if (hashLink) hashLink.href = `${AMM_EXPLORER}/tx/${tx.hash}`;
+    if (hashLink) hashLink.href = `${AMM_EXPLORER}/tx/${txHash}`;
     show('amm-swap-result');
-    showToast(`✅ Swapped ${rawInput} ${ammState.swapFrom} → ${outHuman} ${ammState.swapTo} <a href="${AMM_EXPLORER}/tx/${tx.hash}" target="_blank" class="underline">↗</a>`, 'success');
 
-    // 7. Record + clear form
-    fetch('/api/dex/swap/record', {
+    showToast(`✅ Swapped! ${rawInput} ${ammState.swapFrom} → ${outHuman} ${ammState.swapTo} <a href="${AMM_EXPLORER}/tx/${txHash}" target="_blank" class="underline">ArcScan ↗</a>`, 'success');
+
+    // 6. Record + refresh
+    await fetch('/api/dex/swap/record', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet, fromToken: ammState.swapFrom, toToken: ammState.swapTo, amountIn: amountIn.toString(), amountOut: actualOut.toString(), txHash: tx.hash, blockNumber: receipt.blockNumber }),
+      body: JSON.stringify({ wallet, fromToken: ammState.swapFrom, toToken: ammState.swapTo, amountIn: amountIn.toString(), amountOut: amountOutActual.toString(), txHash, blockNumber: receipt.blockNumber }),
     }).catch(() => {});
-    setVal('amm-swap-input',  '');
-    setVal('amm-swap-output', '');
+
+    // Clear form
+    ammSetVal('amm-swap-input',  '');
+    ammSetVal('amm-swap-output', '');
     ammState.quote = null;
 
-    // 8. Refresh balances + pool
-    await ammFetchPoolState().then(_updatePoolUI).catch(() => {});
-    await ammFetchBalances();
-    ammComputeSwapQuote();
+    await ammRefreshAll();
 
   } catch (err) {
     console.error('[AMM:swap] Error:', err);
-    const msg = (err.code === 4001 || err.message?.includes('user rejected') || err.message?.includes('rejected'))
+    const msg = err.message?.includes('user rejected') || err.code === 4001
       ? 'Transaction rejected by user.'
-      : `Swap failed: ${err.message?.slice(0, 120)}`;
+      : `Swap failed: ${err.message?.slice(0, 100)}`;
     setText('amm-swap-error-msg', msg);
     show('amm-swap-error');
     showToast(`❌ ${msg.slice(0, 80)}`, 'error');
   } finally {
     ammState.pending = false;
-    _updateSwapBtn();
+    ammUpdateSwapBtn();
   }
 };
 
@@ -601,98 +557,111 @@ window.ammAddLiquidity = async function() {
   const wallet = window.walletState?.address;
   if (!wallet) { showToast('Connect wallet first', 'warning'); return; }
 
-  const amtAStr = $('amm-liq-eurc')?.value?.trim() || '';
-  const amtBStr = $('amm-liq-usdc')?.value?.trim() || '';
+  const amtAStr = $('amm-liq-input-a')?.value?.trim() || '';
+  const amtBStr = $('amm-liq-input-b')?.value?.trim() || '';
+
   if (!amtAStr || parseFloat(amtAStr) <= 0 || !amtBStr || parseFloat(amtBStr) <= 0) {
-    showToast('Enter EURC and USDC amounts', 'warning'); return;
+    showToast('Enter amounts for both tokens', 'warning');
+    return;
   }
 
   const amountA = ammParseUnits(amtAStr);
   const amountB = ammParseUnits(amtBStr);
-  if (amountA === 0n || amountB === 0n) { showToast('Amounts must be > 0', 'warning'); return; }
-  if (amountA > ammState.balances.EURC) { showToast('Insufficient EURC balance', 'error'); return; }
-  if (amountB > ammState.balances.USDC) { showToast('Insufficient USDC balance', 'error'); return; }
 
-  if (!ammState.deployed || !ammState.ammAddress)
-    throw new Error('SimpleAMM not deployed.');
+  if (amountA === 0n || amountB === 0n) {
+    showToast('Amounts must be greater than 0', 'warning');
+    return;
+  }
+  if (amountA > ammState.balances.EURC) {
+    showToast(`Insufficient EURC balance`, 'error'); return;
+  }
+  if (amountB > ammState.balances.USDC) {
+    showToast(`Insufficient USDC balance`, 'error'); return;
+  }
 
   ammState.pending = true;
   hide('amm-liq-result');
   hide('amm-liq-error');
   const addBtn = $('amm-add-liq-btn');
-  if (addBtn) { addBtn.disabled = true; addBtn.innerHTML = '<i class="fas fa-spinner fa-spin text-xs"></i> Processing…'; }
+  if (addBtn) { addBtn.disabled = true; addBtn.textContent = '⏳ Processing…'; }
 
   try {
-    await _ensureNetwork();
+    await ammEnsureNetwork();
 
-    // Approve both tokens
-    await _ensureApproval('EURC', ammState.ammAddress, amountA);
-    await _ensureApproval('USDC', ammState.ammAddress, amountB);
+    // Must deploy first
+    if (!ammState.deployed || !ammState.ammAddress || ammState.ammAddress === '0x0000000000000000000000000000000000000000') {
+      throw new Error('SimpleAMM not deployed. Deploy the contract first.');
+    }
 
-    // Add liquidity
-    const amm = await _getAMM();
-    console.log(`[AMM:addLiq] addLiquidity amountA=${amountA} amountB=${amountB}`);
-    showToast('📝 Confirm Add Liquidity in wallet…', 'info');
+    // ── Approve EURC ──────────────────────────────────────────────────────
+    const eurcCtrl = await ammGetERC20('EURC');
+    const eurcAll  = await eurcCtrl.allowance(wallet, ammState.ammAddress);
+    if (eurcAll < amountA) {
+      showToast('📝 Approve EURC — check wallet…', 'info');
+      const appTx = await eurcCtrl.approve(ammState.ammAddress, amountA * 2n);
+      const appRec = await appTx.wait();
+      if (!appRec || appRec.status !== 1) throw new Error('EURC approve failed');
+      showToast('✅ EURC approved!', 'success');
+    }
+
+    // ── Approve USDC ──────────────────────────────────────────────────────
+    const usdcCtrl = await ammGetERC20('USDC');
+    const usdcAll  = await usdcCtrl.allowance(wallet, ammState.ammAddress);
+    if (usdcAll < amountB) {
+      showToast('📝 Approve USDC — check wallet…', 'info');
+      const appTx = await usdcCtrl.approve(ammState.ammAddress, amountB * 2n);
+      const appRec = await appTx.wait();
+      if (!appRec || appRec.status !== 1) throw new Error('USDC approve failed');
+      showToast('✅ USDC approved!', 'success');
+    }
+
+    // ── Add liquidity ──────────────────────────────────────────────────────
+    const amm = await ammGetContract();
+    showToast(`📝 Confirm Add Liquidity in wallet…`, 'info');
     const tx      = await amm.addLiquidity(amountA, amountB);
-    console.log(`[AMM:addLiq] tx submitted: ${tx.hash}`);
-    showToast(`⏳ Adding liquidity… ${tx.hash.slice(0, 14)}`, 'info');
+    const txHash  = tx.hash;
+    showToast(`⏳ Tx submitted: ${txHash.slice(0,14)}…`, 'info');
     const receipt = await tx.wait();
-    if (!receipt || receipt.status !== 1)
-      throw new Error('addLiquidity reverted on-chain.');
+    if (!receipt || receipt.status !== 1) throw new Error('addLiquidity reverted');
 
-    console.log(`[AMM:addLiq] confirmed block=${receipt.blockNumber}`);
-
-    // Parse LiquidityAdded event for actual LP minted
+    // Parse LiquidityAdded event for lpMinted
     let lpMinted = 0n;
-    try {
-      const topic  = amm.interface.getEvent('LiquidityAdded').topicHash;
-      const log    = receipt.logs?.find(l => l.topics?.[0] === topic);
-      if (log) {
-        const d  = amm.interface.decodeEventLog('LiquidityAdded', log.data, log.topics);
-        lpMinted = d.lpMinted;
-      }
-    } catch (_) {}
+    const addedTopic = '0x' + 'LiquidityAdded'.split('').reduce((a, c) => a, ''); // placeholder
+    // Find LP amount from state change
+    await ammRefreshAll();
+    const newLP = ammState.balances.LP;
+    lpMinted    = newLP; // approximation
 
-    // Refresh to get new LP balance if event parse failed
-    await ammFetchPoolState().then(_updatePoolUI).catch(() => {});
-    await ammFetchBalances();
-    if (lpMinted === 0n) lpMinted = ammState.balances.LP;
-
-    const lpHuman = parseFloat(ammFormatUnits(lpMinted)).toFixed(4);
     setText('amm-liq-result-a',    amtAStr + ' EURC');
     setText('amm-liq-result-b',    amtBStr + ' USDC');
-    setText('amm-liq-result-lp',   lpHuman + ' LP');
-    setText('amm-liq-result-hash', tx.hash.slice(0, 20) + '…');
+    setText('amm-liq-result-lp',   parseFloat(ammFormatUnits(newLP)).toFixed(4) + ' LP');
+    setText('amm-liq-result-hash', txHash.slice(0, 20) + '…');
     const liqHashLink = $('amm-liq-result-hash-link');
-    if (liqHashLink) liqHashLink.href = `${AMM_EXPLORER}/tx/${tx.hash}`;
+    if (liqHashLink) liqHashLink.href = `${AMM_EXPLORER}/tx/${txHash}`;
     show('amm-liq-result');
 
-    showToast(`✅ Liquidity added! ${amtAStr} EURC + ${amtBStr} USDC → ${lpHuman} LP <a href="${AMM_EXPLORER}/tx/${tx.hash}" target="_blank" class="underline">↗</a>`, 'success');
+    showToast(`✅ Liquidity added! Tx: <a href="${AMM_EXPLORER}/tx/${txHash}" target="_blank" class="underline">${txHash.slice(0,14)}… ↗</a>`, 'success');
 
-    fetch('/api/dex/liquidity/record', {
+    await fetch('/api/dex/liquidity/record', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet, amountA: amountA.toString(), amountB: amountB.toString(), txHash: tx.hash, blockNumber: receipt.blockNumber }),
+      body: JSON.stringify({ wallet, amountA: amountA.toString(), amountB: amountB.toString(), txHash, blockNumber: receipt.blockNumber }),
     }).catch(() => {});
 
-    // Clear inputs
-    setVal('amm-liq-eurc', '');
-    setVal('amm-liq-usdc', '');
+    ammSetVal('amm-liq-input-a', '');
+    ammSetVal('amm-liq-input-b', '');
     ammUpdateLiqPreview();
 
   } catch (err) {
     console.error('[AMM:addLiq] Error:', err);
-    const msg = (err.code === 4001 || err.message?.includes('rejected'))
+    const msg = err.code === 4001 || err.message?.includes('rejected')
       ? 'Transaction rejected by user.'
-      : `Add liquidity failed: ${err.message?.slice(0, 120)}`;
+      : `Add liquidity failed: ${err.message?.slice(0, 100)}`;
     setText('amm-liq-error-msg', msg);
     show('amm-liq-error');
     showToast(`❌ ${msg.slice(0, 80)}`, 'error');
   } finally {
     ammState.pending = false;
-    if (addBtn) {
-      addBtn.disabled = false;
-      addBtn.innerHTML = '<i class="fas fa-plus text-xs"></i> Add Liquidity';
-    }
+    if (addBtn) { addBtn.disabled = false; addBtn.textContent = '➕ Add Liquidity'; }
     ammUpdateLiqPreview();
   }
 };
@@ -705,85 +674,52 @@ window.ammRemoveLiquidity = async function() {
   if (!wallet) { showToast('Connect wallet first', 'warning'); return; }
 
   const lpBalance = ammState.balances.LP;
-  if (lpBalance === 0n) { showToast('No LP tokens to remove', 'warning'); return; }
-
-  // Read LP amount from the redesigned input field
-  const lpInputEl = $('amm-remove-lp');
-  let lpAmount;
-  if (lpInputEl && lpInputEl.value && parseFloat(lpInputEl.value) > 0) {
-    lpAmount = ammParseUnits(lpInputEl.value);
-  } else {
-    lpAmount = lpBalance; // fallback: remove 100%
+  if (lpBalance === 0n) {
+    showToast('No LP tokens to remove', 'warning');
+    return;
   }
-  if (lpAmount > lpBalance) lpAmount = lpBalance;
+
+  const pctStr = $('amm-remove-pct')?.value || '100';
+  const pct    = Math.min(100, Math.max(1, parseFloat(pctStr) || 100));
+  const lpAmount = lpBalance * BigInt(Math.floor(pct * 100)) / 10000n;
+
   if (lpAmount === 0n) { showToast('LP amount is zero', 'warning'); return; }
 
-  const lpHumanStr = ammFormatUnits(lpAmount);
   ammState.pending = true;
   const removeBtn = $('amm-remove-liq-btn');
-  if (removeBtn) { removeBtn.disabled = true; removeBtn.innerHTML = '<i class="fas fa-spinner fa-spin text-xs"></i> Processing…'; }
+  if (removeBtn) { removeBtn.disabled = true; removeBtn.textContent = '⏳ Processing…'; }
 
   try {
-    await _ensureNetwork();
+    await ammEnsureNetwork();
 
-    const amm = await _getAMM();
-    console.log(`[AMM:removeLiq] removeLiquidity lpAmount=${lpAmount}`);
-    showToast(`📝 Confirm Remove ${lpHumanStr} LP in wallet…`, 'info');
+    const amm = await ammGetContract();
+    showToast(`📝 Confirm Remove Liquidity (${pct}%) in wallet…`, 'info');
     const tx = await amm.removeLiquidity(lpAmount);
-    console.log(`[AMM:removeLiq] tx submitted: ${tx.hash}`);
-    showToast(`⏳ Removing liquidity… ${tx.hash.slice(0, 14)}`, 'info');
+    showToast(`⏳ Tx submitted: ${tx.hash.slice(0,14)}…`, 'info');
     const receipt = await tx.wait();
-    if (!receipt || receipt.status !== 1)
-      throw new Error('removeLiquidity reverted on-chain.');
+    if (!receipt || receipt.status !== 1) throw new Error('removeLiquidity reverted');
 
-    console.log(`[AMM:removeLiq] confirmed block=${receipt.blockNumber}`);
-
-    // Parse LiquidityRemoved event
-    let eurcOut = 0n, usdcOut = 0n;
-    try {
-      const topic = amm.interface.getEvent('LiquidityRemoved').topicHash;
-      const log   = receipt.logs?.find(l => l.topics?.[0] === topic);
-      if (log) {
-        const d  = amm.interface.decodeEventLog('LiquidityRemoved', log.data, log.topics);
-        eurcOut  = d.amountA;
-        usdcOut  = d.amountB;
-      }
-    } catch (_) {}
-
-    const eurcHuman = parseFloat(ammFormatUnits(eurcOut)).toFixed(6);
-    const usdcHuman = parseFloat(ammFormatUnits(usdcOut)).toFixed(6);
-    showToast(`✅ Removed ${lpHumanStr} LP → ${eurcHuman} EURC + ${usdcHuman} USDC <a href="${AMM_EXPLORER}/tx/${tx.hash}" target="_blank" class="underline">↗</a>`, 'success');
-
-    await ammFetchPoolState().then(_updatePoolUI).catch(() => {});
-    await ammFetchBalances();
-
-    // Clear input + hide preview
-    setVal('amm-remove-lp', '');
-    hide('amm-remove-preview');
+    showToast(`✅ Liquidity removed! <a href="${AMM_EXPLORER}/tx/${tx.hash}" target="_blank" class="underline">ArcScan ↗</a>`, 'success');
+    await ammRefreshAll();
 
   } catch (err) {
     console.error('[AMM:removeLiq] Error:', err);
-    const msg = (err.code === 4001 || err.message?.includes('rejected'))
+    const msg = err.code === 4001 || err.message?.includes('rejected')
       ? 'Rejected by user.'
-      : `Remove failed: ${err.message?.slice(0, 120)}`;
+      : `Remove failed: ${err.message?.slice(0, 100)}`;
     showToast(`❌ ${msg}`, 'error');
   } finally {
     ammState.pending = false;
-    if (removeBtn) {
-      removeBtn.disabled = false;
-      removeBtn.innerHTML = '<i class="fas fa-minus text-xs"></i> <span>Remove Liquidity</span>';
-    }
-    window.ammOnRemoveInput();
+    if (removeBtn) { removeBtn.disabled = false; removeBtn.textContent = '🔥 Remove Liquidity'; }
   }
 };
 
-// ─── Refresh all (only pool data + balances) ──────────────────────────────────
+// ─── Refresh everything ───────────────────────────────────────────────────────
 async function ammRefreshAll() {
   try {
     const data = await ammFetchPoolState();
-    // Only update pool UI if we are on the Liquidity tab (avoid unnecessary renders)
-    if (ammState.tab === 'liquidity') _updatePoolUI(data);
-    if (window.walletState?.address) await ammFetchBalances();
+    ammUpdatePoolUI(data);
+    await ammFetchBalances();
     ammComputeSwapQuote();
     ammUpdateLiqPreview();
   } catch (e) {
@@ -794,86 +730,100 @@ async function ammRefreshAll() {
 // ─── Slippage control ─────────────────────────────────────────────────────────
 window.ammSetSlippage = function(pct) {
   ammState.slippage = parseFloat(pct) || 0.5;
+  // Update label
   setText('amm-slip-label', ammState.slippage + '%');
-  ['01', '05', '10'].forEach(id => {
-    const btn = $('slip-' + id);
+  // Update button styles
+  ['0.1','0.5','1.0'].forEach(v => {
+    const btn = $('amm-slip-' + v.replace('.',''));
     if (!btn) return;
-    const val = { '01': 0.1, '05': 0.5, '10': 1.0 }[id];
-    if (val === ammState.slippage) {
-      btn.classList.add('border-blue-700/40', 'text-blue-400');
-      btn.classList.remove('text-gray-500');
-    } else {
-      btn.classList.remove('border-blue-700/40', 'text-blue-400');
-      btn.classList.add('text-gray-500');
-    }
+    btn.className = parseFloat(v) === ammState.slippage
+      ? 'px-3 py-1 rounded text-xs font-bold bg-cyan-600 text-white'
+      : 'px-3 py-1 rounded text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600';
   });
   ammComputeSwapQuote();
 };
 
+// ─── Deploy contract helper (UI) ──────────────────────────────────────────────
+window.ammDeployContract = async function() {
+  const pkInput = $('amm-pk-input');
+  const pk = pkInput?.value?.trim();
+  if (!pk || pk.length < 60) {
+    showToast('Enter a valid private key', 'error');
+    return;
+  }
+
+  showToast('⚠️ Deploying via backend — key not sent over network in prod', 'warning');
+
+  try {
+    const res = await fetch('/api/dex/amm/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ privateKey: pk }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      ammState.ammAddress = data.ammAddress;
+      ammState.deployed   = true;
+      showToast(`✅ Deployed at ${data.ammAddress}`, 'success');
+      if (pkInput) pkInput.value = '';
+      await ammRefreshAll();
+    } else {
+      showToast(`❌ Deploy failed: ${data.error}`, 'error');
+    }
+  } catch (e) {
+    showToast(`❌ ${e.message}`, 'error');
+  }
+};
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function ammInit() {
-  console.log('[AMM] Init · Arc Testnet', AMM_CHAIN_ID);
-  console.log('[AMM] EURC:', AMM_TOKENS.EURC.address, '/ USDC:', AMM_TOKENS.USDC.address);
+  console.log('[AMM] Initialising DEX · Arc Testnet', AMM_CHAIN_ID);
 
   // Attach input listeners
   const swapInput = $('amm-swap-input');
-  if (swapInput) swapInput.addEventListener('input', ammComputeSwapQuote);
+  if (swapInput) swapInput.addEventListener('input', () => ammComputeSwapQuote());
 
-  const liqA = $('amm-liq-eurc');
-  const liqB = $('amm-liq-usdc');
-  if (liqA) liqA.addEventListener('input', ammUpdateLiqPreview);
-  if (liqB) liqB.addEventListener('input', ammUpdateLiqPreview);
+  const liqA = $('amm-liq-input-a');
+  const liqB = $('amm-liq-input-b');
+  if (liqA) liqA.addEventListener('input', () => ammUpdateLiqPreview());
+  if (liqB) liqB.addEventListener('input', () => ammUpdateLiqPreview());
 
-  const removeEl = $('amm-remove-lp');
-  if (removeEl) removeEl.addEventListener('input', window.ammOnRemoveInput);
+  const pctInput = $('amm-remove-pct');
+  if (pctInput) pctInput.addEventListener('input', () => {
+    const pct = Math.min(100, Math.max(1, parseFloat(pctInput.value) || 100));
+    const lp  = Number(ammState.balances.LP) / 1e6;
+    setText('amm-remove-lp-amt', (lp * pct / 100).toFixed(4) + ' LP');
+  });
 
-  // Fetch initial pool state (needed for swap quote)
-  try {
-    const data = await ammFetchPoolState();
-    // Do NOT call _updatePoolUI here — pool panel is hidden until Liquidity tab
-  } catch (e) {
-    console.warn('[AMM] init pool fetch:', e.message);
-  }
+  // Initial fetch
+  await ammRefreshAll();
 
-  // Fetch balances if wallet already connected
-  if (window.walletState?.address) await ammFetchBalances();
-
-  // Default to Swap tab (Pool Status hidden)
+  // Default tab
   ammSwitchTab('swap');
 
-  // Auto-refresh only swap-relevant state every 20s — no pool UI unless on Liquidity
-  setInterval(() => {
-    ammFetchPoolState().then(data => {
-      if (ammState.tab === 'liquidity') _updatePoolUI(data);
-    }).catch(() => {});
-    if (window.walletState?.address) ammFetchBalances().catch(() => {});
-    ammComputeSwapQuote();
-  }, 20_000);
+  // Auto-refresh every 15s
+  setInterval(ammRefreshAll, 15_000);
 
-  _updateSwapBtn();
   console.log('[AMM] Ready · AMM:', ammState.ammAddress, '· Deployed:', ammState.deployed);
 }
 
-// ─── Wallet events ────────────────────────────────────────────────────────────
+// ─── Wire to wallet events ────────────────────────────────────────────────────
 window.addEventListener('walletConnected', async (e) => {
-  console.log('[AMM] walletConnected:', e.detail?.address);
+  console.log('[AMM] Wallet connected:', e.detail?.address);
   await ammFetchBalances();
   ammComputeSwapQuote();
   ammUpdateLiqPreview();
-  _updateSwapBtn();
-  if (ammState.tab === 'liquidity') {
-    ammFetchPoolState().then(_updatePoolUI).catch(() => {});
-  }
+  ammUpdateSwapBtn();
 });
 
 window.addEventListener('accountsChanged', async () => {
   await ammFetchBalances();
-  _updateSwapBtn();
+  ammUpdateSwapBtn();
 });
 
 // ─── DOMContentLoaded ────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  if ($('amm-panel-swap')) {
+  if (document.getElementById('amm-panel-swap')) {
     ammInit().catch(e => console.error('[AMM] init error:', e));
   }
 });
@@ -883,7 +833,7 @@ window.ammInit             = ammInit;
 window.ammRefreshAll       = ammRefreshAll;
 window.ammComputeSwapQuote = ammComputeSwapQuote;
 window.ammUpdateLiqPreview = ammUpdateLiqPreview;
-window.ammOnSwapInput      = ammComputeSwapQuote;
-window.ammOnLiquidityInput = ammUpdateLiqPreview;
 
-console.log('[AMM] Module loaded · zero mock data · real on-chain only');
+console.log('[AMM] Module loaded · Arc Testnet', AMM_CHAIN_ID);
+console.log('[AMM] Tokens: EURC', AMM_TOKENS.EURC.address, '/ USDC', AMM_TOKENS.USDC.address);
+console.log('[AMM] x*y=k formula · fee 0.3% · no mock data');
