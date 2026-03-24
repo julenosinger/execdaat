@@ -2597,8 +2597,9 @@ app.get('/', (c) => {
       <!-- ── DEX Styles ───────────────────────────────────────────────────────── -->
       <style>
         /* ── Layout ── */
-        #dex-page { display:grid; grid-template-columns:1fr; gap:14px; }
-        @media(min-width:1024px){ #dex-page { grid-template-columns:minmax(0,2fr) minmax(0,2fr); gap:14px; } }
+        #dex-wrap { max-width:860px; margin:0 auto; }
+        #dex-page { display:grid; grid-template-columns:1fr; gap:12px; }
+        @media(min-width:900px){ #dex-page { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; } }
 
         /* ── Panel ── */
         .dex-panel {
@@ -2793,6 +2794,7 @@ app.get('/', (c) => {
       </div>
 
       <!-- ── Main grid ─────────────────────────────────────────────────────────── -->
+      <div id="dex-wrap">
       <div id="dex-page">
 
         <!-- LEFT col ─ Swap / Liquidity ──────────────────────────────────────── -->
@@ -3195,6 +3197,7 @@ app.get('/', (c) => {
         </div><!-- end RIGHT col -->
 
       </div><!-- end grid -->
+      </div><!-- end dex-wrap -->
 
     <!-- ════════════════════════════════════════════════════════════════ -->
 
