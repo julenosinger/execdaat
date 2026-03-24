@@ -2630,6 +2630,8 @@ app.get('/', (c) => {
         }
 
         /* ── Sub-tabs ── */
+        .dex-subtab:focus { outline:none; box-shadow:none; }
+        .dex-subtab:focus-visible { outline:none; box-shadow:none; }
         .dex-subtab {
           padding:5px 14px; border-radius:8px; font-size:12px; font-weight:600;
           border:1px solid transparent; transition:all 0.18s; cursor:pointer;
@@ -2703,11 +2705,13 @@ app.get('/', (c) => {
         /* ── Primary button ── */
         .dex-btn-primary {
           width:100%; padding:11px; border-radius:12px; font-weight:700;
-          font-size:13px; cursor:pointer; border:none;
+          font-size:13px; cursor:pointer; border:none; outline:none;
           background:linear-gradient(135deg,#6d28d9,#2563eb);
           color:#fff; transition:all 0.18s;
           display:flex; align-items:center; justify-content:center; gap:8px;
         }
+        .dex-btn-primary:focus { outline:none; box-shadow:none; }
+        .dex-btn-primary:focus-visible { outline:none; box-shadow:none; }
         .dex-btn-primary:hover:not(:disabled) {
           background:linear-gradient(135deg,#7c3aed,#3b82f6);
           box-shadow:0 4px 20px rgba(99,102,241,0.3); transform:translateY(-1px);
@@ -2718,11 +2722,13 @@ app.get('/', (c) => {
         /* ── Secondary button ── */
         .dex-btn-secondary {
           padding:8px 14px; border-radius:10px; font-weight:600;
-          font-size:12px; cursor:pointer;
+          font-size:12px; cursor:pointer; outline:none;
           background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
           color:#94a3b8; transition:all 0.18s;
           display:flex; align-items:center; gap:6px;
         }
+        .dex-btn-secondary:focus { outline:none; box-shadow:none; }
+        .dex-btn-secondary:focus-visible { outline:none; box-shadow:none; }
         .dex-btn-secondary:hover { background:rgba(255,255,255,0.09); color:#e2e8f0; border-color:rgba(255,255,255,0.2); }
         .dex-btn-secondary:disabled { opacity:0.4; cursor:not-allowed; }
 

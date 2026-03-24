@@ -693,15 +693,23 @@ window.ammRemoveLiquidity = async function() {
     return;
   }
 
-  const pctStr = $('amm-remove-pct')?.value || '100';
-  const pct    = Math.min(100, Math.max(1, parseFloat(pctStr) || 100));
-  const lpAmount = lpBalance * BigInt(Math.floor(pct * 100)) / 10000n;
+  // New HTML uses direct LP amount input (amm-remove-lp)
+  const lpInputEl = document.getElementById('amm-remove-lp');
+  let lpAmount;
+  if (lpInputEl && lpInputEl.value && parseFloat(lpInputEl.value) > 0) {
+    lpAmount = ammParseUnits(lpInputEl.value);
+  } else {
+    // fallback: 100%
+    lpAmount = lpBalance;
+  }
 
+  // Cap at actual balance
+  if (lpAmount > lpBalance) lpAmount = lpBalance;
   if (lpAmount === 0n) { showToast('LP amount is zero', 'warning'); return; }
 
   ammState.pending = true;
   const removeBtn = $('amm-remove-liq-btn');
-  if (removeBtn) { removeBtn.disabled = true; removeBtn.textContent = '⏳ Processing…'; }
+  if (removeBtn) { removeBtn.disabled = true; removeBtn.innerHTML = '⏳ Processing…'; }
 
   try {
     await ammEnsureNetwork();
@@ -724,7 +732,12 @@ window.ammRemoveLiquidity = async function() {
     showToast(`❌ ${msg}`, 'error');
   } finally {
     ammState.pending = false;
-    if (removeBtn) { removeBtn.disabled = false; removeBtn.textContent = '🔥 Remove Liquidity'; }
+    if (removeBtn) {
+      removeBtn.disabled = false;
+      removeBtn.innerHTML = '<i class="fas fa-minus text-xs"></i> <span>Remove Liquidity</span>';
+    }
+    // re-run preview to re-enable button if LP balance allows
+    if (typeof window.ammOnRemoveInput === 'function') window.ammOnRemoveInput();
   }
 };
 
