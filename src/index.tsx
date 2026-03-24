@@ -3797,7 +3797,7 @@ app.get('/', (c) => {
   <script src="/static/receipt-viewer.js?v=20250323b"></script>
   <script src="/static/app.js?v=20250322"></script>
   <script src="/static/payments.js?v=20250323d"></script>
-  <script src="/static/contracts.js?v=20250324b"></script>
+  <script src="/static/contracts.js?v=20250324c"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250322"></script>
@@ -3806,7 +3806,7 @@ app.get('/', (c) => {
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
-  <script src="/static/chat.js?v=20250324c"></script>
+  <script src="/static/chat.js?v=20250324d"></script>
   <script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────

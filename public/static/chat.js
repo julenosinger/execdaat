@@ -282,6 +282,11 @@ function toggleChat() {
 
 // ── Size management ────────────────────────────────────────────────────────────
 function setChatSize(size) {
+  // Reset width-expand toggle whenever a preset is chosen
+  chatWidthExpanded = false;
+  const wBtn = document.getElementById('chat-width-toggle-btn');
+  if (wBtn) { wBtn.style.color = ''; wBtn.style.background = ''; }
+
   chatSize = size;
   localStorage.setItem('arc-chat-size', size);
   applyChatSize(size, true);
@@ -331,30 +336,21 @@ function toggleChatWidth() {
     widget.style.width    = expanded + 'px';
     widget.style.maxWidth = 'calc(100vw - 16px)';
     if (btn) {
-      btn.title = 'Restaurar largura padrão';
-      btn.style.color   = '#a78bfa';
+      btn.title            = 'Restaurar largura padrão';
+      btn.style.color      = '#a78bfa';
       btn.style.background = 'rgba(167,139,250,0.15)';
     }
   } else {
     // Restore: let applyChatSize reassert the size-preset width
     applyChatSize(chatSize, true);
     if (btn) {
-      btn.title = 'Expandir largura (1.5×)';
-      btn.style.color   = '';
+      btn.title            = 'Expandir largura (1.5×)';
+      btn.style.color      = '';
       btn.style.background = '';
     }
   }
 }
 window.toggleChatWidth = toggleChatWidth;
-
-// Reset expand state whenever a size preset is chosen
-const _origSetChatSize = setChatSize;
-function setChatSize(size) {
-  chatWidthExpanded = false;
-  const btn = document.getElementById('chat-width-toggle-btn');
-  if (btn) { btn.style.color = ''; btn.style.background = ''; }
-  _origSetChatSize(size);
-}
 
 // ── Drag-to-move logic ─────────────────────────────────────────────────────────
 (function initChatDrag() {

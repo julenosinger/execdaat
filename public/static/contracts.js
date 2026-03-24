@@ -871,12 +871,12 @@ function cfContractCard(c, wallet) {
         ${(uiStatus==='Active'||mode!=='onchain') && isContr
           ? `<button onclick="cfShowProofUpload(${c.id})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);padding:2px 8px;border-radius:6px;cursor:pointer;"><i class="fas fa-upload mr-1"></i>Add</button>` : ''}
       </div>
-      ${proofs.length ? proofs.map(p => `
+      ${proofs.length ? proofs.map((p, pi) => `
         <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,${p.committed?'0.3':'0.1'});border-radius:8px;margin-bottom:4px;">
           <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:${p.committed?'#34d399':'#a78bfa'};font-size:12px;flex-shrink:0;"></i>
           <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.name}">${p.name}</span>
           ${p.committed ? `<span style="font-size:9px;color:#34d399;flex-shrink:0;"><i class="fas fa-lock mr-1"></i>Committed</span>` : `<span style="font-size:9px;color:#fbbf24;flex-shrink:0;"><i class="fas fa-clock mr-1"></i>Pending</span>`}
-          <button onclick="cfViewProof(${c.id},${proofs.indexOf(p)})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:6px;cursor:pointer;flex-shrink:0;"><i class="fas fa-eye mr-1"></i>Ver</button>
+          <button onclick="cfViewProof(${c.id},${pi})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:6px;cursor:pointer;flex-shrink:0;"><i class="fas fa-eye mr-1"></i>Ver</button>
           ${p.hash ? `<span style="font-size:9px;color:#3a4870;font-family:monospace;" title="SHA-256: ${p.hash}">${p.hash.slice(0,8)}…</span>` : ''}
         </div>`).join('')
         : `<p style="font-size:11px;color:#252a40;font-style:italic;padding:4px 0;">Nenhuma prova enviada ainda.</p>`}
@@ -1257,12 +1257,12 @@ function cfViewProof(contractId, proofIndex) {
         </div>
         <!-- Navigation -->
         <div style="display:flex;gap:6px;flex-shrink:0;">
-          <button onclick="cfViewProofNav(${contractId},${idx}-1)"
+          <button onclick="cfViewProofNav(${contractId},${idx - 1})"
             ${idx===0?'disabled':''} id="cf-pv-prev"
             style="width:32px;height:32px;border-radius:8px;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);color:${idx===0?'#252a40':'#60b4ff'};cursor:${idx===0?'default':'pointer'};font-size:13px;display:flex;align-items:center;justify-content:center;">
             <i class="fas fa-chevron-left"></i>
           </button>
-          <button onclick="cfViewProofNav(${contractId},${idx}+1)"
+          <button onclick="cfViewProofNav(${contractId},${idx + 1})"
             ${idx===proofs.length-1?'disabled':''} id="cf-pv-next"
             style="width:32px;height:32px;border-radius:8px;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);color:${idx===proofs.length-1?'#252a40':'#60b4ff'};cursor:${idx===proofs.length-1?'default':'pointer'};font-size:13px;display:flex;align-items:center;justify-content:center;">
             <i class="fas fa-chevron-right"></i>
@@ -1307,12 +1307,12 @@ function cfViewProof(contractId, proofIndex) {
 }
 
 // Navigate within proof viewer
-window.cfViewProofNav = function(contractId, idxExpr) {
+window.cfViewProofNav = function(contractId, newIdx) {
   const meta   = cfGetMeta(contractId);
   const proofs = meta.proofs || [];
-  const newIdx = Math.max(0, Math.min(proofs.length - 1, typeof idxExpr === 'number' ? idxExpr : eval(idxExpr)));
+  const safeIdx = Math.max(0, Math.min(proofs.length - 1, Number(newIdx) || 0));
   document.getElementById('cf-proof-viewer-modal')?.remove();
-  cfViewProof(contractId, newIdx);
+  cfViewProof(contractId, safeIdx);
 };
 
 // Download proof by contract id + index
