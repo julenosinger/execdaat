@@ -2591,511 +2591,621 @@ app.get('/', (c) => {
       </div>
     </div>
 
-    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->
+    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->
     <div id="tab-content-dex" class="tab-content hidden">
 
-      <!-- ── Page Header ─────────────────────────────────────────────────────── -->
-      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <!-- ── DEX Styles ───────────────────────────────────────────────────────── -->
+      <style>
+        /* ── Layout ── */
+        #dex-page { display:grid; grid-template-columns:1fr; gap:16px; }
+        @media(min-width:1024px){ #dex-page { grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:16px; } }
+
+        /* ── Panel ── */
+        .dex-panel {
+          background:rgba(10,12,24,0.98);
+          border:1px solid rgba(55,138,221,0.18);
+          border-radius:16px;
+          position:relative;
+          overflow:hidden;
+        }
+        .dex-panel::after {
+          content:'';
+          position:absolute;
+          top:0; left:0; right:0; height:1px;
+          pointer-events:none;
+          background:linear-gradient(90deg,transparent,rgba(55,138,221,0.55) 40%,rgba(29,158,117,0.45) 60%,transparent);
+        }
+
+        /* ── Panel header ── */
+        .dex-panel-hd {
+          display:flex; align-items:center; justify-content:space-between;
+          padding:12px 16px;
+          border-bottom:1px solid rgba(55,138,221,0.10);
+        }
+        .dex-panel-title {
+          font-size:10px; font-weight:700; letter-spacing:0.09em;
+          text-transform:uppercase; color:#a8c4e0;
+          display:flex; align-items:center; gap:6px;
+        }
+
+        /* ── Sub-tabs ── */
+        .dex-subtab {
+          padding:5px 14px; border-radius:8px; font-size:12px; font-weight:600;
+          border:1px solid transparent; transition:all 0.18s; cursor:pointer;
+          color:#6a85aa; background:transparent;
+        }
+        .dex-subtab:hover { color:#e2e8f0; background:rgba(255,255,255,0.05); }
+        .dex-subtab.active {
+          background:rgba(55,138,221,0.15);
+          border-color:rgba(55,138,221,0.35);
+          color:#93c5fd;
+        }
+
+        /* ── Token row ── */
+        .dex-token-row {
+          background:rgba(255,255,255,0.04);
+          border:1px solid rgba(55,138,221,0.18);
+          border-radius:12px;
+          padding:10px 12px;
+          transition:all 0.18s;
+        }
+        .dex-token-row:hover { border-color:rgba(55,138,221,0.38); background:rgba(255,255,255,0.06); }
+        .dex-token-row:focus-within {
+          border-color:rgba(55,138,221,0.65);
+          box-shadow:0 0 0 3px rgba(55,138,221,0.12);
+          background:rgba(55,138,221,0.06);
+        }
+
+        /* ── Amount input ── */
+        .dex-amount-input {
+          background:transparent; border:none; outline:none;
+          color:#f0f4ff; font-size:20px; font-weight:700; font-family:inherit;
+          width:100%; min-width:0;
+        }
+        .dex-amount-input::placeholder { color:#334155; }
+        .dex-amount-input:read-only { color:#7dd3fc; }
+
+        /* ── Token badge ── */
+        .dex-token-badge {
+          display:flex; align-items:center; gap:6px;
+          background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.1);
+          border-radius:8px; padding:4px 8px 4px 6px;
+          font-size:13px; font-weight:700; color:#e2e8f0;
+          flex-shrink:0; white-space:nowrap;
+        }
+
+        /* ── Swap arrow ── */
+        .dex-swap-arrow {
+          width:30px; height:30px; border-radius:50%;
+          background:rgba(55,138,221,0.12); border:1px solid rgba(55,138,221,0.28);
+          display:flex; align-items:center; justify-content:center;
+          cursor:pointer; transition:all 0.18s; color:#60a5fa; font-size:12px;
+          margin:0 auto;
+        }
+        .dex-swap-arrow:hover {
+          background:rgba(55,138,221,0.22); border-color:rgba(55,138,221,0.5);
+          transform:rotate(180deg);
+        }
+
+        /* ── Info row (fee/impact/min) ── */
+        .dex-info-row {
+          display:flex; align-items:center; justify-content:space-between;
+          background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06);
+          border-radius:10px; padding:7px 12px;
+          font-size:11px;
+        }
+        .dex-info-item { display:flex; align-items:center; gap:5px; }
+        .dex-info-label { color:#4a6080; font-weight:600; }
+        .dex-info-value { color:#94a3b8; font-weight:700; font-family:monospace; }
+        .dex-info-value.highlight { color:#7dd3fc; }
+
+        /* ── Primary button ── */
+        .dex-btn-primary {
+          width:100%; padding:11px; border-radius:12px; font-weight:700;
+          font-size:13px; cursor:pointer; border:none;
+          background:linear-gradient(135deg,#6d28d9,#2563eb);
+          color:#fff; transition:all 0.18s;
+          display:flex; align-items:center; justify-content:center; gap:8px;
+        }
+        .dex-btn-primary:hover:not(:disabled) {
+          background:linear-gradient(135deg,#7c3aed,#3b82f6);
+          box-shadow:0 4px 20px rgba(99,102,241,0.3); transform:translateY(-1px);
+        }
+        .dex-btn-primary:active:not(:disabled) { transform:translateY(0); }
+        .dex-btn-primary:disabled { opacity:0.45; cursor:not-allowed; }
+
+        /* ── Secondary button ── */
+        .dex-btn-secondary {
+          padding:8px 14px; border-radius:10px; font-weight:600;
+          font-size:12px; cursor:pointer;
+          background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
+          color:#94a3b8; transition:all 0.18s;
+          display:flex; align-items:center; gap:6px;
+        }
+        .dex-btn-secondary:hover { background:rgba(255,255,255,0.09); color:#e2e8f0; border-color:rgba(255,255,255,0.2); }
+        .dex-btn-secondary:disabled { opacity:0.4; cursor:not-allowed; }
+
+        /* ── LP input ── */
+        .dex-lp-input {
+          background:rgba(255,255,255,0.06); border:1px solid rgba(55,138,221,0.28);
+          border-radius:10px; color:#e8edf8; font-size:13px; font-weight:600;
+          padding:8px 12px; width:100%; box-sizing:border-box;
+          outline:none; transition:all 0.18s;
+        }
+        .dex-lp-input:focus {
+          border-color:rgba(55,138,221,0.65);
+          box-shadow:0 0 0 3px rgba(55,138,221,0.12);
+          background:rgba(55,138,221,0.07);
+        }
+        .dex-lp-input::placeholder { color:#334155; }
+
+        /* ── Stat mini card ── */
+        .dex-stat {
+          background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+          border-radius:10px; padding:8px 10px;
+          display:flex; flex-direction:column; gap:2px;
+        }
+        .dex-stat-label { font-size:10px; color:#4a6080; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; }
+        .dex-stat-value { font-size:13px; font-weight:700; color:#e2e8f0; font-family:monospace; }
+
+        /* ── Result banner ── */
+        .dex-result {
+          border-radius:10px; padding:10px 12px; font-size:12px;
+          display:flex; align-items:flex-start; gap:8px;
+        }
+        .dex-result.success { background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); color:#6ee7b7; }
+        .dex-result.error   { background:rgba(239,68,68,0.08);  border:1px solid rgba(239,68,68,0.25);  color:#fca5a5; }
+
+        /* ── Pool metric row ── */
+        .dex-pool-row {
+          display:flex; align-items:center; justify-content:space-between;
+          padding:7px 10px; border-radius:9px;
+          background:rgba(255,255,255,0.03);
+          transition:background 0.15s;
+        }
+        .dex-pool-row:hover { background:rgba(255,255,255,0.055); }
+
+        /* ── Divider ── */
+        .dex-divider { height:1px; background:rgba(55,138,221,0.10); margin:4px 0; }
+      </style>
+
+      <!-- ── Page header ──────────────────────────────────────────────────────── -->
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
-          <h2 class="text-2xl font-bold text-white flex items-center gap-3">
-            <span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-cyan-900/40">
-              <i class="fas fa-exchange-alt"></i>
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            <span class="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-600/30 to-blue-600/30 border border-cyan-700/40 flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-exchange-alt text-cyan-400 text-sm"></i>
             </span>
-            ARC Swap
-            <span class="text-xs font-normal bg-amber-500/10 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-full">
-              <i class="fas fa-flask mr-1 text-[10px]"></i>Testnet
-            </span>
+            AMM DEX
           </h2>
-          <p class="text-gray-500 text-xs mt-1.5 ml-13">EURC / USDC · Constant Product AMM (x·y=k) · 0.3% fee · Arc Testnet</p>
+          <p class="text-xs text-gray-500 mt-0.5 ml-10">EURC / USDC · x·y=k · 0.3% fee · Arc Testnet</p>
         </div>
-        <!-- Status + refresh -->
         <div class="flex items-center gap-2">
-          <button onclick="ammRefreshAll()" class="text-xs text-gray-500 hover:text-cyan-400 transition-colors bg-gray-800/60 border border-gray-700/40 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
-            <i class="fas fa-sync-alt text-[10px]"></i> Refresh
-          </button>
-          <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-900/60 border border-gray-700/50 rounded-full text-xs">
-            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-            <span id="amm-status" class="text-gray-300">Loading…</span>
+          <div id="amm-status-dot" class="flex items-center gap-1.5 bg-gray-800/60 border border-gray-700/40 rounded-full px-3 py-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-gray-600" id="amm-dot-inner"></span>
+            <span class="text-xs text-gray-500 font-medium" id="amm-status-text">Connecting…</span>
           </div>
+          <button onclick="ammRefreshAll()" class="dex-btn-secondary">
+            <i class="fas fa-sync-alt text-xs" id="amm-refresh-icon"></i>
+            <span class="hidden sm:inline">Refresh</span>
+          </button>
         </div>
       </div>
 
-      <!-- ── Anti-phishing notice ───────────────────────────────────────────── -->
-      <div class="mb-5 bg-blue-900/10 border border-blue-700/30 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3 text-xs">
-        <i class="fas fa-shield-alt text-blue-400 text-base"></i>
-        <span class="text-gray-400">
-          <strong class="text-blue-300">Security notice:</strong>
-          This dApp never asks for your private key. All transactions are signed
-          exclusively in your wallet (MetaMask). No automatic or hidden transactions occur.
-        </span>
-        <a href="/about" class="ml-auto text-blue-400 hover:text-blue-300 underline whitespace-nowrap">Learn more ↗</a>
-      </div>
+      <!-- ── Main grid ─────────────────────────────────────────────────────────── -->
+      <div id="dex-page">
 
-      <!-- ── Main 2-column layout ────────────────────────────────────────────── -->
-      <div class="grid grid-cols-1 xl:grid-cols-5 gap-5 items-start">
+        <!-- LEFT col ─ Swap / Liquidity ──────────────────────────────────────── -->
+        <div class="space-y-4">
 
-        <!-- LEFT — Swap / Liquidity tabs (3/5 width on xl) -->
-        <div class="xl:col-span-3 space-y-4">
-
-          <!-- Tab switcher -->
-          <div class="flex gap-1.5 bg-gray-900/70 border border-gray-700/40 rounded-2xl p-1.5">
-            <button id="amm-tab-swap" onclick="ammSwitchTab('swap')"
-              class="flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/30 transition-all">
-              <i class="fas fa-exchange-alt mr-1.5"></i>Swap
-            </button>
-            <button id="amm-tab-liquidity" onclick="ammSwitchTab('liquidity')"
-              class="flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all">
-              <i class="fas fa-tint mr-1.5"></i>Liquidity
-            </button>
-          </div>
-
-          <!-- ══ SWAP PANEL ═══════════════════════════════════════════════════ -->
-          <div id="amm-panel-swap">
-            <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-3 shadow-xl">
-
-              <!-- From Token -->
-              <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3.5 space-y-2">
-                <div class="flex items-center justify-between text-xs text-gray-500">
-                  <span class="font-semibold">You Pay</span>
-                  <div class="flex items-center gap-2">
-                    <span id="amm-swap-from-bal">Balance: —</span>
-                    <button onclick="ammSetSwapMax()"
-                      class="px-2 py-0.5 bg-cyan-900/50 hover:bg-cyan-700/60 border border-cyan-700/50 text-cyan-400 rounded-md font-bold transition-all">
-                      MAX
-                    </button>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 min-w-fit border border-gray-600/30">
-                    <span class="text-lg" id="amm-swap-from-logo">💶</span>
-                    <span class="text-white font-bold text-sm" id="amm-swap-from-symbol">EURC</span>
-                  </div>
-                  <input type="number" id="amm-swap-input" placeholder="0.00" min="0" step="0.000001"
-                    class="flex-1 bg-transparent text-white text-2xl font-bold text-right outline-none placeholder-gray-700 w-0"
-                    oninput="ammComputeSwapQuote()" />
-                </div>
-              </div>
-
-              <!-- Flip -->
-              <div class="flex justify-center -my-1 relative z-10">
-                <button onclick="ammFlipSwap()"
-                  class="w-9 h-9 rounded-xl bg-gray-800 border border-gray-600/50 hover:border-cyan-500/60 hover:bg-gray-700 flex items-center justify-center transition-all shadow-lg group">
-                  <i class="fas fa-arrow-down text-gray-400 group-hover:text-cyan-400 transition-all text-sm"></i>
+          <!-- Sub-tab switcher -->
+          <div class="dex-panel">
+            <div class="dex-panel-hd">
+              <div class="flex items-center gap-1.5">
+                <button id="amm-tab-swap" onclick="ammSwitchTab('swap')" class="dex-subtab active">
+                  <i class="fas fa-exchange-alt mr-1.5"></i>Swap
+                </button>
+                <button id="amm-tab-liquidity" onclick="ammSwitchTab('liquidity')" class="dex-subtab">
+                  <i class="fas fa-water mr-1.5"></i>Liquidity
                 </button>
               </div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] text-gray-600 font-mono">SimpleAMM</span>
+                <a href="https://testnet.arcscan.app/address/0x3148E2807F172D1cC354F35fB4fC4104e8b6b561"
+                  target="_blank" rel="noopener noreferrer"
+                  class="text-[10px] text-cyan-600 hover:text-cyan-400 transition-colors flex items-center gap-1 bg-cyan-900/20 border border-cyan-700/20 rounded-md px-1.5 py-0.5">
+                  <i class="fas fa-external-link-alt text-[8px]"></i>ArcScan
+                </a>
+              </div>
+            </div>
 
-              <!-- To Token -->
-              <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl px-4 py-3.5 space-y-2">
-                <div class="flex items-center justify-between text-xs text-gray-500">
-                  <span class="font-semibold">You Receive</span>
-                  <span id="amm-swap-to-label" class="text-gray-500">USDC</span>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 min-w-fit border border-gray-600/30">
-                    <span class="text-lg" id="amm-swap-to-logo">💵</span>
-                    <span class="text-white font-bold text-sm" id="amm-swap-to-symbol">USDC</span>
+            <div class="p-4 space-y-3">
+
+              <!-- ═══ SWAP PANEL ═══ -->
+              <div id="amm-panel-swap" class="space-y-3">
+
+                <!-- You Pay -->
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[10px] font-700 uppercase tracking-widest text-gray-500">You Pay</span>
+                    <span class="text-[10px] text-gray-600 font-mono" id="amm-swap-from-bal">Balance: —</span>
                   </div>
-                  <input type="number" id="amm-swap-output" placeholder="0.00" readonly
-                    class="flex-1 bg-transparent text-green-400 text-2xl font-bold text-right outline-none placeholder-gray-700 cursor-default w-0" />
+                  <div class="dex-token-row">
+                    <div class="flex items-center gap-3">
+                      <div class="dex-token-badge">
+                        <span class="text-base leading-none" id="amm-swap-from-logo">💶</span>
+                        <span id="amm-swap-from-symbol">EURC</span>
+                      </div>
+                      <input type="number" id="amm-swap-input" placeholder="0.00" min="0" step="0.000001"
+                        oninput="ammOnSwapInput()"
+                        class="dex-amount-input" autocomplete="off" />
+                      <button onclick="ammSetMaxSwap()"
+                        class="text-[10px] text-blue-500 hover:text-blue-400 font-bold uppercase tracking-wider flex-shrink-0 transition-colors">
+                        MAX
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <!-- Quote row -->
-              <div class="grid grid-cols-3 gap-2 text-xs text-center">
-                <div class="bg-gray-800/50 rounded-xl p-2.5">
-                  <div class="text-gray-500 mb-0.5">Price Impact</div>
-                  <div id="amm-price-impact" class="text-green-400 font-mono font-bold">—</div>
+                <!-- Swap direction arrow -->
+                <div class="flex items-center justify-center py-0.5">
+                  <button onclick="ammFlipTokens()" class="dex-swap-arrow" title="Flip tokens">
+                    <i class="fas fa-arrow-down"></i>
+                  </button>
                 </div>
-                <div class="bg-gray-800/50 rounded-xl p-2.5">
-                  <div class="text-gray-500 mb-0.5">Fee (0.3%)</div>
-                  <div id="amm-swap-fee" class="text-gray-300 font-mono font-bold">—</div>
-                </div>
-                <div class="bg-gray-800/50 rounded-xl p-2.5">
-                  <div class="text-gray-500 mb-0.5">Min. Received</div>
-                  <div id="amm-min-received" class="text-gray-300 font-mono font-bold">—</div>
-                </div>
-              </div>
 
-              <!-- Slippage tolerance -->
-              <div class="bg-gray-800/30 rounded-xl px-3 py-2.5 flex items-center justify-between">
-                <div class="flex items-center gap-1.5 text-xs text-gray-500">
-                  <i class="fas fa-sliders-h text-gray-600"></i>
-                  <span>Slippage:</span>
-                  <span id="amm-slip-label" class="text-cyan-400 font-semibold">0.5%</span>
+                <!-- You Receive -->
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[10px] font-700 uppercase tracking-widest text-gray-500">You Receive</span>
+                    <span class="text-[10px] text-gray-600 font-mono" id="amm-swap-to-label">≈ USDC</span>
+                  </div>
+                  <div class="dex-token-row">
+                    <div class="flex items-center gap-3">
+                      <div class="dex-token-badge">
+                        <span class="text-base leading-none" id="amm-swap-to-logo">💵</span>
+                        <span id="amm-swap-to-symbol">USDC</span>
+                      </div>
+                      <input type="number" id="amm-swap-output" placeholder="0.00" readonly
+                        class="dex-amount-input" />
+                    </div>
+                  </div>
                 </div>
-                <div class="flex gap-1">
-                  <button id="amm-slip-01" onclick="ammSetSlippage(0.1)"
-                    class="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all">0.1%</button>
-                  <button id="amm-slip-05" onclick="ammSetSlippage(0.5)"
-                    class="px-2.5 py-1 rounded-lg text-xs font-bold bg-cyan-600/80 text-white transition-all ring-1 ring-cyan-500/50">0.5%</button>
-                  <button id="amm-slip-10" onclick="ammSetSlippage(1.0)"
-                    class="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-700 text-gray-300 hover:bg-gray-600 transition-all">1.0%</button>
-                </div>
-              </div>
 
-              <!-- Swap Button -->
-              <button id="amm-swap-btn" onclick="ammExecuteSwap()" disabled
-                class="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-base transition-all shadow-lg shadow-cyan-900/40 mt-1 relative overflow-hidden group">
-                <span class="relative z-10 flex items-center justify-center gap-2">
-                  <i class="fas fa-exchange-alt"></i>
+                <!-- Info row: fee · impact · min received -->
+                <div id="amm-swap-details" class="dex-info-row">
+                  <div class="dex-info-item">
+                    <span class="dex-info-label">Fee</span>
+                    <span class="dex-info-value" id="amm-swap-fee">—</span>
+                  </div>
+                  <div class="w-px h-3 bg-gray-700/60"></div>
+                  <div class="dex-info-item">
+                    <span class="dex-info-label">Impact</span>
+                    <span class="dex-info-value" id="amm-swap-impact">—</span>
+                  </div>
+                  <div class="w-px h-3 bg-gray-700/60"></div>
+                  <div class="dex-info-item">
+                    <span class="dex-info-label">Min</span>
+                    <span class="dex-info-value highlight" id="amm-swap-min">—</span>
+                  </div>
+                  <div class="w-px h-3 bg-gray-700/60"></div>
+                  <div class="dex-info-item">
+                    <span class="dex-info-label">Rate</span>
+                    <span class="dex-info-value highlight" id="amm-swap-rate">—</span>
+                  </div>
+                </div>
+
+                <!-- Slippage selector -->
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider flex-shrink-0">Slippage</span>
+                  <div class="flex items-center gap-1 flex-1">
+                    <button onclick="ammSetSlippage(0.1)"  id="slip-01"  class="dex-btn-secondary text-[10px] py-1 px-2.5">0.1%</button>
+                    <button onclick="ammSetSlippage(0.5)"  id="slip-05"  class="dex-btn-secondary text-[10px] py-1 px-2.5 border-blue-700/40 text-blue-400">0.5%</button>
+                    <button onclick="ammSetSlippage(1.0)"  id="slip-10"  class="dex-btn-secondary text-[10px] py-1 px-2.5">1.0%</button>
+                  </div>
+                  <div class="flex items-center bg-gray-800/60 border border-gray-700/40 rounded-lg overflow-hidden">
+                    <input type="number" id="amm-slippage-custom" placeholder="%" min="0.01" max="50" step="0.1"
+                      class="bg-transparent border-none outline-none text-[11px] text-gray-300 w-12 px-2 py-1" />
+                    <span class="text-[10px] text-gray-600 pr-2">%</span>
+                  </div>
+                </div>
+
+                <!-- CTA -->
+                <button id="amm-swap-btn" onclick="ammExecuteSwap()" disabled class="dex-btn-primary">
+                  <i class="fas fa-exchange-alt text-xs" id="amm-swap-btn-icon"></i>
                   <span id="amm-swap-btn-text">Enter Amount</span>
-                </span>
-                <div class="absolute inset-0 bg-gradient-to-r from-cyan-400/20 to-blue-400/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              </button>
+                </button>
 
-              <!-- Wallet not connected hint -->
-              <div id="amm-no-wallet-hint" class="text-center text-xs text-gray-600 flex items-center justify-center gap-1.5">
-                <i class="fas fa-wallet text-gray-700"></i>
-                Connect wallet to execute swaps
-              </div>
-
-              <!-- Result / Error -->
-              <div id="amm-swap-result" class="hidden bg-green-900/20 border border-green-700/40 rounded-xl p-4">
-                <div class="flex items-center gap-2 text-green-400 font-semibold mb-3 text-sm">
-                  <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
-                    <i class="fas fa-check text-xs"></i>
-                  </div>
-                  Swap Confirmed!
-                </div>
-                <div class="space-y-1.5 text-xs">
-                  <div class="flex justify-between">
-                    <span class="text-gray-500">Sent</span>
-                    <span id="amm-result-in" class="font-mono text-white">—</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-gray-500">Received</span>
-                    <span id="amm-result-out" class="font-mono text-green-300 font-bold">—</span>
-                  </div>
-                  <div class="flex justify-between items-center pt-1 border-t border-gray-700/40">
-                    <span class="text-gray-500">Transaction</span>
-                    <a id="amm-result-hash-link" href="#" target="_blank" rel="noopener noreferrer"
-                      class="font-mono text-cyan-400 hover:text-cyan-300 underline truncate max-w-[160px] flex items-center gap-1">
-                      <span id="amm-result-hash">—</span>
-                      <i class="fas fa-external-link-alt text-[9px]"></i>
+                <!-- Result / Error banners -->
+                <div id="amm-swap-result" class="hidden dex-result success">
+                  <i class="fas fa-check-circle flex-shrink-0 mt-0.5"></i>
+                  <div class="space-y-1 flex-1">
+                    <div class="font-semibold">Swap Confirmed</div>
+                    <div id="amm-swap-result-detail" class="opacity-80 text-[11px]"></div>
+                    <a id="amm-swap-explorer-link" href="#" target="_blank" rel="noopener noreferrer"
+                      class="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 text-[10px] font-semibold transition-colors">
+                      <i class="fas fa-external-link-alt text-[8px]"></i>View on ArcScan
                     </a>
                   </div>
                 </div>
-              </div>
-              <div id="amm-swap-error" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-xs text-red-300">
-                <div class="flex items-start gap-2">
-                  <i class="fas fa-exclamation-triangle mt-0.5 flex-shrink-0"></i>
+                <div id="amm-swap-error" class="hidden dex-result error">
+                  <i class="fas fa-exclamation-circle flex-shrink-0 mt-0.5"></i>
                   <span id="amm-swap-error-msg">—</span>
                 </div>
-              </div>
 
+              </div><!-- end swap panel -->
+
+              <!-- ═══ LIQUIDITY PANEL ═══ -->
+              <div id="amm-panel-liquidity" class="hidden space-y-3">
+
+                <!-- Add liquidity -->
+                <div class="space-y-2">
+                  <div class="text-[10px] font-700 uppercase tracking-widest text-gray-500 flex items-center justify-between">
+                    <span>Add Liquidity</span>
+                    <span class="text-gray-700 font-mono text-[9px]">Proportional to pool ratio</span>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-2">
+                    <!-- EURC input -->
+                    <div>
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-[10px] text-gray-600 flex items-center gap-1"><span>💶</span>EURC</span>
+                        <span class="text-[10px] text-gray-700 font-mono" id="amm-liq-eurc-bal">Bal: —</span>
+                      </div>
+                      <input type="number" id="amm-liq-eurc" placeholder="0.00" min="0" step="0.000001"
+                        oninput="ammOnLiquidityInput('eurc')"
+                        class="dex-lp-input" />
+                    </div>
+                    <!-- USDC input -->
+                    <div>
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-[10px] text-gray-600 flex items-center gap-1"><span>💵</span>USDC</span>
+                        <span class="text-[10px] text-gray-700 font-mono" id="amm-liq-usdc-bal">Bal: —</span>
+                      </div>
+                      <input type="number" id="amm-liq-usdc" placeholder="0.00" min="0" step="0.000001"
+                        oninput="ammOnLiquidityInput('usdc')"
+                        class="dex-lp-input" />
+                    </div>
+                  </div>
+
+                  <!-- LP preview -->
+                  <div id="amm-liq-preview" class="hidden dex-info-row">
+                    <div class="dex-info-item"><span class="dex-info-label">LP tokens</span><span class="dex-info-value highlight" id="amm-liq-lp-out">—</span></div>
+                    <div class="w-px h-3 bg-gray-700/60"></div>
+                    <div class="dex-info-item"><span class="dex-info-label">Share</span><span class="dex-info-value" id="amm-liq-share">—</span></div>
+                    <div class="w-px h-3 bg-gray-700/60"></div>
+                    <div class="dex-info-item"><span class="dex-info-label">Rate</span><span class="dex-info-value" id="amm-liq-rate">—</span></div>
+                  </div>
+
+                  <button id="amm-add-liq-btn" onclick="ammAddLiquidity()" disabled class="dex-btn-primary">
+                    <i class="fas fa-plus text-xs"></i>
+                    <span id="amm-add-liq-btn-text">Add Liquidity</span>
+                  </button>
+                </div>
+
+                <div class="dex-divider"></div>
+
+                <!-- Remove liquidity -->
+                <div class="space-y-2">
+                  <div class="text-[10px] font-700 uppercase tracking-widest text-gray-500 flex items-center justify-between">
+                    <span>Remove Liquidity</span>
+                    <span class="text-[10px] text-gray-700 font-mono" id="amm-liq-lp-bal-label">LP: —</span>
+                  </div>
+
+                  <!-- Percentage selector -->
+                  <div class="flex items-center gap-1.5">
+                    <button onclick="ammSetRemovePct(25)"  class="dex-btn-secondary text-[10px] py-1 px-2.5 flex-1">25%</button>
+                    <button onclick="ammSetRemovePct(50)"  class="dex-btn-secondary text-[10px] py-1 px-2.5 flex-1">50%</button>
+                    <button onclick="ammSetRemovePct(75)"  class="dex-btn-secondary text-[10px] py-1 px-2.5 flex-1">75%</button>
+                    <button onclick="ammSetRemovePct(100)" class="dex-btn-secondary text-[10px] py-1 px-2.5 flex-1">MAX</button>
+                  </div>
+
+                  <div>
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-[10px] text-gray-600">LP Token Amount</span>
+                    </div>
+                    <input type="number" id="amm-remove-lp" placeholder="0.00" min="0" step="0.000001"
+                      oninput="ammOnRemoveInput()"
+                      class="dex-lp-input" />
+                  </div>
+
+                  <!-- Receive preview -->
+                  <div id="amm-remove-preview" class="hidden dex-info-row">
+                    <div class="dex-info-item"><span class="dex-info-label">💶 EURC</span><span class="dex-info-value highlight" id="amm-remove-eurc-out">—</span></div>
+                    <div class="w-px h-3 bg-gray-700/60"></div>
+                    <div class="dex-info-item"><span class="dex-info-label">💵 USDC</span><span class="dex-info-value highlight" id="amm-remove-usdc-out">—</span></div>
+                    <div class="w-px h-3 bg-gray-700/60"></div>
+                    <div class="dex-info-item"><span class="dex-info-label">Share</span><span class="dex-info-value" id="amm-remove-share">—</span></div>
+                  </div>
+
+                  <button id="amm-remove-liq-btn" onclick="ammRemoveLiquidity()" disabled
+                    class="dex-btn-secondary w-full justify-center py-2.5 text-red-400 border-red-800/30 hover:bg-red-900/20 hover:text-red-300 hover:border-red-700/40">
+                    <i class="fas fa-minus text-xs"></i>
+                    <span id="amm-remove-liq-btn-text">Remove Liquidity</span>
+                  </button>
+                </div>
+
+                <!-- Result / Error -->
+                <div id="amm-liq-result" class="hidden dex-result success">
+                  <i class="fas fa-check-circle flex-shrink-0 mt-0.5"></i>
+                  <div class="space-y-0.5 flex-1">
+                    <div class="font-semibold" id="amm-liq-result-title">Done</div>
+                    <div class="opacity-80 text-[11px]" id="amm-liq-result-detail"></div>
+                  </div>
+                </div>
+                <div id="amm-liq-error" class="hidden dex-result error">
+                  <i class="fas fa-exclamation-circle flex-shrink-0 mt-0.5"></i>
+                  <span id="amm-liq-error-msg">—</span>
+                </div>
+
+              </div><!-- end liquidity panel -->
+
+            </div><!-- end card body -->
+          </div><!-- end main dex panel -->
+
+          <!-- Swap history -->
+          <div class="dex-panel">
+            <div class="dex-panel-hd">
+              <span class="dex-panel-title"><i class="fas fa-history text-cyan-500"></i>Recent Swaps</span>
+              <button onclick="ammLoadHistory()" class="dex-btn-secondary text-[10px] py-1 px-2.5">
+                <i class="fas fa-sync-alt text-[9px]"></i>Reload
+              </button>
+            </div>
+            <div id="amm-history-list" class="p-3 space-y-1 max-h-52 overflow-y-auto">
+              <p class="text-xs text-gray-600 text-center py-4">No swaps yet</p>
             </div>
           </div>
 
-          <!-- ══ LIQUIDITY PANEL ══════════════════════════════════════════════ -->
-          <div id="amm-panel-liquidity" class="hidden space-y-4">
-
-            <!-- Add Liquidity -->
-            <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-4 shadow-xl">
-              <div class="flex items-center gap-2">
-                <span class="w-7 h-7 rounded-lg bg-blue-600/30 border border-blue-600/40 flex items-center justify-center text-xs text-blue-400">
-                  <i class="fas fa-plus"></i>
-                </span>
-                <h3 class="text-white font-bold">Add Liquidity</h3>
-                <span class="ml-auto text-xs text-gray-500">Earn 0.3% per swap</span>
-              </div>
-
-              <!-- EURC -->
-              <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3 space-y-2">
-                <div class="flex justify-between text-xs text-gray-500">
-                  <span class="font-semibold">EURC Amount</span>
-                  <div class="flex items-center gap-2">
-                    <span id="amm-liq-bal-eurc">—</span>
-                    <button onclick="ammSetLiqMaxA()"
-                      class="px-2 py-0.5 bg-blue-900/50 border border-blue-700/40 text-blue-400 rounded-md text-xs font-bold hover:bg-blue-800/60 transition-all">MAX</button>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 border border-gray-600/30">
-                    <span>💶</span><span class="text-white font-bold text-sm">EURC</span>
-                  </div>
-                  <input type="number" id="amm-liq-input-a" placeholder="0.00" min="0" step="0.000001"
-                    class="flex-1 bg-transparent text-white text-xl font-bold text-right outline-none placeholder-gray-700 w-0"
-                    oninput="ammUpdateLiqPreview()" />
-                </div>
-              </div>
-
-              <!-- Plus divider -->
-              <div class="flex justify-center">
-                <div class="w-8 h-8 rounded-xl bg-gray-800 border border-gray-600/40 flex items-center justify-center text-gray-500 text-sm font-bold">+</div>
-              </div>
-
-              <!-- USDC -->
-              <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3 space-y-2">
-                <div class="flex justify-between text-xs text-gray-500">
-                  <span class="font-semibold">USDC Amount</span>
-                  <div class="flex items-center gap-2">
-                    <span id="amm-liq-bal-usdc">—</span>
-                    <button onclick="ammSetLiqMaxB()"
-                      class="px-2 py-0.5 bg-green-900/50 border border-green-700/40 text-green-400 rounded-md text-xs font-bold hover:bg-green-800/60 transition-all">MAX</button>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3">
-                  <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 border border-gray-600/30">
-                    <span>💵</span><span class="text-white font-bold text-sm">USDC</span>
-                  </div>
-                  <input type="number" id="amm-liq-input-b" placeholder="0.00" min="0" step="0.000001"
-                    class="flex-1 bg-transparent text-white text-xl font-bold text-right outline-none placeholder-gray-700 w-0"
-                    oninput="ammUpdateLiqPreview()" />
-                </div>
-              </div>
-
-              <!-- LP Preview -->
-              <div class="grid grid-cols-3 gap-2 text-xs text-center">
-                <div class="bg-gray-800/50 rounded-xl p-2.5">
-                  <div class="text-gray-500 mb-0.5">LP Est.</div>
-                  <div id="amm-liq-lp-est" class="text-cyan-300 font-mono font-bold">—</div>
-                </div>
-                <div class="bg-gray-800/50 rounded-xl p-2.5">
-                  <div class="text-gray-500 mb-0.5">Pool Share</div>
-                  <div id="amm-liq-pool-share" class="text-cyan-300 font-mono font-bold">—</div>
-                </div>
-                <div class="bg-gray-800/50 rounded-xl p-2.5">
-                  <div class="text-gray-500 mb-0.5">Your LP</div>
-                  <div id="amm-liq-bal-lp" class="text-yellow-300 font-mono font-bold">—</div>
-                </div>
-              </div>
-
-              <button id="amm-add-liq-btn" onclick="ammAddLiquidity()" disabled
-                class="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold transition-all shadow-lg">
-                <i class="fas fa-plus mr-2"></i>Add Liquidity
-              </button>
-
-              <div id="amm-liq-result" class="hidden bg-green-900/20 border border-green-700/40 rounded-xl p-4 text-sm">
-                <div class="flex items-center gap-2 text-green-400 font-semibold mb-2"><i class="fas fa-check-circle"></i>Liquidity Added!</div>
-                <div class="grid grid-cols-2 gap-1.5 text-xs text-gray-300">
-                  <span class="text-gray-500">EURC:</span>   <span id="amm-liq-result-a" class="font-mono">—</span>
-                  <span class="text-gray-500">USDC:</span>   <span id="amm-liq-result-b" class="font-mono">—</span>
-                  <span class="text-gray-500">LP minted:</span> <span id="amm-liq-result-lp" class="font-mono text-cyan-300">—</span>
-                  <span class="text-gray-500">Tx:</span>
-                  <a id="amm-liq-result-hash-link" href="#" target="_blank" class="font-mono text-cyan-400 underline truncate">
-                    <span id="amm-liq-result-hash">—</span>
-                  </a>
-                </div>
-              </div>
-              <div id="amm-liq-error" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-xs text-red-300">
-                <i class="fas fa-times-circle mr-2"></i><span id="amm-liq-error-msg">—</span>
-              </div>
-            </div>
-
-            <!-- Remove Liquidity -->
-            <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-4 shadow-xl">
-              <div class="flex items-center gap-2">
-                <span class="w-7 h-7 rounded-lg bg-red-600/30 border border-red-600/40 flex items-center justify-center text-xs text-red-400">
-                  <i class="fas fa-fire"></i>
-                </span>
-                <h3 class="text-white font-bold">Remove Liquidity</h3>
-              </div>
-              <p class="text-xs text-gray-500">Burn LP tokens to withdraw EURC + USDC from the pool.</p>
-              <div class="bg-gray-800/50 border border-gray-700/30 rounded-xl p-4 space-y-3 text-xs">
-                <div class="flex justify-between">
-                  <span class="text-gray-500">Your LP Balance</span>
-                  <span class="font-mono text-cyan-300 font-bold" id="amm-remove-lp-bal">—</span>
-                </div>
-                <div>
-                  <div class="flex justify-between text-gray-400 mb-2">
-                    <span>Percentage to remove</span>
-                    <span class="font-mono font-bold text-white" id="amm-remove-pct-display">100%</span>
-                  </div>
-                  <input type="range" id="amm-remove-pct" min="1" max="100" value="100"
-                    class="w-full accent-red-500 cursor-pointer"
-                    oninput="
-                      document.getElementById('amm-remove-pct-display').textContent = this.value + '%';
-                      const lp = parseFloat(document.getElementById('amm-remove-lp-bal')?.textContent) || 0;
-                      document.getElementById('amm-remove-lp-amt').textContent = (lp * parseInt(this.value) / 100).toFixed(4) + ' LP';
-                    " />
-                  <div class="flex justify-between text-gray-500 mt-2">
-                    <span>LP to burn:</span>
-                    <span id="amm-remove-lp-amt" class="font-mono text-red-300 font-bold">—</span>
-                  </div>
-                </div>
-              </div>
-              <button id="amm-remove-liq-btn" onclick="ammRemoveLiquidity()"
-                class="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-700 to-rose-600 hover:from-red-600 hover:to-rose-500 text-white font-bold transition-all shadow-lg">
-                <i class="fas fa-fire mr-2"></i>Remove Liquidity
-              </button>
-            </div>
-
-          </div><!-- end liquidity panel -->
-
         </div><!-- end LEFT col -->
 
-        <!-- RIGHT — Pool Status sidebar (2/5 width on xl) -->
-        <div class="xl:col-span-2 space-y-4">
+        <!-- RIGHT col ─ Pool Status + Balances ───────────────────────────────── -->
+        <div class="space-y-4">
 
-          <!-- Pool Stats Card -->
-          <div class="bg-gray-900/80 border border-cyan-700/20 rounded-2xl overflow-hidden shadow-xl">
-            <!-- Card header -->
-            <div class="px-4 pt-4 pb-3 flex items-center justify-between border-b border-gray-800/60">
-              <div class="flex items-center gap-2">
-                <div class="w-6 h-6 rounded-lg bg-cyan-600/20 flex items-center justify-center">
-                  <i class="fas fa-chart-bar text-cyan-400 text-xs"></i>
-                </div>
-                <span class="text-xs text-gray-300 font-bold uppercase tracking-widest">Pool Status</span>
+          <!-- Pool Status card -->
+          <div class="dex-panel">
+            <div class="dex-panel-hd">
+              <span class="dex-panel-title"><i class="fas fa-chart-pie text-cyan-500"></i>Pool Status</span>
+              <div class="flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" id="amm-pool-dot"></span>
+                <span class="text-[10px] text-gray-600 font-medium" id="amm-pool-status-label">Live</span>
               </div>
-              <a href="https://testnet.arcscan.app/address/0x3148E2807F172D1cC354F35fB4fC4104e8b6b561"
-                target="_blank" rel="noopener noreferrer"
-                class="text-xs text-cyan-500 hover:text-cyan-400 transition-all flex items-center gap-1 bg-cyan-900/20 hover:bg-cyan-900/30 border border-cyan-700/30 rounded-lg px-2 py-1">
-                <i class="fas fa-external-link-alt text-[9px]"></i> ArcScan
-              </a>
             </div>
 
-            <div class="p-4 space-y-4">
+            <div class="p-4 space-y-3">
               <!-- TVL highlight -->
-              <div class="bg-gradient-to-br from-cyan-900/30 to-blue-900/20 border border-cyan-700/20 rounded-xl p-4 text-center relative overflow-hidden">
-                <div class="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-blue-500/5 pointer-events-none"></div>
-                <div class="text-xs text-gray-500 mb-1 font-semibold uppercase tracking-wider">Total Value Locked</div>
-                <div class="text-3xl font-bold text-white" id="amm-tvl">—</div>
-                <div class="text-xs text-cyan-500 mt-1.5 flex items-center justify-center gap-1.5">
-                  <span class="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
-                  EURC / USDC Pool
+              <div class="relative bg-gradient-to-br from-cyan-900/25 to-blue-900/15 border border-cyan-700/20 rounded-12 rounded-xl p-3 text-center overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-br from-cyan-500/4 to-blue-500/4 pointer-events-none rounded-xl"></div>
+                <div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider mb-1">Total Value Locked</div>
+                <div class="text-2xl font-bold text-white" id="amm-tvl">—</div>
+                <div class="text-[10px] text-cyan-600 mt-1 flex items-center justify-center gap-1.5">
+                  <span class="w-1 h-1 rounded-full bg-cyan-500 animate-pulse"></span>EURC / USDC Pool
                 </div>
               </div>
 
               <!-- Reserves -->
-              <div class="space-y-2">
-                <div class="text-xs text-gray-600 font-semibold uppercase tracking-wide">Reserves</div>
-                <div class="flex items-center justify-between bg-gray-800/50 hover:bg-gray-800/70 rounded-xl px-3 py-2.5 transition-colors">
+              <div class="space-y-1.5">
+                <div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider">Reserves</div>
+                <div class="dex-pool-row">
                   <div class="flex items-center gap-2">
-                    <span class="text-base">💶</span>
+                    <span class="text-sm">💶</span>
                     <div>
-                      <div class="text-xs text-gray-400 font-semibold">EURC</div>
-                      <div class="text-[10px] text-gray-600 font-mono">0x89B5…D72a</div>
+                      <div class="text-xs text-gray-400 font-semibold leading-tight">EURC</div>
+                      <div class="text-[9px] text-gray-700 font-mono">0x89B5…D72a</div>
                     </div>
                   </div>
-                  <span class="text-white font-mono font-bold text-sm" id="amm-reserve-a">—</span>
+                  <span class="text-white font-mono font-bold text-xs" id="amm-reserve-a">—</span>
                 </div>
-                <div class="flex items-center justify-between bg-gray-800/50 hover:bg-gray-800/70 rounded-xl px-3 py-2.5 transition-colors">
+                <div class="dex-pool-row">
                   <div class="flex items-center gap-2">
-                    <span class="text-base">💵</span>
+                    <span class="text-sm">💵</span>
                     <div>
-                      <div class="text-xs text-gray-400 font-semibold">USDC</div>
-                      <div class="text-[10px] text-gray-600 font-mono">0x3600…0000</div>
+                      <div class="text-xs text-gray-400 font-semibold leading-tight">USDC</div>
+                      <div class="text-[9px] text-gray-700 font-mono">0x3600…0000</div>
                     </div>
                   </div>
-                  <span class="text-white font-mono font-bold text-sm" id="amm-reserve-b">—</span>
+                  <span class="text-white font-mono font-bold text-xs" id="amm-reserve-b">—</span>
                 </div>
               </div>
 
-              <!-- Live Prices -->
-              <div class="space-y-2">
-                <div class="text-xs text-gray-600 font-semibold uppercase tracking-wide flex items-center gap-1.5">
-                  <i class="fas fa-circle text-green-500 text-[6px] animate-pulse"></i>
-                  Live Prices
+              <!-- Live prices row -->
+              <div class="space-y-1.5">
+                <div class="text-[10px] text-gray-600 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                  <i class="fas fa-circle text-green-500 text-[6px] animate-pulse"></i>Live Prices
                 </div>
-                <div class="grid grid-cols-1 gap-2">
-                  <div class="bg-gray-800/50 rounded-xl px-3 py-2.5 flex items-center justify-between">
-                    <div class="text-xs text-gray-500">
-                      1 <span class="text-cyan-400 font-semibold">EURC</span> =
-                    </div>
-                    <div class="text-cyan-400 font-mono font-bold text-sm" id="amm-price-a">—</div>
+                <div class="grid grid-cols-2 gap-1.5">
+                  <div class="dex-pool-row flex-col items-start gap-0.5">
+                    <span class="text-[9px] text-gray-600">1 <span class="text-cyan-500 font-semibold">EURC</span> =</span>
+                    <span class="text-cyan-400 font-mono font-bold text-xs" id="amm-price-a">—</span>
                   </div>
-                  <div class="bg-gray-800/50 rounded-xl px-3 py-2.5 flex items-center justify-between">
-                    <div class="text-xs text-gray-500">
-                      1 <span class="text-purple-400 font-semibold">USDC</span> =
-                    </div>
-                    <div class="text-purple-400 font-mono font-bold text-sm" id="amm-price-b">—</div>
+                  <div class="dex-pool-row flex-col items-start gap-0.5">
+                    <span class="text-[9px] text-gray-600">1 <span class="text-purple-400 font-semibold">USDC</span> =</span>
+                    <span class="text-purple-400 font-mono font-bold text-xs" id="amm-price-b">—</span>
                   </div>
                 </div>
               </div>
 
-              <!-- Pool info row -->
-              <div class="bg-gray-800/30 rounded-xl px-3 py-2 flex items-center justify-between text-xs">
-                <span class="text-gray-600 flex items-center gap-1">
-                  <i class="fas fa-percent text-gray-700"></i> Fee
-                </span>
+              <!-- Pool meta: fee + contract -->
+              <div class="dex-divider"></div>
+              <div class="flex items-center justify-between text-[11px]">
+                <div class="flex items-center gap-1.5 text-gray-600">
+                  <i class="fas fa-percent text-gray-700 text-[9px]"></i>Fee
+                </div>
                 <span class="text-green-400 font-semibold">0.30%</span>
               </div>
-
-              <!-- Contract address -->
-              <div class="border-t border-gray-800/60 pt-3 space-y-1">
-                <div class="text-xs text-gray-600 uppercase tracking-wider font-semibold">SimpleAMM Contract</div>
+              <div class="space-y-1">
+                <div class="text-[10px] text-gray-700 uppercase tracking-wider font-semibold">SimpleAMM</div>
                 <div class="flex items-center justify-between gap-2">
-                  <code class="text-[10px] font-mono text-gray-500 truncate" id="amm-addr-display">—</code>
-                  <button onclick="navigator.clipboard.writeText(document.getElementById('amm-addr-display')?.textContent || '')" 
-                    class="text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0" title="Copy address">
-                    <i class="fas fa-copy text-xs"></i>
+                  <code class="text-[10px] font-mono text-gray-600 truncate" id="amm-addr-display">—</code>
+                  <button onclick="navigator.clipboard.writeText(document.getElementById('amm-addr-display')?.textContent||'')"
+                    class="text-gray-700 hover:text-gray-400 transition-colors flex-shrink-0" title="Copy">
+                    <i class="fas fa-copy text-[10px]"></i>
                   </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Your Balances Card -->
-          <div class="bg-gray-900/80 border border-gray-700/40 rounded-2xl overflow-hidden shadow-xl">
-            <div class="px-4 pt-4 pb-3 flex items-center justify-between border-b border-gray-800/60">
-              <div class="flex items-center gap-2">
-                <div class="w-6 h-6 rounded-lg bg-purple-600/20 flex items-center justify-center">
-                  <i class="fas fa-wallet text-purple-400 text-xs"></i>
-                </div>
-                <span class="text-xs text-gray-300 font-bold uppercase tracking-widest">Your Balances</span>
-              </div>
-              <button onclick="ammRefreshAll()" class="text-gray-600 hover:text-purple-400 transition-colors" title="Refresh balances">
+          <!-- Your Balances card -->
+          <div class="dex-panel">
+            <div class="dex-panel-hd">
+              <span class="dex-panel-title"><i class="fas fa-wallet text-purple-400"></i>Your Balances</span>
+              <button onclick="ammRefreshAll()" class="text-gray-600 hover:text-purple-400 transition-colors" title="Refresh">
                 <i class="fas fa-sync-alt text-xs"></i>
               </button>
             </div>
-            <div class="p-4 space-y-2">
-              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
+            <div class="p-3 space-y-1.5">
+              <div class="dex-pool-row">
                 <div class="flex items-center gap-2">
-                  <span>💶</span>
+                  <span class="text-sm">💶</span>
                   <div>
-                    <div class="text-xs text-gray-400 font-semibold">EURC</div>
-                    <div class="text-[10px] text-gray-600">Euro Coin</div>
+                    <div class="text-xs text-gray-400 font-semibold leading-tight">EURC</div>
+                    <div class="text-[9px] text-gray-700">Euro Coin</div>
                   </div>
                 </div>
-                <span class="text-blue-300 font-mono font-bold text-sm" id="amm-bal-eurc">—</span>
+                <span class="text-blue-300 font-mono font-bold text-xs" id="amm-bal-eurc">—</span>
               </div>
-              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
+              <div class="dex-pool-row">
                 <div class="flex items-center gap-2">
-                  <span>💵</span>
+                  <span class="text-sm">💵</span>
                   <div>
-                    <div class="text-xs text-gray-400 font-semibold">USDC</div>
-                    <div class="text-[10px] text-gray-600">USD Coin</div>
+                    <div class="text-xs text-gray-400 font-semibold leading-tight">USDC</div>
+                    <div class="text-[9px] text-gray-700">USD Coin</div>
                   </div>
                 </div>
-                <span class="text-green-300 font-mono font-bold text-sm" id="amm-bal-usdc">—</span>
+                <span class="text-green-300 font-mono font-bold text-xs" id="amm-bal-usdc">—</span>
               </div>
-              <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
+              <div class="dex-pool-row">
                 <div class="flex items-center gap-2">
-                  <span>🏊</span>
+                  <span class="text-sm">🏊</span>
                   <div>
-                    <div class="text-xs text-gray-400 font-semibold">LP Token</div>
-                    <div class="text-[10px] text-gray-600">ARC-LP-EURC-USDC</div>
+                    <div class="text-xs text-gray-400 font-semibold leading-tight">LP Token</div>
+                    <div class="text-[9px] text-gray-700 font-mono">ARC-LP-EURC-USDC</div>
                   </div>
                 </div>
-                <span class="text-cyan-300 font-mono font-bold text-sm" id="amm-bal-lp">—</span>
+                <span class="text-cyan-300 font-mono font-bold text-xs" id="amm-bal-lp">—</span>
               </div>
-
-              <!-- Get tokens link -->
               <div class="pt-1">
                 <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer"
-                  class="flex items-center justify-center gap-2 text-xs text-blue-400 hover:text-blue-300 bg-blue-900/10 hover:bg-blue-900/20 border border-blue-700/20 rounded-xl py-2.5 transition-all">
-                  <i class="fas fa-faucet"></i>
-                  Get testnet tokens from Circle Faucet
-                  <i class="fas fa-external-link-alt text-[9px]"></i>
+                  class="flex items-center justify-center gap-1.5 text-[11px] text-blue-500 hover:text-blue-400 bg-blue-900/10 hover:bg-blue-900/20 border border-blue-800/20 rounded-lg py-2 transition-all">
+                  <i class="fas fa-faucet text-[10px]"></i>Get testnet tokens
+                  <i class="fas fa-external-link-alt text-[8px]"></i>
                 </a>
               </div>
             </div>
           </div>
 
-          <!-- Deploy Notice (hidden by default, shown if not deployed) -->
-          <div id="amm-deploy-notice" class="hidden bg-yellow-900/20 border border-yellow-600/30 rounded-2xl overflow-hidden">
-            <div class="px-4 py-3 border-b border-yellow-700/20 flex items-center gap-2">
-              <i class="fas fa-exclamation-triangle text-yellow-400"></i>
-              <span class="text-xs font-bold text-yellow-300 uppercase tracking-wide">Contract Not Deployed</span>
+          <!-- Deploy notice (hidden) -->
+          <div id="amm-deploy-notice" class="hidden dex-panel">
+            <div class="dex-panel-hd">
+              <span class="dex-panel-title text-yellow-400"><i class="fas fa-exclamation-triangle text-yellow-400"></i>Contract Not Deployed</span>
             </div>
-            <div class="p-4 space-y-3">
-              <p class="text-xs text-yellow-400">The SimpleAMM contract needs to be deployed to Arc Testnet via CLI. No private keys should be entered in the browser.</p>
+            <div class="p-4 space-y-2">
+              <p class="text-xs text-yellow-500">SimpleAMM needs to be deployed via CLI. Never enter private keys in the browser.</p>
               <code class="text-xs bg-black/40 rounded-lg px-3 py-2 block font-mono text-green-300 break-all">
                 node contracts/script/deployAMM.cjs &lt;PRIVATE_KEY&gt;
               </code>
-              <p class="text-xs text-gray-600 flex items-center gap-1.5">
-                <i class="fas fa-shield-alt text-green-500"></i>
-                Deploy via CLI only — never input private keys in the browser.
+              <p class="text-[11px] text-gray-600 flex items-center gap-1.5">
+                <i class="fas fa-shield-alt text-green-600 text-xs"></i>Deploy via CLI only.
               </p>
             </div>
           </div>
@@ -3745,7 +3855,7 @@ app.get('/', (c) => {
   <script src="/static/contracts.js?v=20250323c"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
-  <script src="/static/dex.js?v=20250322"></script>
+  <script src="/static/dex.js?v=20250324"></script>
   <script src="/static/multisend.js?v=20250323c"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>

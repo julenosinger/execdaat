@@ -255,15 +255,16 @@ function ammUpdatePoolUI(data) {
 function ammComputeSwapQuote() {
   const inputEl = $('amm-swap-input');
   const outputEl = $('amm-swap-output');
-  const impactEl = $('amm-price-impact');
-  const minEl    = $('amm-min-received');
+  const impactEl = $('amm-swap-impact');
+  const minEl    = $('amm-swap-min');
 
   if (!inputEl || !outputEl) return;
   const rawInput = inputEl.value.trim();
   if (!rawInput || parseFloat(rawInput) <= 0) {
     if (outputEl) outputEl.value = '';
-    setText('amm-price-impact', '—');
-    setText('amm-min-received', '—');
+    setText('amm-swap-impact', '—');
+    setText('amm-swap-min', '—');
+    setText('amm-swap-rate', '—');
     ammState.quote = null;
     ammUpdateSwapBtn();
     return;
@@ -301,9 +302,12 @@ function ammComputeSwapQuote() {
   const impactColor = impact > 5 ? 'text-red-400' : impact > 2 ? 'text-yellow-400' : 'text-green-400';
   if (impactEl) {
     impactEl.textContent = impact.toFixed(4) + '%';
-    impactEl.className   = impactColor + ' font-mono text-sm';
+    impactEl.className   = impactColor + ' dex-info-value';
   }
   if (minEl) minEl.textContent = minHuman.toFixed(6) + ' ' + ammState.swapTo;
+  // Rate
+  const rate = outHuman > 0 ? (outHuman / inHuman).toFixed(4) : '—';
+  setText('amm-swap-rate', rate + ' ' + ammState.swapTo);
 
   const feeAmt = parseFloat(rawInput) * 0.003;
   setText('amm-swap-fee', feeAmt.toFixed(6) + ' ' + ammState.swapFrom);
@@ -365,9 +369,9 @@ window.ammSwitchTab = function(tab) {
     const panel  = $('amm-panel-' + t);
     if (btn) {
       if (t === tab) {
-        btn.className = 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/30 transition-all';
+        btn.classList.add('active');
       } else {
-        btn.className = 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all';
+        btn.classList.remove('active');
       }
     }
     if (panel) {
@@ -413,21 +417,21 @@ window.ammSetSwapMax = function() {
 window.ammSetLiqMaxA = function() {
   const bal   = ammState.balances.EURC;
   const human = ammFormatUnits(bal);
-  const el    = $('amm-liq-input-a');
+  const el    = $('amm-liq-eurc');
   if (el) { el.value = parseFloat(human).toFixed(6); ammUpdateLiqPreview(); }
 };
 
 window.ammSetLiqMaxB = function() {
   const bal   = ammState.balances.USDC;
   const human = ammFormatUnits(bal);
-  const el    = $('amm-liq-input-b');
+  const el    = $('amm-liq-usdc');
   if (el) { el.value = parseFloat(human).toFixed(6); ammUpdateLiqPreview(); }
 };
 
 // ─── Liquidity preview ────────────────────────────────────────────────────────
 function ammUpdateLiqPreview() {
-  const amtA = parseFloat($('amm-liq-input-a')?.value || '0') || 0;
-  const amtB = parseFloat($('amm-liq-input-b')?.value || '0') || 0;
+  const amtA = parseFloat($('amm-liq-eurc')?.value || '0') || 0;
+  const amtB = parseFloat($('amm-liq-usdc')?.value || '0') || 0;
 
   let lpEst = 0;
   if (amtA > 0 && amtB > 0) {
@@ -444,10 +448,20 @@ function ammUpdateLiqPreview() {
     }
   }
 
-  setText('amm-liq-lp-est', lpEst > 0 ? lpEst.toFixed(4) + ' LP' : '—');
-  setText('amm-liq-pool-share', ammState.totalSupply > 0n && lpEst > 0
+  const shareVal = ammState.totalSupply > 0n && lpEst > 0
     ? (lpEst / (Number(ammState.totalSupply) / 1e6 + lpEst) * 100).toFixed(4) + '%'
-    : amtA > 0 ? '100.00%' : '—');
+    : amtA > 0 ? '100.00%' : '—';
+  const rateVal = ammState.reserves.A > 0n && ammState.reserves.B > 0n
+    ? (Number(ammState.reserves.B) / Number(ammState.reserves.A)).toFixed(4) + ' USDC/EURC'
+    : '—';
+  setText('amm-liq-lp-out', lpEst > 0 ? lpEst.toFixed(4) + ' LP' : '—');
+  setText('amm-liq-lp-est', lpEst > 0 ? lpEst.toFixed(4) + ' LP' : '—');
+  setText('amm-liq-share', shareVal);
+  setText('amm-liq-pool-share', shareVal);
+  setText('amm-liq-rate', rateVal);
+  // show/hide liq preview row
+  const prevEl = document.getElementById('amm-liq-preview');
+  if (prevEl) prevEl.classList.toggle('hidden', !(amtA > 0 && amtB > 0));
 
   const addBtn = $('amm-add-liq-btn');
   if (addBtn) {
@@ -557,8 +571,8 @@ window.ammAddLiquidity = async function() {
   const wallet = window.walletState?.address;
   if (!wallet) { showToast('Connect wallet first', 'warning'); return; }
 
-  const amtAStr = $('amm-liq-input-a')?.value?.trim() || '';
-  const amtBStr = $('amm-liq-input-b')?.value?.trim() || '';
+  const amtAStr = $('amm-liq-eurc')?.value?.trim() || '';
+  const amtBStr = $('amm-liq-usdc')?.value?.trim() || '';
 
   if (!amtAStr || parseFloat(amtAStr) <= 0 || !amtBStr || parseFloat(amtBStr) <= 0) {
     showToast('Enter amounts for both tokens', 'warning');
@@ -783,8 +797,8 @@ async function ammInit() {
   const swapInput = $('amm-swap-input');
   if (swapInput) swapInput.addEventListener('input', () => ammComputeSwapQuote());
 
-  const liqA = $('amm-liq-input-a');
-  const liqB = $('amm-liq-input-b');
+  const liqA = $('amm-liq-eurc');
+  const liqB = $('amm-liq-usdc');
   if (liqA) liqA.addEventListener('input', () => ammUpdateLiqPreview());
   if (liqB) liqB.addEventListener('input', () => ammUpdateLiqPreview());
 
@@ -837,3 +851,146 @@ window.ammUpdateLiqPreview = ammUpdateLiqPreview;
 console.log('[AMM] Module loaded · Arc Testnet', AMM_CHAIN_ID);
 console.log('[AMM] Tokens: EURC', AMM_TOKENS.EURC.address, '/ USDC', AMM_TOKENS.USDC.address);
 console.log('[AMM] x*y=k formula · fee 0.3% · no mock data');
+
+// ─── Redesign UI Bridge ───────────────────────────────────────────────────────
+// Aliases and new functions added for the redesigned DEX tab
+
+// New HTML calls ammFlipTokens → maps to existing ammFlipSwap
+window.ammFlipTokens = window.ammFlipSwap;
+
+// New HTML calls ammSetMaxSwap → maps to existing ammSetSwapMax
+window.ammSetMaxSwap = window.ammSetSwapMax;
+
+// New HTML calls ammOnSwapInput → maps to ammComputeSwapQuote
+window.ammOnSwapInput = ammComputeSwapQuote;
+
+// New HTML calls ammOnLiquidityInput → maps to ammUpdateLiqPreview
+window.ammOnLiquidityInput = ammUpdateLiqPreview;
+
+// Remove liquidity percent shortcuts
+window.ammSetRemovePct = function(pct) {
+  const lpBal   = ammState.balances.LP;
+  const human   = parseFloat(ammFormatUnits(lpBal));
+  const amount  = (human * pct / 100).toFixed(6);
+  const el = document.getElementById('amm-remove-lp');
+  if (el) { el.value = amount; ammOnRemoveInput(); }
+};
+
+// Preview when LP remove input changes
+window.ammOnRemoveInput = function() {
+  const el = document.getElementById('amm-remove-lp');
+  if (!el) return;
+  const lp = parseFloat(el.value) || 0;
+  const prevEl = document.getElementById('amm-remove-preview');
+  if (lp <= 0 || ammState.totalSupply === 0n) {
+    if (prevEl) prevEl.classList.add('hidden');
+    const removeBtn = document.getElementById('amm-remove-liq-btn');
+    if (removeBtn) removeBtn.disabled = true;
+    return;
+  }
+  const ts   = Number(ammState.totalSupply) / 1e6;
+  const rA   = Number(ammState.reserves.A) / 1e6;
+  const rB   = Number(ammState.reserves.B) / 1e6;
+  const share  = ts > 0 ? lp / ts : 0;
+  const eurcOut = (rA * share).toFixed(6);
+  const usdcOut = (rB * share).toFixed(6);
+  setText('amm-remove-eurc-out',  eurcOut + ' EURC');
+  setText('amm-remove-usdc-out',  usdcOut + ' USDC');
+  setText('amm-remove-share',     (share * 100).toFixed(4) + '%');
+  if (prevEl) prevEl.classList.remove('hidden');
+  const removeBtn = document.getElementById('amm-remove-liq-btn');
+  if (removeBtn) {
+    const lpBal  = Number(ammFormatUnits(ammState.balances.LP));
+    const ok = lp > 0 && lp <= lpBal && !!window.walletState?.address && !ammState.pending;
+    removeBtn.disabled = !ok;
+  }
+};
+
+// Slippage buttons: update active state with new CSS class
+const _origSetSlippage = window.ammSetSlippage;
+window.ammSetSlippage = function(pct) {
+  _origSetSlippage(pct);
+  // Update active highlight on the redesigned buttons
+  ['01','05','10'].forEach(id => {
+    const btn = document.getElementById('slip-' + id);
+    if (!btn) return;
+    const btnPct = parseFloat(id) / (id === '10' ? 10 : 10) * (id === '01' ? 1 : id === '05' ? 5 : 10) / 10;
+    // simpler: match by value
+    const val = { '01': 0.1, '05': 0.5, '10': 1.0 }[id];
+    if (val === pct) {
+      btn.classList.add('border-blue-700/40','text-blue-400');
+    } else {
+      btn.classList.remove('border-blue-700/40','text-blue-400');
+    }
+  });
+};
+
+// Load history into redesigned list
+window.ammLoadHistory = async function() {
+  const listEl = document.getElementById('amm-history-list');
+  if (!listEl) return;
+  try {
+    const res  = await fetch('/api/dex/history');
+    const data = await res.json();
+    const swaps = (data.swaps || []).slice(0, 15);
+    if (!swaps.length) {
+      listEl.innerHTML = '<p class="text-xs text-gray-600 text-center py-4">No swaps yet</p>';
+      return;
+    }
+    listEl.innerHTML = swaps.map(s => {
+      const ts = s.timestamp ? new Date(s.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
+      const color = s.type === 'USDC_TO_EURC' ? 'text-cyan-400' : 'text-purple-400';
+      const arrow = s.type === 'USDC_TO_EURC' ? 'USDC → EURC' : 'EURC → USDC';
+      return `<div class="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-exchange-alt text-[9px] text-gray-600"></i>
+          <span class="text-xs ${color} font-semibold">${arrow}</span>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-white font-mono">${parseFloat(s.amountIn||0).toFixed(2)} → ${parseFloat(s.amountOut||0).toFixed(2)}</div>
+          <div class="text-[9px] text-gray-600">${ts}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    listEl.innerHTML = '<p class="text-xs text-red-500/60 text-center py-2">Failed to load history</p>';
+  }
+};
+
+// Update LP balance label in liquidity remove section
+const _origUpdateBalUI = ammUpdateBalanceUI;
+ammUpdateBalanceUI = function() {
+  _origUpdateBalUI && _origUpdateBalUI();
+  const lpHuman = ammFormatUnits(ammState.balances.LP || 0n);
+  setText('amm-liq-lp-bal-label', 'LP: ' + parseFloat(lpHuman).toFixed(4));
+  setText('amm-liq-eurc-bal', 'Bal: ' + parseFloat(ammFormatUnits(ammState.balances.EURC || 0n)).toFixed(4));
+  setText('amm-liq-usdc-bal', 'Bal: ' + parseFloat(ammFormatUnits(ammState.balances.USDC || 0n)).toFixed(4));
+  setText('amm-liq-lp-bal',   parseFloat(lpHuman).toFixed(4));
+};
+
+// Update pool status dot
+const _origUpdatePoolUI = ammUpdatePoolUI;
+if (typeof ammUpdatePoolUI !== 'undefined') {
+  window.ammUpdatePoolUI = function(data) {
+    _origUpdatePoolUI && _origUpdatePoolUI(data);
+    const dot = document.getElementById('amm-pool-dot');
+    const lbl = document.getElementById('amm-pool-status-label');
+    const dotInner = document.getElementById('amm-dot-inner');
+    const statusTxt = document.getElementById('amm-status-text');
+    if (data && data.deployed) {
+      if (dot) { dot.className = 'w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse'; }
+      if (lbl) lbl.textContent = 'Live';
+      if (dotInner) { dotInner.className = 'w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse'; }
+      if (statusTxt) statusTxt.textContent = 'Connected';
+    }
+  };
+}
+
+// Auto-load history when DEX tab is first shown
+const _origAmmInit = window.ammInit;
+window.ammInit = async function() {
+  await _origAmmInit();
+  setTimeout(ammLoadHistory, 1500);
+};
+
+console.log('[AMM] Redesign bridge loaded');
