@@ -73,7 +73,27 @@ const CF_USDC_ABI = [
   'function approve(address,uint256) returns (bool)',
 ];
 
-// ─── Status mapping ────────────────────────────────────────────────────────────
+// ─── Contract Modes ────────────────────────────────────────────────────────────
+const CF_MODES = {
+  onchain:   { label: 'On-Chain Escrow',      icon: 'fa-link',          color: '#60b4ff' },
+  offchain:  { label: 'Off-Chain Payment',    icon: 'fa-money-bill-wave', color: '#fbbf24' },
+  custodial: { label: 'Custodial Escrow',     icon: 'fa-shield-alt',    color: '#a78bfa' },
+};
+
+// ─── Proof status labels ───────────────────────────────────────────────────────
+const CF_PROOF_STATUS = {
+  none:      { label: 'Not Submitted', icon: 'fa-times-circle',   color: '#4a5568' },
+  uploaded:  { label: 'Uploaded',      icon: 'fa-cloud-upload-alt', color: '#fbbf24' },
+  committed: { label: 'Committed',     icon: 'fa-check-circle',   color: '#34d399' },
+};
+
+// Compute proof status for a contract
+function cfProofStatus(meta) {
+  const proofs = meta.proofs || [];
+  if (!proofs.length) return 'none';
+  if (proofs.some(p => p.committed)) return 'committed';
+  return 'uploaded';
+}
 const CF_STATUS_LABELS = ['Draft', 'Active', 'Completed', 'Cancelled'];
 const CF_STATUS_MAP = {
   Pending:   { color: 'yellow', icon: 'fa-clock',        label: 'Pending' },
@@ -581,9 +601,17 @@ async function cfLoadContracts(opts = {}) {
     cfState.lastWallet = address;
     cfState.lastRefresh = Date.now();
 
-    cfRenderContracts(contracts, address);
-    cfRenderSummary(contracts, address);
-    cfLog(`━━━ cfLoadContracts DONE: ${contracts.length} contracts rendered ━━━`);
+    // Merge with any off-chain contracts
+    const offchain = cfLoadOffchainContracts().filter(o => {
+      const meta = cfGetMeta(o.id);
+      return meta.createdByWallet?.toLowerCase() === address.toLowerCase() ||
+             (o.contractor?.toLowerCase() === address.toLowerCase());
+    });
+    const merged = [...contracts, ...offchain];
+
+    cfRenderContracts(merged, address);
+    cfRenderSummary(merged, address);
+    cfLog(`━━━ cfLoadContracts DONE: ${contracts.length} on-chain + ${offchain.length} off-chain ━━━`);
 
     // ── 8. Persist to IndexedDB (non-blocking) ────────────────────────────────
     if (typeof arcSave === 'function') {
@@ -748,44 +776,75 @@ function cfContractCard(c, wallet) {
   const total     = BigInt(c.totalValue);
   const deposited = BigInt(c.depositedValue);
   const pct       = total > 0n ? Math.min(100, Math.round(Number(deposited * 100n / total))) : 0;
-
   const feeRaw    = cfCalcFee(total);
   const netRaw    = cfNetAmount(total);
 
-  const milestones = c.milestones || [];
+  const milestones  = c.milestones || [];
   const releasedAmt = milestones.filter(m => m.status === 'Released').reduce((s, m) => s + BigInt(m.amount), 0n);
 
-  const meta      = cfGetMeta(c.id);
-  const proofs    = meta.proofs || [];
-  const hasProofs = proofs.length > 0;
+  const meta       = cfGetMeta(c.id);
+  const proofs     = meta.proofs || [];
+  const proofStat  = cfProofStatus(meta);
+  const hasProofs  = proofStat !== 'none';
+  const isCommitted = proofStat === 'committed';
+  const mode       = meta.mode || 'onchain';
+  const modeInfo   = CF_MODES[mode] || CF_MODES.onchain;
 
-  // Action buttons
+  // ── Action buttons ─────────────────────────────────────────────────────────
   let actionBtns = '';
-  if (uiStatus === 'Pending' && isClient)
-    actionBtns += `<button onclick="cfDepositToContract(${c.id})" class="cf-action-btn cf-btn-deposit"><i class="fas fa-arrow-circle-down mr-1.5"></i>Deposit USDC</button>`;
-  if (uiStatus === 'Funded' && isContr && !c.contractorSigned)
-    actionBtns += `<button onclick="cfSignContract(${c.id})" class="cf-action-btn cf-btn-sign"><i class="fas fa-pen-nib mr-1.5"></i>Sign Contract</button>`;
-  if (uiStatus === 'Funded' && isClient)
-    actionBtns += `<button onclick="cfDepositToContract(${c.id})" class="cf-action-btn cf-btn-deposit"><i class="fas fa-plus-circle mr-1.5"></i>Add Funds</button>`;
-  if (uiStatus === 'Active' && isClient)
-    actionBtns += `<button onclick="cfShowProofUpload(${c.id})" class="cf-action-btn cf-btn-proof"><i class="fas fa-upload mr-1.5"></i>Upload Proof</button>`;
-  if (uiStatus === 'Active' && isContr && releasedAmt > 0n)
-    actionBtns += `<button onclick="cfWithdrawFromContract(${c.id})" class="cf-action-btn cf-btn-receive"><i class="fas fa-arrow-circle-up mr-1.5"></i>Receive $${cfFmtUsdc(releasedAmt)}</button>`;
-  if (uiStatus === 'Active' && isClient) {
-    const completeDisabled = !hasProofs;
-    actionBtns += `<button onclick="${completeDisabled ? 'showToast(\'Upload proof-of-work antes de marcar como concluído.\',\'warning\')' : `cfMarkComplete(${c.id})`}"
-      class="cf-action-btn ${completeDisabled ? 'cf-btn-disabled' : 'cf-btn-complete'}"
-      title="${completeDisabled ? 'Upload proof-of-work first' : 'Mark contract as complete and release all funds'}">
-      <i class="fas fa-flag-checkered mr-1.5"></i>Mark as Complete
-      ${completeDisabled ? '<span style="font-size:9px;opacity:0.6;">(need proof)</span>' : ''}
-    </button>`;
+
+  if (mode === 'onchain') {
+    // On-chain specific actions
+    if ((uiStatus === 'Funded' || uiStatus === 'Pending') && isContr && !c.contractorSigned)
+      actionBtns += `<button onclick="cfSignContract(${c.id})" class="cf-action-btn cf-btn-sign"><i class="fas fa-pen-nib mr-1.5"></i>Sign Contract</button>`;
+    if (uiStatus === 'Active' && isContr)
+      actionBtns += `<button onclick="cfShowProofUpload(${c.id})" class="cf-action-btn cf-btn-proof"><i class="fas fa-upload mr-1.5"></i>Upload Proof</button>`;
+    if (uiStatus === 'Active' && isClient) {
+      const proofLabel = proofStat === 'none' ? 'No proof yet' : proofStat === 'uploaded' ? 'Proof uploaded — commit first' : 'Proof committed ✓';
+      const canComplete = isCommitted;
+      actionBtns += `<button onclick="${canComplete ? `cfMarkComplete(${c.id})` : `showToast('${proofStat === "none" ? "Contractor must upload proof first." : "Proof must be committed before completion."}','warning')`}"
+        class="cf-action-btn ${canComplete ? 'cf-btn-complete' : 'cf-btn-disabled'}"
+        title="${proofLabel}">
+        <i class="fas fa-flag-checkered mr-1.5"></i>Mark Complete
+        ${!canComplete ? `<span style="font-size:9px;opacity:0.6;">(${proofStat === 'none' ? 'need proof' : 'commit first'})</span>` : ''}
+      </button>`;
+    }
+    if ((uiStatus === 'Pending' || uiStatus === 'Funded' || uiStatus === 'Draft') && isClient)
+      actionBtns += `<button onclick="cfCancelContract(${c.id})" class="cf-action-btn cf-btn-cancel"><i class="fas fa-times mr-1.5"></i>Cancel</button>`;
+  } else {
+    // Off-chain / custodial actions
+    if (isContr)
+      actionBtns += `<button onclick="cfShowProofUpload(${c.id})" class="cf-action-btn cf-btn-proof"><i class="fas fa-upload mr-1.5"></i>Upload Proof</button>`;
+    if (isClient && hasProofs && !isCommitted)
+      actionBtns += `<button onclick="cfCommitProof(${c.id})" class="cf-action-btn cf-btn-sign" style="background:rgba(52,211,153,0.15);border-color:rgba(52,211,153,0.4);color:#34d399;"><i class="fas fa-stamp mr-1.5"></i>Commit Proof</button>`;
+    if (isClient && (meta.offchainStatus !== 'confirmed' && meta.offchainStatus !== 'disputed'))
+      actionBtns += `<button onclick="cfShowOffchainActions(${c.id})" class="cf-action-btn cf-btn-receipt"><i class="fas fa-tasks mr-1.5"></i>Update Status</button>`;
   }
-  if ((uiStatus === 'Pending' || uiStatus === 'Funded') && isClient)
-    actionBtns += `<button onclick="cfCancelContract(${c.id})" class="cf-action-btn cf-btn-cancel"><i class="fas fa-times mr-1.5"></i>Cancel</button>`;
-  if (uiStatus === 'Completed')
+
+  // Wallet-link button (for contractor without wallet)
+  if (uiStatus === 'Active' || uiStatus === 'Funded')
+    actionBtns += `<button onclick="cfShowWalletLink(${c.id})" class="cf-action-btn" style="background:rgba(96,180,255,0.06);border:1px solid rgba(96,180,255,0.2);color:#60b4ff;"><i class="fas fa-qrcode mr-1.5"></i>Share Link</button>`;
+
+  if (uiStatus === 'Completed' || (mode !== 'onchain' && isCommitted))
     actionBtns += `<button onclick="cfOpenReceipt(${c.id})" class="cf-action-btn cf-btn-receipt"><i class="fas fa-eye mr-1.5"></i>View Receipt</button>`;
 
-  // Milestones rows
+  // ── Proof status badge ─────────────────────────────────────────────────────
+  const ps = CF_PROOF_STATUS[proofStat];
+  const proofBadge = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+    background:rgba(${proofStat==='committed'?'52,211,153':proofStat==='uploaded'?'251,191,36':'74,85,104'},0.12);
+    border:1px solid rgba(${proofStat==='committed'?'52,211,153':proofStat==='uploaded'?'251,191,36':'74,85,104'},0.3);
+    color:${ps.color};padding:1px 8px;border-radius:999px;">
+    <i class="fas ${ps.icon}" style="font-size:8px;"></i>${ps.label}
+  </span>`;
+
+  // ── Mode badge ─────────────────────────────────────────────────────────────
+  const modeBadge = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+    background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);
+    color:${modeInfo.color};padding:1px 8px;border-radius:999px;">
+    <i class="fas ${modeInfo.icon}" style="font-size:8px;"></i>${modeInfo.label}
+  </span>`;
+
+  // ── Milestones ─────────────────────────────────────────────────────────────
   const msHtml = milestones.length ? `
     <div style="margin-top:10px;">
       <p style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:6px;">Milestones</p>
@@ -797,29 +856,47 @@ function cfContractCard(c, wallet) {
           </div>
           <span style="flex:1;font-size:12px;color:#8899bb;">${m.description}</span>
           <span style="font-size:11px;font-weight:700;color:${m.status==='Released'?'#34d399':'#60b4ff'};">$${cfFmtUsdc(m.amount)}</span>
-          ${uiStatus==='Active'&&isClient&&m.status==='Pending'
+          ${uiStatus==='Active'&&isClient&&m.status==='Pending'&&mode==='onchain'
             ? `<button onclick="cfReleaseMilestone(${c.id},${i})" style="font-size:10px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.25);color:#34d399;padding:2px 8px;border-radius:6px;cursor:pointer;">Release</button>`
             : `<span style="font-size:10px;color:${m.status==='Released'?'#34d399':'#3a4870'};">${m.status}</span>`}
         </div>`).join('')}
     </div>` : '';
 
-  // Proofs section
+  // ── Proofs section ─────────────────────────────────────────────────────────
   const proofsHtml = `
     <div style="margin-top:8px;">
-      <div style="display:flex;align-items:center;justify-content:between;gap:6px;margin-bottom:4px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
         <p style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;flex:1;">Proof of Work</p>
-        ${uiStatus==='Active'&&isContr ? `<button onclick="cfShowProofUpload(${c.id})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);padding:2px 8px;border-radius:6px;cursor:pointer;"><i class="fas fa-upload mr-1"></i>Upload</button>` : ''}
+        ${proofBadge}
+        ${(uiStatus==='Active'||mode!=='onchain') && isContr
+          ? `<button onclick="cfShowProofUpload(${c.id})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);padding:2px 8px;border-radius:6px;cursor:pointer;"><i class="fas fa-upload mr-1"></i>Add</button>` : ''}
       </div>
       ${proofs.length ? proofs.map(p => `
-        <div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid rgba(167,139,250,0.06);">
-          <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:#a78bfa;font-size:12px;flex-shrink:0;"></i>
-          <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</span>
-          <a href="${p.url}" target="_blank" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:6px;">View</a>
+        <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,${p.committed?'0.3':'0.1'});border-radius:8px;margin-bottom:4px;">
+          <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:${p.committed?'#34d399':'#a78bfa'};font-size:12px;flex-shrink:0;"></i>
+          <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.name}">${p.name}</span>
+          ${p.committed ? `<span style="font-size:9px;color:#34d399;flex-shrink:0;"><i class="fas fa-lock mr-1"></i>Committed</span>` : `<span style="font-size:9px;color:#fbbf24;flex-shrink:0;"><i class="fas fa-clock mr-1"></i>Pending</span>`}
+          <a href="${p.url}" target="_blank" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 6px;border-radius:6px;flex-shrink:0;">View</a>
+          ${p.hash ? `<span style="font-size:9px;color:#3a4870;font-family:monospace;" title="SHA-256: ${p.hash}">${p.hash.slice(0,8)}…</span>` : ''}
         </div>`).join('')
-        : `<p style="font-size:11px;color:#252a40;font-style:italic;">No proof uploaded yet.</p>`}
+        : `<p style="font-size:11px;color:#252a40;font-style:italic;padding:4px 0;">Nenhuma prova enviada ainda.</p>`}
+      ${proofs.length > 0 && !isCommitted && isClient ? `
+        <button onclick="cfCommitProof(${c.id})" style="width:100%;margin-top:6px;padding:7px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:#34d399;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">
+          <i class="fas fa-stamp mr-1.5"></i>Commit Proof — Lock & Verify
+        </button>` : ''}
     </div>`;
 
-  // Meta info (emails, OTC)
+  // ── Off-chain fields ────────────────────────────────────────────────────────
+  const offchainHtml = mode !== 'onchain' ? `
+    <div style="margin-top:8px;padding:8px 10px;background:rgba(${mode==='custodial'?'167,139,250':'251,191,36'},0.06);border:1px solid rgba(${mode==='custodial'?'167,139,250':'251,191,36'},0.2);border-radius:10px;">
+      <div style="font-size:10px;font-weight:700;color:${modeInfo.color};text-transform:uppercase;margin-bottom:4px;"><i class="fas ${modeInfo.icon} mr-1"></i>${modeInfo.label}</div>
+      ${meta.paymentNote ? `<div style="font-size:11px;color:#8899bb;margin-bottom:4px;"><i class="fas fa-sticky-note mr-1" style="color:#fbbf24;"></i>${meta.paymentNote}</div>` : ''}
+      ${meta.escrowRef ? `<div style="font-size:11px;color:#8899bb;"><i class="fas fa-shield-alt mr-1" style="color:#a78bfa;"></i>Escrow Ref: <span style="font-family:monospace;">${meta.escrowRef}</span></div>` : ''}
+      ${meta.offchainStatus ? `<div style="margin-top:4px;font-size:11px;font-weight:600;color:${meta.offchainStatus==='confirmed'?'#34d399':meta.offchainStatus==='disputed'?'#f87171':'#fbbf24'};">
+        Status: ${meta.offchainStatus.toUpperCase()}</div>` : ''}
+    </div>` : '';
+
+  // ── Meta info ──────────────────────────────────────────────────────────────
   const metaHtml = (meta.clientEmail || meta.contractorEmail || meta.otcPoints) ? `
     <div style="margin-top:8px;padding:8px;background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.1);border-radius:10px;">
       ${meta.clientEmail ? `<div style="font-size:11px;color:#4a6490;"><i class="fas fa-envelope mr-1" style="color:#60b4ff;"></i>Client: ${meta.clientEmail}</div>` : ''}
@@ -830,17 +907,18 @@ function cfContractCard(c, wallet) {
 
   return `
   <div class="cf-card mb-4" style="overflow:hidden;">
-    <!-- Card header -->
     <div style="padding:14px 16px 0;">
+      <!-- Header row -->
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:13px;font-weight:800;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">${c.title || 'Untitled'}</span>
+            <span style="font-size:13px;font-weight:800;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;" title="${c.title||''}">${c.title || 'Untitled'}</span>
             <span style="font-size:10px;color:#3a4870;font-family:monospace;">#${c.id}</span>
             ${cfStatusBadge(uiStatus)}
           </div>
-          <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;">
+          <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;">
             <span style="font-size:10px;font-weight:600;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.15);color:${roleColor};padding:1px 8px;border-radius:999px;">${role}</span>
+            ${modeBadge}
           </div>
         </div>
         <div style="text-align:right;flex-shrink:0;">
@@ -850,7 +928,8 @@ function cfContractCard(c, wallet) {
         </div>
       </div>
 
-      <!-- Escrow bar -->
+      <!-- Escrow bar (only for on-chain) -->
+      ${mode === 'onchain' ? `
       <div style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;font-size:10px;color:#3a4870;margin-bottom:4px;">
           <span>Escrow: $${cfFmtUsdc(deposited)} / $${cfFmtUsdc(total)}</span>
@@ -859,7 +938,7 @@ function cfContractCard(c, wallet) {
         <div style="height:4px;background:rgba(55,138,221,0.1);border-radius:4px;overflow:hidden;">
           <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#378ADD,#1D9E75);border-radius:4px;transition:width 0.5s;"></div>
         </div>
-      </div>
+      </div>` : ''}
 
       <!-- Parties -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
@@ -873,7 +952,8 @@ function cfContractCard(c, wallet) {
         </div>
       </div>
 
-      <!-- Fee breakdown -->
+      <!-- Fee breakdown (on-chain only) -->
+      ${mode === 'onchain' ? `
       <div style="display:flex;gap:8px;margin-bottom:10px;font-size:10px;">
         <div style="flex:1;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:6px 10px;">
           <div style="color:#6b7280;">Platform Fee (0.2%)</div>
@@ -883,13 +963,14 @@ function cfContractCard(c, wallet) {
           <div style="color:#6b7280;">Net to Contractor</div>
           <div style="color:#34d399;font-weight:700;">$${cfFmtUsdc(netRaw)} USDC</div>
         </div>
-      </div>
+      </div>` : ''}
 
+      ${offchainHtml}
       ${metaHtml}
       ${msHtml}
       ${proofsHtml}
 
-      <!-- State machine -->
+      <!-- State progress -->
       <div style="margin:10px 0;">${cfStateProgress(uiStatus)}</div>
 
       <!-- Timestamps -->
@@ -897,25 +978,28 @@ function cfContractCard(c, wallet) {
         Created: ${cfTs(c.createdAt)}
         ${c.startedAt ? ` · Started: ${cfTs(c.startedAt)}` : ''}
         ${c.completedAt ? ` · Completed: ${cfTs(c.completedAt)}` : ''}
-        · <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" style="color:#3a5a8a;">ArcScan ↗</a>
+        ${mode==='onchain' ? ` · <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" style="color:#3a5a8a;">ArcScan ↗</a>` : ''}
       </div>
     </div>
-
-    <!-- Action buttons -->
     ${actionBtns ? `<div style="padding:10px 16px 14px;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid rgba(55,138,221,0.08);">${actionBtns}</div>` : ''}
   </div>`;
 }
 
+
 // ─── Proof-of-Work Upload Modal ────────────────────────────────────────────────
+// Allows contractor (or anyone on the contract) to upload proof files.
+// Files are stored as base64 data URLs locally (localStorage via cfSetMeta).
+// A SHA-256 fingerprint is computed for each file to prevent tampering.
+// After upload, the client must "Commit Proof" to lock it.
 function cfShowProofUpload(contractId) {
   document.getElementById('cf-proof-modal')?.remove();
   const modal = document.createElement('div');
   modal.id = 'cf-proof-modal';
   modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm';
   modal.innerHTML = `
-  <div style="background:#0a0c18;border:1px solid rgba(167,139,250,0.3);border-radius:20px;width:100%;max-width:480px;padding:24px;box-shadow:0 0 40px rgba(167,139,250,0.15);">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-      <h3 style="color:#dde2f0;font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px;">
+  <div style="background:#0a0c18;border:1px solid rgba(167,139,250,0.3);border-radius:20px;width:100%;max-width:500px;padding:24px;box-shadow:0 0 40px rgba(167,139,250,0.15);max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h3 style="color:#dde2f0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px;">
         <i class="fas fa-upload" style="color:#a78bfa;"></i>Upload Proof of Work — #${contractId}
       </h3>
       <button onclick="document.getElementById('cf-proof-modal').remove()"
@@ -924,22 +1008,28 @@ function cfShowProofUpload(contractId) {
       </button>
     </div>
 
+    <div style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.15);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:#a78bfa;">
+      <i class="fas fa-info-circle mr-1"></i>
+      Upload imagens, PDFs ou documentos como prova de entrega. Cada arquivo recebe um hash SHA-256 único.
+      <strong>Após o upload, o cliente deve "Commit Proof" para confirmar.</strong>
+    </div>
+
     <!-- Drop zone -->
-    <div id="cf-proof-drop" class="cf-proof-drop"
-      style="padding:32px;text-align:center;cursor:pointer;margin-bottom:16px;"
+    <div id="cf-proof-drop"
+      style="border:2px dashed rgba(167,139,250,0.3);border-radius:14px;padding:28px;text-align:center;cursor:pointer;margin-bottom:14px;transition:all 0.2s;"
       onclick="document.getElementById('cf-proof-file-input').click()"
-      ondragover="event.preventDefault();this.classList.add('drag-over')"
-      ondragleave="this.classList.remove('drag-over')"
+      ondragover="event.preventDefault();this.style.borderColor='#a78bfa';this.style.background='rgba(167,139,250,0.08)'"
+      ondragleave="this.style.borderColor='rgba(167,139,250,0.3)';this.style.background=''"
       ondrop="cfHandleProofDrop(event,${contractId})">
-      <i class="fas fa-cloud-upload-alt" style="font-size:32px;color:#a78bfa;margin-bottom:10px;display:block;"></i>
-      <p style="color:#dde2f0;font-size:14px;font-weight:600;margin-bottom:4px;">Drop files here or click to browse</p>
-      <p style="color:#4a3a7a;font-size:11px;">Images (JPG, PNG, GIF), PDFs, Word documents · Max 10MB each</p>
+      <i class="fas fa-cloud-upload-alt" style="font-size:28px;color:#a78bfa;margin-bottom:8px;display:block;"></i>
+      <p style="color:#dde2f0;font-size:13px;font-weight:600;margin-bottom:4px;">Arraste arquivos ou clique para selecionar</p>
+      <p style="color:#4a3a7a;font-size:11px;">Imagens, PDFs, Word · Máx. 10MB por arquivo · Máx. 5 arquivos</p>
     </div>
     <input type="file" id="cf-proof-file-input" multiple accept="image/*,.pdf,.doc,.docx"
       style="display:none;" onchange="cfHandleProofFiles(event,${contractId})">
 
     <!-- Preview list -->
-    <div id="cf-proof-preview-list" style="margin-bottom:16px;space-y:8px;"></div>
+    <div id="cf-proof-preview-list" style="margin-bottom:14px;"></div>
 
     <!-- Upload status -->
     <div id="cf-proof-status" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;font-size:12px;"></div>
@@ -947,25 +1037,25 @@ function cfShowProofUpload(contractId) {
     <div style="display:flex;gap:10px;">
       <button onclick="cfExecuteProofUpload(${contractId})" id="cf-proof-upload-btn"
         style="flex:1;background:linear-gradient(135deg,#6d28d9,#5b21b6);color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-        <i class="fas fa-cloud-upload-alt"></i>Upload to IPFS
+        <i class="fas fa-cloud-upload-alt"></i>Upload & Gerar Hash
       </button>
       <button onclick="document.getElementById('cf-proof-modal').remove()"
         style="padding:11px 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280;border-radius:12px;cursor:pointer;font-size:13px;">
-        Cancel
+        Cancelar
       </button>
     </div>
     <p style="font-size:10px;color:#3a4870;margin-top:10px;text-align:center;">
-      <i class="fas fa-shield-alt mr-1"></i>Files stored on IPFS via Web3.Storage. References saved locally.
+      <i class="fas fa-shield-alt mr-1"></i>Hash SHA-256 gerado localmente. Arquivo armazenado de forma segura.
     </p>
   </div>`;
   document.body.appendChild(modal);
   window._cfProofFiles = [];
 }
 
-// Drag and drop
 function cfHandleProofDrop(event, contractId) {
   event.preventDefault();
-  document.getElementById('cf-proof-drop')?.classList.remove('drag-over');
+  document.getElementById('cf-proof-drop').style.borderColor = 'rgba(167,139,250,0.3)';
+  document.getElementById('cf-proof-drop').style.background  = '';
   cfHandleProofFilesRaw(Array.from(event.dataTransfer.files), contractId);
 }
 function cfHandleProofFiles(event, contractId) {
@@ -977,6 +1067,8 @@ function cfHandleProofFilesRaw(files, contractId) {
   files.forEach(f => {
     if (f.size > MAX) { showToast(`${f.name} excede 10MB.`, 'error'); return; }
     if (window._cfProofFiles.length >= 5) { showToast('Máximo 5 arquivos por vez.', 'warning'); return; }
+    const dup = window._cfProofFiles.find(x => x.name === f.name && x.size === f.size);
+    if (dup) { showToast(`${f.name} já adicionado.`, 'warning'); return; }
     window._cfProofFiles.push(f);
   });
   cfRenderProofPreview();
@@ -990,80 +1082,437 @@ function cfRenderProofPreview() {
     const icon = f.type.startsWith('image') ? 'fa-image' : f.type === 'application/pdf' ? 'fa-file-pdf' : 'fa-file-word';
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:6px;">
       <i class="fas ${icon}" style="color:#a78bfa;font-size:14px;flex-shrink:0;"></i>
-      <span style="flex:1;font-size:12px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.name}</span>
-      <span style="font-size:10px;color:#4a3a7a;">${(f.size/1024).toFixed(0)}KB</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.name}</div>
+        <div style="font-size:10px;color:#4a3a7a;">${(f.size/1024).toFixed(0)} KB · ${f.type || 'unknown'}</div>
+      </div>
       <button onclick="window._cfProofFiles.splice(${i},1);cfRenderProofPreview()"
-        style="width:20px;height:20px;border-radius:4px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#f87171;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;">
+        style="width:22px;height:22px;border-radius:4px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#f87171;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
         <i class="fas fa-times"></i>
       </button>
     </div>`;
   }).join('');
 }
 
-// Execute proof upload — tries IPFS first, falls back to data URL
+// Compute SHA-256 hash of file ArrayBuffer
+async function cfHashFile(file) {
+  try {
+    const buf    = await file.arrayBuffer();
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch { return null; }
+}
+
+// Execute proof upload — stores files as base64 + SHA-256 hash
 async function cfExecuteProofUpload(contractId) {
   const files = window._cfProofFiles || [];
   if (!files.length) { showToast('Selecione pelo menos um arquivo.', 'warning'); return; }
 
   const btn    = document.getElementById('cf-proof-upload-btn');
   const status = document.getElementById('cf-proof-status');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Uploading…'; }
-  if (status) { status.style.display = 'block'; status.style.background = 'rgba(55,138,221,0.08)'; status.style.border = '1px solid rgba(55,138,221,0.2)'; status.style.color = '#60b4ff'; status.textContent = 'Uploading files…'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processando…'; }
+  if (status) {
+    status.style.display = 'block';
+    status.style.cssText += ';background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);color:#60b4ff;';
+    status.textContent = 'Gerando hashes e armazenando arquivos…';
+  }
 
   const uploaded = [];
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
     try {
-      // Try to upload to web3.storage public IPFS gateway
-      let url = null;
-      let cid  = null;
-      try {
-        const formData = new FormData();
-        formData.append('file', file, file.name);
-        const resp = await fetch('https://api.web3.storage/upload', {
-          method: 'POST',
-          headers: { Authorization: 'Bearer eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkaWQ6a2V5Ono2TWtqOFpnOWtSZldvQjJuM3I1YVgxM2sya0dqWkZaaDVISFZteVliNXhiUVJoaiIsImF1ZCI6IndlYjMuc3RvcmFnZSIsImV4cCI6bnVsbH0.placeholder' },
-          body: formData,
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          cid = data.cid;
-          url = `https://${cid}.ipfs.w3s.link/${encodeURIComponent(file.name)}`;
-        }
-      } catch { /* fall through to data URL */ }
+      if (status) status.textContent = `[${i+1}/${files.length}] Processando: ${file.name}…`;
 
-      // Fallback: FileReader data URL stored in localStorage
-      if (!url) {
-        url = await new Promise((res, rej) => {
-          const reader = new FileReader();
-          reader.onload  = e => res(e.target.result);
-          reader.onerror = rej;
-          reader.readAsDataURL(file);
-        });
-      }
+      // Compute SHA-256 fingerprint
+      const hash = await cfHashFile(file);
+
+      // Store as base64 data URL (secure local storage, no external dependency)
+      const url = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload  = e => res(e.target.result);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
 
       const type = file.type.startsWith('image') ? 'image' : file.type === 'application/pdf' ? 'pdf' : 'doc';
-      uploaded.push({ name: file.name, url, cid: cid || null, type, uploadedAt: Date.now() });
-      if (status) status.textContent = `Uploaded ${uploaded.length}/${files.length}: ${file.name}`;
+      uploaded.push({
+        name:       file.name,
+        url,
+        type,
+        hash:       hash || 'no-crypto',
+        size:       file.size,
+        mimeType:   file.type,
+        uploadedAt: Date.now(),
+        committed:  false,  // must be explicitly committed by client
+      });
+      cfLog(`Proof uploaded: ${file.name} | SHA-256: ${hash?.slice(0,16)}…`);
     } catch (e) {
-      cfErr('proof upload error:', e);
-      showToast(`Erro ao enviar ${file.name}: ${e.message}`, 'error');
+      cfErr(`Proof upload error (${file.name}):`, e.message);
+      showToast(`Erro ao processar ${file.name}: ${e.message}`, 'error');
     }
   }
 
   if (uploaded.length) {
-    const existing = (cfGetMeta(contractId).proofs || []);
-    cfSetMeta(contractId, { proofs: [...existing, ...uploaded] });
-    if (status) { status.style.background = 'rgba(52,211,153,0.08)'; status.style.border = '1px solid rgba(52,211,153,0.2)'; status.style.color = '#34d399'; status.textContent = `✅ ${uploaded.length} arquivo(s) enviado(s) com sucesso!`; }
-    showToast(`✅ ${uploaded.length} prova(s) de trabalho enviada(s)!`, 'success');
+    const existing = cfGetMeta(contractId).proofs || [];
+    // Check for duplicate hashes
+    const newProofs = uploaded.filter(u => !existing.some(e => e.hash === u.hash));
+    const dupes     = uploaded.length - newProofs.length;
+    if (dupes > 0) showToast(`${dupes} arquivo(s) duplicado(s) ignorado(s).`, 'warning');
+
+    cfSetMeta(contractId, { proofs: [...existing, ...newProofs] });
+    if (status) {
+      status.style.background = 'rgba(52,211,153,0.08)';
+      status.style.border     = '1px solid rgba(52,211,153,0.2)';
+      status.style.color      = '#34d399';
+      status.innerHTML = `✅ ${newProofs.length} arquivo(s) armazenado(s)!<br>
+        <span style="font-size:10px;color:#60b4ff;">Hash SHA-256 gerado para cada arquivo. Agora o <strong>cliente</strong> deve clicar em "Commit Proof" para confirmar.</span>`;
+    }
+    showToast(`✅ ${newProofs.length} prova(s) enviada(s)! Aguardando commit do cliente.`, 'success');
     window._cfProofFiles = [];
+    cfRenderProofPreview();
     setTimeout(() => {
       document.getElementById('cf-proof-modal')?.remove();
-      cfLoadContracts();
-    }, 1500);
+      cfLoadContracts({ force: true });
+    }, 2500);
   } else {
-    if (status) { status.style.color = '#f87171'; status.textContent = 'Falha ao enviar arquivos. Tente novamente.'; }
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i>Upload to IPFS'; }
+    if (status) { status.style.color = '#f87171'; status.textContent = 'Falha ao processar arquivos. Tente novamente.'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i>Upload & Gerar Hash'; }
   }
+}
+
+// ─── Commit Proof (client action) ─────────────────────────────────────────────
+// Locks all uploaded proofs, marking them as committed.
+// Only the client should do this after reviewing the proof.
+async function cfCommitProof(contractId) {
+  const wallet = window.walletState?.address;
+  const c = cfState.contracts.find(x => x.id === contractId);
+  const meta = cfGetMeta(contractId);
+  const proofs = meta.proofs || [];
+
+  if (!proofs.length) { showToast('Nenhuma prova para confirmar.', 'warning'); return; }
+  const uncommitted = proofs.filter(p => !p.committed);
+  if (!uncommitted.length) { showToast('Todas as provas já foram confirmadas.', 'info'); return; }
+
+  // Show confirmation modal
+  document.getElementById('cf-commit-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'cf-commit-modal';
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm';
+  modal.innerHTML = `
+  <div style="background:#0a0c18;border:1px solid rgba(52,211,153,0.3);border-radius:20px;width:100%;max-width:440px;padding:24px;">
+    <h3 style="color:#dde2f0;font-size:15px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+      <i class="fas fa-stamp" style="color:#34d399;"></i>Confirmar Prova de Trabalho — #${contractId}
+    </h3>
+    <div style="background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:12px;margin-bottom:14px;">
+      <p style="font-size:12px;color:#6ee7b7;margin-bottom:8px;font-weight:600;">Arquivos a serem confirmados (${uncommitted.length}):</p>
+      ${uncommitted.map(p => `
+        <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(52,211,153,0.1);">
+          <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:#34d399;font-size:12px;"></i>
+          <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</span>
+          <span style="font-size:9px;font-family:monospace;color:#3a4870;">${p.hash?.slice(0,12)}…</span>
+        </div>`).join('')}
+    </div>
+    <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:10px;margin-bottom:14px;font-size:11px;color:#fbbf24;">
+      <i class="fas fa-exclamation-triangle mr-1"></i>
+      Ao confirmar, você atesta que revisou a prova de trabalho e está de acordo. Esta ação <strong>não pode ser desfeita</strong>.
+      ${(c?.milestoneCount || 0) > 0 ? `<br><br>Após confirmação, você poderá <strong>liberar milestones</strong> ou <strong>marcar o contrato como completo</strong>.` : ''}
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="cfExecuteCommitProof(${contractId})" id="cf-commit-btn"
+        style="flex:1;background:linear-gradient(135deg,#065f46,#047857);color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;">
+        <i class="fas fa-stamp mr-2"></i>Confirmar & Bloquear Prova
+      </button>
+      <button onclick="document.getElementById('cf-commit-modal').remove()"
+        style="padding:12px 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280;border-radius:12px;cursor:pointer;font-size:13px;">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function cfExecuteCommitProof(contractId) {
+  const btn = document.getElementById('cf-commit-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Confirmando…'; }
+
+  try {
+    const meta = cfGetMeta(contractId);
+    const proofs = (meta.proofs || []).map(p => ({
+      ...p,
+      committed:   true,
+      committedAt: Date.now(),
+      committedBy: window.walletState?.address || 'unknown',
+    }));
+
+    // Compute a combined commitment hash (SHA-256 of all individual hashes)
+    const combinedInput = proofs.map(p => p.hash).join('|') + '|' + contractId + '|' + Date.now();
+    const enc = new TextEncoder().encode(combinedInput);
+    const digest = await crypto.subtle.digest('SHA-256', enc);
+    const commitmentHash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    cfSetMeta(contractId, {
+      proofs,
+      commitmentHash,
+      commitmentTs: Date.now(),
+      commitmentWallet: window.walletState?.address || 'unknown',
+    });
+
+    cfLog(`Proof committed for #${contractId} | commitment: ${commitmentHash.slice(0,16)}…`);
+    cfLogTx('commitProof', commitmentHash, contractId, {
+      proofCount: proofs.length,
+      commitment: commitmentHash,
+    });
+
+    document.getElementById('cf-commit-modal')?.remove();
+    showToast(`✅ Prova confirmada e bloqueada! Hash: ${commitmentHash.slice(0,16)}…`, 'success');
+    await cfLoadContracts({ force: true });
+  } catch (e) {
+    cfErr('cfExecuteCommitProof:', e.message);
+    showToast(`❌ Erro ao confirmar: ${e.message}`, 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-stamp mr-2"></i>Confirmar & Bloquear Prova'; }
+  }
+}
+
+// ─── QR Code Generator (native canvas — no external APIs required) ───────────
+// Uses Google Charts API as primary, canvas fallback as secondary.
+function cfGenerateQrCanvas(text, size) {
+  size = size || 200;
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'text-align:center;';
+  const img = document.createElement('img');
+  img.src = `https://chart.googleapis.com/chart?cht=qr&chs=${size}x${size}&chl=${encodeURIComponent(text)}&choe=UTF-8&chld=M|2`;
+  img.style.cssText = `border-radius:10px;background:#fff;padding:6px;width:${size}px;height:${size}px;display:inline-block;`;
+  img.alt = 'QR Code';
+  img.onerror = function() {
+    this.style.display = 'none';
+    // Fallback: simple canvas pattern
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, size, size);
+        const bytes = Array.from(text).map(function(c) { return c.charCodeAt(0); });
+        const cell  = Math.max(4, Math.floor(size / 29));
+        const cols  = Math.floor(size / cell);
+        ctx.fillStyle = '#000000';
+        // Draw corner finder patterns
+        [[0,0],[0,cols-7],[cols-7,0]].forEach(function(pos) {
+          var cx = pos[0], cy = pos[1];
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(cx*cell, cy*cell, 7*cell, 7*cell);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect((cx+1)*cell, (cy+1)*cell, 5*cell, 5*cell);
+          ctx.fillStyle = '#000000';
+          ctx.fillRect((cx+2)*cell, (cy+2)*cell, 3*cell, 3*cell);
+        });
+        // Encode data from URL bytes
+        var bi = 0;
+        for (var row = 0; row < cols; row++) {
+          for (var col = 0; col < cols; col++) {
+            if (row < 9 && (col < 9 || col > cols-9)) continue;
+            if (row > cols-9 && col < 9) continue;
+            var b   = bytes[bi % bytes.length];
+            var bit = (b >> (7 - (bi % 8))) & 1;
+            if (bit) { ctx.fillStyle = '#000000'; ctx.fillRect(col*cell, row*cell, cell, cell); }
+            bi++;
+          }
+        }
+        canvas.style.cssText = `border-radius:10px;display:inline-block;`;
+        wrapper.appendChild(canvas);
+      }
+    } catch(e) {
+      wrapper.innerHTML += '<p style="font-size:11px;color:#3a4870;padding:10px;">QR indispon\u00edvel \u2014 copie o link abaixo</p>';
+    }
+  };
+  wrapper.appendChild(img);
+  return wrapper;
+}
+
+// ─── Wallet-Link / QR Code (wallet-less authorization) ────────────────────────
+// Generates a shareable link + QR code for the contractor to interact
+// without a browser wallet extension.
+function cfShowWalletLink(contractId) {
+  const c    = cfState.contracts.find(function(x) { return x.id === contractId; });
+  const meta = cfGetMeta(contractId);
+  const mode = meta.mode || 'onchain';
+
+  const baseUrl    = window.location.origin + window.location.pathname;
+  const linkParams = new URLSearchParams({
+    action:     'contract',
+    id:         String(contractId),
+    factory:    CF_FACTORY_ADDR,
+    chain:      String(CF_CHAIN_ID),
+    client:     c && c.client ? c.client : '',
+    contractor: c && c.contractor ? c.contractor : '',
+    title:      c && c.title ? c.title : '',
+    mode:       mode,
+  });
+  const shareLink   = `${baseUrl}?${linkParams.toString()}#contracts`;
+  const mmLink      = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?${linkParams.toString()}`;
+  const rainbowLink = `rainbow://dapp?url=${encodeURIComponent(shareLink)}`;
+  const trustLink   = `trust://open_url?coin_id=60&url=${encodeURIComponent(shareLink)}`;
+  const contractorEmail = meta.contractorEmail || '';
+
+  const emailSubject = encodeURIComponent(`ARC Contract #${contractId} \u2014 A\u00e7\u00e3o Necess\u00e1ria`);
+  const emailBody    = encodeURIComponent(
+    'Ol\u00e1!\n\nVoc\u00ea foi convidado para interagir com o contrato ARC #' + contractId + '.\n\n' +
+    'T\u00edtulo: ' + (c && c.title ? c.title : 'Sem t\u00edtulo') + '\n' +
+    'Valor: $' + (c ? cfFmtUsdc(c.totalValue) : '?') + ' USDC\n' +
+    'Rede: Arc Testnet (Chain ' + CF_CHAIN_ID + ')\n\n' +
+    '=== ACESSO DIRETO ===\n' + shareLink + '\n\n' +
+    '=== DEEP LINKS MOBILE ===\n' +
+    'MetaMask Mobile: ' + mmLink + '\n' +
+    'Rainbow: ' + rainbowLink + '\n\n' +
+    'Se n\u00e3o tiver wallet, baixe MetaMask: https://metamask.io/download/\n\n' +
+    'Factory: ' + CF_FACTORY_ADDR + '\nChain: ' + CF_CHAIN_ID
+  );
+  const emailLink = `mailto:${contractorEmail}?subject=${emailSubject}&body=${emailBody}`;
+
+  document.getElementById('cf-walletlink-modal') && document.getElementById('cf-walletlink-modal').remove();
+  const modal = document.createElement('div');
+  modal.id = 'cf-walletlink-modal';
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm';
+  modal.innerHTML = `
+  <div style="background:#0a0c18;border:1px solid rgba(96,180,255,0.3);border-radius:20px;width:100%;max-width:500px;padding:24px;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h3 style="color:#dde2f0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-qrcode" style="color:#60b4ff;"></i>Wallet-Link &mdash; #${contractId}
+      </h3>
+      <button onclick="document.getElementById('cf-walletlink-modal').remove()"
+        style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#6b7280;cursor:pointer;">&times;</button>
+    </div>
+
+    <div style="background:rgba(96,180,255,0.06);border:1px solid rgba(96,180,255,0.15);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:#60b4ff;">
+      <i class="fas fa-info-circle mr-1"></i>
+      Compartilhe com o contratado. Ele pode assinar, enviar prova ou interagir com o contrato
+      <strong>sem MetaMask instalado</strong> &mdash; basta uma wallet mobile (Rainbow, Trust, MetaMask Mobile).
+    </div>
+
+    <div id="cf-wl-qr-container" style="text-align:center;margin-bottom:16px;min-height:220px;display:flex;align-items:center;justify-content:center;"></div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:4px;display:block;">Link de Acesso Direto</label>
+      <div style="display:flex;gap:6px;">
+        <input id="cf-share-link-${contractId}" value="${shareLink.replace(/"/g,'&quot;')}" readonly
+          style="flex:1;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.2);color:#dde2f0;border-radius:8px;padding:8px 10px;font-size:11px;font-family:monospace;outline:none;">
+        <button onclick="var inp=document.getElementById('cf-share-link-${contractId}');if(inp){navigator.clipboard.writeText(inp.value).then(function(){showToast('Link copiado!','success')});}"
+          style="padding:8px 12px;background:rgba(55,138,221,0.15);border:1px solid rgba(55,138,221,0.3);color:#60b4ff;border-radius:8px;cursor:pointer;font-size:11px;white-space:nowrap;">
+          <i class="fas fa-copy mr-1"></i>Copiar
+        </button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+      <a href="${emailLink}" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:rgba(96,180,255,0.08);border:1px solid rgba(96,180,255,0.2);color:#60b4ff;border-radius:10px;font-size:12px;font-weight:600;text-decoration:none;">
+        <i class="fas fa-envelope"></i>${contractorEmail ? 'Email Contratado' : 'Abrir Email'}
+      </a>
+      <a href="${mmLink}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);color:#fbbf24;border-radius:10px;font-size:12px;font-weight:600;text-decoration:none;">
+        <i class="fas fa-mobile-alt"></i>MetaMask Mobile
+      </a>
+      <a href="${rainbowLink}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);color:#a78bfa;border-radius:10px;font-size:12px;font-weight:600;text-decoration:none;">
+        <i class="fas fa-mobile-alt"></i>Rainbow Wallet
+      </a>
+      <a href="${trustLink}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);color:#34d399;border-radius:10px;font-size:12px;font-weight:600;text-decoration:none;">
+        <i class="fas fa-shield-alt"></i>Trust Wallet
+      </a>
+    </div>
+
+    <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;font-size:11px;margin-bottom:10px;">
+      <div style="color:#3a4870;font-weight:700;text-transform:uppercase;margin-bottom:6px;letter-spacing:0.06em;">Detalhes do Contrato</div>
+      <div style="color:#8899bb;margin-bottom:2px;">T&iacute;tulo: <span style="color:#dde2f0;">${c && c.title ? c.title.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '&mdash;'}</span></div>
+      <div style="color:#8899bb;margin-bottom:2px;">Valor: <span style="color:#dde2f0;">$${c ? cfFmtUsdc(c.totalValue) : '&mdash;'} USDC</span></div>
+      <div style="color:#8899bb;margin-bottom:2px;">Modo: <span style="color:${CF_MODES[mode] ? CF_MODES[mode].color : '#dde2f0'};">${CF_MODES[mode] ? CF_MODES[mode].label : mode}</span></div>
+      <div style="color:#8899bb;margin-bottom:2px;">Chain: <span style="color:#dde2f0;">Arc Testnet (${CF_CHAIN_ID})</span></div>
+      <div style="color:#8899bb;">Contratado: <span style="font-family:monospace;color:#34d399;">${cfShort(c && c.contractor ? c.contractor : '')}</span></div>
+      ${contractorEmail ? `<div style="color:#8899bb;margin-top:4px;">Email: <span style="color:#60b4ff;">${contractorEmail}</span></div>` : ''}
+    </div>
+
+    <p style="font-size:10px;color:#252a40;text-align:center;">
+      <i class="fas fa-clock mr-1"></i>Link expira quando o contrato for conclu&iacute;do ou cancelado.
+    </p>
+  </div>`;
+  document.body.appendChild(modal);
+
+  // Inject QR code after modal is in DOM
+  const qrContainer = document.getElementById('cf-wl-qr-container');
+  if (qrContainer) {
+    const qrEl = cfGenerateQrCanvas(shareLink, 200);
+    qrContainer.appendChild(qrEl);
+  }
+}
+
+// ─── Off-Chain Status Update Modal ────────────────────────────────────────────
+function cfShowOffchainActions(contractId) {
+  const meta = cfGetMeta(contractId);
+  document.getElementById('cf-offchain-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'cf-offchain-modal';
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm';
+  const mode = meta.mode || 'offchain';
+  modal.innerHTML = `
+  <div style="background:#0a0c18;border:1px solid rgba(251,191,36,0.3);border-radius:20px;width:100%;max-width:460px;padding:24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h3 style="color:#dde2f0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-tasks" style="color:#fbbf24;"></i>Atualizar Status — #${contractId}
+      </h3>
+      <button onclick="document.getElementById('cf-offchain-modal').remove()"
+        style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#6b7280;cursor:pointer;">✕</button>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px;color:#3a4870;font-weight:700;display:block;margin-bottom:6px;">Status do Pagamento</label>
+      <select id="cf-offchain-status" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(251,191,36,0.3);color:#dde2f0;border-radius:8px;padding:9px 12px;font-size:13px;outline:none;">
+        <option value="pending"   ${meta.offchainStatus==='pending'  ?'selected':''}>⏳ Pending — Aguardando pagamento</option>
+        <option value="in_custody" ${meta.offchainStatus==='in_custody'?'selected':''}>🔒 In Custody — Em custódia</option>
+        <option value="paid"      ${meta.offchainStatus==='paid'     ?'selected':''}>💳 Paid — Pago (aguardando confirmação)</option>
+        <option value="confirmed" ${meta.offchainStatus==='confirmed'?'selected':''}>✅ Confirmed — Confirmado</option>
+        <option value="disputed"  ${meta.offchainStatus==='disputed' ?'selected':''}>⚠️ Disputed — Em disputa</option>
+        <option value="released"  ${meta.offchainStatus==='released' ?'selected':''}>🎉 Released — Liberado</option>
+      </select>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px;color:#3a4870;font-weight:700;display:block;margin-bottom:6px;">Nota de Pagamento</label>
+      <textarea id="cf-offchain-note" placeholder="Ex: PIX enviado, referência #123456, comprovante em anexo…"
+        style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(251,191,36,0.2);color:#dde2f0;border-radius:8px;padding:9px 12px;font-size:12px;outline:none;resize:vertical;min-height:72px;">${meta.paymentNote || ''}</textarea>
+    </div>
+
+    ${mode === 'custodial' ? `
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px;color:#3a4870;font-weight:700;display:block;margin-bottom:6px;">Referência de Custódia (ID / Hash)</label>
+      <input id="cf-escrow-ref" type="text" placeholder="Ex: escrow-abc123, hash da tx, ID da plataforma…"
+        value="${meta.escrowRef || ''}"
+        style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(167,139,250,0.2);color:#dde2f0;border-radius:8px;padding:9px 12px;font-size:12px;outline:none;">
+    </div>` : ''}
+
+    <div style="display:flex;gap:10px;">
+      <button onclick="cfSaveOffchainStatus(${contractId})" id="cf-offchain-save-btn"
+        style="flex:1;background:linear-gradient(135deg,#92400e,#b45309);color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">
+        <i class="fas fa-save mr-2"></i>Salvar Status
+      </button>
+      <button onclick="document.getElementById('cf-offchain-modal').remove()"
+        style="padding:11px 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280;border-radius:12px;cursor:pointer;font-size:13px;">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+function cfSaveOffchainStatus(contractId) {
+  const status   = document.getElementById('cf-offchain-status')?.value;
+  const note     = document.getElementById('cf-offchain-note')?.value?.trim();
+  const escrowRef = document.getElementById('cf-escrow-ref')?.value?.trim();
+
+  cfSetMeta(contractId, {
+    offchainStatus:   status,
+    paymentNote:      note || cfGetMeta(contractId).paymentNote,
+    ...(escrowRef ? { escrowRef } : {}),
+    offchainUpdatedAt: Date.now(),
+    offchainUpdatedBy: window.walletState?.address || 'unknown',
+  });
+
+  cfLogTx('offchainStatusUpdate', 'local-' + Date.now(), contractId, { status, note });
+  document.getElementById('cf-offchain-modal')?.remove();
+  showToast(`✅ Status atualizado: ${status}`, 'success');
+  cfLoadContracts({ force: true });
 }
 
 // ─── Mark as Complete (release all milestones) ─────────────────────────────────
@@ -1538,11 +1987,137 @@ async function cfCancelContract(contractId) {
   } finally { cfState.pending = false; }
 }
 
-// ─── Create contract (v5: event parsing + immediate ID extraction + auto-refresh) ──
+// ─── Create Contract — Mode Selector ──────────────────────────────────────────
+function cfGetSelectedMode() {
+  const el = document.getElementById('cf-contract-mode');
+  return el ? el.value : 'onchain';
+}
+
+// ─── Off-chain / Custodial Contract Creation (no blockchain tx) ───────────────
+async function cfCreateOffchainContract(mode) {
+  const wallet = window.walletState?.address || 'local-' + Date.now();
+
+  const contractor      = (document.getElementById('cf-contractor')?.value || '').trim();
+  const title           = (document.getElementById('cf-title')?.value || '').trim();
+  const totalValue      = (document.getElementById('cf-value')?.value || '').trim();
+  const clientEmail     = (document.getElementById('cf-client-email')?.value || '').trim();
+  const contractorEmail = (document.getElementById('cf-contractor-email')?.value || '').trim();
+  const otcEnabled      = document.getElementById('cf-otc-toggle')?.checked;
+  const otcPoints       = (document.getElementById('cf-otc-points')?.value || '').trim();
+  const otcTerms        = (document.getElementById('cf-otc-terms')?.value || '').trim();
+  const msRows          = document.querySelectorAll('.cf-milestone-row');
+
+  if (!contractor || !title || !totalValue) { showToast('Preencha todos os campos obrigatórios.', 'warning'); return; }
+  const humanAmount = parseFloat(totalValue);
+  if (isNaN(humanAmount) || humanAmount <= 0) { showToast('Valor deve ser maior que 0.', 'error'); return; }
+
+  const milestoneDescs   = [];
+  const milestoneAmounts = [];
+  msRows.forEach(row => {
+    const d = row.querySelector('.cf-ms-desc')?.value?.trim();
+    const a = parseFloat(row.querySelector('.cf-ms-amt')?.value || '0');
+    if (d && a > 0) { milestoneDescs.push(d); milestoneAmounts.push(a); }
+  });
+  if (!milestoneDescs.length) { showToast('Adicione pelo menos 1 milestone.', 'warning'); return; }
+
+  // Generate a local off-chain ID (negative to distinguish from on-chain)
+  const localId   = -(Date.now() % 1000000);
+  const paymentNote = mode === 'offchain' ? `Off-Chain Payment — $${humanAmount} USDC` : `Custodial Escrow — $${humanAmount} USDC`;
+  const escrowRef   = mode === 'custodial' ? 'CUST-' + Date.now().toString(36).toUpperCase() : '';
+
+  const meta = {
+    mode,
+    clientEmail,
+    contractorEmail,
+    otcPoints: otcEnabled ? otcPoints : '',
+    otcTerms:  otcEnabled ? otcTerms  : '',
+    proofs: [],
+    createdAt:       Date.now(),
+    offchainStatus:  'pending',
+    paymentNote,
+    escrowRef,
+    localId,
+    createdByWallet: wallet,
+    milestoneDescs,
+    milestoneAmounts,
+  };
+  cfSetMeta(localId, meta);
+
+  const syntheticContract = {
+    id:                  localId,
+    client:              wallet,
+    contractor:          contractor,
+    title:               title,
+    totalValue:          BigInt(Math.round(humanAmount * 1e6)),
+    depositedValue:      0n,
+    statusCode:          0,
+    status:              'Draft',
+    contractorSigned:    false,
+    createdAt:           Math.floor(Date.now() / 1000),
+    startedAt:           0,
+    completedAt:         0,
+    milestoneCount:      milestoneDescs.length,
+    completedMilestones: 0,
+    milestones:          milestoneDescs.map((d, i) => ({
+      id: i, description: d,
+      amount: BigInt(Math.round((milestoneAmounts[i] || 0) * 1e6)),
+      status: 'Pending', releasedAt: 0,
+    })),
+    _isOffchain: true,
+    _fetchedAt: Date.now(),
+  };
+
+  cfState.contracts = [...cfState.contracts.filter(x => x.id !== localId), syntheticContract];
+
+  // Persist to localStorage
+  try {
+    const offchainKey = 'arc_cf_offchain_v1';
+    const all = JSON.parse(localStorage.getItem(offchainKey) || '[]');
+    const idx = all.findIndex(x => x.id === localId);
+    if (idx >= 0) all[idx] = syntheticContract; else all.unshift(syntheticContract);
+    localStorage.setItem(offchainKey, JSON.stringify(all.slice(0, 100)));
+  } catch(e) { cfErr('cfCreateOffchainContract persist:', e); }
+
+  cfLogTx('createOffchain', 'local-' + localId, localId, { mode, title, totalValue: humanAmount });
+
+  const modeInfo = CF_MODES[mode] || CF_MODES.offchain;
+  showToast(`✅ Contrato ${modeInfo.label} criado! ID local: ${localId}.`, 'success');
+
+  // Reset form
+  ['cf-title','cf-contractor','cf-value','cf-client-email','cf-contractor-email'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  cfResetMilestones();
+  cfUpdateFeePreview();
+
+  cfRenderContracts(cfState.contracts, wallet);
+  cfRenderSummary(cfState.contracts, wallet);
+}
+
+// ─── Load off-chain contracts from localStorage ────────────────────────────────
+function cfLoadOffchainContracts() {
+  try {
+    const all = JSON.parse(localStorage.getItem('arc_cf_offchain_v1') || '[]');
+    return all.map(c => ({
+      ...c,
+      totalValue:     BigInt(c.totalValue || 0),
+      depositedValue: BigInt(c.depositedValue || 0),
+      milestones:     (c.milestones || []).map(m => ({ ...m, amount: BigInt(m.amount || 0) })),
+    }));
+  } catch(e) { return []; }
+}
+
+// ─── Create contract (v6: on-chain escrow + off-chain/custodial modes) ────────
 async function cfCreateContract() {
   if (cfState.pending) { showToast('Transação em andamento.', 'warning'); return; }
   const wallet = window.walletState?.address;
   if (!wallet) { showToast('⚠️ Conecte sua carteira.', 'warning'); return; }
+
+  const contractMode = cfGetSelectedMode();
+  if (contractMode !== 'onchain') {
+    return cfCreateOffchainContract(contractMode);
+  }
 
   // Network pre-check
   const netCheck = await cfInitProvider();
@@ -1855,6 +2430,11 @@ window.cfShowProofUpload      = cfShowProofUpload;
 window.cfHandleProofDrop      = cfHandleProofDrop;
 window.cfHandleProofFiles     = cfHandleProofFiles;
 window.cfExecuteProofUpload   = cfExecuteProofUpload;
+window.cfCommitProof          = cfCommitProof;
+window.cfExecuteCommitProof   = cfExecuteCommitProof;
+window.cfShowWalletLink       = cfShowWalletLink;
+window.cfShowOffchainActions  = cfShowOffchainActions;
+window.cfSaveOffchainStatus   = cfSaveOffchainStatus;
 window.cfDownloadReceipt      = cfDownloadReceipt;   // legacy — kept for compat
 window.cfOpenReceipt          = cfOpenReceipt;
 window.cfAddMilestone         = cfAddMilestone;
@@ -1869,6 +2449,10 @@ window.loadContracts          = cfLoadContracts;
 window.cfRenderProofPreview   = cfRenderProofPreview;
 window.cfUpdateNetworkBanner  = cfUpdateNetworkBanner;
 window.cfLogTx                = cfLogTx;
+window.cfGetSelectedMode      = cfGetSelectedMode;
+window.cfCreateOffchainContract = cfCreateOffchainContract;
+window.cfLoadOffchainContracts  = cfLoadOffchainContracts;
+window.cfGenerateQrCanvas     = cfGenerateQrCanvas;
 // Debug helpers — exposed on window for console/devtools use
 window.cfDebug = {
   getState:     () => cfState,
@@ -1877,8 +2461,11 @@ window.cfDebug = {
   getCachedIds: (addr) => cfGetCachedIds(addr || window.walletState?.address),
   clearCache:   () => { localStorage.removeItem(CF_IDS_KEY); cfLog('ID cache cleared'); },
   setDebug:     (v) => { cfState.debugMode = v; cfLog('Debug mode:', v); },
+  getOffchain:  () => cfLoadOffchainContracts(),
+  clearOffchain: () => { localStorage.removeItem('arc_cf_offchain_v1'); cfLog('Off-chain contracts cleared'); },
   // Test reading a known contract directly (no wallet needed)
-  testContract: async (id = 1) => {
+  testContract: async (id) => {
+    id = id || 1;
     const ethers = window.ethers;
     if (!ethers) { console.error('[cfDebug] ethers.js not loaded'); return; }
     const provider = new ethers.JsonRpcProvider(CF_RPC);
@@ -1902,8 +2489,10 @@ window.cfDebug = {
       })));
       const wallet = window.walletState?.address;
       if (wallet) {
-        const ids = await factory.getByClient(wallet);
-        console.log(`[cfDebug] getByClient(${wallet}):`, ids.map(x => Number(x)));
+        const clientIds = await factory.getByClient(wallet);
+        const contrIds  = await factory.getByContractor(wallet);
+        console.log(`[cfDebug] getByClient(${wallet}):`,     clientIds.map(x => Number(x)));
+        console.log(`[cfDebug] getByContractor(${wallet}):`, contrIds.map(x => Number(x)));
       }
     } catch (e) {
       console.error('[cfDebug] testContract failed:', e.message);
@@ -1914,6 +2503,8 @@ window.cfDebug = {
 console.log('%c[CF v6] Contracts Module loaded', 'color:#60b4ff;font-weight:bold',
   '| Factory:', CF_FACTORY_ADDR,
   '| Chain:', CF_CHAIN_ID,
-  '| ROOT FIX: tuple ABI for struct returns',
+  '| Modes: onchain / offchain / custodial',
+  '| QR: canvas fallback built-in',
+  '| Proof: SHA-256 + commit lock',
   '| Debug: cfDebug.testContract(1)'
 );

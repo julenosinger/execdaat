@@ -1647,8 +1647,56 @@ app.get('/', (c) => {
                   <i class="fas fa-file-signature" style="color:#60b4ff;font-size:13px;"></i>
                 </div>
                 <div>
-                  <p style="color:#dde2f0;font-size:14px;font-weight:800;margin:0;">New On-Chain Contract</p>
+                  <p style="color:#dde2f0;font-size:14px;font-weight:800;margin:0;">New Contract</p>
                   <p style="color:#8aaac8;font-size:10px;margin:0;">Escrow · USDC · Arc Testnet</p>
+                </div>
+              </div>
+
+              <!-- Contract Mode Selector -->
+              <div style="margin-bottom:14px;">
+                <label style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;display:block;margin-bottom:6px;"><i class="fas fa-layer-group" style="color:#a78bfa;margin-right:4px;"></i>CONTRACT MODE</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;" id="cf-mode-btns">
+                  <label style="cursor:pointer;">
+                    <input type="radio" name="cf-mode-radio" value="onchain" checked style="display:none;" onchange="cfUpdateModeUI('onchain')">
+                    <div class="cf-mode-opt cf-mode-active" data-mode="onchain"
+                      onclick="document.querySelector('[name=cf-mode-radio][value=onchain]').checked=true;cfUpdateModeUI('onchain')"
+                      style="padding:8px 6px;border-radius:10px;border:1px solid rgba(55,138,221,0.35);background:rgba(55,138,221,0.12);text-align:center;transition:all 0.2s;">
+                      <i class="fas fa-link" style="color:#60b4ff;font-size:12px;display:block;margin-bottom:3px;"></i>
+                      <span style="font-size:10px;font-weight:700;color:#60b4ff;">On-Chain</span>
+                      <div style="font-size:9px;color:#3a4870;margin-top:2px;">USDC Escrow</div>
+                    </div>
+                  </label>
+                  <label style="cursor:pointer;">
+                    <input type="radio" name="cf-mode-radio" value="offchain" style="display:none;" onchange="cfUpdateModeUI('offchain')">
+                    <div class="cf-mode-opt" data-mode="offchain"
+                      onclick="document.querySelector('[name=cf-mode-radio][value=offchain]').checked=true;cfUpdateModeUI('offchain')"
+                      style="padding:8px 6px;border-radius:10px;border:1px solid rgba(251,191,36,0.2);background:rgba(251,191,36,0.06);text-align:center;transition:all 0.2s;">
+                      <i class="fas fa-money-bill-wave" style="color:#fbbf24;font-size:12px;display:block;margin-bottom:3px;"></i>
+                      <span style="font-size:10px;font-weight:700;color:#fbbf24;">Off-Chain</span>
+                      <div style="font-size:9px;color:#3a4870;margin-top:2px;">Payment Note</div>
+                    </div>
+                  </label>
+                  <label style="cursor:pointer;">
+                    <input type="radio" name="cf-mode-radio" value="custodial" style="display:none;" onchange="cfUpdateModeUI('custodial')">
+                    <div class="cf-mode-opt" data-mode="custodial"
+                      onclick="document.querySelector('[name=cf-mode-radio][value=custodial]').checked=true;cfUpdateModeUI('custodial')"
+                      style="padding:8px 6px;border-radius:10px;border:1px solid rgba(167,139,250,0.2);background:rgba(167,139,250,0.06);text-align:center;transition:all 0.2s;">
+                      <i class="fas fa-shield-alt" style="color:#a78bfa;font-size:12px;display:block;margin-bottom:3px;"></i>
+                      <span style="font-size:10px;font-weight:700;color:#a78bfa;">Custodial</span>
+                      <div style="font-size:9px;color:#3a4870;margin-top:2px;">3rd-party Escrow</div>
+                    </div>
+                  </label>
+                </div>
+                <!-- Hidden select synced with radio buttons -->
+                <select id="cf-contract-mode" style="display:none;">
+                  <option value="onchain">On-Chain Escrow</option>
+                  <option value="offchain">Off-Chain Payment</option>
+                  <option value="custodial">Custodial Escrow</option>
+                </select>
+                <!-- Mode description banner -->
+                <div id="cf-mode-desc" style="margin-top:8px;padding:8px 10px;border-radius:8px;font-size:11px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);color:#60b4ff;">
+                  <i class="fas fa-info-circle mr-1"></i>
+                  <strong>On-Chain Escrow:</strong> USDC locked in smart contract. Funds released via milestone approval.
                 </div>
               </div>
 
@@ -1755,7 +1803,7 @@ app.get('/', (c) => {
                 <button type="button" id="cf-submit-btn" onclick="cfCreateContract()"
                   style="width:100%;background:linear-gradient(135deg,#1565c0,#006064);color:#fff;border:none;border-radius:14px;padding:13px;font-size:13px;font-weight:800;cursor:pointer;transition:all 0.3s;box-shadow:0 0 20px rgba(55,138,221,0.3);letter-spacing:0.04em;display:flex;align-items:center;justify-content:center;gap:8px;"
                   onmouseover="this.style.boxShadow='0 0 30px rgba(55,138,221,0.5)'" onmouseout="this.style.boxShadow='0 0 20px rgba(55,138,221,0.3)'">
-                  <i class="fas fa-file-signature"></i>Create Contract On-Chain
+                  <i class="fas fa-file-signature" id="cf-submit-icon"></i><span id="cf-submit-label">Create Contract On-Chain</span>
                 </button>
               </div>
 
@@ -3743,7 +3791,7 @@ app.get('/', (c) => {
   <script src="/static/receipt-viewer.js?v=20250323b"></script>
   <script src="/static/app.js?v=20250322"></script>
   <script src="/static/payments.js?v=20250323d"></script>
-  <script src="/static/contracts.js?v=20250323c"></script>
+  <script src="/static/contracts.js?v=20250324a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250322"></script>
@@ -3753,6 +3801,59 @@ app.get('/', (c) => {
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
   <script src="/static/chat.js?v=20250323b"></script>
+  <script>
+  <script>
+    // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
+    function cfUpdateModeUI(mode) {
+      // Sync hidden select
+      const sel = document.getElementById('cf-contract-mode');
+      if (sel) sel.value = mode;
+
+      // Update card visuals
+      document.querySelectorAll('.cf-mode-opt').forEach(function(el) {
+        const m = el.getAttribute('data-mode');
+        if (m === mode) {
+          if (m === 'onchain')   { el.style.border = '1px solid rgba(55,138,221,0.5)';  el.style.background = 'rgba(55,138,221,0.18)'; }
+          if (m === 'offchain')  { el.style.border = '1px solid rgba(251,191,36,0.5)';  el.style.background = 'rgba(251,191,36,0.15)'; }
+          if (m === 'custodial') { el.style.border = '1px solid rgba(167,139,250,0.5)'; el.style.background = 'rgba(167,139,250,0.15)'; }
+        } else {
+          if (m === 'onchain')   { el.style.border = '1px solid rgba(55,138,221,0.2)';  el.style.background = 'rgba(55,138,221,0.06)'; }
+          if (m === 'offchain')  { el.style.border = '1px solid rgba(251,191,36,0.2)';  el.style.background = 'rgba(251,191,36,0.06)'; }
+          if (m === 'custodial') { el.style.border = '1px solid rgba(167,139,250,0.2)'; el.style.background = 'rgba(167,139,250,0.06)'; }
+        }
+      });
+
+      // Update mode description
+      var desc = document.getElementById('cf-mode-desc');
+      var btn  = document.getElementById('cf-submit-btn');
+      var lbl  = document.getElementById('cf-submit-label');
+      var ico  = document.getElementById('cf-submit-icon');
+      var onchainNote = document.getElementById('cf-onchain-note');
+      var valueLabel  = document.querySelector('label[for="cf-value"]');
+
+      if (mode === 'onchain') {
+        if (desc) { desc.style.background = 'rgba(55,138,221,0.06)'; desc.style.borderColor = 'rgba(55,138,221,0.2)'; desc.style.color = '#60b4ff'; desc.innerHTML = '<i class="fas fa-info-circle mr-1"></i><strong>On-Chain Escrow:</strong> USDC bloqueado no smart contract. Fundos liberados via aprovação de milestone.'; }
+        if (btn)  { btn.style.background = 'linear-gradient(135deg,#1565c0,#006064)'; }
+        if (lbl)  lbl.textContent = 'Create Contract On-Chain';
+        if (ico)  ico.className = 'fas fa-file-signature';
+        if (onchainNote) onchainNote.style.display = '';
+      } else if (mode === 'offchain') {
+        if (desc) { desc.style.background = 'rgba(251,191,36,0.06)'; desc.style.borderColor = 'rgba(251,191,36,0.2)'; desc.style.color = '#fbbf24'; desc.innerHTML = '<i class="fas fa-info-circle mr-1"></i><strong>Off-Chain Payment:</strong> Registro de contrato sem escrow on-chain. Pagamento externo (PIX, TED, crypto). Serve como registro legal.'; }
+        if (btn)  { btn.style.background = 'linear-gradient(135deg,#92400e,#b45309)'; }
+        if (lbl)  lbl.textContent = 'Create Off-Chain Contract';
+        if (ico)  ico.className = 'fas fa-money-bill-wave';
+        if (onchainNote) onchainNote.style.display = 'none';
+      } else if (mode === 'custodial') {
+        if (desc) { desc.style.background = 'rgba(167,139,250,0.06)'; desc.style.borderColor = 'rgba(167,139,250,0.2)'; desc.style.color = '#a78bfa'; desc.innerHTML = '<i class="fas fa-info-circle mr-1"></i><strong>Custodial Escrow:</strong> Fundos gerenciados por terceiro. Referência de custódia registrada. Status: In Custody → Released → Disputed.'; }
+        if (btn)  { btn.style.background = 'linear-gradient(135deg,#4c1d95,#5b21b6)'; }
+        if (lbl)  lbl.textContent = 'Create Custodial Contract';
+        if (ico)  ico.className = 'fas fa-shield-alt';
+        if (onchainNote) onchainNote.style.display = 'none';
+      }
+    }
+    // Initialize on DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', function() { cfUpdateModeUI('onchain'); });
+  </script>
   <script>
     // ── Platform initialization ───────────────────────────────────────────────
     window.addEventListener('load', () => {
