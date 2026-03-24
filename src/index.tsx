@@ -3791,7 +3791,7 @@ app.get('/', (c) => {
   <script src="/static/receipt-viewer.js?v=20250323b"></script>
   <script src="/static/app.js?v=20250322"></script>
   <script src="/static/payments.js?v=20250323d"></script>
-  <script src="/static/contracts.js?v=20250324a"></script>
+  <script src="/static/contracts.js?v=20250324b"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250322"></script>

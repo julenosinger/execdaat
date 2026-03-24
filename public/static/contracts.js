@@ -876,7 +876,7 @@ function cfContractCard(c, wallet) {
           <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:${p.committed?'#34d399':'#a78bfa'};font-size:12px;flex-shrink:0;"></i>
           <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.name}">${p.name}</span>
           ${p.committed ? `<span style="font-size:9px;color:#34d399;flex-shrink:0;"><i class="fas fa-lock mr-1"></i>Committed</span>` : `<span style="font-size:9px;color:#fbbf24;flex-shrink:0;"><i class="fas fa-clock mr-1"></i>Pending</span>`}
-          <a href="${p.url}" target="_blank" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 6px;border-radius:6px;flex-shrink:0;">View</a>
+          <button onclick="cfViewProof(${c.id},${proofs.indexOf(p)})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:6px;cursor:pointer;flex-shrink:0;"><i class="fas fa-eye mr-1"></i>Ver</button>
           ${p.hash ? `<span style="font-size:9px;color:#3a4870;font-family:monospace;" title="SHA-256: ${p.hash}">${p.hash.slice(0,8)}…</span>` : ''}
         </div>`).join('')
         : `<p style="font-size:11px;color:#252a40;font-style:italic;padding:4px 0;">Nenhuma prova enviada ainda.</p>`}
@@ -1179,6 +1179,157 @@ async function cfExecuteProofUpload(contractId) {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i>Upload & Gerar Hash'; }
   }
 }
+
+// ─── Proof Viewer Modal ────────────────────────────────────────────────────────
+// Opens a full-screen modal to view an uploaded proof (image, PDF or download).
+function cfViewProof(contractId, proofIndex) {
+  const meta   = cfGetMeta(contractId);
+  const proofs = meta.proofs || [];
+  if (!proofs.length) { showToast('Nenhuma prova disponível.', 'warning'); return; }
+
+  let idx = (proofIndex != null && proofIndex >= 0 && proofIndex < proofs.length) ? proofIndex : 0;
+
+  document.getElementById('cf-proof-viewer-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'cf-proof-viewer-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.92);backdrop-filter:blur(4px);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:0;overflow:hidden;';
+
+  function buildContent(p) {
+    if (!p || !p.url) return `<div style="color:#f87171;font-size:14px;padding:40px;text-align:center;"><i class="fas fa-exclamation-circle" style="font-size:32px;display:block;margin-bottom:12px;"></i>Arquivo não disponível ou corrompido.</div>`;
+
+    const isImg = p.type === 'image' || (p.mimeType && p.mimeType.startsWith('image/')) || /^data:image\//i.test(p.url);
+    const isPdf = p.type === 'pdf' || p.mimeType === 'application/pdf' || /^data:application\/pdf/i.test(p.url);
+
+    if (isImg) {
+      return `<div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:16px;">
+        <img src="${p.url}" alt="${p.name}"
+          style="max-width:100%;max-height:calc(100vh - 140px);object-fit:contain;border-radius:10px;box-shadow:0 0 40px rgba(0,0,0,0.6);"
+          onerror="this.outerHTML='<div style=\\'color:#f87171;text-align:center;padding:40px;\\'><i class=\\"fas fa-image-slash\\" style=\\"font-size:40px;display:block;margin-bottom:12px;\\"></i>Não foi possível renderizar a imagem.</div>'" />
+      </div>`;
+    }
+
+    if (isPdf) {
+      return `<div style="flex:1;width:100%;padding:8px 16px 0;">
+        <iframe src="${p.url}" style="width:100%;height:calc(100vh - 140px);border:none;border-radius:10px;background:#fff;"
+          title="${p.name}" onerror="">
+        </iframe>
+        <div style="text-align:center;padding:8px;font-size:11px;color:#4a6490;">
+          Se o PDF não carregar, <button onclick="cfDownloadProof('${btoa(JSON.stringify({url:p.url,name:p.name}))}')" style="background:none;border:none;color:#a78bfa;cursor:pointer;font-size:11px;text-decoration:underline;">clique aqui para baixar</button>.
+        </div>
+      </div>`;
+    }
+
+    // Generic / Word / unknown — offer download
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">
+      <i class="fas fa-file-alt" style="font-size:56px;color:#a78bfa;margin-bottom:16px;"></i>
+      <p style="color:#dde2f0;font-size:15px;font-weight:700;margin-bottom:6px;">${p.name}</p>
+      <p style="color:#4a6490;font-size:12px;margin-bottom:20px;">${p.mimeType || 'Tipo desconhecido'} · ${p.size ? (p.size/1024).toFixed(0)+' KB' : ''}</p>
+      <button onclick="cfDownloadProofByUrl('${contractId}',${proofs.indexOf(p)})"
+        style="padding:11px 24px;background:linear-gradient(135deg,#6d28d9,#5b21b6);color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">
+        <i class="fas fa-download mr-2"></i>Baixar Arquivo
+      </button>
+    </div>`;
+  }
+
+  function render() {
+    const p = proofs[idx];
+    const committed = p?.committed;
+    const statusLabel = committed
+      ? `<span style="font-size:10px;color:#34d399;"><i class="fas fa-lock mr-1"></i>Committed</span>`
+      : `<span style="font-size:10px;color:#fbbf24;"><i class="fas fa-clock mr-1"></i>Pendente</span>`;
+    const hashShort = p?.hash ? p.hash.slice(0,16)+'…' : '';
+    const hashFull  = p?.hash || '';
+
+    modal.innerHTML = `
+      <!-- Header -->
+      <div style="width:100%;display:flex;align-items:center;gap:10px;padding:14px 20px;background:rgba(10,12,24,0.95);border-bottom:1px solid rgba(55,138,221,0.12);flex-shrink:0;">
+        <button onclick="document.getElementById('cf-proof-viewer-modal').remove()"
+          style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#f87171;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fas fa-times"></i>
+        </button>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p?.name || 'Arquivo'}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:2px;flex-wrap:wrap;">
+            ${statusLabel}
+            ${hashShort ? `<span style="font-size:9px;font-family:monospace;color:#3a4870;" title="SHA-256: ${hashFull}">${hashShort}</span>` : ''}
+            <span style="font-size:9px;color:#252a40;">${idx+1} / ${proofs.length}</span>
+          </div>
+        </div>
+        <!-- Navigation -->
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button onclick="cfViewProofNav(${contractId},${idx}-1)"
+            ${idx===0?'disabled':''} id="cf-pv-prev"
+            style="width:32px;height:32px;border-radius:8px;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);color:${idx===0?'#252a40':'#60b4ff'};cursor:${idx===0?'default':'pointer'};font-size:13px;display:flex;align-items:center;justify-content:center;">
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <button onclick="cfViewProofNav(${contractId},${idx}+1)"
+            ${idx===proofs.length-1?'disabled':''} id="cf-pv-next"
+            style="width:32px;height:32px;border-radius:8px;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);color:${idx===proofs.length-1?'#252a40':'#60b4ff'};cursor:${idx===proofs.length-1?'default':'pointer'};font-size:13px;display:flex;align-items:center;justify-content:center;">
+            <i class="fas fa-chevron-right"></i>
+          </button>
+          <button onclick="cfDownloadProofByUrl(${contractId},${idx})"
+            style="width:32px;height:32px;border-radius:8px;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);color:#a78bfa;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;" title="Baixar">
+            <i class="fas fa-download"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Thumbnail strip (when multiple proofs) -->
+      ${proofs.length > 1 ? `
+      <div style="width:100%;display:flex;gap:6px;padding:8px 20px;background:rgba(10,12,24,0.85);overflow-x:auto;flex-shrink:0;border-bottom:1px solid rgba(55,138,221,0.07);">
+        ${proofs.map((pp,ii) => {
+          const isImg2 = pp.type==='image'||(pp.mimeType&&pp.mimeType.startsWith('image/'))||/^data:image\//i.test(pp.url||'');
+          const thumb = isImg2 && pp.url
+            ? `<img src="${pp.url}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;">`
+            : `<i class="fas ${pp.type==='pdf'?'fa-file-pdf':'fa-file'}" style="font-size:20px;color:${pp.type==='pdf'?'#f87171':'#a78bfa'};"></i>`;
+          return `<button onclick="cfViewProofNav(${contractId},${ii})"
+            style="flex-shrink:0;width:52px;height:52px;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;
+              background:rgba(${ii===idx?'167,139,250':'55,138,221'},0.1);
+              border:2px solid rgba(${ii===idx?'167,139,250':'55,138,221'},${ii===idx?'0.6':'0.15'});
+              cursor:pointer;padding:0;">
+            ${thumb}
+          </button>`;
+        }).join('')}
+      </div>` : ''}
+
+      <!-- Content area -->
+      <div style="flex:1;width:100%;display:flex;flex-direction:column;overflow:auto;">
+        ${buildContent(p)}
+      </div>
+    `;
+  }
+
+  render();
+  document.body.appendChild(modal);
+
+  // Close on backdrop click (but not on content)
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+// Navigate within proof viewer
+window.cfViewProofNav = function(contractId, idxExpr) {
+  const meta   = cfGetMeta(contractId);
+  const proofs = meta.proofs || [];
+  const newIdx = Math.max(0, Math.min(proofs.length - 1, typeof idxExpr === 'number' ? idxExpr : eval(idxExpr)));
+  document.getElementById('cf-proof-viewer-modal')?.remove();
+  cfViewProof(contractId, newIdx);
+};
+
+// Download proof by contract id + index
+window.cfDownloadProofByUrl = function(contractId, proofIndex) {
+  const meta   = cfGetMeta(contractId);
+  const proofs = meta.proofs || [];
+  const p      = proofs[proofIndex];
+  if (!p || !p.url) { showToast('Arquivo não disponível para download.', 'error'); return; }
+  try {
+    const a = document.createElement('a');
+    a.href     = p.url;
+    a.download = p.name || `proof_${contractId}_${proofIndex}`;
+    a.click();
+  } catch(e) {
+    showToast('Erro ao baixar arquivo: ' + e.message, 'error');
+  }
+};
 
 // ─── Commit Proof (client action) ─────────────────────────────────────────────
 // Locks all uploaded proofs, marking them as committed.
@@ -2447,6 +2598,7 @@ window.cfState                = cfState;
 window.cfUiStatus             = cfUiStatus;
 window.loadContracts          = cfLoadContracts;
 window.cfRenderProofPreview   = cfRenderProofPreview;
+window.cfViewProof            = cfViewProof;
 window.cfUpdateNetworkBanner  = cfUpdateNetworkBanner;
 window.cfLogTx                = cfLogTx;
 window.cfGetSelectedMode      = cfGetSelectedMode;
