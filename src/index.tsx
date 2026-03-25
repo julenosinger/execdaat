@@ -9,6 +9,7 @@ import chatRouter from './routes/chat'
 import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
+import autonomousWalletRouter from './routes/autonomous-wallet'
 import { ARC_TESTNET } from './types/arc'
 import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 
@@ -98,6 +99,7 @@ app.route('/api/chat', chatRouter)
 app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
+app.route('/api/wallet', autonomousWalletRouter)
 
 // ─── Legal / Trust Pages ──────────────────────────────────────────────────────
 const LEGAL_STYLE = `
@@ -816,6 +818,9 @@ app.get('/', (c) => {
         </button>
         <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all">
           <i class="fas fa-info-circle mr-1 sm:mr-2"></i><span class="hidden sm:inline">Information</span><span class="sm:hidden text-xs">Info</span>
+        </button>
+        <button onclick="switchTab('autonomouswallet')" id="tab-autonomouswallet" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-green-400 transition-all">
+          <i class="fas fa-wallet mr-1 sm:mr-2" style="color:#4ade80"></i><span class="hidden sm:inline" style="color:#4ade80">Auto Wallet</span><span class="sm:hidden text-xs" style="color:#4ade80">Wallet</span>
         </button>
       </div>
     </div>
@@ -3178,6 +3183,344 @@ app.get('/', (c) => {
 
     <!-- ════════════════════════════════════════════════════════════════ -->
 
+    <!-- ══ AUTONOMOUS WALLET TAB ════════════════════════════════════════ -->
+    <div id="tab-content-autonomouswallet" class="tab-content hidden">
+      <style>
+        .aw-card { background:rgba(10,12,24,0.97); border:1px solid rgba(74,222,128,0.18); border-radius:18px; position:relative; overflow:hidden; }
+        .aw-card::after { content:''; position:absolute; top:0; left:0; right:0; height:1px; pointer-events:none; background:linear-gradient(90deg,transparent,rgba(74,222,128,0.6) 40%,rgba(16,185,129,0.5) 60%,transparent); }
+        .aw-input { background:rgba(255,255,255,0.06)!important; border:1px solid rgba(74,222,128,0.32)!important; border-radius:12px!important; color:#e8edf8!important; transition:all 0.2s; outline:none!important; }
+        .aw-input::placeholder { color:#6a85aa!important; }
+        .aw-input:focus { border-color:rgba(74,222,128,0.75)!important; box-shadow:0 0 0 3px rgba(74,222,128,0.14)!important; }
+        .aw-btn-green { background:linear-gradient(135deg,#059669,#10b981); border:none; border-radius:12px; color:#fff; font-weight:700; padding:10px 22px; cursor:pointer; transition:all 0.2s; font-size:13px; }
+        .aw-btn-green:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 6px 20px rgba(16,185,129,0.35); }
+        .aw-btn-green:disabled { opacity:0.45; cursor:not-allowed; transform:none; }
+        .aw-btn-outline { background:rgba(74,222,128,0.06); border:1px solid rgba(74,222,128,0.3); border-radius:10px; color:#4ade80; font-size:12px; padding:6px 14px; cursor:pointer; transition:all 0.2s; }
+        .aw-btn-outline:hover { background:rgba(74,222,128,0.14); }
+        .aw-label { font-size:10px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:#4ade80; display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+        .aw-badge-confirmed { background:rgba(16,185,129,0.12); color:#34d399; border:1px solid rgba(16,185,129,0.25); border-radius:20px; padding:2px 8px; font-size:10px; font-weight:700; }
+        .aw-badge-pending   { background:rgba(251,191,36,0.12);  color:#fbbf24; border:1px solid rgba(251,191,36,0.25); border-radius:20px; padding:2px 8px; font-size:10px; font-weight:700; }
+        .aw-badge-failed    { background:rgba(239,68,68,0.12);   color:#f87171; border:1px solid rgba(239,68,68,0.25);  border-radius:20px; padding:2px 8px; font-size:10px; font-weight:700; }
+        .aw-badge-blocked   { background:rgba(239,68,68,0.12);   color:#f87171; border:1px solid rgba(239,68,68,0.25);  border-radius:20px; padding:2px 8px; font-size:10px; font-weight:700; }
+        .aw-badge-simulated { background:rgba(96,165,250,0.12);  color:#60a5fa; border:1px solid rgba(96,165,250,0.25); border-radius:20px; padding:2px 8px; font-size:10px; font-weight:700; }
+        .aw-tx-card { background:rgba(74,222,128,0.03); border:1px solid rgba(74,222,128,0.1); border-radius:10px; padding:10px 14px; margin-bottom:6px; transition:border-color 0.2s; }
+        .aw-tx-card:hover { border-color:rgba(74,222,128,0.25); }
+        .aw-agent-card { background:rgba(10,14,26,0.9); border:1px solid rgba(74,222,128,0.15); border-radius:14px; padding:18px; transition:all 0.2s; }
+        .aw-agent-card:hover { border-color:rgba(74,222,128,0.35); box-shadow:0 4px 20px rgba(74,222,128,0.06); }
+        .aw-metric { background:rgba(74,222,128,0.05); border:1px solid rgba(74,222,128,0.12); border-radius:12px; padding:14px 16px; }
+        #aw-chat-messages { height:260px; overflow-y:auto; scroll-behavior:smooth; }
+        #aw-chat-messages::-webkit-scrollbar { width:4px; }
+        #aw-chat-messages::-webkit-scrollbar-track { background:transparent; }
+        #aw-chat-messages::-webkit-scrollbar-thumb { background:rgba(74,222,128,0.3); border-radius:2px; }
+        .aw-msg-user { background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:12px 12px 2px 12px; padding:8px 12px; margin:4px 0 4px 24px; font-size:12px; color:#d1fae5; }
+        .aw-msg-agent { background:rgba(16,185,129,0.05); border:1px solid rgba(16,185,129,0.15); border-radius:12px 12px 12px 2px; padding:8px 12px; margin:4px 24px 4px 0; font-size:12px; color:#a7f3d0; }
+        .aw-msg-system { text-align:center; font-size:10px; color:#6b7280; padding:4px 0; }
+        .aw-sign-preview { background:rgba(251,191,36,0.06); border:1px solid rgba(251,191,36,0.2); border-radius:12px; padding:14px; }
+        .aw-pill { display:inline-flex; align-items:center; gap:4px; background:rgba(74,222,128,0.08); border:1px solid rgba(74,222,128,0.2); border-radius:20px; padding:3px 10px; font-size:10px; color:#4ade80; font-weight:600; }
+      </style>
+
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+        <!-- ── LEFT COLUMN: Wallet card + balances + history ── -->
+        <div class="xl:col-span-2 space-y-6">
+
+          <!-- Wallet Identity Card -->
+          <div class="aw-card p-6">
+            <div class="flex items-start justify-between mb-5">
+              <div>
+                <h2 style="font-size:18px;font-weight:800;color:#4ade80;display:flex;align-items:center;gap:10px;">
+                  <i class="fas fa-wallet"></i> Autonomous Wallet
+                </h2>
+                <p style="font-size:11px;color:#6b9e80;margin-top:4px;">Real on-chain · Arc Testnet · All data live from RPC</p>
+              </div>
+              <div class="flex gap-2 flex-wrap justify-end">
+                <span class="aw-pill"><i class="fas fa-circle" style="font-size:7px;color:#4ade80;"></i>Live</span>
+                <span class="aw-pill"><i class="fas fa-lock" style="font-size:9px;"></i>AES-GCM</span>
+                <a href="https://faucet.circle.com" target="_blank" class="aw-btn-outline" style="font-size:10px;text-decoration:none;">
+                  <i class="fas fa-faucet"></i> Faucet
+                </a>
+              </div>
+            </div>
+
+            <!-- Wallet address display (connected or internal) -->
+            <div id="aw-identity-section">
+              <!-- Connected external wallet -->
+              <div id="aw-external-wallet" class="hidden">
+                <div class="aw-label"><i class="fas fa-link"></i>Connected Wallet</div>
+                <div style="display:flex;align-items:center;gap:10px;background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:12px 16px;">
+                  <i class="fas fa-wallet" style="color:#4ade80;font-size:20px;"></i>
+                  <div style="flex:1;min-width:0;">
+                    <div id="aw-ext-address" style="font-family:monospace;font-size:13px;color:#d1fae5;word-break:break-all;"></div>
+                    <div style="font-size:10px;color:#6b9e80;margin-top:2px;">Arc Testnet · via MetaMask / EIP-1193</div>
+                  </div>
+                  <button onclick="awCopyAddress()" class="aw-btn-outline" style="flex-shrink:0;"><i class="fas fa-copy"></i></button>
+                </div>
+              </div>
+
+              <!-- Internal generated wallet -->
+              <div id="aw-internal-wallet">
+                <div class="aw-label"><i class="fas fa-shield-alt"></i>Internal Autonomous Wallet</div>
+                <div id="aw-no-wallet-prompt" style="text-align:center;padding:28px 0;">
+                  <i class="fas fa-plus-circle" style="font-size:32px;color:#4ade80;opacity:0.5;margin-bottom:12px;display:block;"></i>
+                  <p style="color:#6b9e80;font-size:12px;margin-bottom:16px;">Generate a new encrypted wallet for autonomous agent use</p>
+                  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+                    <button onclick="awCreateInternalWallet()" class="aw-btn-green"><i class="fas fa-plus mr-2"></i>Generate Wallet</button>
+                    <button onclick="awLoadInternalWallet()" class="aw-btn-outline"><i class="fas fa-upload mr-1"></i>Load Session</button>
+                  </div>
+                </div>
+                <div id="aw-wallet-display" class="hidden">
+                  <div style="display:flex;align-items:center;gap:10px;background:rgba(74,222,128,0.05);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:12px 16px;">
+                    <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#059669,#4ade80);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;color:#fff;font-weight:800;" id="aw-avatar">AW</div>
+                    <div style="flex:1;min-width:0;">
+                      <div id="aw-int-address" style="font-family:monospace;font-size:12px;color:#d1fae5;word-break:break-all;"></div>
+                      <div id="aw-int-label" style="font-size:10px;color:#4ade80;margin-top:2px;font-weight:600;"></div>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-shrink:0;">
+                      <button onclick="awCopyAddress('internal')" class="aw-btn-outline" title="Copy address"><i class="fas fa-copy"></i></button>
+                      <a id="aw-explorer-link" href="#" target="_blank" class="aw-btn-outline" title="View on ArcScan"><i class="fas fa-external-link-alt"></i></a>
+                    </div>
+                  </div>
+                  <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">
+                    <span id="aw-session-badge" class="aw-pill" style="font-size:9px;"></span>
+                    <span class="aw-pill" style="color:#fbbf24;border-color:rgba(251,191,36,0.3);background:rgba(251,191,36,0.06);font-size:9px;"><i class="fas fa-exclamation-triangle"></i>Fund via faucet before use</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Real-time Balances -->
+          <div class="aw-card p-6">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+              <h3 style="font-size:14px;font-weight:700;color:#d1fae5;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-coins" style="color:#4ade80;"></i>Real-Time Balances
+              </h3>
+              <button onclick="awRefreshBalances()" id="aw-refresh-btn" class="aw-btn-outline">
+                <i class="fas fa-sync" id="aw-refresh-icon"></i> Refresh
+              </button>
+            </div>
+            <div id="aw-balances-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="aw-metric">
+                <div style="font-size:10px;color:#6b9e80;margin-bottom:4px;">USDC</div>
+                <div id="aw-bal-usdc" style="font-size:18px;font-weight:800;color:#4ade80;">—</div>
+                <div style="font-size:9px;color:#4b5563;margin-top:2px;">Gas token</div>
+              </div>
+              <div class="aw-metric">
+                <div style="font-size:10px;color:#6b9e80;margin-bottom:4px;">EURC</div>
+                <div id="aw-bal-eurc" style="font-size:18px;font-weight:800;color:#60a5fa;">—</div>
+                <div style="font-size:9px;color:#4b5563;margin-top:2px;">Euro Coin</div>
+              </div>
+              <div class="aw-metric">
+                <div style="font-size:10px;color:#6b9e80;margin-bottom:4px;">LP Tokens</div>
+                <div id="aw-bal-lp" style="font-size:18px;font-weight:800;color:#a78bfa;">—</div>
+                <div style="font-size:9px;color:#4b5563;margin-top:2px;">Pool share</div>
+              </div>
+              <div class="aw-metric">
+                <div style="font-size:10px;color:#6b9e80;margin-bottom:4px;">Portfolio</div>
+                <div id="aw-bal-total" style="font-size:18px;font-weight:800;color:#fbbf24;">$—</div>
+                <div style="font-size:9px;color:#4b5563;margin-top:2px;">Total USD est.</div>
+              </div>
+            </div>
+            <div id="aw-balance-error" class="hidden" style="margin-top:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:8px 12px;font-size:11px;color:#f87171;"></div>
+          </div>
+
+          <!-- Transaction History (real from eth_getLogs) -->
+          <div class="aw-card p-6">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+              <h3 style="font-size:14px;font-weight:700;color:#d1fae5;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-list-alt" style="color:#4ade80;"></i>On-Chain Transaction History
+              </h3>
+              <div style="display:flex;gap:6px;">
+                <select id="aw-hist-token" onchange="awLoadHistory()" class="aw-input" style="font-size:11px;padding:4px 8px;width:80px;">
+                  <option value="USDC">USDC</option>
+                  <option value="EURC">EURC</option>
+                </select>
+                <button onclick="awLoadHistory()" class="aw-btn-outline"><i class="fas fa-sync"></i></button>
+              </div>
+            </div>
+            <div id="aw-history-list">
+              <div style="text-align:center;color:#4b5563;padding:28px 0;font-size:12px;">
+                <i class="fas fa-chain" style="font-size:22px;display:block;margin-bottom:8px;color:#374151;"></i>
+                Connect wallet or generate internal wallet to view on-chain history
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Agent Chat -->
+          <div class="aw-card p-6">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <h3 style="font-size:14px;font-weight:700;color:#d1fae5;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-robot" style="color:#4ade80;"></i>AI Agent — Natural Language Execution
+              </h3>
+              <span class="aw-pill" style="font-size:9px;">Real tx · No mock</span>
+            </div>
+
+            <div id="aw-chat-messages" style="border:1px solid rgba(74,222,128,0.1);border-radius:12px;padding:12px;background:rgba(0,0,0,0.3);margin-bottom:12px;">
+              <div class="aw-msg-system">Agent ready — type a command or ask for balance</div>
+              <div class="aw-msg-agent">
+                👋 I'm your Autonomous Wallet Agent. I can:<br>
+                • <code style="color:#4ade80;">send 10 USDC to 0x...</code><br>
+                • <code style="color:#4ade80;">swap 5 EURC to USDC</code><br>
+                • <code style="color:#4ade80;">balance</code> or <code style="color:#4ade80;">history</code><br>
+                All actions are simulated first, then you sign on-chain.
+              </div>
+            </div>
+
+            <!-- Sign confirmation panel (hidden until agent returns unsignedTx) -->
+            <div id="aw-sign-panel" class="hidden aw-sign-preview" style="margin-bottom:12px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <i class="fas fa-exclamation-triangle" style="color:#fbbf24;"></i>
+                <span style="font-size:12px;font-weight:700;color:#fbbf24;">Transaction Ready — Sign to Execute</span>
+              </div>
+              <div id="aw-sign-details" style="font-size:11px;color:#9ca3af;margin-bottom:10px;"></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onclick="awSignAndSend()" class="aw-btn-green" id="aw-sign-btn"><i class="fas fa-signature mr-1"></i>Sign & Send</button>
+                <button onclick="awCancelSign()" class="aw-btn-outline" style="color:#f87171;border-color:rgba(239,68,68,0.3);"><i class="fas fa-times mr-1"></i>Cancel</button>
+              </div>
+            </div>
+
+            <div style="display:flex;gap-8px;gap:8px;">
+              <input id="aw-chat-input" type="text" class="aw-input" style="flex:1;padding:10px 14px;font-size:13px;"
+                placeholder='e.g. "send 5 USDC to 0x..." or "swap 3 EURC"'
+                onkeydown="if(event.key==='Enter')awAgentSend()" />
+              <button onclick="awAgentSend()" id="aw-chat-send-btn" class="aw-btn-green" style="min-width:70px;">
+                <i class="fas fa-paper-plane"></i>
+              </button>
+            </div>
+            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+              <button onclick="awQuickCmd('balance')" class="aw-btn-outline" style="font-size:10px;">💰 Balance</button>
+              <button onclick="awQuickCmd('history')" class="aw-btn-outline" style="font-size:10px;">📋 History</button>
+              <button onclick="awQuickCmd('swap 5 EURC to USDC')" class="aw-btn-outline" style="font-size:10px;">🔄 Swap EURC</button>
+              <button onclick="awQuickCmd('swap 5 USDC to EURC')" class="aw-btn-outline" style="font-size:10px;">🔄 Swap USDC</button>
+            </div>
+          </div>
+
+        </div><!-- end left col -->
+
+        <!-- ── RIGHT COLUMN: Agents + Network + Logs ── -->
+        <div class="space-y-6">
+
+          <!-- Network Status (live) -->
+          <div class="aw-card p-5">
+            <h3 style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-network-wired"></i>Network Status
+            </h3>
+            <div class="space-y-2">
+              <div style="display:flex;justify-content:space-between;font-size:11px;">
+                <span style="color:#6b9e80;">Network</span><span style="color:#d1fae5;font-weight:600;">Arc Testnet</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;">
+                <span style="color:#6b9e80;">Chain ID</span><span style="color:#d1fae5;font-family:monospace;">5042002</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;">
+                <span style="color:#6b9e80;">Block</span><span id="aw-block-num" style="color:#4ade80;font-family:monospace;font-weight:700;">—</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;">
+                <span style="color:#6b9e80;">Gas Price</span><span id="aw-gas-price" style="color:#fbbf24;font-family:monospace;">—</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;">
+                <span style="color:#6b9e80;">TX Cost ~</span><span id="aw-tx-cost" style="color:#a7f3d0;font-family:monospace;">—</span>
+              </div>
+              <div style="border-top:1px solid rgba(74,222,128,0.1);margin:8px 0;"></div>
+              <div style="font-size:10px;color:#6b7280;">Contracts</div>
+              <div style="font-size:9px;font-family:monospace;">
+                <div style="color:#6b9e80;">USDC: <a href="https://testnet.arcscan.app/address/0x3600000000000000000000000000000000000000" target="_blank" style="color:#4ade80;">0x3600…0000</a></div>
+                <div style="color:#6b9e80;margin-top:2px;">EURC: <a href="https://testnet.arcscan.app/address/0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a" target="_blank" style="color:#4ade80;">0x89B5…72a</a></div>
+                <div style="color:#6b9e80;margin-top:2px;">AMM: <a href="https://testnet.arcscan.app/address/0x3148E2807F172D1cC354F35fB4fC4104e8b6b561" target="_blank" style="color:#4ade80;">0x3148…561</a></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Agents Hub -->
+          <div class="aw-card p-5">
+            <h3 style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-robot"></i>AI Agents
+            </h3>
+            <div class="space-y-3">
+
+              <!-- Pay Agent -->
+              <div class="aw-agent-card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span style="font-size:12px;font-weight:700;color:#4ade80;"><i class="fas fa-dollar-sign mr-1"></i>Pay Agent</span>
+                  <span class="aw-badge-confirmed">Active</span>
+                </div>
+                <p style="font-size:10px;color:#6b9e80;margin-bottom:8px;">Sends real USDC/EURC transfers with simulation + guardian check.</p>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <input id="aw-pay-to" type="text" class="aw-input" style="flex:1;min-width:120px;padding:6px 10px;font-size:10px;" placeholder="0x recipient" />
+                  <input id="aw-pay-amount" type="number" class="aw-input" style="width:70px;padding:6px 8px;font-size:10px;" placeholder="Amt" min="0.01" step="0.01" />
+                  <select id="aw-pay-token" class="aw-input" style="width:70px;padding:6px 8px;font-size:10px;">
+                    <option>USDC</option><option>EURC</option>
+                  </select>
+                </div>
+                <button onclick="awPayAgent()" class="aw-btn-green" style="width:100%;margin-top:8px;padding:8px;" id="aw-pay-btn">
+                  <i class="fas fa-paper-plane mr-1"></i>Simulate & Send
+                </button>
+              </div>
+
+              <!-- Swap Agent -->
+              <div class="aw-agent-card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span style="font-size:12px;font-weight:700;color:#60a5fa;"><i class="fas fa-exchange-alt mr-1"></i>Swap Agent</span>
+                  <span class="aw-badge-confirmed">Active</span>
+                </div>
+                <p style="font-size:10px;color:#6b9e80;margin-bottom:8px;">Routes to SimpleAMM for real token swaps with live quote.</p>
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <input id="aw-swap-amt" type="number" class="aw-input" style="flex:1;padding:6px 8px;font-size:10px;" placeholder="Amount" min="0.01" step="0.01" />
+                  <select id="aw-swap-from" class="aw-input" style="width:70px;padding:6px 8px;font-size:10px;">
+                    <option value="EURC">EURC</option><option value="USDC">USDC</option>
+                  </select>
+                  <i class="fas fa-arrow-right" style="color:#6b7280;font-size:10px;"></i>
+                  <span id="aw-swap-to-label" style="font-size:10px;color:#4ade80;font-weight:700;min-width:36px;">USDC</span>
+                </div>
+                <div id="aw-swap-quote-preview" style="margin-top:6px;font-size:10px;color:#6b9e80;min-height:16px;"></div>
+                <button onclick="awSwapAgent()" class="aw-btn-green" style="width:100%;margin-top:8px;padding:8px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);" id="aw-swap-btn">
+                  <i class="fas fa-exchange-alt mr-1"></i>Get Quote & Swap
+                </button>
+              </div>
+
+              <!-- Guardian Agent -->
+              <div class="aw-agent-card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span style="font-size:12px;font-weight:700;color:#f87171;"><i class="fas fa-shield-alt mr-1"></i>Guardian Agent</span>
+                  <span class="aw-badge-confirmed">Active</span>
+                </div>
+                <p style="font-size:10px;color:#6b9e80;margin-bottom:8px;">Simulates any tx before execution · blocks risky operations.</p>
+                <div id="aw-guardian-result" style="font-size:10px;color:#9ca3af;background:rgba(0,0,0,0.2);border-radius:8px;padding:8px;min-height:32px;">Guardian ready — all Pay/Swap ops pass through here.</div>
+              </div>
+
+              <!-- Yield Agent -->
+              <div class="aw-agent-card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span style="font-size:12px;font-weight:700;color:#fbbf24;"><i class="fas fa-seedling mr-1"></i>Yield Agent</span>
+                  <span class="aw-badge-simulated">LP Only</span>
+                </div>
+                <p style="font-size:10px;color:#6b9e80;margin-bottom:8px;">Add/remove liquidity from SimpleAMM · track LP position.</p>
+                <div id="aw-yield-info" style="font-size:10px;color:#9ca3af;">
+                  Pool: <span id="aw-pool-ra" style="color:#4ade80;">—</span> EURC / <span id="aw-pool-rb" style="color:#60a5fa;">—</span> USDC · 0.3% fee
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Agent Execution Logs -->
+          <div class="aw-card p-5">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <h3 style="font-size:13px;font-weight:700;color:#4ade80;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-terminal"></i>Agent Logs
+              </h3>
+              <button onclick="awLoadAgentLogs()" class="aw-btn-outline" style="font-size:10px;"><i class="fas fa-sync"></i></button>
+            </div>
+            <div id="aw-agent-logs" style="max-height:280px;overflow-y:auto;">
+              <div style="text-align:center;color:#4b5563;padding:20px 0;font-size:11px;">No agent actions yet</div>
+            </div>
+          </div>
+
+        </div><!-- end right col -->
+      </div><!-- end grid -->
+    </div><!-- end tab-content-autonomouswallet -->
+
+    <!-- ════════════════════════════════════════════════════════════════ -->
+
 
   </main>
 
@@ -3818,7 +4161,7 @@ app.get('/', (c) => {
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.js?v=20250323"></script>
   <script src="/static/receipt-viewer.js?v=20250323b"></script>
-  <script src="/static/app.js?v=20250325c"></script>
+  <script src="/static/app.js?v=20250325d"></script>
   <script src="/static/payments.js?v=20250325c"></script>
   <script src="/static/contracts.js?v=20250325a"></script>
   <script src="/static/settings.js?v=20250322"></script>
@@ -3830,7 +4173,7 @@ app.get('/', (c) => {
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
   <script src="/static/chat.js?v=20250325a"></script>
-  <script>
+  <script src="/static/autonomous-wallet.js?v=20250325a"></script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
     function cfUpdateModeUI(mode) {

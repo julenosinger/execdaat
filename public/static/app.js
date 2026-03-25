@@ -46,7 +46,11 @@ function switchTab(tab) {
   if (tabBtn) {
     tabBtn.classList.add('active');
     tabBtn.classList.remove('border-transparent', 'text-gray-400');
-    tabBtn.classList.add('border-purple-500', 'text-purple-400');
+    if (tab === 'autonomouswallet') {
+      tabBtn.classList.add('border-green-500', 'text-green-400');
+    } else {
+      tabBtn.classList.add('border-purple-500', 'text-purple-400');
+    }
   }
   
   currentTab = tab;
@@ -85,6 +89,9 @@ function switchTab(tab) {
   }
   if (tab === 'history') {
     if (window.historyInit) window.historyInit();
+  }
+  if (tab === 'autonomouswallet') {
+    if (window.awInit) window.awInit();
   }
 }
 
@@ -779,6 +786,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (msGate) msGate.classList.add('hidden');
 
     addLog(`[WALLET] ✅ ${shortAddress} conectada${onArcNetwork ? ' na Arc Testnet' : ' (rede incorreta)'}`, 'success');
+
+    // Trigger autonomous wallet refresh if on that tab
+    if (currentTab === 'autonomouswallet' && window.awInit) window.awInit();
   });
 
   // Ouvir evento de wallet desconectada
