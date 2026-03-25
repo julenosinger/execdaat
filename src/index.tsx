@@ -2659,8 +2659,44 @@ app.get('/', (c) => {
       </div>
     </div>
 
-    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->
+    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->
     <div id="tab-content-dex" class="tab-content hidden">
+
+      <!-- DEX animation styles -->
+      <style>
+        /* Pool-status slide-in / slide-out */
+        #dex-pool-col {
+          transition: opacity 0.28s ease, transform 0.28s ease;
+        }
+        #dex-pool-col.amm-pool-hidden {
+          opacity: 0;
+          transform: translateX(18px);
+          pointer-events: none;
+        }
+        #dex-pool-col.amm-pool-visible {
+          opacity: 1;
+          transform: translateX(0);
+          pointer-events: auto;
+        }
+        /* Swap card stays fixed width; centres when pool is hidden */
+        #dex-swap-col {
+          transition: max-width 0.28s ease;
+        }
+        /* Centred layout wrapper (swap-only mode) */
+        #dex-swap-center {
+          display: flex;
+          justify-content: center;
+        }
+        /* When liquidity mode: remove centring, let grid take over */
+        #dex-swap-center.amm-liq-mode {
+          display: block;
+        }
+        /* Inner swap column always fixed at 480px max */
+        #dex-swap-inner {
+          width: 100%;
+          max-width: 480px;
+        }
+      </style>
 
       <!-- ── Page Header ─────────────────────────────────────────────────────── -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -2699,24 +2735,26 @@ app.get('/', (c) => {
         <a href="/about" class="ml-auto text-blue-400 hover:text-blue-300 underline whitespace-nowrap">Learn more ↗</a>
       </div>
 
-      <!-- ── Main 2-column layout ────────────────────────────────────────────── -->
-      <div id="dex-main-grid" class="grid grid-cols-1 gap-5 items-start">
-        <style>@media(min-width:1280px){#dex-main-grid{grid-template-columns:minmax(0,1.6fr) minmax(0,2fr);}}</style>
+      <!-- ── Outer wrapper: swap-center or liq 2-col grid ─────────────────────── -->
+      <div id="dex-swap-center">
 
-        <!-- LEFT — Swap / Liquidity tabs -->
-        <div class="space-y-4">
+        <!-- Inner swap column (fixed max-width, never resizes) -->
+        <div id="dex-swap-inner">
 
-          <!-- Tab switcher -->
-          <div class="flex gap-1.5 bg-gray-900/70 border border-gray-700/40 rounded-2xl p-1.5">
-            <button id="amm-tab-swap" onclick="ammSwitchTab('swap')"
-              class="flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/30 transition-all">
-              <i class="fas fa-exchange-alt mr-1.5"></i>Swap
-            </button>
-            <button id="amm-tab-liquidity" onclick="ammSwitchTab('liquidity')"
-              class="flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all">
-              <i class="fas fa-tint mr-1.5"></i>Liquidity
-            </button>
-          </div>
+          <!-- LEFT — Swap / Liquidity tabs (lives inside swap-inner so it never shifts) -->
+          <div class="space-y-4">
+
+            <!-- Tab switcher -->
+            <div class="flex gap-1.5 bg-gray-900/70 border border-gray-700/40 rounded-2xl p-1.5">
+              <button id="amm-tab-swap" onclick="ammSwitchTab('swap')"
+                class="flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/30 transition-all">
+                <i class="fas fa-exchange-alt mr-1.5"></i>Swap
+              </button>
+              <button id="amm-tab-liquidity" onclick="ammSwitchTab('liquidity')"
+                class="flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all">
+                <i class="fas fa-tint mr-1.5"></i>Liquidity
+              </button>
+            </div>
 
           <!-- ══ SWAP PANEL ═══════════════════════════════════════════════════ -->
           <div id="amm-panel-swap">
@@ -3012,10 +3050,11 @@ app.get('/', (c) => {
 
           </div><!-- end liquidity panel -->
 
-        </div><!-- end LEFT col -->
+          </div><!-- end space-y-4 tabs/panels -->
+        </div><!-- end dex-swap-inner -->
 
-        <!-- RIGHT — Pool Status sidebar -->
-        <div class="space-y-4">
+        <!-- RIGHT — Pool Status sidebar (hidden in swap mode, revealed in liq mode) -->
+        <div id="dex-pool-col" class="space-y-4 amm-pool-hidden">
 
           <!-- Pool Stats Card -->
           <div class="bg-gray-900/80 border border-cyan-700/20 rounded-2xl overflow-hidden shadow-xl">
@@ -3190,9 +3229,9 @@ app.get('/', (c) => {
             </div>
           </div>
 
-        </div><!-- end RIGHT col -->
+        </div><!-- end dex-pool-col -->
 
-      </div><!-- end grid -->
+      </div><!-- end dex-swap-center -->
 
     <!-- ════════════════════════════════════════════════════════════════ -->
 

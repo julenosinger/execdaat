@@ -423,20 +423,82 @@ function ammUpdateSwapBtn() {
 // ─── Tab switch ───────────────────────────────────────────────────────────────
 window.ammSwitchTab = function(tab) {
   ammState.tab = tab;
-  ['swap','liquidity'].forEach(t => {
-    const btn    = $('amm-tab-' + t);
-    const panel  = $('amm-panel-' + t);
+  const isLiq = tab === 'liquidity';
+
+  // ── 1. Tab button active/inactive styles ────────────────────────────────────
+  ['swap', 'liquidity'].forEach(t => {
+    const btn   = $('amm-tab-' + t);
+    const panel = $('amm-panel-' + t);
     if (btn) {
-      if (t === tab) {
-        btn.className = 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/30 transition-all';
-      } else {
-        btn.className = 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all';
-      }
+      btn.className = t === tab
+        ? 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/30 transition-all'
+        : 'flex-1 py-2.5 px-4 text-sm font-semibold rounded-xl text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all';
     }
-    if (panel) {
-      panel.classList.toggle('hidden', t !== tab);
-    }
+    if (panel) panel.classList.toggle('hidden', t !== tab);
   });
+
+  // ── 2. Pool column: show on liquidity, hide on swap ─────────────────────────
+  const poolCol    = $('dex-pool-col');
+  const swapCenter = $('dex-swap-center');
+  const swapInner  = $('dex-swap-inner');
+
+  if (isLiq) {
+    // Switch wrapper to a 2-col grid layout
+    if (swapCenter) {
+      swapCenter.classList.add('amm-liq-mode');
+      swapCenter.style.display      = 'grid';
+      swapCenter.style.gap          = '20px';
+      swapCenter.style.alignItems   = 'start';
+      // Responsive: 1 col on mobile, 2 cols on ≥1024px
+      swapCenter.style.gridTemplateColumns = window.innerWidth >= 1024
+        ? 'minmax(0,1fr) minmax(0,1.4fr)'
+        : '1fr';
+    }
+    // Swap inner: fill available column width, max 480 preserved
+    if (swapInner) swapInner.style.maxWidth = '480px';
+
+    // Reveal pool col with slide-in
+    if (poolCol) {
+      poolCol.style.display = '';      // make visible in DOM flow
+      // Force reflow so the transition fires
+      void poolCol.offsetWidth;
+      poolCol.classList.remove('amm-pool-hidden');
+      poolCol.classList.add('amm-pool-visible');
+    }
+  } else {
+    // Hide pool col first (slide-out), then collapse
+    if (poolCol) {
+      poolCol.classList.remove('amm-pool-visible');
+      poolCol.classList.add('amm-pool-hidden');
+      // After transition ends, remove from flow by collapsing display
+      // Keep display:'' so CSS opacity/transform can still animate
+    }
+
+    // Revert wrapper to centred flex
+    if (swapCenter) {
+      swapCenter.classList.remove('amm-liq-mode');
+      swapCenter.style.display             = 'flex';
+      swapCenter.style.justifyContent      = 'center';
+      swapCenter.style.gridTemplateColumns = '';
+      swapCenter.style.gap                 = '';
+      swapCenter.style.alignItems          = '';
+    }
+    if (swapInner) swapInner.style.maxWidth = '480px';
+  }
+
+  // ── 3. Responsive re-check on window resize ─────────────────────────────────
+  if (!window._ammResizeHandler) {
+    window._ammResizeHandler = function() {
+      if (ammState.tab !== 'liquidity') return;
+      const sc = $('dex-swap-center');
+      if (sc && sc.style.display === 'grid') {
+        sc.style.gridTemplateColumns = window.innerWidth >= 1024
+          ? 'minmax(0,1fr) minmax(0,1.4fr)'
+          : '1fr';
+      }
+    };
+    window.addEventListener('resize', window._ammResizeHandler);
+  }
 };
 
 // ─── Swap direction flip ───────────────────────────────────────────────────────
@@ -936,8 +998,11 @@ async function ammInit() {
   // Initial fetch
   await ammRefreshAll();
 
-  // Default tab
+  // Default tab — swap mode (centred, pool col hidden)
   ammSwitchTab('swap');
+  // Ensure pool col starts completely off-screen (not just opacity=0)
+  const poolCol = $('dex-pool-col');
+  if (poolCol) poolCol.style.display = '';
 
   // Auto-refresh every 15s
   setInterval(ammRefreshAll, 15_000);
