@@ -1513,16 +1513,23 @@ app.get('/', (c) => {
         <div id="pay-right-col">
 
           <!-- History panel -->
-          <div class="pay-side-panel">
+          <div class="pay-side-panel" id="pay-history-panel">
             <div class="pay-side-hdr">
               <span style="color:#dde2f0;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">
                 <i class="fas fa-history" style="color:#378ADD;"></i> Transaction History
               </span>
-              <button onclick="refreshPaymentBalances();renderPaymentHistory()"
-                style="font-size:10px;color:#8aaac8;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.5)'" onmouseout="this.style.color='#8aaac8';this.style.borderColor='rgba(55,138,221,0.28)'">
-                <i class="fas fa-sync" style="font-size:9px;"></i> Refresh
-              </button>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <button onclick="refreshPaymentBalances();renderPaymentHistory()"
+                  style="font-size:10px;color:#8aaac8;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+                  onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.5)'" onmouseout="this.style.color='#8aaac8';this.style.borderColor='rgba(55,138,221,0.28)'">
+                  <i class="fas fa-sync" style="font-size:9px;"></i> Refresh
+                </button>
+                <button onclick="(function(p){p.style.transition='opacity 0.2s ease,transform 0.2s ease';p.style.opacity='0';p.style.transform='translateY(-6px)';setTimeout(()=>{p.style.display='none';p.style.opacity='';p.style.transform='';},200);})(document.getElementById('pay-history-panel'))"
+                  title="Close history"
+                  style="width:24px;height:24px;border-radius:6px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
             </div>
             <div id="pay-history-list" style="padding:12px;display:flex;flex-direction:column;gap:6px;">
               <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
@@ -2148,7 +2155,13 @@ app.get('/', (c) => {
               <i class="fas fa-receipt text-green-400 text-base"></i>
               Batch Receipts
             </h3>
-            <span class="text-xs text-gray-500" id="ms-receipts-count">0 receipts</span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-500" id="ms-receipts-count">0 receipts</span>
+              <button onclick="msOpenHybridHistory()"
+                class="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-cyan-900/20 border border-cyan-700/30 text-cyan-400 hover:text-cyan-300 rounded-xl transition font-semibold">
+                <i class="fas fa-history text-xs"></i>Full History
+              </button>
+            </div>
           </div>
           <div id="ms-receipts-list">
             <div class="flex flex-col items-center gap-3 py-10 text-center text-gray-600">
@@ -2578,6 +2591,10 @@ app.get('/', (c) => {
             <button onclick="if(window.historyInit) window.historyInit()"
               class="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-600/40 rounded-lg px-3 py-1.5 transition">
               <i class="fas fa-sync text-[10px]"></i>Refresh
+            </button>
+            <button onclick="switchTab(window._historyPrevTab||'dashboard')" title="Close History"
+              class="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 bg-red-900/10 hover:bg-red-900/20 border border-red-800/30 rounded-lg px-3 py-1.5 transition">
+              <i class="fas fa-times text-[11px]"></i>Close
             </button>
           </div>
         </div>

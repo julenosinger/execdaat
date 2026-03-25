@@ -896,6 +896,11 @@ function cfContractCard(c, wallet) {
     if (uiStatus === 'Completed' || (mode !== 'onchain' && isCommitted))
       actionBtns += `<button onclick="cfOpenReceipt(${c.id})" class="cf-action-btn cf-btn-receipt"><i class="fas fa-eye mr-1.5"></i>View Receipt</button>`;
 
+    // View On-Chain Proofs — always available for any participant or observer
+    actionBtns += `<button onclick="cfViewOnChainProofs(${c.id})" class="cf-action-btn" style="background:rgba(16,185,129,0.09);border:1px solid rgba(16,185,129,0.28);color:#34d399;">
+      <i class="fas fa-search-plus mr-1.5"></i>View Proofs
+    </button>`;
+
     // Close Contract — only when Completed and participant, dispute resolved or none
     if ((uiStatus === 'Completed' || disputeStat === 'resolved') && isParticipant && !isClosed)
       actionBtns += `<button onclick="cfCloseContract(${c.id})" class="cf-action-btn" style="background:rgba(74,85,104,0.12);border:1px solid rgba(74,85,104,0.3);color:#9ca3af;">
@@ -1468,6 +1473,427 @@ window.cfDownloadProofByUrl = function(contractId, proofIndex) {
     a.click();
   } catch(e) {
     showToast('Erro ao baixar arquivo: ' + e.message, 'error');
+  }
+};
+
+// ─── View On-Chain Proofs Modal ────────────────────────────────────────────────
+// Fetches real ARC Testnet data: TX hash, contract address, event logs,
+// stored on-chain state, and local proof metadata — all in one modal.
+// No mock data — everything is fetched via RPC from Arc Testnet.
+window.cfViewOnChainProofs = async function(contractId) {
+  document.getElementById('cf-onchain-proofs-modal')?.remove();
+
+  // ── Build skeleton modal immediately ──────────────────────────────────────
+  const modal = document.createElement('div');
+  modal.id = 'cf-onchain-proofs-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.88);backdrop-filter:blur(6px);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;';
+
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#0a0c18;border:1px solid rgba(16,185,129,0.3);border-radius:20px;width:100%;max-width:700px;margin:auto;overflow:hidden;box-shadow:0 0 60px rgba(16,185,129,0.1);';
+  card.innerHTML = `
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;background:rgba(16,185,129,0.05);border-bottom:1px solid rgba(16,185,129,0.15);">
+      <div style="width:36px;height:36px;border-radius:10px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-search-plus" style="color:#34d399;font-size:14px;"></i>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:14px;font-weight:800;color:#dde2f0;">On-Chain Proofs & Verification</div>
+        <div style="font-size:11px;color:#4a6490;">Contract #${contractId} · ARC Testnet · Chain ID 5042002</div>
+      </div>
+      <button onclick="document.getElementById('cf-onchain-proofs-modal').remove()"
+        style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#f87171;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <!-- Body -->
+    <div id="cf-ocp-body" style="padding:20px;">
+      <div style="text-align:center;padding:32px;color:#4a6490;">
+        <i class="fas fa-spinner fa-spin" style="font-size:24px;color:#34d399;display:block;margin-bottom:12px;"></i>
+        Fetching on-chain data from Arc Testnet…
+      </div>
+    </div>`;
+
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  const body = document.getElementById('cf-ocp-body');
+
+  // ── Helper: copy to clipboard ──────────────────────────────────────────────
+  window._cfCopy = function(text) {
+    navigator.clipboard?.writeText(text).then(() => showToast('Copied!', 'success')).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); showToast('Copied!', 'success'); } catch (_) {}
+      document.body.removeChild(ta);
+    });
+  };
+
+  const copyBtn = (val, label) => `<button onclick="_cfCopy('${val}')" title="Copy ${label}"
+    style="width:22px;height:22px;border-radius:5px;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);color:#3a6090;cursor:pointer;font-size:9px;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;margin-left:4px;">
+    <i class="fas fa-copy"></i></button>`;
+
+  const explorerLink = (path, label, color = '#60b4ff') =>
+    `<a href="${CF_EXPLORER}/${path}" target="_blank" rel="noopener"
+      style="color:${color};font-size:10px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;background:rgba(55,138,221,0.07);border:1px solid rgba(55,138,221,0.15);padding:1px 7px;border-radius:5px;margin-left:4px;">
+      <i class="fas fa-external-link-alt" style="font-size:8px;"></i>${label}
+    </a>`;
+
+  try {
+    const ethers = window.ethers;
+    if (!ethers) throw new Error('ethers.js not available');
+
+    const provider = new ethers.JsonRpcProvider(CF_RPC);
+    const factory  = new ethers.Contract(CF_FACTORY_ADDR, CF_ABI, provider);
+
+    // ── Fetch on-chain contract data ─────────────────────────────────────────
+    const [onChain, milestones, latestBlock] = await Promise.all([
+      factory.getContract(contractId).catch(e => { throw new Error('getContract failed: ' + e.message); }),
+      factory.getMilestones(contractId).catch(() => []),
+      provider.getBlockNumber().catch(() => 0),
+    ]);
+
+    const createdAtMs = Number(onChain.createdAt) * 1000;
+    const startedAtMs = Number(onChain.startedAt) * 1000;
+    const completedAtMs = Number(onChain.completedAt) * 1000;
+    const statusLabels = ['Draft', 'Active', 'Completed', 'Cancelled'];
+    const onChainStatus = statusLabels[Number(onChain.status)] || `Status(${Number(onChain.status)})`;
+
+    // ── Fetch relevant event logs from ARC Testnet ───────────────────────────
+    const iface = new ethers.Interface(CF_ABI);
+    const contractIdTopic = '0x' + BigInt(contractId).toString(16).padStart(64, '0');
+    const fromBlock = Math.max(0, latestBlock - 100000);
+
+    const eventTopics = {
+      ContractCreated:   ethers.id('ContractCreated(uint256,address,address,string,uint256,uint256,uint256)'),
+      ContractSigned:    ethers.id('ContractSigned(uint256,address,uint256)'),
+      MilestoneReleased: ethers.id('MilestoneReleased(uint256,uint256,address,uint256,uint256)'),
+      ContractCancelled: ethers.id('ContractCancelled(uint256,address,uint256,uint256)'),
+    };
+
+    const allLogs = [];
+    for (const [evName, topic0] of Object.entries(eventTopics)) {
+      try {
+        const logs = await provider.getLogs({
+          address: CF_FACTORY_ADDR,
+          topics: [topic0, contractIdTopic],
+          fromBlock,
+          toBlock: latestBlock,
+        });
+        for (const log of logs) {
+          try {
+            const parsed = iface.parseLog(log);
+            allLogs.push({ evName, log, parsed, blockNum: Number(log.blockNumber || log.blockNum || 0) });
+          } catch(_) {
+            allLogs.push({ evName, log, parsed: null, blockNum: Number(log.blockNumber || 0) });
+          }
+        }
+      } catch (_) { /* silently skip if RPC range too large */ }
+    }
+
+    // Sort by block number
+    allLogs.sort((a, b) => a.blockNum - b.blockNum);
+
+    // Fetch block timestamps for discovered blocks
+    const blockNums = [...new Set(allLogs.map(e => e.blockNum).filter(Boolean))];
+    const blockTsMap = {};
+    await Promise.all(blockNums.slice(0, 20).map(async bn => {
+      try {
+        const blk = await provider.getBlock(bn);
+        if (blk) blockTsMap[bn] = blk.timestamp;
+      } catch (_) {}
+    }));
+
+    // ── Local proof metadata ──────────────────────────────────────────────────
+    const meta = cfGetMeta(contractId);
+    const localProofs = meta.proofs || [];
+    const txLog = (() => { try { return JSON.parse(localStorage.getItem(CF_TX_LOG_KEY) || '[]'); } catch(_) { return []; } })();
+    const myTxLogs = txLog.filter(t => String(t.contractId) === String(contractId));
+
+    // ── Render ─────────────────────────────────────────────────────────────────
+    const totalUsdc = (Number(onChain.totalValue) / 1e6).toFixed(2);
+    const deposited = (Number(onChain.depositedValue) / 1e6).toFixed(2);
+    const signed = onChain.contractorSigned;
+
+    body.innerHTML = `
+      <!-- Network banner -->
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:10px;margin-bottom:16px;font-size:11px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#34d399;flex-shrink:0;box-shadow:0 0 6px #34d399;"></span>
+        <span style="color:#34d399;font-weight:700;">Live Data — Arc Testnet</span>
+        <span style="color:#4a6490;margin-left:auto;">Block #${latestBlock.toLocaleString()} · Fetched ${new Date().toLocaleTimeString()}</span>
+        <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" rel="noopener" style="color:#34d399;font-size:10px;text-decoration:none;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);padding:2px 8px;border-radius:5px;white-space:nowrap;">
+          <i class="fas fa-external-link-alt" style="font-size:8px;margin-right:3px;"></i>ArcScan
+        </a>
+      </div>
+
+      <!-- Contract state from on-chain -->
+      <div style="margin-bottom:16px;">
+        <div style="font-size:10px;font-weight:700;color:#34d399;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <i class="fas fa-link"></i>On-Chain Contract State
+        </div>
+        <div style="background:rgba(10,12,24,0.8);border:1px solid rgba(55,138,221,0.15);border-radius:12px;padding:14px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div style="background:rgba(55,138,221,0.05);border-radius:8px;padding:8px 10px;">
+              <div style="font-size:9px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:3px;">Contract ID</div>
+              <div style="font-size:12px;font-weight:800;color:#60b4ff;">#${Number(onChain.id)}</div>
+            </div>
+            <div style="background:rgba(${onChainStatus==='Active'?'52,211,153':onChainStatus==='Completed'?'96,180,255':onChainStatus==='Cancelled'?'239,68,68':'251,191,36'},0.07);border-radius:8px;padding:8px 10px;">
+              <div style="font-size:9px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:3px;">Status</div>
+              <div style="font-size:12px;font-weight:800;color:${onChainStatus==='Active'?'#34d399':onChainStatus==='Completed'?'#60b4ff':onChainStatus==='Cancelled'?'#f87171':'#fbbf24'};">${onChainStatus}</div>
+            </div>
+            <div style="background:rgba(52,211,153,0.05);border-radius:8px;padding:8px 10px;">
+              <div style="font-size:9px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:3px;">Total Value</div>
+              <div style="font-size:13px;font-weight:800;color:#34d399;">$${totalUsdc} USDC</div>
+            </div>
+            <div style="background:rgba(55,138,221,0.05);border-radius:8px;padding:8px 10px;">
+              <div style="font-size:9px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:3px;">Deposited</div>
+              <div style="font-size:13px;font-weight:800;color:#60b4ff;">$${deposited} USDC</div>
+            </div>
+            <div style="background:rgba(55,138,221,0.04);border-radius:8px;padding:8px 10px;">
+              <div style="font-size:9px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:3px;">Contractor Signed</div>
+              <div style="font-size:12px;font-weight:700;color:${signed?'#34d399':'#f87171'};">${signed ? '✓ Signed' : '✗ Unsigned'}</div>
+            </div>
+            <div style="background:rgba(55,138,221,0.04);border-radius:8px;padding:8px 10px;">
+              <div style="font-size:9px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:3px;">Milestones</div>
+              <div style="font-size:12px;font-weight:700;color:#a78bfa;">${Number(onChain.completedMilestones)} / ${Number(onChain.milestoneCount)} done</div>
+            </div>
+          </div>
+
+          <!-- Addresses -->
+          <div style="border-top:1px solid rgba(55,138,221,0.1);padding-top:10px;">
+            <div style="font-size:10px;margin-bottom:6px;">
+              <span style="color:#3a4870;font-weight:700;">Factory:</span>
+              <span style="font-family:monospace;font-size:10px;color:#60b4ff;">${CF_FACTORY_ADDR}</span>
+              ${copyBtn(CF_FACTORY_ADDR, 'factory address')}
+              ${explorerLink('address/' + CF_FACTORY_ADDR, '↗', '#60b4ff')}
+            </div>
+            <div style="font-size:10px;margin-bottom:6px;">
+              <span style="color:#3a4870;font-weight:700;">Client:</span>
+              <span style="font-family:monospace;font-size:10px;color:#60b4ff;">${onChain.client}</span>
+              ${copyBtn(onChain.client, 'client address')}
+              ${explorerLink('address/' + onChain.client, '↗', '#60b4ff')}
+            </div>
+            <div style="font-size:10px;margin-bottom:6px;">
+              <span style="color:#3a4870;font-weight:700;">Contractor:</span>
+              <span style="font-family:monospace;font-size:10px;color:#34d399;">${onChain.contractor}</span>
+              ${copyBtn(onChain.contractor, 'contractor address')}
+              ${explorerLink('address/' + onChain.contractor, '↗', '#34d399')}
+            </div>
+            <div style="font-size:10px;">
+              <span style="color:#3a4870;font-weight:700;">USDC Token:</span>
+              <span style="font-family:monospace;font-size:10px;color:#fbbf24;">${CF_USDC_ADDR}</span>
+              ${copyBtn(CF_USDC_ADDR, 'USDC address')}
+              ${explorerLink('address/' + CF_USDC_ADDR, '↗', '#fbbf24')}
+            </div>
+          </div>
+
+          <!-- Timestamps -->
+          <div style="border-top:1px solid rgba(55,138,221,0.1);padding-top:10px;margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;font-size:10px;color:#4a6490;">
+            ${createdAtMs > 0 ? `<span><i class="fas fa-clock mr-1"></i>Created: <span style="color:#8899bb;">${new Date(createdAtMs).toLocaleString()}</span></span>` : ''}
+            ${startedAtMs > 0 ? `<span><i class="fas fa-play mr-1"></i>Started: <span style="color:#8899bb;">${new Date(startedAtMs).toLocaleString()}</span></span>` : ''}
+            ${completedAtMs > 0 ? `<span><i class="fas fa-flag-checkered mr-1"></i>Completed: <span style="color:#34d399;">${new Date(completedAtMs).toLocaleString()}</span></span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- Milestones on-chain -->
+      ${milestones.length > 0 ? `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:10px;font-weight:700;color:#a78bfa;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <i class="fas fa-tasks"></i>Milestones (On-Chain)
+        </div>
+        <div style="background:rgba(10,12,24,0.8);border:1px solid rgba(167,139,250,0.15);border-radius:12px;overflow:hidden;">
+          ${milestones.map((m, i) => {
+            const msStatus = ['Pending','Released'][Number(m.status)] || `Status(${Number(m.status)})`;
+            const relTs = Number(m.releasedAt) > 0 ? new Date(Number(m.releasedAt)*1000).toLocaleString() : null;
+            return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(167,139,250,0.06);${i===milestones.length-1?'border-bottom:none;':''}">
+              <div style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;
+                ${msStatus==='Released'?'background:rgba(52,211,153,0.2);border:1px solid rgba(52,211,153,0.4);color:#34d399':'background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.25);color:#a78bfa'}">
+                <i class="fas ${msStatus==='Released'?'fa-check':'fa-clock'}"></i>
+              </div>
+              <span style="flex:1;font-size:12px;color:#8899bb;">${m.description}</span>
+              <span style="font-size:12px;font-weight:700;color:#a78bfa;">$${(Number(m.amount)/1e6).toFixed(2)}</span>
+              <span style="font-size:10px;padding:2px 8px;border-radius:5px;
+                ${msStatus==='Released'?'background:rgba(52,211,153,0.12);color:#34d399':'background:rgba(167,139,250,0.1);color:#a78bfa'}">
+                ${msStatus}${relTs ? ` · ${relTs}` : ''}
+              </span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>` : ''}
+
+      <!-- Event Logs from ARC Testnet -->
+      <div style="margin-bottom:16px;">
+        <div style="font-size:10px;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <i class="fas fa-receipt"></i>On-Chain Event Logs (${allLogs.length})
+          ${allLogs.length === 0 ? `<span style="font-size:9px;color:#4a6490;font-weight:400;">(scanned last 100k blocks)</span>` : ''}
+        </div>
+        <div style="background:rgba(10,12,24,0.8);border:1px solid rgba(245,158,11,0.15);border-radius:12px;overflow:hidden;">
+          ${allLogs.length === 0 ? `
+            <div style="text-align:center;padding:20px;font-size:12px;color:#4a6490;">
+              <i class="fas fa-search" style="font-size:20px;display:block;margin-bottom:8px;"></i>
+              No indexed events found in the scanned range.<br>
+              <span style="font-size:10px;">Contract may have been created before the scan window, or no events have occurred yet.</span>
+              <div style="margin-top:8px;">
+                ${explorerLink('address/' + CF_FACTORY_ADDR, 'View Factory on ArcScan ↗', '#fbbf24')}
+              </div>
+            </div>` :
+            allLogs.map((e, i) => {
+              const ts = blockTsMap[e.blockNum] ? new Date(blockTsMap[e.blockNum] * 1000).toLocaleString() : `Block #${e.blockNum}`;
+              const txShort = e.log.transactionHash ? e.log.transactionHash.slice(0,24) + '…' : '—';
+              const evColors = {
+                ContractCreated:   { bg: '52,211,153', color: '#34d399', icon: 'fa-file-contract' },
+                ContractSigned:    { bg: '96,180,255', color: '#60b4ff', icon: 'fa-pen-nib' },
+                MilestoneReleased: { bg: '167,139,250', color: '#a78bfa', icon: 'fa-flag-checkered' },
+                ContractCancelled: { bg: '239,68,68',  color: '#f87171', icon: 'fa-times-circle' },
+              };
+              const ec = evColors[e.evName] || { bg: '251,191,36', color: '#fbbf24', icon: 'fa-bolt' };
+              return `<div style="padding:10px 14px;border-bottom:1px solid rgba(245,158,11,0.06);${i===allLogs.length-1?'border-bottom:none;':''}">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                  <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;background:rgba(${ec.bg},0.12);border:1px solid rgba(${ec.bg},0.25);color:${ec.color};padding:2px 8px;border-radius:5px;">
+                    <i class="fas ${ec.icon}" style="font-size:8px;"></i>${e.evName}
+                  </span>
+                  <span style="font-size:10px;color:#4a6490;">${ts}</span>
+                  <span style="font-size:9px;font-family:monospace;color:#3a4870;margin-left:auto;">Block #${e.blockNum.toLocaleString()}</span>
+                </div>
+                ${e.log.transactionHash ? `
+                <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:#3a6090;">
+                  <span style="color:#4a6490;">TX:</span>
+                  <span style="font-family:monospace;color:#60b4ff;">${txShort}</span>
+                  ${copyBtn(e.log.transactionHash, 'tx hash')}
+                  ${explorerLink('tx/' + e.log.transactionHash, '↗', '#60b4ff')}
+                </div>` : ''}
+                ${e.parsed ? `<div style="margin-top:4px;font-size:9px;color:#3a4870;font-family:monospace;background:rgba(55,138,221,0.04);border-radius:5px;padding:4px 8px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">
+                  ${Object.keys(e.parsed.args).filter(k => isNaN(Number(k))).map(k => {
+                    let v = e.parsed.args[k];
+                    if (typeof v === 'bigint') v = v.toString();
+                    else if (typeof v === 'object') v = JSON.stringify(v);
+                    return `${k}: ${v}`;
+                  }).join('\n')}
+                </div>` : ''}
+              </div>`;
+            }).join('')
+          }
+        </div>
+      </div>
+
+      <!-- Local Proof Metadata -->
+      <div style="margin-bottom:16px;">
+        <div style="font-size:10px;font-weight:700;color:#a78bfa;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <i class="fas fa-shield-alt"></i>Proof of Work — Local Records (${localProofs.length})
+        </div>
+        ${localProofs.length === 0 ? `
+          <div style="background:rgba(10,12,24,0.8);border:1px solid rgba(167,139,250,0.12);border-radius:12px;padding:16px;text-align:center;font-size:12px;color:#4a6490;">
+            <i class="fas fa-inbox" style="font-size:18px;display:block;margin-bottom:6px;"></i>
+            No proofs available. The contractor hasn't uploaded any proof of work yet.
+          </div>` :
+          `<div style="background:rgba(10,12,24,0.8);border:1px solid rgba(167,139,250,0.15);border-radius:12px;overflow:hidden;">
+            ${localProofs.map((p, pi) => {
+              const committed = !!p.committed;
+              const hashShort = p.hash ? p.hash.slice(0,20) + '…' : '—';
+              const sizeKb = p.size ? (p.size/1024).toFixed(0) + ' KB' : '';
+              return `<div style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(167,139,250,0.06);${pi===localProofs.length-1?'border-bottom:none;':''}">
+                <div style="width:32px;height:32px;border-radius:8px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:${committed?'#34d399':'#a78bfa'};font-size:14px;"></i>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:700;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name || 'Unnamed file'}</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;align-items:center;">
+                    <span style="font-size:9px;padding:1px 7px;border-radius:5px;font-weight:700;
+                      ${committed?'background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);color:#34d399':'background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.25);color:#fbbf24'}">
+                      <i class="fas ${committed?'fa-lock':'fa-clock'} mr-1" style="font-size:7px;"></i>${committed?'Committed':'Pending'}
+                    </span>
+                    ${sizeKb ? `<span style="font-size:9px;color:#4a6490;">${sizeKb}</span>` : ''}
+                    ${p.uploadedAt ? `<span style="font-size:9px;color:#4a6490;">${new Date(p.uploadedAt).toLocaleDateString()}</span>` : ''}
+                  </div>
+                  ${p.hash ? `<div style="font-size:9px;font-family:monospace;color:#3a4870;margin-top:3px;">
+                    SHA-256: <span style="color:#4a6490;">${hashShort}</span>
+                    ${copyBtn(p.hash, 'SHA-256 hash')}
+                  </div>` : ''}
+                  ${p.committedAt ? `<div style="font-size:9px;color:#34d399;margin-top:2px;"><i class="fas fa-check mr-1"></i>Committed: ${new Date(p.committedAt).toLocaleString()}</div>` : ''}
+                </div>
+                <button onclick="cfViewProof(${contractId},${pi})"
+                  style="flex-shrink:0;padding:5px 12px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.25);color:#a78bfa;border-radius:7px;font-size:10px;cursor:pointer;white-space:nowrap;">
+                  <i class="fas fa-eye mr-1"></i>View
+                </button>
+              </div>`;
+            }).join('')}
+          </div>`
+        }
+      </div>
+
+      <!-- Local TX log for this contract -->
+      ${myTxLogs.length > 0 ? `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:10px;font-weight:700;color:#60b4ff;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+          <i class="fas fa-list"></i>Local Transaction Log (${myTxLogs.length})
+        </div>
+        <div style="background:rgba(10,12,24,0.8);border:1px solid rgba(96,180,255,0.15);border-radius:12px;overflow:hidden;">
+          ${myTxLogs.map((t, ti) => `
+            <div style="padding:10px 14px;border-bottom:1px solid rgba(96,180,255,0.06);${ti===myTxLogs.length-1?'border-bottom:none;':''}">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:${t.txHash?'4px':'0'};">
+                <span style="font-size:11px;font-weight:600;color:#dde2f0;">${t.action || t.type || 'tx'}</span>
+                <span style="font-size:9px;color:#4a6490;margin-left:auto;">${t.timestamp ? new Date(t.timestamp).toLocaleString() : ''}</span>
+              </div>
+              ${t.txHash ? `<div style="font-size:10px;font-family:monospace;color:#60b4ff;">
+                ${t.txHash.slice(0,26)}…
+                ${copyBtn(t.txHash, 'tx hash')}
+                ${explorerLink('tx/' + t.txHash, '↗', '#60b4ff')}
+              </div>` : ''}
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      <!-- Footer actions -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid rgba(55,138,221,0.1);padding-top:14px;">
+        <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" rel="noopener"
+          style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);color:#34d399;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;">
+          <i class="fas fa-external-link-alt"></i>View Factory on ArcScan
+        </a>
+        <button onclick="document.getElementById('cf-onchain-proofs-modal').remove()"
+          style="padding:8px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;">
+          <i class="fas fa-times mr-1"></i>Close
+        </button>
+      </div>
+    `;
+
+  } catch (err) {
+    console.error('[cfViewOnChainProofs]', err);
+    if (body) body.innerHTML = `
+      <div style="text-align:center;padding:32px;">
+        <i class="fas fa-exclamation-circle" style="font-size:32px;color:#f87171;display:block;margin-bottom:12px;"></i>
+        <div style="font-size:14px;font-weight:700;color:#f87171;margin-bottom:8px;">Failed to fetch on-chain data</div>
+        <div style="font-size:12px;color:#4a6490;margin-bottom:16px;">${err.message}</div>
+
+        <!-- Local proof fallback -->
+        ${(() => {
+          const meta2 = cfGetMeta(contractId);
+          const lp = meta2.proofs || [];
+          if (!lp.length) return `<div style="font-size:12px;color:#4a6490;">No local proof records found either.</div>`;
+          return `<div style="text-align:left;margin-top:12px;">
+            <div style="font-size:10px;font-weight:700;color:#a78bfa;margin-bottom:8px;text-transform:uppercase;">Local Proof Records (${lp.length})</div>
+            ${lp.map((p, pi) => `
+              <div style="display:flex;align-items:center;gap:8px;padding:8px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:4px;">
+                <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:${p.committed?'#34d399':'#a78bfa'};"></i>
+                <span style="flex:1;font-size:11px;color:#8899bb;">${p.name}</span>
+                <span style="font-size:9px;color:${p.committed?'#34d399':'#fbbf24'};">${p.committed?'Committed':'Pending'}</span>
+                <button onclick="cfViewProof(${contractId},${pi})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:5px;cursor:pointer;">View</button>
+              </div>`).join('')}
+          </div>`;
+        })()}
+
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;">
+          <button onclick="cfViewOnChainProofs(${contractId})"
+            style="padding:8px 16px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);color:#34d399;border-radius:8px;font-size:11px;cursor:pointer;">
+            <i class="fas fa-redo mr-1"></i>Retry
+          </button>
+          <button onclick="document.getElementById('cf-onchain-proofs-modal').remove()"
+            style="padding:8px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;border-radius:8px;font-size:11px;cursor:pointer;">
+            Close
+          </button>
+        </div>
+      </div>`;
   }
 };
 

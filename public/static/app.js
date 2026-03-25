@@ -25,67 +25,92 @@ let logCount = 0;
 // TABS
 // ============================================================
 function switchTab(tab) {
-  // Hide all contents
-  document.querySelectorAll('.tab-content').forEach(el => {
-    el.classList.add('hidden');
-  });
-  
-  // Deactivate all tabs
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.remove('active');
-    btn.classList.remove('border-purple-500', 'text-purple-400', 'border-green-500', 'text-green-400',
-                         'border-blue-500', 'text-blue-400', 'border-cyan-500', 'text-cyan-400');
-    btn.classList.add('border-transparent', 'text-gray-400');
-  });
-  
-  // Show selected content
-  const content = document.getElementById(`tab-content-${tab}`);
-  const tabBtn = document.getElementById(`tab-${tab}`);
-  
-  if (content) content.classList.remove('hidden');
-  if (tabBtn) {
-    tabBtn.classList.add('active');
-    tabBtn.classList.remove('border-transparent', 'text-gray-400');
-    tabBtn.classList.add('border-purple-500', 'text-purple-400');
+  // Track previous tab for close-button navigation
+  if (currentTab && currentTab !== tab) {
+    window._historyPrevTab = currentTab;
   }
-  
-  currentTab = tab;
-  
-  // Load data for the tab
-  if (tab === 'dashboard') loadDashboard();
-  if (tab === 'payments') {
-    loadPayments();
-    if (window.initPayments && !window._payInitialized) {
-      window._payInitialized = true;
-      window.initPayments();
-    } else {
-      // On subsequent visits, just refresh balances + re-render history
-      if (window.refreshPaymentBalances) window.refreshPaymentBalances().catch(() => {});
-      if (window.renderPaymentHistory) window.renderPaymentHistory();
+
+  // Animate out current tab content
+  const prevContent = document.getElementById(`tab-content-${currentTab}`);
+  if (prevContent && !prevContent.classList.contains('hidden')) {
+    prevContent.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+    prevContent.style.opacity = '0';
+    prevContent.style.transform = 'translateY(6px)';
+  }
+
+  setTimeout(() => {
+    // Hide all contents
+    document.querySelectorAll('.tab-content').forEach(el => {
+      el.classList.add('hidden');
+      el.style.opacity = '';
+      el.style.transform = '';
+    });
+
+    // Deactivate all tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.classList.remove('active');
+      btn.classList.remove('border-purple-500', 'text-purple-400', 'border-green-500', 'text-green-400',
+                           'border-blue-500', 'text-blue-400', 'border-cyan-500', 'text-cyan-400');
+      btn.classList.add('border-transparent', 'text-gray-400');
+    });
+
+    // Show selected content with fade-in
+    const content = document.getElementById(`tab-content-${tab}`);
+    const tabBtn = document.getElementById(`tab-${tab}`);
+
+    if (content) {
+      content.classList.remove('hidden');
+      content.style.opacity = '0';
+      content.style.transform = 'translateY(6px)';
+      content.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
+      requestAnimationFrame(() => {
+        content.style.opacity = '1';
+        content.style.transform = 'translateY(0)';
+      });
     }
-  }
-  if (tab === 'contracts') { cfWalletGateUpdate(); cfLoadContracts(); }
-  if (tab === 'multisend') {
-    if (window.msInit) window.msInit();
-    const gate = document.getElementById('ms-wallet-gate');
-    if (gate) gate.classList.toggle('hidden', !!window.walletState?.connected);
-  }
-  if (tab === 'agents') {
-    loadAgentsDetails();
-    if (window.loadGuardianStatus) window.loadGuardianStatus();
-    if (window.loadYieldData) window.loadYieldData();
-  }
-  if (tab === 'dex') {
-    if (window.ammInit && !window._ammInitialized) {
-      window._ammInitialized = true;
-      window.ammInit();
-    } else if (window.ammRefreshAll) {
-      window.ammRefreshAll();
+    if (tabBtn) {
+      tabBtn.classList.add('active');
+      tabBtn.classList.remove('border-transparent', 'text-gray-400');
+      tabBtn.classList.add('border-purple-500', 'text-purple-400');
     }
-  }
-  if (tab === 'history') {
-    if (window.historyInit) window.historyInit();
-  }
+
+    currentTab = tab;
+
+    // Load data for the tab
+    if (tab === 'dashboard') loadDashboard();
+    if (tab === 'payments') {
+      loadPayments();
+      if (window.initPayments && !window._payInitialized) {
+        window._payInitialized = true;
+        window.initPayments();
+      } else {
+        if (window.refreshPaymentBalances) window.refreshPaymentBalances().catch(() => {});
+        if (window.renderPaymentHistory) window.renderPaymentHistory();
+      }
+    }
+    if (tab === 'contracts') { cfWalletGateUpdate(); cfLoadContracts(); }
+    if (tab === 'multisend') {
+      if (window.msInit) window.msInit();
+      const gate = document.getElementById('ms-wallet-gate');
+      if (gate) gate.classList.toggle('hidden', !!window.walletState?.connected);
+    }
+    if (tab === 'agents') {
+      loadAgentsDetails();
+      if (window.loadGuardianStatus) window.loadGuardianStatus();
+      if (window.loadYieldData) window.loadYieldData();
+    }
+    if (tab === 'dex') {
+      if (window.ammInit && !window._ammInitialized) {
+        window._ammInitialized = true;
+        window.ammInit();
+      } else if (window.ammRefreshAll) {
+        window.ammRefreshAll();
+      }
+    }
+    if (tab === 'history') {
+      if (window.historyInit) window.historyInit();
+    }
+  }, prevContent && !prevContent.classList.contains('hidden') ? 150 : 0);
 }
 
 // ============================================================
