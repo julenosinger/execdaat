@@ -277,6 +277,10 @@ function toggleChat() {
     setTimeout(() => widget.classList.add('hidden'), 260);
     if (fabIcon) fabIcon.className = 'fas fa-robot text-white text-base';
     if (fabLbl)  { fabLbl.classList.remove('hidden'); fabLbl.textContent = 'Ask me'; }
+    // Reset width expand state on close
+    chatWidthExpanded = false;
+    const wBtn = document.getElementById('chat-width-toggle-btn');
+    if (wBtn) { wBtn.style.color = ''; wBtn.style.background = ''; wBtn.textContent = '↔'; }
   }
 }
 
@@ -320,8 +324,8 @@ function applyChatSize(size, animate = true) {
 }
 
 // ── Width-only expand toggle ─────────────────────────────────────────────────────
-// Expands panel to 1.5× its current base width via a smooth CSS transition.
-// Does NOT change height, position, or any internal layout.
+// Toggles between collapsed (base preset width) and expanded (~1.5×, min 435px).
+// Uses a 0.3s CSS transition on width only; height/position/layout unchanged.
 function toggleChatWidth() {
   const widget = document.getElementById('chat-widget');
   const btn    = document.getElementById('chat-width-toggle-btn');
@@ -329,24 +333,31 @@ function toggleChatWidth() {
 
   chatWidthExpanded = !chatWidthExpanded;
 
+  // Ensure transition is active (don't let drag or applyChatSize kill it)
+  widget.style.transition = 'width 0.3s ease, height 0.3s cubic-bezier(.4,0,.2,1), bottom 0.3s ease, right 0.3s ease, border-radius 0.3s ease, opacity 0.25s ease, transform 0.25s ease';
+
   if (chatWidthExpanded) {
-    // Read the actual rendered width and scale it 1.5×
-    const currentW = widget.getBoundingClientRect().width || 400;
-    const expanded = Math.min(Math.round(currentW * 1.5), window.innerWidth - 16);
+    // Compute expanded width: 1.5× of current base, floored to at least 435px
+    const baseW    = widget.getBoundingClientRect().width || 400;
+    const expanded = Math.max(435, Math.min(Math.round(baseW * 1.5), window.innerWidth - 16));
     widget.style.width    = expanded + 'px';
     widget.style.maxWidth = 'calc(100vw - 16px)';
     if (btn) {
       btn.title            = 'Restaurar largura padrão';
       btn.style.color      = '#a78bfa';
       btn.style.background = 'rgba(167,139,250,0.15)';
+      btn.textContent      = '↔';
     }
   } else {
-    // Restore: let applyChatSize reassert the size-preset width
-    applyChatSize(chatSize, true);
+    // Restore preset width (re-apply current size preset without touching transition)
+    const cfg = CHAT_SIZES[chatSize] || CHAT_SIZES.medium;
+    widget.style.width    = cfg.width;
+    widget.style.maxWidth = chatSize === 'wide' ? 'calc(min(400px + 12vw, 92vw))' : 'calc(100vw - 16px)';
     if (btn) {
       btn.title            = 'Expandir largura (1.5×)';
       btn.style.color      = '';
       btn.style.background = '';
+      btn.textContent      = '↔';
     }
   }
 }

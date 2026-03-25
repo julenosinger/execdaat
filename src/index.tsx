@@ -2942,11 +2942,20 @@ app.get('/', (c) => {
                 <h3 class="text-white font-bold">Remove Liquidity</h3>
               </div>
               <p class="text-xs text-gray-500">Burn LP tokens to withdraw EURC + USDC from the pool.</p>
-              <div class="bg-gray-800/50 border border-gray-700/30 rounded-xl p-4 space-y-3 text-xs">
-                <div class="flex justify-between">
-                  <span class="text-gray-500">Your LP Balance</span>
-                  <span class="font-mono text-cyan-300 font-bold" id="amm-remove-lp-bal">—</span>
+
+              <!-- Your LP Position -->
+              <div class="bg-gray-800/60 border border-cyan-700/20 rounded-xl p-3 grid grid-cols-2 gap-2 text-xs">
+                <div class="text-center">
+                  <div class="text-gray-500 mb-0.5">Your LP Balance</div>
+                  <div class="font-mono text-cyan-300 font-bold" id="amm-remove-lp-bal">—</div>
                 </div>
+                <div class="text-center">
+                  <div class="text-gray-500 mb-0.5">Pool Share</div>
+                  <div class="font-mono text-cyan-300 font-bold" id="amm-position-share">—</div>
+                </div>
+              </div>
+
+              <div class="bg-gray-800/50 border border-gray-700/30 rounded-xl p-4 space-y-3 text-xs">
                 <div>
                   <div class="flex justify-between text-gray-400 mb-2">
                     <span>Percentage to remove</span>
@@ -2956,17 +2965,29 @@ app.get('/', (c) => {
                     class="w-full accent-red-500 cursor-pointer"
                     oninput="
                       document.getElementById('amm-remove-pct-display').textContent = this.value + '%';
-                      const lp = parseFloat(document.getElementById('amm-remove-lp-bal')?.textContent) || 0;
-                      document.getElementById('amm-remove-lp-amt').textContent = (lp * parseInt(this.value) / 100).toFixed(4) + ' LP';
+                      if(typeof ammUpdateRemovePreview === 'function') ammUpdateRemovePreview();
                     " />
                   <div class="flex justify-between text-gray-500 mt-2">
                     <span>LP to burn:</span>
                     <span id="amm-remove-lp-amt" class="font-mono text-red-300 font-bold">—</span>
                   </div>
                 </div>
+
+                <!-- Expected Returns -->
+                <div class="border-t border-gray-700/40 pt-3 space-y-1.5">
+                  <div class="text-gray-500 font-semibold mb-1">Expected to receive:</div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-400">💶 EURC</span>
+                    <span id="amm-remove-est-eurc" class="font-mono text-green-300 font-bold">—</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-400">💵 USDC</span>
+                    <span id="amm-remove-est-usdc" class="font-mono text-green-300 font-bold">—</span>
+                  </div>
+                </div>
               </div>
-              <button id="amm-remove-liq-btn" onclick="ammRemoveLiquidity()"
-                class="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-700 to-rose-600 hover:from-red-600 hover:to-rose-500 text-white font-bold transition-all shadow-lg">
+              <button id="amm-remove-liq-btn" onclick="ammRemoveLiquidity()" disabled
+                class="w-full py-3.5 rounded-xl bg-gradient-to-r from-red-700 to-rose-600 hover:from-red-600 hover:to-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold transition-all shadow-lg">
                 <i class="fas fa-fire mr-2"></i>Remove Liquidity
               </button>
             </div>
@@ -3115,7 +3136,7 @@ app.get('/', (c) => {
                   <span>🏊</span>
                   <div>
                     <div class="text-xs text-gray-400 font-semibold">LP Token</div>
-                    <div class="text-[10px] text-gray-600">ARC-LP-EURC-USDC</div>
+                    <div class="text-[10px] text-gray-600">Pool share: <span id="amm-bal-lp-share">—</span></div>
                   </div>
                 </div>
                 <span class="text-cyan-300 font-mono font-bold text-sm" id="amm-bal-lp">—</span>
@@ -3798,17 +3819,17 @@ app.get('/', (c) => {
   <script src="/static/persistence.js?v=20250323"></script>
   <script src="/static/receipt-viewer.js?v=20250323b"></script>
   <script src="/static/app.js?v=20250322"></script>
-  <script src="/static/payments.js?v=20250323d"></script>
+  <script src="/static/payments.js?v=20250325a"></script>
   <script src="/static/contracts.js?v=20250325a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
-  <script src="/static/dex.js?v=20250322"></script>
+  <script src="/static/dex.js?v=20250325a"></script>
   <script src="/static/multisend.js?v=20250323c"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
-  <script src="/static/chat.js?v=20250324d"></script>
+  <script src="/static/chat.js?v=20250325a"></script>
   <script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────

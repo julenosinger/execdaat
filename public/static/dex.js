@@ -220,6 +220,9 @@ function ammUpdateBalanceUI() {
   // MAX buttons
   const swapFromBal = ammState.swapFrom === 'EURC' ? eurc : usdc;
   setText('amm-swap-from-bal', parseFloat(swapFromBal).toFixed(4) + ' ' + ammState.swapFrom);
+
+  // Update remove preview with fresh balances
+  ammUpdateRemovePreview();
 }
 
 // ─── Update pool reserves display ────────────────────────────────────────────
@@ -444,15 +447,58 @@ function ammUpdateLiqPreview() {
     }
   }
 
+  const totalSupplyHuman = Number(ammState.totalSupply) / 1e6;
+  const poolSharePct = totalSupplyHuman > 0 && lpEst > 0
+    ? (lpEst / (totalSupplyHuman + lpEst) * 100)
+    : (amtA > 0 ? 100 : 0);
+
   setText('amm-liq-lp-est', lpEst > 0 ? lpEst.toFixed(4) + ' LP' : '—');
-  setText('amm-liq-pool-share', ammState.totalSupply > 0n && lpEst > 0
-    ? (lpEst / (Number(ammState.totalSupply) / 1e6 + lpEst) * 100).toFixed(4) + '%'
-    : amtA > 0 ? '100.00%' : '—');
+  setText('amm-liq-pool-share', lpEst > 0 || amtA > 0 ? poolSharePct.toFixed(4) + '%' : '—');
 
   const addBtn = $('amm-add-liq-btn');
   if (addBtn) {
     const ok = amtA > 0 && amtB > 0 && !!window.walletState?.address && !ammState.pending;
     addBtn.disabled = !ok;
+  }
+
+  // Update remove section expected returns based on current LP balance
+  ammUpdateRemovePreview();
+}
+
+// ─── Remove Liquidity preview — shows expected EURC/USDC returns ─────────────
+function ammUpdateRemovePreview() {
+  const lpBalance    = Number(ammState.balances.LP) / 1e6;
+  const totalSupply  = Number(ammState.totalSupply) / 1e6;
+  const rA           = Number(ammState.reserves.A) / 1e6;
+  const rB           = Number(ammState.reserves.B) / 1e6;
+  const pctStr       = $('amm-remove-pct')?.value || '100';
+  const pct          = Math.min(100, Math.max(0, parseFloat(pctStr) || 100)) / 100;
+  const lpToRemove   = lpBalance * pct;
+
+  // Pool share
+  const mySharePct = totalSupply > 0 ? (lpBalance / totalSupply) * 100 : 0;
+  setText('amm-position-share', mySharePct.toFixed(4) + '%');
+  setText('amm-bal-lp-share',   mySharePct.toFixed(4) + '%');
+  setText('amm-position-lp',    lpBalance.toFixed(4) + ' LP');
+
+  if (lpToRemove > 0 && totalSupply > 0 && rA > 0 && rB > 0) {
+    const share    = lpToRemove / totalSupply;
+    const estEURC  = rA * share;
+    const estUSDC  = rB * share;
+    setText('amm-remove-est-eurc', estEURC.toFixed(4) + ' EURC');
+    setText('amm-remove-est-usdc', estUSDC.toFixed(4) + ' USDC');
+    setText('amm-remove-lp-amt',   lpToRemove.toFixed(4) + ' LP');
+  } else {
+    setText('amm-remove-est-eurc', '—');
+    setText('amm-remove-est-usdc', '—');
+    if (lpToRemove === 0) setText('amm-remove-lp-amt', '—');
+  }
+
+  // Enable/disable remove button
+  const removeBtn = $('amm-remove-liq-btn');
+  if (removeBtn) {
+    const ok = lpBalance > 0 && !!window.walletState?.address && !ammState.pending;
+    removeBtn.disabled = !ok;
   }
 }
 
@@ -624,17 +670,15 @@ window.ammAddLiquidity = async function() {
     const receipt = await tx.wait();
     if (!receipt || receipt.status !== 1) throw new Error('addLiquidity reverted');
 
-    // Parse LiquidityAdded event for lpMinted
-    let lpMinted = 0n;
-    const addedTopic = '0x' + 'LiquidityAdded'.split('').reduce((a, c) => a, ''); // placeholder
-    // Find LP amount from state change
+    // Parse LP minted from balance delta (reliable approach)
+    const lpBefore = ammState.balances.LP;
     await ammRefreshAll();
-    const newLP = ammState.balances.LP;
-    lpMinted    = newLP; // approximation
+    const lpAfter  = ammState.balances.LP;
+    const lpMinted = lpAfter > lpBefore ? lpAfter - lpBefore : lpAfter;
 
     setText('amm-liq-result-a',    amtAStr + ' EURC');
     setText('amm-liq-result-b',    amtBStr + ' USDC');
-    setText('amm-liq-result-lp',   parseFloat(ammFormatUnits(newLP)).toFixed(4) + ' LP');
+    setText('amm-liq-result-lp',   parseFloat(ammFormatUnits(lpMinted)).toFixed(4) + ' LP');
     setText('amm-liq-result-hash', txHash.slice(0, 20) + '…');
     const liqHashLink = $('amm-liq-result-hash-link');
     if (liqHashLink) liqHashLink.href = `${AMM_EXPLORER}/tx/${txHash}`;
@@ -790,9 +834,7 @@ async function ammInit() {
 
   const pctInput = $('amm-remove-pct');
   if (pctInput) pctInput.addEventListener('input', () => {
-    const pct = Math.min(100, Math.max(1, parseFloat(pctInput.value) || 100));
-    const lp  = Number(ammState.balances.LP) / 1e6;
-    setText('amm-remove-lp-amt', (lp * pct / 100).toFixed(4) + ' LP');
+    ammUpdateRemovePreview();
   });
 
   // Initial fetch
@@ -833,6 +875,7 @@ window.ammInit             = ammInit;
 window.ammRefreshAll       = ammRefreshAll;
 window.ammComputeSwapQuote = ammComputeSwapQuote;
 window.ammUpdateLiqPreview = ammUpdateLiqPreview;
+window.ammUpdateRemovePreview = ammUpdateRemovePreview;
 
 console.log('[AMM] Module loaded · Arc Testnet', AMM_CHAIN_ID);
 console.log('[AMM] Tokens: EURC', AMM_TOKENS.EURC.address, '/ USDC', AMM_TOKENS.USDC.address);

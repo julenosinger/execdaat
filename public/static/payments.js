@@ -1268,8 +1268,16 @@ function renderPaymentHistory() {
 async function payLoadLocalHistory() {
   const wallet = window.walletState?.address;
 
+  // No wallet = clear displayed history
+  if (!wallet) {
+    payState.history   = [];
+    payState.scheduled = [];
+    renderPaymentHistory();
+    return;
+  }
+
   // Try IndexedDB first
-  if (typeof arcLoad === 'function' && wallet) {
+  if (typeof arcLoad === 'function') {
     try {
       const items = await arcLoad(window.ARC_STORE_PAY || 'payments');
       if (items && items.length > 0) {
@@ -1301,29 +1309,51 @@ async function payLoadLocalHistory() {
   // Fallback to localStorage
   try {
     const raw = JSON.parse(localStorage.getItem('arc_pay_history') || '[]');
-    payState.history = raw;
-    console.log('[PAY] Loaded', raw.length, 'records from localStorage');
+    payState.history = Array.isArray(raw) ? raw : [];
+    console.log('[PAY] Loaded', payState.history.length, 'records from localStorage');
   } catch (_) { payState.history = []; }
 }
 
 // ─── Background sync handler ─────────────────────────────────────────────────
 window.addEventListener('arcSyncRequest', async (e) => {
-  if (!window.walletState?.address) return;
+  const currentWallet = window.walletState?.address;
+  if (!currentWallet) return;
   // Re-load history from persistence layer and merge with in-memory state
-  await payLoadLocalHistory();
+  try {
+    await payLoadLocalHistory();
+  } catch (err) {
+    console.warn('[PAY] arcSyncRequest: history reload failed:', err.message);
+  }
   renderPaymentHistory();
-  console.log('[PAY] arcSyncRequest: history refreshed from local store');
+  console.log('[PAY] arcSyncRequest: history refreshed for', shortAddr(currentWallet));
 });
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
 async function initPayments() {
-  await payLoadLocalHistory();
+  // Seed last-wallet tracker with current wallet (if already connected)
+  _payLastWallet = window.walletState?.address?.toLowerCase?.() || null;
+
+  // Load history only if wallet is available; otherwise show empty state silently
+  try {
+    await payLoadLocalHistory();
+  } catch (e) {
+    console.warn('[PAY] init: history load failed:', e.message);
+    payState.history = [];
+  }
+
   payInitTimezones();
   selectPayToken(payState.token || 'USDC');
   updatePayPreview();
   payValidateForm();
   payUpdateNoteCounter();
-  await refreshPaymentBalances();
+
+  // Refresh balances — fails silently when wallet is not connected
+  try {
+    await refreshPaymentBalances();
+  } catch (e) {
+    console.warn('[PAY] init: balance refresh failed:', e.message);
+  }
+
   renderPaymentHistory();
   payStartSchedulePoller();
 
@@ -1365,18 +1395,66 @@ window.payEditScheduled        = payEditScheduled;
 window.payState                = payState;
 
 // ─── Wallet event listeners ────────────────────────────────────────────────────
-window.addEventListener('walletConnected', async (e) => {
-  const addr = e.detail?.address;
-  if (addr) {
-    paySet('pay-from-display', shortAddr(addr));
+
+// Track the last wallet address to detect actual changes
+let _payLastWallet = null;
+
+async function _payOnWalletChange(newAddr) {
+  const addr = newAddr?.toLowerCase?.() || null;
+
+  // Detect actual wallet switch (not just event noise)
+  if (addr && addr === _payLastWallet) {
+    // Same wallet – just refresh balances
     await refreshPaymentBalances();
     updatePayPreview();
     payValidateForm();
+    return;
   }
+
+  // Wallet changed (new address or disconnected)
+  _payLastWallet = addr;
+
+  // Reset stale data
+  payState.history   = [];
+  payState.scheduled = [];
+  payState.senderBalance = { USDC: null, EURC: null };
+  payState.receipt   = null;
+  hidePayError();
+
+  if (addr) {
+    // Update UI with new address
+    paySet('pay-from-display', shortAddr(newAddr));
+    paySet('pay-wallet-short', shortAddr(newAddr));
+
+    // Load fresh data for this wallet
+    try {
+      await payLoadLocalHistory();
+    } catch (e) {
+      console.warn('[PAY] history load error after wallet change:', e.message);
+    }
+    await refreshPaymentBalances();
+    updatePayPreview();
+    payValidateForm();
+  } else {
+    // Disconnected
+    paySet('pay-from-display', '—');
+    paySet('pay-wallet-short', 'Not connected');
+    paySet('pay-balance-usdc', '— USDC');
+    paySet('pay-balance-eurc', '— EURC');
+  }
+
+  renderPaymentHistory();
+  console.log('[PAY] Wallet changed →', addr || 'disconnected');
+}
+
+window.addEventListener('walletConnected', async (e) => {
+  await _payOnWalletChange(e.detail?.address);
 });
 
-window.addEventListener('accountsChanged', () => {
-  if (window.currentTab === 'payments') refreshPaymentBalances();
+window.addEventListener('accountsChanged', async (e) => {
+  // accountsChanged fires with new accounts array or single address
+  const newAddr = Array.isArray(e.detail) ? e.detail[0] : (e.detail?.address || window.walletState?.address);
+  await _payOnWalletChange(newAddr || null);
 });
 
 // ─── Boot log ──────────────────────────────────────────────────────────────────
