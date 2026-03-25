@@ -47,7 +47,9 @@ export const TOKEN_REGISTRY = {
 const SEL = {
   getReserves:    '0x0902f1ac', // getReserves() → (uint256,uint256)
   totalSupply:    '0x18160ddd', // totalSupply() → uint256
-  getLPBalance:   '0x5dbe4756', // getLPBalance(address) → uint256
+  // LP balance: SimpleAMM IS an ERC-20 LP token — uses standard balanceOf()
+  // ⚠️ getLPBalance (0x5dbe4756) does NOT exist on this contract → REVERTS
+  getLPBalance:   '0x70a08231', // balanceOf(address) → uint256  [standard ERC-20]
   quoteAforB:     '0x9d33be0f', // quoteAforB(uint256) → uint256
   quoteBforA:     '0xf99bbd0c', // quoteBforA(uint256) → uint256
   priceImpactBps: '0x6e0e1a2d', // priceImpactBps(uint256,bool) → uint256

@@ -779,8 +779,17 @@ async function executePaymentCore({ fullname, email, recipient, recipientName, r
   payState.receipt = receiptData;
   payState.history.unshift(receiptData);
 
-  // Persist hybrid: IndexedDB + localStorage
+  // Persist hybrid: IndexedDB + localStorage (wallet-scoped)
   try {
+    const walletAddr = (receiptData.sender || receiptData.from || window.walletState?.address || '').toLowerCase();
+    // Save to wallet-specific key for clean per-wallet loading
+    if (walletAddr) {
+      const walletKey = `arc_pay_history_${walletAddr}`;
+      const walletStored = JSON.parse(localStorage.getItem(walletKey) || '[]');
+      walletStored.unshift(receiptData);
+      localStorage.setItem(walletKey, JSON.stringify(walletStored.slice(0, 50)));
+    }
+    // Also save to global key (backward compat for migration)
     const stored = JSON.parse(localStorage.getItem('arc_pay_history') || '[]');
     stored.unshift(receiptData);
     localStorage.setItem('arc_pay_history', JSON.stringify(stored.slice(0, 50)));
@@ -1265,79 +1274,162 @@ function renderPaymentHistory() {
 }
 
 // ─── Load history from IndexedDB / localStorage on startup ──────────────────────
+// Always captures the wallet AT CALL TIME to prevent stale-closure issues.
+// Returns the wallet used so callers can detect if it changed during async load.
 async function payLoadLocalHistory() {
+  // Capture wallet AT THIS MOMENT — prevents stale closures
   const wallet = window.walletState?.address;
+  const walletKey = wallet ? wallet.toLowerCase() : null;
 
-  // No wallet = clear displayed history
-  if (!wallet) {
+  console.log('[PAY:history] Loading history for wallet:', walletKey || 'NONE');
+
+  // No wallet = clear everything and show connect prompt
+  if (!walletKey) {
     payState.history   = [];
     payState.scheduled = [];
+    console.log('[PAY:history] No wallet connected — cleared history');
     renderPaymentHistory();
-    return;
+    return walletKey;
   }
 
-  // Try IndexedDB first
+  // Try IndexedDB first (wallet-scoped via stored sender field)
   if (typeof arcLoad === 'function') {
     try {
+      console.log('[PAY:history] Trying IndexedDB store:', window.ARC_STORE_PAY || 'payments');
       const items = await arcLoad(window.ARC_STORE_PAY || 'payments');
+
+      // Guard: verify wallet hasn't changed while we awaited
+      const currentWallet = window.walletState?.address?.toLowerCase();
+      if (currentWallet !== walletKey) {
+        console.warn('[PAY:history] Wallet changed during IndexedDB load — discarding stale result');
+        return walletKey;
+      }
+
       if (items && items.length > 0) {
-        // Separate completed history from scheduled
-        const completed = items.filter(r =>
+        console.log('[PAY:history] IndexedDB returned', items.length, 'total items');
+
+        // Filter strictly by wallet address — only include records that match this wallet
+        // Legacy items (no address field) are NOT shown to avoid cross-wallet data leakage
+        const myItems = items.filter(r => {
+          if (!r) return false;
+          const addr = (r.sender || r.from || r.wallet || '').toLowerCase();
+          // Only include if address exactly matches current wallet (never show legacy/unowned records)
+          return addr === walletKey;
+        });
+        console.log('[PAY:history] After wallet filter:', myItems.length, 'records for', walletKey);
+
+        // If we have items in IndexedDB but NONE match this wallet, fall through to localStorage
+        if (myItems.length === 0 && items.length > 0) {
+          console.log('[PAY:history] No IndexedDB records for this wallet — trying localStorage');
+          // Fall through to localStorage section below
+        } else {
+
+        const completed = myItems.filter(r =>
           r.status === 'completed' || r.status === 'confirmed' || r.status === 'failed'
         );
-        const scheduled = items.filter(r =>
+        const scheduled = myItems.filter(r =>
           r.status === 'scheduled' || r.status === 'processing'
         );
         payState.history = completed;
-        // Merge scheduled back into localStorage-based list
+
         if (scheduled.length > 0) {
           const lsScheduled = payLoadScheduled();
           const lsIds = new Set(lsScheduled.map(j => j.id));
           const newSched = scheduled.filter(j => !lsIds.has(j.id));
-          if (newSched.length > 0) {
-            paySaveScheduled([...lsScheduled, ...newSched]);
-          }
+          if (newSched.length > 0) paySaveScheduled([...lsScheduled, ...newSched]);
         }
-        console.log('[PAY] Loaded', completed.length, 'records from IndexedDB');
-        return;
+        console.log('[PAY:history] Loaded', completed.length, 'completed records from IndexedDB for', walletKey);
+        return walletKey;
+        } // end of myItems.length > 0 block
+      } else {
+        console.log('[PAY:history] IndexedDB empty — falling back to localStorage');
       }
     } catch (e) {
-      console.warn('[PAY] IndexedDB load failed, falling back to localStorage:', e.message);
+      console.warn('[PAY:history] IndexedDB load failed:', e.message, '— falling back to localStorage');
     }
   }
 
-  // Fallback to localStorage
+  // Fallback to localStorage (also wallet-scoped by key)
   try {
-    const raw = JSON.parse(localStorage.getItem('arc_pay_history') || '[]');
+    // Try wallet-specific key first
+    const walletSpecificKey = `arc_pay_history_${walletKey}`;
+    let raw = JSON.parse(localStorage.getItem(walletSpecificKey) || 'null');
+
+    if (!raw) {
+      // Fall back to global key, but filter strictly by wallet to avoid cross-wallet leakage
+      const globalRaw = JSON.parse(localStorage.getItem('arc_pay_history') || '[]');
+      raw = Array.isArray(globalRaw)
+        ? globalRaw.filter(r => {
+            if (!r) return false;
+            const addr = (r.sender || r.from || r.wallet || '').toLowerCase();
+            // Strict wallet match — skip legacy unowned records
+            return addr === walletKey;
+          })
+        : [];
+      console.log('[PAY:history] Global localStorage returned', raw.length, 'wallet-filtered records');
+    }
+
+    // Guard: verify wallet hasn't changed while we awaited
+    const currentWallet = window.walletState?.address?.toLowerCase();
+    if (currentWallet !== walletKey) {
+      console.warn('[PAY:history] Wallet changed during localStorage load — discarding stale result');
+      return walletKey;
+    }
+
     payState.history = Array.isArray(raw) ? raw : [];
-    console.log('[PAY] Loaded', payState.history.length, 'records from localStorage');
-  } catch (_) { payState.history = []; }
+    console.log('[PAY:history] Loaded', payState.history.length, 'records from localStorage for', walletKey);
+  } catch (err) {
+    console.error('[PAY:history] localStorage load error:', err.message);
+    payState.history = [];
+  }
+
+  return walletKey;
 }
 
 // ─── Background sync handler ─────────────────────────────────────────────────
 window.addEventListener('arcSyncRequest', async (e) => {
   const currentWallet = window.walletState?.address;
-  if (!currentWallet) return;
-  // Re-load history from persistence layer and merge with in-memory state
+  if (!currentWallet) {
+    console.log('[PAY:sync] Skipped — no wallet connected');
+    return;
+  }
+  console.log('[PAY:sync] arcSyncRequest received for', shortAddr(currentWallet));
   try {
     await payLoadLocalHistory();
   } catch (err) {
-    console.warn('[PAY] arcSyncRequest: history reload failed:', err.message);
+    console.warn('[PAY:sync] history reload failed:', err.message);
   }
   renderPaymentHistory();
-  console.log('[PAY] arcSyncRequest: history refreshed for', shortAddr(currentWallet));
+  console.log('[PAY:sync] History refreshed for', shortAddr(currentWallet));
 });
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
+let _payInitialized = false;
+
 async function initPayments() {
-  // Seed last-wallet tracker with current wallet (if already connected)
-  _payLastWallet = window.walletState?.address?.toLowerCase?.() || null;
+  const initWallet = window.walletState?.address;
+  console.log('[PAY:init] Initialising Payments module. Wallet:', initWallet || 'not connected');
+
+  // Only do full init once — subsequent calls just refresh
+  if (_payInitialized) {
+    console.log('[PAY:init] Already initialized — refreshing data only');
+    try { await refreshPaymentBalances(); } catch (e) { console.warn('[PAY:init] balance refresh:', e.message); }
+    renderPaymentHistory();
+    return;
+  }
+  _payInitialized = true;
+
+  // Seed last-wallet tracker so first walletConnected event is treated as "new wallet"
+  // only if address is actually different from what we'll load now
+  _payLastWallet = initWallet?.toLowerCase?.() || null;
+  _payWalletChangeToken = 0;
 
   // Load history only if wallet is available; otherwise show empty state silently
   try {
     await payLoadLocalHistory();
+    console.log('[PAY:init] History loaded:', payState.history.length, 'records');
   } catch (e) {
-    console.warn('[PAY] init: history load failed:', e.message);
+    console.error('[PAY:init] History load error (non-fatal):', e.message);
     payState.history = [];
   }
 
@@ -1350,8 +1442,9 @@ async function initPayments() {
   // Refresh balances — fails silently when wallet is not connected
   try {
     await refreshPaymentBalances();
+    console.log('[PAY:init] Balances refreshed');
   } catch (e) {
-    console.warn('[PAY] init: balance refresh failed:', e.message);
+    console.warn('[PAY:init] Balance refresh failed (non-fatal):', e.message);
   }
 
   renderPaymentHistory();
@@ -1366,6 +1459,8 @@ async function initPayments() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') payCloseReceiptModal();
   });
+
+  console.log('[PAY v3] Init complete · Arc Testnet ChainID:', PAY_CHAIN_ID);
 }
 
 // ─── Global exports ────────────────────────────────────────────────────────────
@@ -1398,14 +1493,19 @@ window.payState                = payState;
 
 // Track the last wallet address to detect actual changes
 let _payLastWallet = null;
+// Request token to prevent race conditions when wallet changes quickly
+let _payWalletChangeToken = 0;
 
 async function _payOnWalletChange(newAddr) {
   const addr = newAddr?.toLowerCase?.() || null;
+  const token = ++_payWalletChangeToken; // Unique token for this change event
+
+  console.log('[PAY:wallet] Change detected →', addr || 'disconnected', '| token:', token);
 
   // Detect actual wallet switch (not just event noise)
   if (addr && addr === _payLastWallet) {
-    // Same wallet – just refresh balances
-    await refreshPaymentBalances();
+    console.log('[PAY:wallet] Same wallet — refreshing balances only');
+    try { await refreshPaymentBalances(); } catch (e) { console.warn('[PAY:wallet] balance refresh err:', e.message); }
     updatePayPreview();
     payValidateForm();
     return;
@@ -1414,46 +1514,79 @@ async function _payOnWalletChange(newAddr) {
   // Wallet changed (new address or disconnected)
   _payLastWallet = addr;
 
-  // Reset stale data
+  // Reset ALL stale data immediately
   payState.history   = [];
   payState.scheduled = [];
   payState.senderBalance = { USDC: null, EURC: null };
   payState.receipt   = null;
   hidePayError();
 
+  // Update UI to reflect loading state
   if (addr) {
-    // Update UI with new address
     paySet('pay-from-display', shortAddr(newAddr));
     paySet('pay-wallet-short', shortAddr(newAddr));
-
-    // Load fresh data for this wallet
-    try {
-      await payLoadLocalHistory();
-    } catch (e) {
-      console.warn('[PAY] history load error after wallet change:', e.message);
-    }
-    await refreshPaymentBalances();
-    updatePayPreview();
-    payValidateForm();
+    paySet('pay-balance-usdc', '…');
+    paySet('pay-balance-eurc', '…');
   } else {
-    // Disconnected
     paySet('pay-from-display', '—');
     paySet('pay-wallet-short', 'Not connected');
     paySet('pay-balance-usdc', '— USDC');
     paySet('pay-balance-eurc', '— EURC');
   }
 
+  // Render empty/loading state immediately (prevents showing stale data)
   renderPaymentHistory();
-  console.log('[PAY] Wallet changed →', addr || 'disconnected');
+
+  if (!addr) {
+    console.log('[PAY:wallet] Disconnected — cleared all state');
+    payValidateForm();
+    return;
+  }
+
+  // Load fresh data for this wallet
+  try {
+    console.log('[PAY:wallet] Loading history for new wallet:', addr);
+    await payLoadLocalHistory();
+
+    // RACE CONDITION CHECK: if wallet changed again while we were loading, discard
+    if (token !== _payWalletChangeToken) {
+      console.warn('[PAY:wallet] Stale result discarded — token', token, '!= current', _payWalletChangeToken);
+      return;
+    }
+
+    console.log('[PAY:wallet] History loaded:', payState.history.length, 'records');
+  } catch (e) {
+    if (token !== _payWalletChangeToken) return; // stale
+    console.warn('[PAY:wallet] history load error:', e.message);
+    payState.history = [];
+  }
+
+  // Refresh balances
+  try {
+    await refreshPaymentBalances();
+    if (token !== _payWalletChangeToken) return; // stale
+  } catch (e) {
+    if (token !== _payWalletChangeToken) return;
+    console.warn('[PAY:wallet] balance refresh error:', e.message);
+  }
+
+  updatePayPreview();
+  payValidateForm();
+  renderPaymentHistory();
+  console.log('[PAY:wallet] Wallet change complete for', addr);
 }
 
 window.addEventListener('walletConnected', async (e) => {
-  await _payOnWalletChange(e.detail?.address);
+  const addr = e.detail?.address;
+  console.log('[PAY] walletConnected event →', addr);
+  await _payOnWalletChange(addr);
 });
 
 window.addEventListener('accountsChanged', async (e) => {
   // accountsChanged fires with new accounts array or single address
-  const newAddr = Array.isArray(e.detail) ? e.detail[0] : (e.detail?.address || window.walletState?.address);
+  const newAddr = Array.isArray(e.detail) ? e.detail[0]
+    : (e.detail?.address || window.walletState?.address || null);
+  console.log('[PAY] accountsChanged event →', newAddr);
   await _payOnWalletChange(newAddr || null);
 });
 

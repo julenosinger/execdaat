@@ -3818,12 +3818,12 @@ app.get('/', (c) => {
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.js?v=20250323"></script>
   <script src="/static/receipt-viewer.js?v=20250323b"></script>
-  <script src="/static/app.js?v=20250322"></script>
-  <script src="/static/payments.js?v=20250325a"></script>
+  <script src="/static/app.js?v=20250325c"></script>
+  <script src="/static/payments.js?v=20250325c"></script>
   <script src="/static/contracts.js?v=20250325a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
-  <script src="/static/dex.js?v=20250325a"></script>
+  <script src="/static/dex.js?v=20250325b"></script>
   <script src="/static/multisend.js?v=20250323c"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>

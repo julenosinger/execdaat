@@ -180,17 +180,77 @@ async function ammFetchPoolState() {
 async function ammFetchBalances() {
   const wallet = window.walletState?.address;
   if (!wallet) return;
+
+  console.log('[AMM:balances] Fetching balances for', wallet);
+
   try {
     const res  = await fetch(`/api/dex/amm/balances/${wallet}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+
     if (data.success) {
-      ammState.balances.EURC = BigInt(data.balances.EURC.raw);
-      ammState.balances.USDC = BigInt(data.balances.USDC.raw);
-      ammState.balances.LP   = BigInt(data.balances.LP.raw);
+      const eurcRaw = BigInt(data.balances.EURC.raw || '0');
+      const usdcRaw = BigInt(data.balances.USDC.raw || '0');
+      const lpRaw   = BigInt(data.balances.LP.raw   || '0');
+
+      console.log('[AMM:balances] API response — EURC:', data.balances.EURC.human,
+        'USDC:', data.balances.USDC.human, 'LP:', data.balances.LP.human);
+
+      ammState.balances.EURC = eurcRaw;
+      ammState.balances.USDC = usdcRaw;
+      ammState.balances.LP   = lpRaw;
       ammUpdateBalanceUI();
+      return;
     }
+
+    console.warn('[AMM:balances] API error:', data.error);
   } catch (e) {
-    console.warn('[AMM] fetchBalances error:', e.message);
+    console.warn('[AMM:balances] API fetch failed:', e.message, '— falling back to direct RPC read');
+  }
+
+  // ── Fallback: read directly from chain via provider ────────────────────────
+  // This is the ONLY reliable way to get fresh LP balance right after a tx
+  await ammFetchBalancesDirect(wallet);
+}
+
+// Direct on-chain balance read via the wallet provider (no backend needed)
+async function ammFetchBalancesDirect(wallet) {
+  if (!wallet) return;
+  try {
+    const provider = window.walletState?.provider;
+    if (!provider) { console.warn('[AMM:balances:direct] No provider'); return; }
+
+    const walletPadded = '0x' + wallet.replace('0x','').toLowerCase().padStart(64,'0');
+    const balSel = '0x70a08231'; // balanceOf(address)
+
+    // Fetch all 3 in parallel
+    const [eurcHex, usdcHex, lpHex] = await Promise.all([
+      provider.request({ method: 'eth_call', params: [{ to: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a', data: balSel + walletPadded.slice(2) }, 'latest'] }),
+      provider.request({ method: 'eth_call', params: [{ to: '0x3600000000000000000000000000000000000000', data: balSel + walletPadded.slice(2) }, 'latest'] }),
+      // LP balance = balanceOf() on AMM contract (SimpleAMM IS an ERC-20, not a separate LP token)
+      // Use known deployed address as fallback if ammState.ammAddress is not yet set
+      (function() {
+        const ammAddr = ammState.ammAddress || '0x3148E2807F172D1cC354F35fB4fC4104e8b6b561';
+        if (!ammAddr || ammAddr === '0x0000000000000000000000000000000000000000') return Promise.resolve('0x0');
+        return provider.request({ method: 'eth_call', params: [{ to: ammAddr, data: balSel + walletPadded.slice(2) }, 'latest'] });
+      })(),
+    ]);
+
+    const toBigInt = h => h && h !== '0x' ? BigInt(h) : 0n;
+    const eurcRaw = toBigInt(eurcHex);
+    const usdcRaw = toBigInt(usdcHex);
+    const lpRaw   = toBigInt(lpHex);
+
+    console.log('[AMM:balances:direct] EURC:', (Number(eurcRaw)/1e6).toFixed(4),
+      'USDC:', (Number(usdcRaw)/1e6).toFixed(4), 'LP:', (Number(lpRaw)/1e6).toFixed(4),
+      '| AMM addr:', ammState.ammAddress);
+
+    ammState.balances.EURC = eurcRaw;
+    ammState.balances.USDC = usdcRaw;
+    ammState.balances.LP   = lpRaw;
+    ammUpdateBalanceUI();
+  } catch (e) {
+    console.error('[AMM:balances:direct] Direct RPC read failed:', e.message);
   }
 }
 
@@ -663,18 +723,45 @@ window.ammAddLiquidity = async function() {
 
     // ── Add liquidity ──────────────────────────────────────────────────────
     const amm = await ammGetContract();
+
+    console.log('[AMM:addLiq] Calling addLiquidity(', amountA.toString(), ',', amountB.toString(), ')');
+    console.log('[AMM:addLiq] AMM address:', ammState.ammAddress);
+    console.log('[AMM:addLiq] Current pool reserves — rA:', Number(ammState.reserves.A)/1e6, 'rB:', Number(ammState.reserves.B)/1e6);
+    console.log('[AMM:addLiq] Current LP totalSupply:', Number(ammState.totalSupply)/1e6);
+    console.log('[AMM:addLiq] User LP before:', Number(ammState.balances.LP)/1e6);
+
     showToast(`📝 Confirm Add Liquidity in wallet…`, 'info');
     const tx      = await amm.addLiquidity(amountA, amountB);
     const txHash  = tx.hash;
     showToast(`⏳ Tx submitted: ${txHash.slice(0,14)}…`, 'info');
-    const receipt = await tx.wait();
-    if (!receipt || receipt.status !== 1) throw new Error('addLiquidity reverted');
+    console.log('[AMM:addLiq] Tx submitted:', txHash);
 
-    // Parse LP minted from balance delta (reliable approach)
+    const receipt = await tx.wait();
+    console.log('[AMM:addLiq] Receipt status:', receipt?.status, '| blockNumber:', receipt?.blockNumber);
+    if (!receipt || receipt.status !== 1) throw new Error('addLiquidity reverted on-chain');
+
+    console.log('[AMM:addLiq] Transaction confirmed! Reading new LP balance…');
+
+    // Capture LP balance BEFORE refresh
     const lpBefore = ammState.balances.LP;
-    await ammRefreshAll();
+    console.log('[AMM:addLiq] LP balance before refresh:', Number(lpBefore)/1e6, 'LP');
+
+    // Small delay to let the node propagate state (avoids stale eth_call results)
+    await new Promise(r => setTimeout(r, 800));
+
+    // Direct RPC read is the ONLY reliable source right after a tx
+    // (backend API may be cached, ammRefreshAll introduces race conditions)
+    await ammFetchBalancesDirect(wallet);
+    // Refresh pool state (reserves + totalSupply) without overwriting fresh LP balance
+    const poolData = await ammFetchPoolState().catch(() => null);
+    if (poolData) ammUpdatePoolUI(poolData);
+
     const lpAfter  = ammState.balances.LP;
     const lpMinted = lpAfter > lpBefore ? lpAfter - lpBefore : lpAfter;
+    console.log('[AMM:addLiq] LP balance after refresh:', Number(lpAfter)/1e6, 'LP | minted:', Number(lpMinted)/1e6, 'LP');
+
+    console.log('[AMM:addLiq] LP before:', Number(lpBefore)/1e6, '| LP after:', Number(lpAfter)/1e6,
+      '| LP minted (delta):', Number(lpMinted)/1e6);
 
     setText('amm-liq-result-a',    amtAStr + ' EURC');
     setText('amm-liq-result-b',    amtBStr + ' USDC');
@@ -737,14 +824,22 @@ window.ammRemoveLiquidity = async function() {
     await ammEnsureNetwork();
 
     const amm = await ammGetContract();
+    console.log('[AMM:removeLiq] Calling removeLiquidity(', lpAmount.toString(), ') =',
+      Number(lpAmount)/1e6, 'LP |', pct + '% of', Number(lpBalance)/1e6);
     showToast(`📝 Confirm Remove Liquidity (${pct}%) in wallet…`, 'info');
     const tx = await amm.removeLiquidity(lpAmount);
     showToast(`⏳ Tx submitted: ${tx.hash.slice(0,14)}…`, 'info');
+    console.log('[AMM:removeLiq] Tx submitted:', tx.hash);
     const receipt = await tx.wait();
+    console.log('[AMM:removeLiq] Receipt status:', receipt?.status);
     if (!receipt || receipt.status !== 1) throw new Error('removeLiquidity reverted');
 
     showToast(`✅ Liquidity removed! <a href="${AMM_EXPLORER}/tx/${tx.hash}" target="_blank" class="underline">ArcScan ↗</a>`, 'success');
-    await ammRefreshAll();
+
+    // Use direct read for immediate balance update
+    await ammFetchBalancesDirect(wallet);
+    await ammFetchPoolState().then(d => ammUpdatePoolUI(d)).catch(() => {});
+    ammUpdateLiqPreview();
 
   } catch (err) {
     console.error('[AMM:removeLiq] Error:', err);
@@ -763,6 +858,7 @@ async function ammRefreshAll() {
   try {
     const data = await ammFetchPoolState();
     ammUpdatePoolUI(data);
+    // Try backend API first, fall back to direct RPC if needed
     await ammFetchBalances();
     ammComputeSwapQuote();
     ammUpdateLiqPreview();
@@ -876,6 +972,7 @@ window.ammRefreshAll       = ammRefreshAll;
 window.ammComputeSwapQuote = ammComputeSwapQuote;
 window.ammUpdateLiqPreview = ammUpdateLiqPreview;
 window.ammUpdateRemovePreview = ammUpdateRemovePreview;
+window.ammFetchBalancesDirect = ammFetchBalancesDirect;
 
 console.log('[AMM] Module loaded · Arc Testnet', AMM_CHAIN_ID);
 console.log('[AMM] Tokens: EURC', AMM_TOKENS.EURC.address, '/ USDC', AMM_TOKENS.USDC.address);

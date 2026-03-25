@@ -53,7 +53,17 @@ function switchTab(tab) {
   
   // Load data for the tab
   if (tab === 'dashboard') loadDashboard();
-  if (tab === 'payments') { loadPayments(); if (window.initPayments) window.initPayments(); }
+  if (tab === 'payments') {
+    loadPayments();
+    if (window.initPayments && !window._payInitialized) {
+      window._payInitialized = true;
+      window.initPayments();
+    } else {
+      // On subsequent visits, just refresh balances + re-render history
+      if (window.refreshPaymentBalances) window.refreshPaymentBalances().catch(() => {});
+      if (window.renderPaymentHistory) window.renderPaymentHistory();
+    }
+  }
   if (tab === 'contracts') { cfWalletGateUpdate(); cfLoadContracts(); }
   if (tab === 'multisend') {
     if (window.msInit) window.msInit();
@@ -230,26 +240,63 @@ async function loadDashboard() {
 }
 
 // ============================================================
-// PAYMENTS
+// PAYMENTS — Agent Queue Panel
+// This loads the AI agent payment queue (NOT personal payment history).
+// Personal payment history is handled separately by renderPaymentHistory()
+// in payments.js using localStorage/IndexedDB data.
 // ============================================================
 async function loadPayments() {
+  const list = document.getElementById('payments-list');
+  if (!list) return;
+
+  // Show loading state
+  list.innerHTML = `
+    <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
+      <i class="fas fa-spinner fa-spin" style="font-size:18px;display:block;margin-bottom:8px;color:#5a7898;"></i>
+      Loading payment queue…
+    </div>`;
+
   try {
-    const data = await API.get('/api/payments/queue');
+    console.log('[PAY:queue] Fetching /api/payments/queue…');
+    const res = await fetch('/api/payments/queue');
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.statusText);
+      throw new Error(`HTTP ${res.status}: ${errText.slice(0, 120)}`);
+    }
+    const data = await res.json();
+    console.log('[PAY:queue] Response:', data);
     renderPaymentsList(data);
   } catch (err) {
-    showToast(t('toast_error_load_payments'), 'error');
+    console.error('[PAY:queue] loadPayments error:', err);
+    // Show real error in the panel — never fail silently
+    if (list) {
+      list.innerHTML = `
+        <div style="color:#f87171;font-size:11px;text-align:center;padding:20px 12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;margin:8px;">
+          <i class="fas fa-exclamation-triangle" style="font-size:16px;display:block;margin-bottom:6px;"></i>
+          <span style="font-weight:600;">Queue unavailable</span><br>
+          <span style="color:#9ca3af;font-size:10px;">${err.message || 'Unknown error'}</span><br>
+          <button onclick="loadPayments()" style="margin-top:8px;font-size:10px;color:#60b4ff;background:rgba(55,138,221,0.1);border:1px solid rgba(55,138,221,0.3);border-radius:6px;padding:3px 10px;cursor:pointer;">
+            <i class="fas fa-redo"></i> Retry
+          </button>
+        </div>`;
+    }
   }
 }
 
 function renderPaymentsList(data) {
   const list = document.getElementById('payments-list');
-  const allTasks = [...data.pending, ...data.processed];
+  if (!list) return;
+
+  // Guard: ensure data has expected shape
+  const pending   = Array.isArray(data?.pending)   ? data.pending   : [];
+  const processed = Array.isArray(data?.processed) ? data.processed : [];
+  const allTasks  = [...pending, ...processed];
   
   if (allTasks.length === 0) {
     list.innerHTML = `
-      <div class="text-gray-500 text-sm text-center py-8 bg-gray-900/40 rounded-xl border border-gray-700/30">
-        <i class="fas fa-inbox text-4xl mb-3 block text-gray-700"></i>
-        ${t('no_payments')}
+      <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
+        <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#5a7898;"></i>
+        ${t ? t('no_payments') : 'No payments in queue'}
       </div>
     `;
     return;
@@ -719,6 +766,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Atualizar dashboard
     if (currentTab === 'dashboard') loadDashboard();
+    // Atualizar fila de pagamentos se estiver na aba payments
+    if (currentTab === 'payments') loadPayments();
 
     // Atualizar wallet gate de contratos
     const cfGate = document.getElementById('cf-wallet-gate');
