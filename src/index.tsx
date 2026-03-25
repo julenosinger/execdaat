@@ -2672,29 +2672,38 @@ app.get('/', (c) => {
           opacity: 0;
           transform: translateX(18px);
           pointer-events: none;
+          /* Remove from flex/grid flow so it never pushes the swap card */
+          visibility: hidden;
+          position: absolute;
+          width: 0;
+          overflow: hidden;
         }
         #dex-pool-col.amm-pool-visible {
           opacity: 1;
           transform: translateX(0);
           pointer-events: auto;
+          visibility: visible;
+          position: static;
+          width: auto;
+          overflow: visible;
         }
-        /* Swap card stays fixed width; centres when pool is hidden */
-        #dex-swap-col {
-          transition: max-width 0.28s ease;
-        }
-        /* Centred layout wrapper (swap-only mode) */
+        /* Centred layout wrapper — 100% wide so justify-content:center
+           measures against the full main container */
         #dex-swap-center {
+          width: 100%;
           display: flex;
           justify-content: center;
+          align-items: flex-start;
         }
-        /* When liquidity mode: remove centring, let grid take over */
+        /* Liquidity mode: JS overrides display to grid */
         #dex-swap-center.amm-liq-mode {
-          display: block;
+          display: grid;
         }
-        /* Inner swap column always fixed at 480px max */
+        /* Inner swap column — fixed 480px, never resizes */
         #dex-swap-inner {
           width: 100%;
           max-width: 480px;
+          flex-shrink: 0;
         }
       </style>
 

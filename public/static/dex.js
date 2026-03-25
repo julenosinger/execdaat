@@ -479,9 +479,9 @@ window.ammSwitchTab = function(tab) {
       swapCenter.classList.remove('amm-liq-mode');
       swapCenter.style.display             = 'flex';
       swapCenter.style.justifyContent      = 'center';
+      swapCenter.style.alignItems          = 'flex-start';
       swapCenter.style.gridTemplateColumns = '';
       swapCenter.style.gap                 = '';
-      swapCenter.style.alignItems          = '';
     }
     if (swapInner) swapInner.style.maxWidth = '480px';
   }
@@ -1000,9 +1000,6 @@ async function ammInit() {
 
   // Default tab — swap mode (centred, pool col hidden)
   ammSwitchTab('swap');
-  // Ensure pool col starts completely off-screen (not just opacity=0)
-  const poolCol = $('dex-pool-col');
-  if (poolCol) poolCol.style.display = '';
 
   // Auto-refresh every 15s
   setInterval(ammRefreshAll, 15_000);
