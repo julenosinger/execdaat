@@ -145,6 +145,11 @@ const cfState = {
   debugMode:    true,    // verbose on-chain debug logging
 };
 
+// ─── Local Dismiss state (Contracts tab — isolated, cleared on Refresh) ───────
+const _cfDismiss = (typeof arcMakeDismissState === 'function')
+  ? arcMakeDismissState()
+  : { dismissed: new Set(), dismiss: id => { _cfDismiss.dismissed.add(id); }, isVisible: id => !_cfDismiss.dismissed.has(id), reset: () => _cfDismiss.dismissed.clear() };
+
 // ─── Off-chain metadata (localStorage) ────────────────────────────────────────
 // Stores: { [contractId]: { clientEmail, contractorEmail, otcPoints, otcTerms, proofs: [], completedAt, receiptData } }
 function cfGetMeta(id) {
@@ -549,6 +554,9 @@ async function cfLoadContracts(opts = {}) {
     return;
   }
 
+  // Reset local dismiss state on every Refresh
+  _cfDismiss.reset();
+
   cfState.loadingIds = true;
   cfShowListState('loading');
   cfLog('━━━ cfLoadContracts START ━━━ wallet:', wallet);
@@ -753,12 +761,23 @@ function cfRenderSummary(contracts, wallet) {
 function cfRenderContracts(contracts, wallet) {
   const el = cfEl('cf-contracts-list');
   if (!el) return;
-  if (!contracts.length) { cfShowListState('empty'); return; }
 
   const order = { Active: 0, Funded: 1, Pending: 2, Completed: 3, Cancelled: 4 };
   const sorted = [...contracts].sort((a, b) => (order[cfUiStatus(a)] ?? 9) - (order[cfUiStatus(b)] ?? 9));
 
-  el.innerHTML = sorted.map(c => cfContractCard(c, wallet)).join('');
+  // Apply local dismiss filter — only hides from view, contract still on-chain
+  const visible = sorted.filter(c => _cfDismiss.isVisible(String(c.id)));
+
+  if (!visible.length) {
+    el.innerHTML = `
+      <div style="color:#8aaac8;font-size:11px;text-align:center;padding:32px 0;">
+        <i class="fas fa-file-contract" style="font-size:22px;display:block;margin-bottom:8px;color:#3a4870;"></i>
+        No contracts in local view. Refresh to reload from chain.
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = visible.map(c => cfContractCard(c, wallet)).join('');
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -1047,7 +1066,7 @@ function cfContractCard(c, wallet) {
     </div>` : '';
 
   return `
-  <div class="cf-card mb-4" style="overflow:hidden;">
+  <div class="cf-card mb-4" id="cf-contract-${c.id}" style="overflow:hidden;">
     <div style="padding:14px 16px 0;">
       <!-- Header row -->
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
@@ -1064,10 +1083,16 @@ function cfContractCard(c, wallet) {
             ${modeBadge}
           </div>
         </div>
-        <div style="text-align:right;flex-shrink:0;">
-          <div style="font-size:18px;font-weight:800;color:#dde2f0;">$${cfFmtUsdc(total)}</div>
-          <div style="font-size:10px;color:#3a4870;">USDC · 0.2% fee</div>
-          <div style="font-size:10px;color:#4a6490;">Net: $${cfFmtUsdc(netRaw)}</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
+          <div style="text-align:right;">
+            <div style="font-size:18px;font-weight:800;color:#dde2f0;">$${cfFmtUsdc(total)}</div>
+            <div style="font-size:10px;color:#3a4870;">USDC · 0.2% fee</div>
+            <div style="font-size:10px;color:#4a6490;">Net: $${cfFmtUsdc(netRaw)}</div>
+          </div>
+          <!-- ✕ Local dismiss — does NOT touch on-chain state -->
+          <button class="arc-dismiss-btn"
+            onclick="event.stopPropagation();arcAnimatedDismiss('cf-contract-${c.id}',function(){_cfDismiss.dismiss('${c.id}');cfRenderContracts(cfState.contracts,window.walletState?.address);})"
+            title="Hide from local view (contract still exists on-chain)">✕</button>
         </div>
       </div>
 
@@ -1125,6 +1150,10 @@ function cfContractCard(c, wallet) {
         ${c.completedAt ? ` · Completed: ${cfTs(c.completedAt)}` : ''}
         ${mode==='onchain' ? ` · <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" style="color:#3a5a8a;">ArcScan ↗</a>` : ''}
       </div>
+      <!-- Local-only disclaimer -->
+      <p style="font-size:9px;color:#2a4030;margin:0 0 6px;line-height:1.3;">
+        <i class="fas fa-info-circle" style="margin-right:3px;"></i>Local only — contract still exists on-chain
+      </p>
     </div>
     ${actionBtns ? `<div style="padding:10px 16px 14px;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid rgba(55,138,221,0.08);">${actionBtns}</div>` : ''}
   </div>`;

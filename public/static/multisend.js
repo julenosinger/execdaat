@@ -78,6 +78,11 @@ let msCurrentStep   = 1;
 let msValidatedRows = [];
 let msExecuting     = false; // guard against duplicate sends
 
+// ─── Local Dismiss state (MultiSend Receipts — isolated, cleared on Refresh) ──
+const _msDismiss = (typeof arcMakeDismissState === 'function')
+  ? arcMakeDismissState()
+  : { dismissed: new Set(), dismiss: id => { _msDismiss.dismissed.add(id); }, isVisible: id => !_msDismiss.dismissed.has(id), reset: () => _msDismiss.dismissed.clear() };
+
 // ─── Fee calculator ────────────────────────────────────────────────────────────
 function msCalcFee(total, count) {
   if (!count || !total) return 0;
@@ -1062,6 +1067,8 @@ const MS_HISTORY_KEY = 'arc_ms_history_v2';
 
 // Load receipts from localStorage on startup
 function msLoadPersistedReceipts() {
+  // Reset local dismiss state so dismissed receipts reappear after Refresh
+  _msDismiss.reset();
   try {
     const stored = JSON.parse(localStorage.getItem(MS_HISTORY_KEY) || '[]');
     if (!Array.isArray(stored)) return;
@@ -1342,18 +1349,22 @@ function msRenderReceipts() {
   const container = msEl('ms-receipts-list');
   const countEl   = msEl('ms-receipts-count');
   if (!container) return;
-  if (countEl) countEl.textContent = msReceipts.length + ' receipt' + (msReceipts.length !== 1 ? 's' : '');
 
-  if (!msReceipts.length) {
+  // Apply local dismiss filter
+  const visible = msReceipts.filter(r => _msDismiss.isVisible(r.id));
+
+  if (countEl) countEl.textContent = visible.length + ' receipt' + (visible.length !== 1 ? 's' : '');
+
+  if (!visible.length) {
     container.innerHTML = `
       <div class="flex flex-col items-center gap-3 py-10 text-center text-gray-600">
         <i class="fas fa-inbox text-2xl"></i>
-        <p class="text-sm">No batch receipts yet. Send a batch to generate a receipt.</p>
+        <p class="text-sm">No batch receipts. Send a batch to generate a receipt.</p>
       </div>`;
     return;
   }
 
-  container.innerHTML = msReceipts.map(r => {
+  container.innerHTML = visible.map(r => {
     const synced = !!r._onChainSynced;
     const hasTx  = !!r.txHash;
     const syncBadge = synced
@@ -1363,7 +1374,7 @@ function msRenderReceipts() {
         : `<span class="inline-flex items-center gap-1 text-[9px] bg-gray-800/50 border border-gray-700/20 text-gray-600 px-2 py-0.5 rounded-full ml-1"><i class="fas fa-database" style="font-size:7px"></i>Local</span>`;
 
     return `
-    <div class="bg-gray-800/40 border ${synced ? 'border-green-800/30' : hasTx ? 'border-yellow-800/20' : 'border-gray-700/40'} rounded-2xl p-4 mb-3">
+    <div id="ms-receipt-${r.id}" class="bg-gray-800/40 border ${synced ? 'border-green-800/30' : hasTx ? 'border-yellow-800/20' : 'border-gray-700/40'} rounded-2xl p-4 mb-3" style="max-height:600px;">
       <div class="flex items-start justify-between mb-3">
         <div class="flex items-center gap-2">
           <div class="w-7 h-7 rounded-lg ${r.status === 'confirmed' ? 'bg-green-900/30 border-green-700/30' : 'bg-yellow-900/30 border-yellow-700/30'} border flex items-center justify-center">
@@ -1374,9 +1385,15 @@ function msRenderReceipts() {
             <div class="text-gray-500 text-xs">${new Date(r.timestamp).toLocaleString()} · <span class="text-cyan-600">${r.executionMethod || 'batch'}</span></div>
           </div>
         </div>
-        <div class="text-right">
-          <div class="text-green-400 font-bold text-sm">$${r.totalAmount} USDC</div>
-          <div class="text-gray-600 text-xs">${r.count} recipient${r.count !== 1 ? 's' : ''}</div>
+        <div class="flex items-start gap-2">
+          <div class="text-right">
+            <div class="text-green-400 font-bold text-sm">$${r.totalAmount} USDC</div>
+            <div class="text-gray-600 text-xs">${r.count} recipient${r.count !== 1 ? 's' : ''}</div>
+          </div>
+          <!-- ✕ Local dismiss — does NOT delete from localStorage -->
+          <button class="arc-dismiss-btn"
+            onclick="event.stopPropagation();arcAnimatedDismiss('ms-receipt-${r.id}',function(){_msDismiss.dismiss('${r.id}');msRenderReceipts();})"
+            title="Remove receipt from local view">✕</button>
         </div>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs mb-3">

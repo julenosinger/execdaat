@@ -2393,3 +2393,44 @@ body.light-mode .arc-retry-btn:hover {
 }
 body.light-mode .hist-cache-bar  { background: rgba(37,99,235,0.04);  border-color: rgba(37,99,235,0.1);  color: #3b82f6; }
 body.light-mode .hist-offline-bar { background: rgba(217,119,6,0.05); border-color: rgba(217,119,6,0.15); color: #92400e; }
+
+/* ── Local Dismiss System ─────────────────────────────────────────────────── */
+/* .dismissing: animates an item out before removing it from the DOM state    */
+.dismissing {
+  transition: opacity 0.2s ease,
+              max-height 0.3s ease 0.1s,
+              padding 0.3s ease 0.1s,
+              margin 0.3s ease 0.1s;
+  opacity: 0 !important;
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Dismiss button — small ✕ used per item across all tabs */
+.arc-dismiss-btn {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  background: #2a1515;
+  border: 1px solid #5a2020;
+  border-radius: 5px;
+  cursor: pointer;
+  color: #e05555;
+  font-size: 13px;
+  font-weight: bold;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+  vertical-align: middle;
+}
+.arc-dismiss-btn:hover {
+  border-color: #8b3030;
+  background: #3d1a1a;
+}

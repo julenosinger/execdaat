@@ -974,3 +974,50 @@ window.openCreateAccount = openCreateAccount;
 window.setThemeMode      = setThemeMode;
 
 console.log('[APP] Theme system loaded');
+
+// ============================================================
+// ARC LOCAL DISMISS SYSTEM
+// Shared utility for per-item ✕ buttons across all tabs.
+// Pure client-side — no RPC calls, no on-chain writes.
+// Dismissed state is per-tab Set; cleared on Refresh.
+// ============================================================
+
+/**
+ * Animates an element out, then calls dismissFn after the transition.
+ * @param {string} elementId  - DOM id of the row/card to animate
+ * @param {function} dismissFn - callback that removes the item from state
+ */
+window.arcAnimatedDismiss = function(elementId, dismissFn) {
+  const el = document.getElementById(elementId);
+  if (el) {
+    el.classList.add('dismissing');
+    setTimeout(dismissFn, 420);
+  } else {
+    dismissFn();
+  }
+};
+
+/**
+ * Creates an isolated dismiss-state controller for one tab.
+ * Returns { dismissed:Set, dismiss(id), isVisible(id), reset() }
+ */
+window.arcMakeDismissState = function() {
+  const dismissed = new Set();
+  return {
+    dismissed,
+    dismiss:   (id) => dismissed.add(id),
+    isVisible: (id) => !dismissed.has(id),
+    reset:     ()   => dismissed.clear(),
+  };
+};
+
+/**
+ * Returns the HTML string for a ✕ dismiss button.
+ * onClickJs should be a JS expression string (safe for inline onclick).
+ */
+window.arcDismissBtnHtml = function(onClickJs, title) {
+  const t = title || 'Remove from local view';
+  return `<button class="arc-dismiss-btn" onclick="event.stopPropagation();${onClickJs}" title="${t}">✕</button>`;
+};
+
+console.log('[APP] Local Dismiss system loaded');

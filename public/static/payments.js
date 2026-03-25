@@ -41,6 +41,13 @@ const payState = {
   schedTimerId: null,   // setInterval for polling scheduled jobs
 };
 
+// ─── Local Dismiss state (Payments tab — isolated, cleared on Refresh) ────────
+const _payDismiss = (typeof arcMakeDismissState === 'function')
+  ? arcMakeDismissState()
+  : { dismissed: new Set(), dismiss: id => { _payDismiss.dismissed.add(id); }, isVisible: id => !_payDismiss.dismissed.has(id), reset: () => _payDismiss.dismissed.clear() };
+// Expose reset so payLoadLocalHistory / payInit can call it on Refresh
+window._payDismissReset = () => _payDismiss.reset();
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function payEl(id)       { return document.getElementById(id); }
 function payShow(id)     { const el = payEl(id); if (el) el.style.display = ''; }
@@ -1194,9 +1201,13 @@ function renderPaymentHistory() {
     return new Date(tb) - new Date(ta);
   }).slice(0, 25);
 
-  if (allItems.length === 0) {
-    // Show "no data" only if we're certain there's nothing locally
-    const hasLocal = typeof arcLoad === 'function';
+  // Apply local dismiss filter (does not affect payState — only this render)
+  const visibleItems = allItems.filter(r => {
+    const uid = r.txHash || r.id || '';
+    return uid ? _payDismiss.isVisible(uid) : true;
+  });
+
+  if (visibleItems.length === 0) {
     container.innerHTML = `
       <div style="color:#8aaac8;font-size:11px;text-align:center;padding:28px 0;">
         <i class="fas fa-clock" style="font-size:22px;display:block;margin-bottom:8px;color:#5a7898;"></i>
@@ -1205,12 +1216,13 @@ function renderPaymentHistory() {
     return;
   }
 
-  container.innerHTML = allItems.map(r => {
+  container.innerHTML = visibleItems.map(r => {
     const isScheduled  = r.status === 'scheduled';
     const isProcessing = r.status === 'processing';
     const isFailed     = r.status === 'failed';
     const isCancelled  = r.status === 'cancelled';
     const isCached     = r._source === 'local' && !r.txHash && !isScheduled;
+    const uid          = r.txHash || r.id || '';
 
     // Use unified arcStatusBadge if available, else fallback
     let statusBadge;
@@ -1250,12 +1262,15 @@ function renderPaymentHistory() {
       : '';
     const viewBtn = `<button onclick="(typeof arcViewPaymentReceipt==='function'?arcViewPaymentReceipt:payOpenReceiptModal)(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Open Receipt" style="background:rgba(29,158,117,0.07);border:1px solid rgba(29,158,117,0.22);border-radius:6px;color:#34d399;font-size:10px;padding:2px 7px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(29,158,117,0.15)'" onmouseout="this.style.background='rgba(29,158,117,0.07)'"><i class="fas fa-eye"></i></button>`;
 
+    // ── Dismiss button — local only, no RPC ──────────────────────────────────
+    const dismissBtn = uid ? `<button class="arc-dismiss-btn" onclick="event.stopPropagation();arcAnimatedDismiss('pay-tx-${uid}',function(){_payDismiss.dismiss('${uid}');renderPaymentHistory();})" title="Remove from local view">✕</button>` : '';
+
     return `
-    <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.14);border-radius:10px;padding:10px 12px;transition:border-color 0.2s;"
+    <div id="pay-tx-${uid}" style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.14);border-radius:10px;padding:10px 12px;transition:border-color 0.2s;max-height:200px;"
          onmouseover="this.style.borderColor='rgba(55,138,221,0.3)'" onmouseout="this.style.borderColor='rgba(55,138,221,0.14)'">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:6px;">
         <span style="color:#dde2f0;font-size:12px;font-weight:700;">${Number(r.amount).toFixed(4)} ${r.token}</span>
-        <div style="display:flex;align-items:center;gap:4px;">${statusBadge}</div>
+        <div style="display:flex;align-items:center;gap:4px;">${statusBadge}${dismissBtn}</div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#8aaac8;margin-bottom:3px;">
         <span>→ ${shortAddr(r.recipient)}</span>
@@ -1280,6 +1295,9 @@ async function payLoadLocalHistory() {
   // Capture wallet AT THIS MOMENT — prevents stale closures
   const wallet = window.walletState?.address;
   const walletKey = wallet ? wallet.toLowerCase() : null;
+
+  // Reset local dismiss state on every Refresh so items reappear
+  _payDismiss.reset();
 
   console.log('[PAY:history] Loading history for wallet:', walletKey || 'NONE');
 

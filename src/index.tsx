@@ -2867,11 +2867,15 @@ app.get('/', (c) => {
 
               <!-- Result / Error -->
               <div id="amm-swap-result" class="hidden bg-green-900/20 border border-green-700/40 rounded-xl p-4">
-                <div class="flex items-center gap-2 text-green-400 font-semibold mb-3 text-sm">
-                  <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
-                    <i class="fas fa-check text-xs"></i>
+                <div class="flex items-center justify-between gap-2 mb-3">
+                  <div class="flex items-center gap-2 text-green-400 font-semibold text-sm">
+                    <div class="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
+                      <i class="fas fa-check text-xs"></i>
+                    </div>
+                    Swap Confirmed!
                   </div>
-                  Swap Confirmed!
+                  <!-- ✕ Dismiss swap result panel — local only -->
+                  <button class="arc-dismiss-btn" onclick="event.stopPropagation();document.getElementById('amm-swap-result').classList.add('hidden');" title="Dismiss swap result">✕</button>
                 </div>
                 <div class="space-y-1.5 text-xs">
                   <div class="flex justify-between">
