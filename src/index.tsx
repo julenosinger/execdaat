@@ -1598,6 +1598,8 @@ app.get('/', (c) => {
         .cf-badge-active    { background:rgba(34,211,238,0.12); border:1px solid rgba(34,211,238,0.3); color:#67e8f9; }
         .cf-badge-completed { background:rgba(52,211,153,0.12); border:1px solid rgba(52,211,153,0.3); color:#6ee7b7; }
         .cf-badge-cancelled { background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.3); color:#fca5a5; }
+        .cf-badge-dispute   { background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#f87171; }
+        .cf-badge-closed    { background:rgba(74,85,104,0.15); border:1px solid rgba(74,85,104,0.35); color:#9ca3af; }
         .cf-card { background:rgba(8,11,24,0.95); border:1px solid rgba(55,138,221,0.14); border-radius:16px; transition:border-color 0.2s; }
         .cf-card:hover { border-color:rgba(55,138,221,0.3); }
         .cf-action-btn { display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;border:1px solid transparent;transition:all 0.2s;white-space:nowrap; }
@@ -3797,7 +3799,7 @@ app.get('/', (c) => {
   <script src="/static/receipt-viewer.js?v=20250323b"></script>
   <script src="/static/app.js?v=20250322"></script>
   <script src="/static/payments.js?v=20250323d"></script>
-  <script src="/static/contracts.js?v=20250324c"></script>
+  <script src="/static/contracts.js?v=20250325a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250322"></script>
