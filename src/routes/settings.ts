@@ -7,7 +7,14 @@ import {
   stripTags,
 } from '../middleware/security'
 
-const router = new Hono()
+// ─── Cloudflare env bindings type ────────────────────────────────────────────
+type Bindings = {
+  CIRCLE_API_KEY?: string
+  CIRCLE_WEBHOOK_SECRET?: string
+  CIRCLE_ENVIRONMENT?: string
+}
+
+const router = new Hono<{ Bindings: Bindings }>()
 
 // ─── In-memory settings store (persiste enquanto o processo rodar) ────────────
 // Em produção com Cloudflare, usar KV ou D1 para persistência real
@@ -96,7 +103,7 @@ function safeSettings(s: SettingsStore) {
   return {
     profile: { ...s.profile },
     circle: {
-      environment: s.circle.environment,
+      environment: s.circle.environment as 'sandbox' | 'production',
       apiKeyMasked: s.circle.apiKey ? maskKey(s.circle.apiKey) : '',
       webhookSecretMasked: s.circle.webhookSecret ? maskKey(s.circle.webhookSecret) : '',
       isConnected: s.circle.isConnected,
@@ -104,7 +111,7 @@ function safeSettings(s: SettingsStore) {
       testResult: s.circle.testResult,
       hasApiKey: !!s.circle.apiKey,
       hasWebhookSecret: !!s.circle.webhookSecret,
-    },
+    } as Record<string, any>,
     app: {
       theme: s.app.theme,
       language: s.app.language,
@@ -120,7 +127,15 @@ function safeSettings(s: SettingsStore) {
 
 // ─── GET /api/settings ── retorna configurações seguras ──────────────────────
 router.get('/', (c) => {
-  return c.json({ success: true, settings: safeSettings(settingsStore) })
+  const { apiKey, environment, fromEnv } = resolveCircleCredentials(c)
+  const settings = safeSettings(settingsStore)
+  // Enriquecer com info do env Cloudflare (sem expor a chave)
+  if (fromEnv) {
+    settings.circle.hasApiKey = true
+    settings.circle.apiKeyMasked = '••••• (Cloudflare Secret)'
+    settings.circle.environment = environment as 'sandbox' | 'production'
+  }
+  return c.json({ success: true, settings })
 })
 
 // ─── POST /api/settings/verify-pin ── verificar PIN ─────────────────────────
@@ -220,26 +235,37 @@ router.put('/circle', async (c) => {
   })
 })
 
+// ─── Helper: resolve Circle credentials (env > in-memory) ───────────────────
+function resolveCircleCredentials(c: any) {
+  // Priority: Cloudflare env secrets > in-memory store
+  const apiKey = c.env?.CIRCLE_API_KEY || settingsStore.circle.apiKey
+  const environment = c.env?.CIRCLE_ENVIRONMENT || settingsStore.circle.environment || 'sandbox'
+  const webhookSecret = c.env?.CIRCLE_WEBHOOK_SECRET || settingsStore.circle.webhookSecret
+  const fromEnv = !!(c.env?.CIRCLE_API_KEY)
+  return { apiKey, environment, webhookSecret, fromEnv }
+}
+
 // ─── POST /api/settings/circle/test ── testar conexão Circle ────────────────
 router.post('/circle/test', async (c) => {
-  if (!settingsStore.circle.apiKey) {
-    return c.json({ success: false, error: 'No API key configured' }, 400)
+  const { apiKey, environment, fromEnv } = resolveCircleCredentials(c)
+
+  if (!apiKey) {
+    return c.json({ success: false, error: 'No API key configured. Add CIRCLE_API_KEY as a Cloudflare secret or configure it in settings.' }, 400)
   }
 
   try {
-    const baseUrl = settingsStore.circle.environment === 'production'
+    const baseUrl = environment === 'production'
       ? 'https://api.circle.com/v1'
       : 'https://api-sandbox.circle.com/v1'
 
-    // Teste real: GET /ping ou /businessAccount/balances
+    // Teste real: GET /ping
     const response = await fetch(`${baseUrl}/ping`, {
       headers: {
-        'Authorization': `Bearer ${settingsStore.circle.apiKey}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
     })
 
-    const ok = response.ok || response.status === 200 || response.status === 401 // 401 = chave inválida mas endpoint alcançável
     const data = await response.json().catch(() => ({}))
 
     if (response.ok) {
@@ -250,13 +276,14 @@ router.post('/circle/test', async (c) => {
         success: true,
         status: response.status,
         message: 'Circle API connected successfully',
-        environment: settingsStore.circle.environment,
+        environment,
+        keySource: fromEnv ? 'cloudflare_secret' : 'in_memory',
         data,
       })
     } else if (response.status === 401) {
       settingsStore.circle.isConnected = false
       settingsStore.circle.testResult = 'Invalid API key'
-      return c.json({ success: false, error: 'Invalid API key (401 Unauthorized)', status: 401 }, 400)
+      return c.json({ success: false, error: 'Invalid API key (401 Unauthorized)', status: 401, keySource: fromEnv ? 'cloudflare_secret' : 'in_memory' }, 400)
     } else {
       settingsStore.circle.isConnected = false
       settingsStore.circle.testResult = `Error ${response.status}`
@@ -271,22 +298,49 @@ router.post('/circle/test', async (c) => {
 
 // ─── GET /api/settings/circle/balance ── saldo Circle ───────────────────────
 router.get('/circle/balance', async (c) => {
-  if (!settingsStore.circle.apiKey) {
+  const { apiKey, environment, fromEnv } = resolveCircleCredentials(c)
+
+  if (!apiKey) {
     return c.json({ success: false, error: 'No API key configured' }, 400)
   }
   try {
-    const baseUrl = settingsStore.circle.environment === 'production'
+    const baseUrl = environment === 'production'
       ? 'https://api.circle.com/v1'
       : 'https://api-sandbox.circle.com/v1'
 
     const res = await fetch(`${baseUrl}/businessAccount/balances`, {
-      headers: { 'Authorization': `Bearer ${settingsStore.circle.apiKey}` },
+      headers: { 'Authorization': `Bearer ${apiKey}` },
     })
     const data = await res.json()
-    return c.json({ success: res.ok, data, status: res.status })
+    return c.json({ success: res.ok, data, status: res.status, keySource: fromEnv ? 'cloudflare_secret' : 'in_memory' })
   } catch (err: any) {
     return c.json({ success: false, error: err.message }, 500)
   }
+})
+
+// ─── GET /api/settings/circle/status ── status rápido da Circle ─────────────
+router.get('/circle/status', async (c) => {
+  const { apiKey, environment, fromEnv } = resolveCircleCredentials(c)
+  if (!apiKey) {
+    return c.json({
+      success: true,
+      hasKey: false,
+      isConnected: false,
+      keySource: 'none',
+      environment: 'sandbox',
+      message: 'No API key configured',
+    })
+  }
+  return c.json({
+    success: true,
+    hasKey: true,
+    isConnected: settingsStore.circle.isConnected,
+    lastTestAt: settingsStore.circle.lastTestAt,
+    testResult: settingsStore.circle.testResult,
+    keySource: fromEnv ? 'cloudflare_secret' : 'in_memory',
+    environment,
+    apiKeyMasked: fromEnv ? '••••• (Cloudflare Secret)' : maskKey(apiKey),
+  })
 })
 
 // ─── PUT /api/settings/app ── configurações do app ───────────────────────────
