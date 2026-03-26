@@ -1,5 +1,24 @@
 /* ARC AI Agents - Estilos customizados */
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   CHAT WIDGET — Interaction safety rules
+   The chat panel must NEVER block underlying UI when closed.
+   pointer-events:none is the primary guard; display:none (Tailwind .hidden) is
+   the secondary guard.  Both are applied so neither can cause a regression.
+   ───────────────────────────────────────────────────────────────────────────── */
+#chat-widget.hidden {
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+#chat-widget[data-chat-closing="true"] {
+  pointer-events: none !important;
+}
+/* When the widget is fully open (not hidden, not closing) restore interaction */
+#chat-widget:not(.hidden):not([data-chat-closing="true"]) {
+  pointer-events: auto !important;
+  visibility: visible !important;
+}
+
 /* ── CSS Variables ────────────────────────────────────────────────────────── */
 :root {
   /* Height of the sticky top-bar (banner + header). Updated by updateTopbarHeight().

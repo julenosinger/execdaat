@@ -3436,11 +3436,11 @@ app.get('/', (c) => {
     <span id="chat-unread" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center leading-none"></span>
   </button>
 
-  <!-- Chat Panel -->
+  <!-- Chat Panel — pointer-events:none when hidden to never block underlying UI -->
   <div id="chat-widget"
     class="hidden fixed z-[110] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60"
     data-size="medium"
-    style="width:380px;height:580px;bottom:70px;right:20px;max-width:calc(100vw - 16px);">
+    style="width:380px;height:580px;bottom:70px;right:20px;max-width:calc(100vw - 16px);pointer-events:none;">
 
     <!-- Header (drag handle) -->
     <div id="chat-header" class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 rounded-t-2xl flex-shrink-0" style="cursor:grab;user-select:none;">

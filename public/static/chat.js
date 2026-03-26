@@ -117,6 +117,16 @@ const CHAT_EXPAND_MIN_PX = 650;
                   border-radius 0.3s ease,
                   opacity 0.25s ease, transform 0.25s ease;
     }
+    /* CRITICAL: When hidden, ensure zero interaction — no click blocking */
+    #chat-widget.hidden,
+    #chat-widget[data-chat-closing="true"] {
+      pointer-events: none !important;
+      user-select: none !important;
+    }
+    /* When open, restore full interaction */
+    #chat-widget:not(.hidden):not([data-chat-closing="true"]) {
+      pointer-events: auto !important;
+    }
     /* Width-expanded state indicator on toggle button */
     #chat-width-toggle-btn.expanded {
       background: rgba(139,92,246,0.22) !important;
@@ -273,6 +283,11 @@ function toggleChat() {
   chatOpen = !chatOpen;
 
   if (chatOpen) {
+    // ── OPEN: restore interaction FIRST, before any visual change ──
+    widget.removeAttribute('data-chat-closing');
+    widget.style.pointerEvents = 'auto';
+    widget.style.userSelect    = 'auto';
+    widget.style.visibility    = 'visible';
     applyChatSize(chatSize, false);
     widget.classList.remove('hidden');
     // Restore dragged position if saved
@@ -292,9 +307,18 @@ function toggleChat() {
     updateArcPayBar();
     setTimeout(() => document.getElementById('chat-input')?.focus(), 300);
   } else {
+    // ── CLOSE: disable interaction IMMEDIATELY — before animation starts ──
+    widget.setAttribute('data-chat-closing', 'true');
+    widget.style.pointerEvents = 'none';
+    widget.style.userSelect    = 'none';
     widget.style.opacity = '0';
     widget.style.transform = 'translateY(16px) scale(0.97)';
-    setTimeout(() => widget.classList.add('hidden'), 260);
+    setTimeout(() => {
+      widget.classList.add('hidden');
+      widget.removeAttribute('data-chat-closing');
+      // Ensure z-index is neutralised when fully hidden
+      widget.style.zIndex = '';
+    }, 260);
     if (fabIcon) fabIcon.className = 'fas fa-robot text-white text-base';
     if (fabLbl)  { fabLbl.classList.remove('hidden'); fabLbl.textContent = 'Ask me'; }
     // Reset width expand state on close
