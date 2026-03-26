@@ -1,5 +1,5 @@
 // ============================================================
-// CHAT MODULE v3 — ARC AI Assistant
+// CHAT MODULE v3 — ARC AI Assistant | build: 20250326d
 // ArcPay Agent v1.0 — Full Platform Integration
 //
 // Authorization Flow:
