@@ -779,12 +779,26 @@
     }, 600);
   });
 
-  // Listen to profile changes to refresh bars
+  // Listen to profile changes to refresh bars AND suggestion chips
   window.addEventListener('arcProfileUpdated', () => {
     renderProfileBar('pay-form-top');
     renderProfileBar('cf-form-top');
+
+    // Remove and rebuild all suggestion chip boxes so stale/fake chips disappear
+    ['arc-af-pay-addrs','arc-af-pay-amts','arc-af-pay-emails',
+     'arc-af-cf-addrs','arc-af-cf-amts',
+     'arc-af-cf-client-email-sugg','arc-af-cf-contractor-email-sugg']
+      .forEach(id => { const el2 = document.getElementById(id); if (el2) el2.remove(); });
+
+    // Rebuild only if visible tab is active
+    setTimeout(() => {
+      const prefs = typeof getUserPreferences === 'function' ? getUserPreferences() : {};
+      if (prefs.showSuggestions === false) return;
+      if (document.getElementById('pay-fullname'))  { buildPayAmountSuggestions(); buildPayAddressSuggestions(); buildPayEmailSuggestions(); }
+      if (document.getElementById('cf-contractor')) { buildCfAmountSuggestions();  buildCfAddressSuggestions();  buildCfEmailSuggestions(); }
+    }, 100);
   });
 
-  console.log('[AUTOFILL v1] Smart autofill module loaded — Payments & Contracts');
+  console.log('[AUTOFILL v2] Smart autofill module loaded — Payments & Contracts');
 
 })();

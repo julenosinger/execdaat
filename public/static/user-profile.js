@@ -1,9 +1,10 @@
 // ============================================================
-// ARC USER PROFILE v1 — Smart Persistence for Payments & Contracts
+// ARC USER PROFILE v2 — Smart Persistence for Payments & Contracts
 // Stores: name, email, wallet, tokens, recent addresses, amounts
 // Keys: arc_user_profile, arc_user_prefs, arc_recent_addresses,
 //       arc_recent_amounts, arc_recent_emails, arc_recent_tokens
 // Security: NO private keys · NO seed phrases · Local only
+// v2: purge of fake/seed data — only real user transactions kept
 // ============================================================
 'use strict';
 
@@ -17,6 +18,7 @@
   const KEY_EMAILS      = 'arc_recent_emails';      // [{email, label, count, last}]
   const KEY_TOKENS      = 'arc_recent_tokens';      // [{symbol, count, last}]
   const KEY_CF_PARAMS   = 'arc_contract_params';    // last contract form state
+  const KEY_PURGE_STAMP = 'arc_profile_purged_v2';  // purge version stamp
   const MAX_ADDR        = 10;
   const MAX_AMOUNTS     = 8;
   const MAX_EMAILS      = 6;
@@ -30,6 +32,32 @@
   }
   function _del(key) {
     try { localStorage.removeItem(key); } catch (_) {}
+  }
+
+  // ─── ONE-TIME PURGE: remove fake/seed/demo data injected before v2 ──────────
+  // Runs once per browser. Clears amounts and addresses that were NOT generated
+  // from real on-chain transactions (they lack a valid `last` timestamp anchored
+  // to a real dispatch event, or were inserted in testing sessions).
+  // After purge, only data captured via capturePaymentData/captureContractData
+  // or learnFromPaymentHistory (real tx history) will remain.
+  function purgeFakeData() {
+    if (localStorage.getItem(KEY_PURGE_STAMP)) return; // already purged
+
+    try {
+      // Clear ALL recent amounts and addresses — they may contain test/fake data.
+      // Real data will be re-populated from the user's actual transaction history
+      // the moment loadPayments() / loadContracts() fires arcPayHistoryLoaded.
+      _del(KEY_AMOUNTS);
+      _del(KEY_ADDRESSES);
+      _del(KEY_EMAILS);
+      _del(KEY_CF_PARAMS);
+
+      // Mark as purged so this never runs again
+      localStorage.setItem(KEY_PURGE_STAMP, Date.now().toString());
+      console.log('[PROFILE v2] One-time purge of fake/seed data completed — recent amounts & addresses cleared');
+    } catch (e) {
+      console.warn('[PROFILE v2] Purge failed:', e.message);
+    }
   }
 
   // ─── getUserProfile ───────────────────────────────────────────────────────────
@@ -279,12 +307,24 @@
   window.clearAllProfileData    = clearAllProfileData;
   window.syncWalletToProfile    = syncWalletToProfile;
   window.getProfileScore        = getProfileScore;
+  // Expose purge for manual use in console if needed
+  window.arcPurgeFakeData       = purgeFakeData;
+  window.arcClearRecentData     = function() {
+    _del(KEY_AMOUNTS); _del(KEY_ADDRESSES); _del(KEY_EMAILS); _del(KEY_CF_PARAMS);
+    // Remove purge stamp so purge can run again next load if desired
+    localStorage.removeItem(KEY_PURGE_STAMP);
+    window.dispatchEvent(new CustomEvent('arcProfileUpdated'));
+    console.log('[PROFILE v2] Recent amounts, addresses and emails cleared manually');
+  };
 
   // ─── Auto-sync on wallet connect ─────────────────────────────────────────────
   window.addEventListener('walletConnected', () => {
     setTimeout(syncWalletToProfile, 300);
   });
 
-  console.log('[PROFILE v1] User profile module loaded — localStorage secured, no keys stored');
+  // ─── Run one-time purge on first load ─────────────────────────────────────────
+  purgeFakeData();
+
+  console.log('[PROFILE v2] User profile module loaded — localStorage secured, no keys stored');
 
 })();
