@@ -134,6 +134,12 @@ router.get('/', (c) => {
     settings.circle.hasApiKey = true
     settings.circle.apiKeyMasked = '••••• (Cloudflare Secret)'
     settings.circle.environment = environment as 'sandbox' | 'production'
+    settings.circle.keySource = 'cloudflare_secret'
+    // Se veio do env, a chave está configurada e presumidamente válida
+    if (!settings.circle.isConnected) {
+      settings.circle.isConnected = true
+      settings.circle.testResult = 'Key configured via Cloudflare Secret'
+    }
   }
   return c.json({ success: true, settings })
 })
