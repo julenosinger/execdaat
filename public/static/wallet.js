@@ -506,86 +506,284 @@ function openWalletModal() {
   }, 100);
 }
 
+// Global helper to get logo key from provider or wallet name
+function _getWalletLogoKey(p) {
+  const rdns = (p && p.rdns ? p.rdns : '').toLowerCase();
+  const name = (p && p.name ? p.name : '').toLowerCase();
+  if (rdns.includes('metamask')  || name.includes('metamask'))  return 'metamask';
+  if (rdns.includes('rabby')     || name.includes('rabby'))     return 'rabby';
+  if (rdns.includes('phantom')   || name.includes('phantom'))   return 'phantom';
+  if (rdns.includes('coinbase')  || name.includes('coinbase'))  return 'coinbase';
+  if (rdns.includes('okx')       || name.includes('okx'))       return 'okx';
+  if (rdns.includes('brave')     || name.includes('brave'))     return 'brave';
+  if (rdns.includes('backpack')  || name.includes('backpack'))  return 'backpack';
+  if (rdns.includes('keplr')     || name.includes('keplr'))     return 'keplr';
+  if (rdns.includes('starkey')   || name.includes('starkey'))   return 'starkey';
+  return 'default';
+}
+
 function _renderWalletModal() {
   const providers = detectProviders();
 
+  // ── SVG logos for known wallets ─────────────────────────────────────────────
+  const WALLET_LOGOS = {
+    'metamask': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#1A1A1A"/><path d="M33.5 7L22.1 15.6l2.1-4.9L33.5 7z" fill="#E17726" stroke="#E17726" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 7l11.3 8.7-2-5L6.5 7z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M29.1 26.5l-3 4.6 6.4 1.8 1.8-6.3-5.2-.1z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.6 26.6l1.8 6.3 6.4-1.8-3-4.6-5.2.1z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 19.3l-1.8 2.7 6.3.3-.2-6.8-4.3 3.8z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M25.5 19.3l-4.4-3.9-.1 6.9 6.3-.3-1.8-2.7z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.8 31.1l3.8-1.8-3.3-2.6-.5 4.4z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M21.4 29.3l3.8 1.8-.5-4.4-3.3 2.6z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    'rabby': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#1A1A2E"/><path d="M20 8C13.4 8 8 13.4 8 20s5.4 12 12 12 12-5.4 12-12S26.6 8 20 8z" fill="#7084FF"/><path d="M16 17a2 2 0 100 4 2 2 0 000-4zm8 0a2 2 0 100 4 2 2 0 000-4z" fill="white"/><path d="M13 23s1.5 4 7 4 7-4 7-4H13z" fill="white"/></svg>`,
+    'phantom': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#AB9FF2"/><path d="M20.3 9C14.1 9 9 14.1 9 20.3c0 5.7 4.3 10.4 9.8 11.1.5.1 1 .1 1.5.1h11.3c.2-1 .4-2 .4-3.1C32 14.8 26.9 9 20.3 9z" fill="url(#phg)"/><path d="M14.5 21.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm7 0a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" fill="#1A1A2E"/><defs><linearGradient id="phg" x1="9" y1="9" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop stop-color="#534BB1"/><stop offset="1" stop-color="#551BF9"/></linearGradient></defs></svg>`,
+    'coinbase': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#0052FF"/><circle cx="20" cy="20" r="10" fill="white"/><path d="M20 14a6 6 0 100 12A6 6 0 0020 14zm-1.5 3h3v6h-3v-6z" fill="#0052FF"/></svg>`,
+    'okx': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#000"/><rect x="10" y="10" width="7" height="7" rx="1" fill="white"/><rect x="22" y="10" width="7" height="7" rx="1" fill="white"/><rect x="10" y="23" width="7" height="7" rx="1" fill="white"/><rect x="22" y="23" width="7" height="7" rx="1" fill="white"/></svg>`,
+    'brave': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#FF5500"/><path d="M20 8l10 4-2 14-8 6-8-6-2-14 10-4z" fill="#FB5422"/><path d="M20 8l10 4-2 14-8 6-8-6-2-14 10-4z" fill="none" stroke="#FF8C42" stroke-width="1"/><path d="M20 12l7 3-1.5 10-5.5 4-5.5-4L13 15l7-3z" fill="#F26422"/><path d="M17 20.5c.5.5 1.5.8 3 .8s2.5-.3 3-.8" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg>`,
+    'backpack': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#E33E3F"/><path d="M20 9c-4 0-7 3-7 7v1h-1a2 2 0 00-2 2v9a2 2 0 002 2h16a2 2 0 002-2v-9a2 2 0 00-2-2h-1v-1c0-4-3-7-7-7zm0 3c2.2 0 4 1.8 4 4v1h-8v-1c0-2.2 1.8-4 4-4zm0 10a2 2 0 100 4 2 2 0 000-4z" fill="white"/></svg>`,
+    'keplr': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#1C1C2E"/><path d="M13 11h4v7l6-7h5l-7 8 7 9h-5l-6-7v7h-4V11z" fill="url(#kg)"/><defs><linearGradient id="kg" x1="13" y1="11" x2="28" y2="29" gradientUnits="userSpaceOnUse"><stop stop-color="#6B7BF7"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs></svg>`,
+    'starkey': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#0A0A0A"/><path d="M20 9l2.9 6 6.6.9-4.8 4.6 1.1 6.5L20 24l-5.9 3 1.2-6.5L10.5 16l6.6-.9L20 9z" fill="url(#skg)"/><defs><linearGradient id="skg" x1="10" y1="9" x2="31" y2="30" gradientUnits="userSpaceOnUse"><stop stop-color="#00E5FF"/><stop offset="1" stop-color="#7B2FFF"/></linearGradient></defs></svg>`,
+    'default': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#1e2d3d"/><path d="M10 16a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H12a2 2 0 01-2-2V16zm18 0H12v10h16V16zm-3 5a1 1 0 110 2 1 1 0 010-2z" fill="#7b9cc0"/><path d="M10 18h20" stroke="#7b9cc0" stroke-width="1.5"/></svg>`,
+  };
+
+  // ── Map rdns/name → logo key ─────────────────────────────────────────────────
+  const WALLET_INSTALL_URLS = {
+    metamask:  'https://metamask.io/download/',
+    rabby:     'https://rabby.io/',
+    phantom:   'https://phantom.app/',
+    coinbase:  'https://www.coinbase.com/wallet/downloads',
+    okx:       'https://www.okx.com/web3',
+    brave:     'https://brave.com/wallet/',
+    backpack:  'https://www.backpack.app/',
+    keplr:     'https://www.keplr.app/',
+    starkey:   'https://starkeywallet.io/',
+  };
+
+  const WALLET_INSTALL_LIST = [
+    { key: 'metamask',  name: 'MetaMask',       desc: 'Most popular EVM wallet',   color: '#E27625' },
+    { key: 'rabby',     name: 'Rabby Wallet',    desc: 'Security-focused wallet',   color: '#7084FF' },
+    { key: 'coinbase',  name: 'Coinbase Wallet', desc: 'Easy crypto wallet',        color: '#0052FF' },
+    { key: 'phantom',   name: 'Phantom',         desc: 'Multi-chain wallet',        color: '#AB9FF2' },
+    { key: 'brave',     name: 'Brave Wallet',    desc: 'Built-in browser wallet',   color: '#FF5500' },
+    { key: 'backpack',  name: 'Backpack',        desc: 'Web3 gaming wallet',        color: '#E33E3F' },
+    { key: 'okx',       name: 'OKX Wallet',      desc: 'Multi-chain DEX wallet',    color: '#FFFFFF' },
+    { key: 'keplr',     name: 'Keplr',           desc: 'Cosmos ecosystem wallet',   color: '#6B7BF7' },
+    { key: 'starkey',   name: 'StarKey',         desc: 'Next-gen Web3 wallet',      color: '#00E5FF' },
+  ];
+
+  function getLogoKey(p) {
+    const rdns = (p.rdns || '').toLowerCase();
+    const name = (p.name || '').toLowerCase();
+    if (rdns.includes('metamask')  || name.includes('metamask'))  return 'metamask';
+    if (rdns.includes('rabby')     || name.includes('rabby'))     return 'rabby';
+    if (rdns.includes('phantom')   || name.includes('phantom'))   return 'phantom';
+    if (rdns.includes('coinbase')  || name.includes('coinbase'))  return 'coinbase';
+    if (rdns.includes('okx')       || name.includes('okx'))       return 'okx';
+    if (rdns.includes('brave')     || name.includes('brave'))     return 'brave';
+    if (rdns.includes('backpack')  || name.includes('backpack'))  return 'backpack';
+    if (rdns.includes('keplr')     || name.includes('keplr'))     return 'keplr';
+    if (rdns.includes('starkey')   || name.includes('starkey'))   return 'starkey';
+    return 'default';
+  }
+
+  // ── CSS injected once ────────────────────────────────────────────────────────
+  if (!document.getElementById('wm-styles')) {
+    const s = document.createElement('style');
+    s.id = 'wm-styles';
+    s.textContent = `
+      @keyframes wmSlideUp { from{opacity:0;transform:translateY(24px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+      @keyframes wmFadeIn  { from{opacity:0} to{opacity:1} }
+      @keyframes wmSpin    { to{transform:rotate(360deg)} }
+      @keyframes wmPulse   { 0%,100%{opacity:1} 50%{opacity:.4} }
+      .wm-overlay { animation: wmFadeIn .2s ease; }
+      .wm-panel   { animation: wmSlideUp .28s cubic-bezier(.22,.68,0,1.2); }
+      .wm-card {
+        display:flex;align-items:center;gap:14px;
+        padding:13px 16px;border-radius:14px;cursor:pointer;width:100%;
+        background:rgba(255,255,255,0.04);
+        border:1px solid rgba(255,255,255,0.07);
+        transition:all .18s ease;position:relative;overflow:hidden;
+      }
+      .wm-card:hover {
+        background:rgba(103,76,255,0.12);
+        border-color:rgba(139,92,246,.45);
+        transform:scale(1.018);
+        box-shadow:0 0 0 1px rgba(139,92,246,.15), 0 8px 24px rgba(103,76,255,.2);
+      }
+      .wm-card:active { transform:scale(.98); }
+      .wm-card.detected { border-color:rgba(52,211,153,.18); }
+      .wm-card.detected:hover { border-color:rgba(52,211,153,.5); box-shadow:0 0 0 1px rgba(52,211,153,.12),0 8px 24px rgba(52,211,153,.12); background:rgba(52,211,153,.07); }
+      .wm-install-card {
+        display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;
+        background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);
+        cursor:pointer;width:100%;transition:all .16s;text-decoration:none;
+      }
+      .wm-install-card:hover { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.14); transform:scale(1.015); }
+      .wm-badge { display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.04em; }
+      .wm-badge-detected { background:rgba(52,211,153,.14);color:#34d399;border:1px solid rgba(52,211,153,.25); }
+      .wm-badge-install  { background:rgba(255,255,255,.06);color:#6b7280;border:1px solid rgba(255,255,255,.08); }
+      .wm-scroll { overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent; }
+      .wm-scroll::-webkit-scrollbar{width:4px} .wm-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px}
+      .wm-divider { display:flex;align-items:center;gap:10px;margin:14px 0 10px; }
+      .wm-divider::before,.wm-divider::after { content:'';flex:1;height:1px;background:rgba(255,255,255,.07); }
+      .wm-divider span { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#4b5563; }
+      .wm-shimmer { position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.04) 50%,transparent 60%);background-size:200% 100%;animation:wmSpin 0s;pointer-events:none; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  // ── Helper: render a detected-provider card ───────────────────────────────────
+  function _providerCard(p, idx) {
+    const key = getLogoKey(p);
+    const logo = WALLET_LOGOS[key] || WALLET_LOGOS.default;
+    return `
+      <button class="wm-card detected" onclick="connectWithProvider(${idx})"
+        onmouseenter="this.querySelector('.wm-shimmer').style.animation='none'"
+        onmouseleave="this.querySelector('.wm-shimmer').style.animation='none'">
+        <div class="wm-shimmer"></div>
+        <div style="flex-shrink:0;position:relative;">${logo}</div>
+        <div style="flex:1;text-align:left;min-width:0;">
+          <div style="color:#f1f5f9;font-weight:700;font-size:14px;line-height:1.2;">${p.name}</div>
+          <div style="color:#6b7280;font-size:11px;margin-top:1px;">${t('wallet_detected_click')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <span class="wm-badge wm-badge-detected">Detected</span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="color:#4b5563"><path d="M5 10l4-3-4-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </button>`;
+  }
+
+  // ── Helper: install card ──────────────────────────────────────────────────────
+  function _installCard(w) {
+    const logo = WALLET_LOGOS[w.key] || WALLET_LOGOS.default;
+    return `
+      <a class="wm-install-card" href="${WALLET_INSTALL_URLS[w.key]}" target="_blank" rel="noopener">
+        <div style="flex-shrink:0;">${logo}</div>
+        <div style="flex:1;text-align:left;min-width:0;">
+          <div style="color:#d1d5db;font-weight:600;font-size:13px;">${w.name}</div>
+          <div style="color:#4b5563;font-size:10px;">${w.desc}</div>
+        </div>
+        <span class="wm-badge wm-badge-install">Install</span>
+      </a>`;
+  }
+
+  // ── Filter "install" wallets — hide ones already detected ─────────────────────
+  const detectedKeys = new Set(providers.map(p => getLogoKey(p)));
+  const installWallets = WALLET_INSTALL_LIST.filter(w => !detectedKeys.has(w.key));
+
+  // ── Build modal HTML ──────────────────────────────────────────────────────────
   const modal = document.createElement('div');
   modal.id = 'wallet-modal';
-  modal.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4';
-  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+
   modal.innerHTML = `
-    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeWalletModal()"></div>
-    <div class="relative bg-gray-900 border border-gray-700/60 rounded-2xl p-6 w-full max-w-sm shadow-2xl z-10" style="position:relative;z-index:10;background:#111827;border:1px solid rgba(55,65,81,0.6);border-radius:1rem;padding:1.5rem;width:100%;max-width:400px;box-shadow:0 25px 50px rgba(0,0,0,0.8);">
+    <!-- Overlay -->
+    <div class="wm-overlay" style="position:absolute;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(12px);" onclick="closeWalletModal()"></div>
+
+    <!-- Panel -->
+    <div class="wm-panel" style="
+      position:relative;z-index:10;
+      background:linear-gradient(160deg,#0d1a2a 0%,#0a1220 100%);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:22px;padding:0;
+      width:100%;max-width:440px;
+      box-shadow:0 32px 80px rgba(0,0,0,.85),0 0 0 1px rgba(103,76,255,.08);
+      overflow:hidden;
+    ">
+
+      <!-- Top gradient bar -->
+      <div style="height:3px;background:linear-gradient(90deg,#7c3aed,#2563eb,#059669);"></div>
+
       <!-- Header -->
-      <div class="flex items-center justify-between mb-5">
-        <div>
-          <h3 class="text-white font-bold text-lg" style="color:white;font-weight:700;font-size:1.125rem;">Conectar Wallet</h3>
-          <p class="text-gray-400 text-xs mt-0.5" style="color:#9ca3af;font-size:0.75rem;">Selecione seu provedor EVM</p>
+      <div style="padding:22px 24px 0;display:flex;align-items:flex-start;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:42px;height:42px;border-radius:12px;
+            background:linear-gradient(135deg,rgba(124,58,237,.25),rgba(37,99,235,.2));
+            border:1px solid rgba(124,58,237,.3);
+            display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M2 7a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V7zm14 0H4v8h12V7zm-3 4a1 1 0 110 2 1 1 0 010-2z" fill="#a78bfa"/>
+              <path d="M2 9h16" stroke="#a78bfa" stroke-width="1.3"/>
+            </svg>
+          </div>
+          <div>
+            <h2 style="color:#f1f5f9;font-size:18px;font-weight:800;letter-spacing:-.02em;margin:0;line-height:1.2;">Connect Your Wallet</h2>
+            <p style="color:#4b5563;font-size:12px;margin:3px 0 0;line-height:1.3;">Choose a wallet to connect securely to ARC Network</p>
+          </div>
         </div>
-        <button onclick="closeWalletModal()" style="background:none;border:none;cursor:pointer;color:#9ca3af;padding:4px;" class="text-gray-500 hover:text-white transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-800">
-          <i class="fas fa-times"></i>
+        <button onclick="closeWalletModal()" style="
+          width:32px;height:32px;border-radius:8px;
+          background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06);
+          color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;
+          transition:all .15s;flex-shrink:0;margin-top:2px;
+          " onmouseover="this.style.background='rgba(255,255,255,.1)';this.style.color='#f1f5f9'"
+          onmouseout="this.style.background='rgba(255,255,255,.05)';this.style.color='#6b7280'">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M10.5 3.5l-7 7M3.5 3.5l7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </div>
 
-      <!-- Arc Network Info -->
-      <div style="background:linear-gradient(to right,rgba(88,28,135,0.4),rgba(30,58,138,0.4));border:1px solid rgba(126,34,206,0.3);border-radius:0.75rem;padding:0.75rem;margin-bottom:1.25rem;">
-        <div class="flex items-center gap-2 mb-2">
-          <div style="width:8px;height:8px;border-radius:50%;background:#a855f7;animation:pulse 2s infinite;"></div>
-          <span style="color:#d8b4fe;font-size:0.75rem;font-weight:600;">Arc Testnet</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:0.75rem;">
-          <span style="color:#6b7280;">Chain ID</span><span style="color:#d1d5db;font-family:monospace;">5042002</span>
-          <span style="color:#6b7280;">RPC</span><span style="color:#d1d5db;font-family:monospace;font-size:10px;">rpc.testnet.arc.network</span>
-          <span style="color:#6b7280;">WebSocket</span><span style="color:#d1d5db;font-family:monospace;font-size:10px;">wss://rpc.testnet.arc.network</span>
-          <span style="color:#6b7280;">Gas Token</span><span style="color:#34d399;font-weight:600;">USDC</span>
-          <span style="color:#6b7280;">Gas/TX</span><span style="color:#d1d5db;">~$0.009</span>
+      <!-- Network pill -->
+      <div style="padding:12px 24px 0;">
+        <div style="
+          display:inline-flex;align-items:center;gap:8px;
+          background:linear-gradient(90deg,rgba(88,28,135,.2),rgba(30,58,138,.15));
+          border:1px solid rgba(124,58,237,.2);border-radius:999px;
+          padding:5px 12px 5px 8px;">
+          <span style="width:8px;height:8px;border-radius:50%;background:#a855f7;animation:wmPulse 2s infinite;display:inline-block;"></span>
+          <span style="color:#c4b5fd;font-size:11px;font-weight:600;">Arc Testnet</span>
+          <span style="color:#4b5563;font-size:10px;">·</span>
+          <span style="color:#6b7280;font-size:10px;font-family:monospace;">Chain 5042002</span>
+          <span style="color:#4b5563;font-size:10px;">·</span>
+          <span style="color:#34d399;font-size:10px;font-weight:600;">~$0.009/tx</span>
         </div>
       </div>
 
-      <!-- Lista de provedores -->
-      <div id="wallet-providers-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
-        ${providers.length > 0 ? providers.map((p, i) => `
-          <button onclick="connectWithProvider(${i})" 
-            style="display:flex;align-items:center;gap:12px;background:rgba(31,41,55,0.6);border:1px solid rgba(55,65,81,0.4);border-radius:0.75rem;padding:14px;cursor:pointer;width:100%;text-align:left;transition:all 0.2s;"
-            onmouseover="this.style.borderColor='rgba(147,51,234,0.5)';this.style.background='rgba(31,41,55,0.9)'"
-            onmouseout="this.style.borderColor='rgba(55,65,81,0.4)';this.style.background='rgba(31,41,55,0.6)'">
-            <div style="width:40px;height:40px;border-radius:10px;background:rgba(55,65,81,0.8);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <i class="${p.icon}" style="font-size:1.25rem;color:#a855f7;"></i>
+      <!-- Scrollable content -->
+      <div class="wm-scroll" id="wallet-providers-list" style="padding:16px 24px;max-height:460px;">
+
+        ${providers.length > 0 ? `
+          <!-- Detected section -->
+          <div style="margin-bottom:6px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#374151;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="#34d399" stroke-width="1.2"/><path d="M3 5l1.5 1.5L7 3.5" stroke="#34d399" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Detected Wallets
             </div>
-            <div style="flex:1;text-align:left;">
-              <div style="color:white;font-weight:600;font-size:0.875rem;">${p.name}</div>
-              <div style="color:#6b7280;font-size:0.75rem;">${t('wallet_detected_click')}</div>
+            <div style="display:flex;flex-direction:column;gap:7px;">
+              ${providers.map((p, i) => _providerCard(p, i)).join('')}
             </div>
-            <i class="fas fa-chevron-right" style="color:#4b5563;"></i>
-          </button>
-        `).join('') : `
-          <div style="text-align:center;padding:24px 0;">
-            <div style="width:56px;height:56px;border-radius:50%;background:rgba(31,41,55,0.8);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-              <i class="fas fa-exclamation-triangle" style="color:#fbbf24;font-size:1.25rem;"></i>
+          </div>
+
+          ${installWallets.length > 0 ? `
+            <div class="wm-divider"><span>Other Wallets</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+              ${installWallets.slice(0,6).map(w => _installCard(w)).join('')}
             </div>
-            <p style="color:#d1d5db;font-size:0.875rem;font-weight:500;margin-bottom:4px;">${t('wallet_no_wallet_detected')}</p>
-            <p style="color:#6b7280;font-size:0.75rem;margin-bottom:16px;">${t('modal_subtitle')}</p>
-            <div style="display:flex;flex-direction:column;gap:8px;">
-              <a href="https://metamask.io/download/" target="_blank" 
-                style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(234,88,12,0.2);border:1px solid rgba(234,88,12,0.4);color:#fb923c;border-radius:8px;padding:12px;font-size:0.875rem;text-decoration:none;transition:all 0.2s;">
-                <i class="fab fa-ethereum"></i>Install MetaMask
-              </a>
-              <a href="https://www.coinbase.com/wallet/downloads" target="_blank"
-                style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(37,99,235,0.2);border:1px solid rgba(37,99,235,0.4);color:#60a5fa;border-radius:8px;padding:12px;font-size:0.875rem;text-decoration:none;transition:all 0.2s;">
-                <i class="fas fa-wallet"></i>Install Coinbase Wallet
-              </a>
-              <a href="https://rabby.io" target="_blank"
-                style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(5,150,105,0.2);border:1px solid rgba(5,150,105,0.4);color:#34d399;border-radius:8px;padding:12px;font-size:0.875rem;text-decoration:none;transition:all 0.2s;">
-                <i class="fas fa-shield-alt"></i>Install Rabby
-              </a>
+          ` : ''}
+
+        ` : `
+          <!-- No wallet detected -->
+          <div style="text-align:center;padding:8px 0 16px;">
+            <div style="width:64px;height:64px;border-radius:50%;
+              background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(37,99,235,.1));
+              border:1px solid rgba(124,58,237,.2);
+              display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+              <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                <path d="M4 11a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V11zm18 0H6v10h16V11zm-4 5a1 1 0 110 2 1 1 0 010-2z" fill="#a78bfa"/>
+                <path d="M4 13h20" stroke="#a78bfa" stroke-width="1.3"/>
+              </svg>
             </div>
+            <p style="color:#e2e8f0;font-size:14px;font-weight:600;margin-bottom:4px;">No wallet detected</p>
+            <p style="color:#4b5563;font-size:12px;margin-bottom:20px;">Install a wallet extension to get started</p>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${WALLET_INSTALL_LIST.map(w => _installCard(w)).join('')}
           </div>
         `}
       </div>
 
-      <p style="text-align:center;font-size:0.75rem;color:#4b5563;margin-top:8px;">
-        ${t('wallet_accept_terms')}
-      </p>
+      <!-- Footer -->
+      <div style="
+        padding:14px 24px;
+        border-top:1px solid rgba(255,255,255,.05);
+        background:rgba(0,0,0,.2);
+        display:flex;align-items:center;justify-content:center;gap:6px;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0"><path d="M6 1a3 3 0 013 3v1h.5A1.5 1.5 0 0111 6.5v4A1.5 1.5 0 019.5 12h-7A1.5 1.5 0 011 10.5v-4A1.5 1.5 0 012.5 5H3V4a3 3 0 013-3zm0 1.5A1.5 1.5 0 004.5 4v1h3V4A1.5 1.5 0 006 2.5z" fill="#374151"/></svg>
+        <span style="color:#374151;font-size:11px;">By connecting, you agree to the <a href="#" style="color:#4b5563;text-decoration:underline;" onclick="event.preventDefault()">Terms of Service</a></span>
+      </div>
     </div>
   `;
 
@@ -599,41 +797,205 @@ function _renderWalletModal() {
 // ============================================================
 function openConnectedWalletModal() {
   const state = window.walletState;
+  const addr  = state.address || '';
+  const short = addr ? (addr.slice(0,8) + '…' + addr.slice(-6)) : '—';
+  const onArc = !!state.onArcNetwork;
+  const chainId = state.chainId || '—';
+  const usdcBal = state.usdcBalance != null ? Number(state.usdcBalance).toFixed(4) : '—';
+
+  // Detect wallet name/logo from last-used provider
+  let lastKey = 'default';
+  try {
+    const _saved = JSON.parse(localStorage.getItem('arc_wallet_last') || '{}');
+    if (_saved.logoKey) lastKey = _saved.logoKey;
+  } catch(e) {}
+
+  const WALLET_LOGOS_CONN = {
+    metamask: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#1A1A1A"/><path d="M33.5 7L22.1 15.6l2.1-4.9L33.5 7z" fill="#E17726" stroke="#E17726" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 7l11.3 8.7-2-5L6.5 7z" fill="#E27625" stroke="#E27625" stroke-width=".25"/><path d="M29.1 26.5l-3 4.6 6.4 1.8 1.8-6.3-5.2-.1z" fill="#E27625" stroke="#E27625" stroke-width=".25"/><path d="M6.6 26.6l1.8 6.3 6.4-1.8-3-4.6-5.2.1z" fill="#E27625" stroke="#E27625" stroke-width=".25"/><path d="M14.5 19.3l-1.8 2.7 6.3.3-.2-6.8-4.3 3.8z" fill="#E27625" stroke="#E27625" stroke-width=".25"/><path d="M25.5 19.3l-4.4-3.9-.1 6.9 6.3-.3-1.8-2.7z" fill="#E27625" stroke="#E27625" stroke-width=".25"/><path d="M14.8 31.1l3.8-1.8-3.3-2.6-.5 4.4z" fill="#E27625" stroke="#E27625" stroke-width=".25"/><path d="M21.4 29.3l3.8 1.8-.5-4.4-3.3 2.6z" fill="#E27625" stroke="#E27625" stroke-width=".25"/></svg>`,
+    rabby: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#1A1A2E"/><path d="M20 8C13.4 8 8 13.4 8 20s5.4 12 12 12 12-5.4 12-12S26.6 8 20 8z" fill="#7084FF"/><path d="M16 17a2 2 0 100 4 2 2 0 000-4zm8 0a2 2 0 100 4 2 2 0 000-4z" fill="white"/><path d="M13 23s1.5 4 7 4 7-4 7-4H13z" fill="white"/></svg>`,
+    phantom: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#AB9FF2"/><path d="M20.3 9C14.1 9 9 14.1 9 20.3c0 5.7 4.3 10.4 9.8 11.1.5.1 1 .1 1.5.1h11.3c.2-1 .4-2 .4-3.1C32 14.8 26.9 9 20.3 9z" fill="url(#phgc)"/><path d="M14.5 21.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm7 0a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" fill="#1A1A2E"/><defs><linearGradient id="phgc" x1="9" y1="9" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop stop-color="#534BB1"/><stop offset="1" stop-color="#551BF9"/></linearGradient></defs></svg>`,
+    coinbase: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#0052FF"/><circle cx="20" cy="20" r="10" fill="white"/><rect x="16.5" y="16.5" width="7" height="7" rx="1.5" fill="#0052FF"/></svg>`,
+    okx: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#000"/><rect x="10" y="10" width="7" height="7" rx="1" fill="white"/><rect x="22" y="10" width="7" height="7" rx="1" fill="white"/><rect x="10" y="23" width="7" height="7" rx="1" fill="white"/><rect x="22" y="23" width="7" height="7" rx="1" fill="white"/></svg>`,
+    brave: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#FF5500"/><path d="M20 8l10 4-2 14-8 6-8-6-2-14 10-4z" fill="#FB5422"/><path d="M20 12l7 3-1.5 10-5.5 4-5.5-4L13 15l7-3z" fill="#F26422"/></svg>`,
+    backpack: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#E33E3F"/><path d="M20 9c-4 0-7 3-7 7v1h-1a2 2 0 00-2 2v9a2 2 0 002 2h16a2 2 0 002-2v-9a2 2 0 00-2-2h-1v-1c0-4-3-7-7-7zm0 3c2.2 0 4 1.8 4 4v1h-8v-1c0-2.2 1.8-4 4-4zm0 10a2 2 0 100 4 2 2 0 000-4z" fill="white"/></svg>`,
+    keplr: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#1C1C2E"/><path d="M13 11h4v7l6-7h5l-7 8 7 9h-5l-6-7v7h-4V11z" fill="url(#kgc)"/><defs><linearGradient id="kgc" x1="13" y1="11" x2="28" y2="29" gradientUnits="userSpaceOnUse"><stop stop-color="#6B7BF7"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs></svg>`,
+    default: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#1e2d3d"/><path d="M10 16a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H12a2 2 0 01-2-2V16zm18 0H12v10h16V16zm-3 5a1 1 0 110 2 1 1 0 010-2z" fill="#7b9cc0"/><path d="M10 18h20" stroke="#7b9cc0" stroke-width="1.5"/></svg>`,
+  };
+
+  const walletLogo = WALLET_LOGOS_CONN[lastKey] || WALLET_LOGOS_CONN.default;
+
+  // Inject connected-modal styles once
+  if (!document.getElementById('wm-conn-styles')) {
+    const s = document.createElement('style');
+    s.id = 'wm-conn-styles';
+    s.textContent = `
+      @keyframes wmcSlide { from{opacity:0;transform:translateY(20px) scale(.96)} to{opacity:1;transform:translateY(0) scale(1)} }
+      @keyframes wmcFade  { from{opacity:0} to{opacity:1} }
+      @keyframes wmcPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(.95)} }
+      .wmc-overlay { animation: wmcFade .2s ease; }
+      .wmc-panel   { animation: wmcSlide .28s cubic-bezier(.22,.68,0,1.2); }
+      .wmc-action {
+        display:flex;align-items:center;gap:10px;
+        padding:11px 14px;border-radius:12px;cursor:pointer;width:100%;
+        background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);
+        color:#d1d5db;font-size:13px;font-weight:500;text-decoration:none;
+        transition:all .16s ease;
+      }
+      .wmc-action:hover { background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);transform:translateX(2px); }
+      .wmc-action:active { transform:scale(.98); }
+      .wmc-disconnect {
+        display:flex;align-items:center;justify-content:center;gap:8px;
+        padding:11px 14px;border-radius:12px;cursor:pointer;width:100%;
+        background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);
+        color:#f87171;font-size:13px;font-weight:600;
+        transition:all .16s ease;
+      }
+      .wmc-disconnect:hover { background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.4); }
+      .wmc-switch {
+        display:flex;align-items:center;justify-content:center;gap:8px;
+        padding:11px 14px;border-radius:12px;cursor:pointer;width:100%;
+        background:linear-gradient(90deg,rgba(245,158,11,.15),rgba(217,119,6,.1));
+        border:1px solid rgba(245,158,11,.25);
+        color:#fbbf24;font-size:13px;font-weight:600;
+        transition:all .16s ease;
+      }
+      .wmc-switch:hover { background:linear-gradient(90deg,rgba(245,158,11,.25),rgba(217,119,6,.18));border-color:rgba(245,158,11,.45); }
+    `;
+    document.head.appendChild(s);
+  }
+
   const modal = document.createElement('div');
   modal.id = 'wallet-modal';
-  modal.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4';
-  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+
   modal.innerHTML = `
-    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeWalletModal()"></div>
-    <div style="position:relative;z-index:10;background:#111827;border:1px solid rgba(55,65,81,0.6);border-radius:1rem;padding:1.5rem;width:100%;max-width:360px;box-shadow:0 25px 50px rgba(0,0,0,0.8);">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h3 style="color:white;font-weight:700;">${t('wallet_already_connected_title')}</h3>
-        <button onclick="closeWalletModal()" style="background:none;border:none;cursor:pointer;color:#9ca3af;">
-          <i class="fas fa-times"></i>
+    <!-- Overlay -->
+    <div class="wmc-overlay" style="position:absolute;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(14px);" onclick="closeWalletModal()"></div>
+
+    <!-- Panel -->
+    <div class="wmc-panel" style="
+      position:relative;z-index:10;
+      background:linear-gradient(160deg,#0d1a2a 0%,#080f1a 100%);
+      border:1px solid rgba(255,255,255,.08);border-radius:22px;
+      width:100%;max-width:380px;overflow:hidden;
+      box-shadow:0 40px 100px rgba(0,0,0,.9),0 0 0 1px rgba(103,76,255,.06);
+    ">
+      <!-- Top accent bar -->
+      <div style="height:3px;background:linear-gradient(90deg,#7c3aed,#2563eb,#059669);"></div>
+
+      <!-- Header -->
+      <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 6a1.5 1.5 0 011.5-1.5h9A1.5 1.5 0 0114 6v6a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12V6zm12 0h-12v6h12V6zm-2.5 3a1 1 0 110 2 1 1 0 010-2z" fill="#a78bfa"/>
+            <path d="M2 7.5h12" stroke="#a78bfa" stroke-width="1.2"/>
+          </svg>
+          <span style="color:#e2e8f0;font-size:15px;font-weight:700;letter-spacing:-.01em;">Wallet Connected</span>
+        </div>
+        <button onclick="closeWalletModal()" style="
+          width:28px;height:28px;border-radius:8px;
+          background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06);
+          color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;
+          transition:all .15s;
+        " onmouseover="this.style.background='rgba(255,255,255,.1)';this.style.color='#f1f5f9'"
+          onmouseout="this.style.background='rgba(255,255,255,.05)';this.style.color='#6b7280'">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M9 3L3 9M3 3l6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <div style="background:rgba(31,41,55,0.6);border-radius:12px;padding:16px;margin-bottom:12px;">
-        <div style="color:white;font-family:monospace;font-size:0.875rem;word-break:break-all;">${state.address}</div>
-        <div style="color:${state.onArcNetwork ? '#34d399' : '#fbbf24'};font-size:0.75rem;margin-top:4px;">
-          ${state.onArcNetwork ? '✅ Arc Testnet (5042002)' : t('wallet_wrong_network_badge')}
+
+      <!-- Wallet identity card -->
+      <div style="padding:16px 20px;">
+        <div style="
+          background:linear-gradient(135deg,rgba(124,58,237,.1),rgba(37,99,235,.08));
+          border:1px solid rgba(124,58,237,.18);border-radius:16px;
+          padding:16px;display:flex;align-items:center;gap:14px;
+        ">
+          <!-- Logo -->
+          <div style="position:relative;flex-shrink:0;">
+            ${walletLogo}
+            <!-- Online dot -->
+            <span style="
+              position:absolute;bottom:2px;right:2px;
+              width:10px;height:10px;border-radius:50%;
+              background:#34d399;border:2px solid #080f1a;
+              animation:wmcPulse 2.5s infinite;
+            "></span>
+          </div>
+          <!-- Address info -->
+          <div style="flex:1;min-width:0;">
+            <div style="color:#94a3b8;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Connected Address</div>
+            <div style="color:#f1f5f9;font-family:'Courier New',monospace;font-size:13px;font-weight:700;letter-spacing:.02em;">${short}</div>
+            <div style="color:#4b5563;font-size:10px;font-family:monospace;margin-top:2px;word-break:break-all;line-height:1.4;">${addr}</div>
+          </div>
+          <!-- Copy button -->
+          <button onclick="navigator.clipboard.writeText('${addr}').then(()=>{ this.innerHTML='<svg width=\\'14\\' height=\\'14\\' viewBox=\\'0 0 14 14\\' fill=\\'none\\'><path d=\\'M3 7l3 3 5-5\\' stroke=\\'#34d399\\' stroke-width=\\'1.8\\' stroke-linecap=\\'round\\' stroke-linejoin=\\'round\\'/></svg>'; setTimeout(()=>this.innerHTML='<svg width=\\'14\\' height=\\'14\\' viewBox=\\'0 0 14 14\\' fill=\\'none\\'><path d=\\'M2 4h8v8H2z\\' stroke=\\'#6b7280\\' stroke-width=\\'1.3\\' stroke-linejoin=\\'round\\'/><path d=\\'M4 4V2h8v8h-2\\' stroke=\\'#6b7280\\' stroke-width=\\'1.3\\' stroke-linejoin=\\'round\\'/></svg>',1500) })"
+            style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;"
+            title="Copy address"
+            onmouseover="this.style.background='rgba(255,255,255,.1)'" onmouseout="this.style.background='rgba(255,255,255,.05)'">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4h8v8H2z" stroke="#6b7280" stroke-width="1.3" stroke-linejoin="round"/><path d="M4 4V2h8v8h-2" stroke="#6b7280" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          </button>
         </div>
       </div>
-      ${!state.onArcNetwork ? `
-      <button onclick="switchNetworkFromUI();closeWalletModal();" 
-        style="width:100%;background:rgba(217,119,6,0.8);border:none;border-radius:8px;padding:10px;color:white;cursor:pointer;margin-bottom:8px;font-weight:600;">
-        <i class="fas fa-exchange-alt mr-1"></i>${t('wallet_switch_to_arc_btn')}
-      </button>
-      ` : ''}
-      <a href="https://testnet.arcscan.app/address/${state.address}" target="_blank"
-        style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(31,41,55,0.8);border:1px solid rgba(55,65,81,0.4);border-radius:8px;padding:10px;color:#d1d5db;font-size:0.875rem;text-decoration:none;margin-bottom:8px;">
-        <i class="fas fa-external-link-alt" style="color:#a855f7;"></i>${t('wallet_view_explorer')}
-      </a>
-      <button onclick="disconnectWallet();closeWalletModal();" 
-        style="width:100%;background:none;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px;color:#f87171;cursor:pointer;font-size:0.875rem;">
-        <i class="fas fa-sign-out-alt mr-1"></i>Desconectar
-      </button>
+
+      <!-- Stats row -->
+      <div style="padding:0 20px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <!-- Network status -->
+        <div style="
+          background:${onArc ? 'rgba(52,211,153,.07)' : 'rgba(251,191,36,.07)'};
+          border:1px solid ${onArc ? 'rgba(52,211,153,.2)' : 'rgba(251,191,36,.2)'};
+          border-radius:12px;padding:10px 12px;
+        ">
+          <div style="color:#6b7280;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Network</div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:${onArc ? '#34d399' : '#fbbf24'};flex-shrink:0;"></span>
+            <span style="color:${onArc ? '#34d399' : '#fbbf24'};font-size:11px;font-weight:700;">${onArc ? 'Arc Testnet' : 'Wrong Network'}</span>
+          </div>
+          <div style="color:#4b5563;font-size:9px;font-family:monospace;margin-top:2px;">Chain ${chainId}</div>
+        </div>
+        <!-- USDC Balance -->
+        <div style="
+          background:rgba(37,99,235,.07);border:1px solid rgba(37,99,235,.2);
+          border-radius:12px;padding:10px 12px;
+        ">
+          <div style="color:#6b7280;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">USDC Balance</div>
+          <div style="color:#93c5fd;font-size:14px;font-weight:800;letter-spacing:-.02em;">${usdcBal}</div>
+          <div style="color:#4b5563;font-size:9px;margin-top:2px;">on ARC Testnet</div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:7px;">
+        ${!onArc ? `
+        <button class="wmc-switch" onclick="switchNetworkFromUI();closeWalletModal();">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M9 4l3 3-3 3M5 10L2 7l3-3" stroke="#fbbf24" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Switch to Arc Testnet
+        </button>
+        ` : ''}
+
+        <a class="wmc-action" href="https://testnet.arcscan.app/address/${addr}" target="_blank" rel="noopener">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="color:#a78bfa"><path d="M5.5 2H2.5A.5.5 0 002 2.5v9a.5.5 0 00.5.5h9a.5.5 0 00.5-.5V8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M8 2h4v4M12 2L6.5 7.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span style="flex:1;">View on ARC Explorer</span>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 7l4-4M4 3h3v3" stroke="#4b5563" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+
+        <button class="wmc-disconnect" onclick="disconnectWallet();closeWalletModal();">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 7h6M9 5l2 2-2 2" stroke="#f87171" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 3V2.5A.5.5 0 007.5 2h-5a.5.5 0 00-.5.5v9a.5.5 0 00.5.5h5a.5.5 0 00.5-.5V11" stroke="#f87171" stroke-width="1.4" stroke-linecap="round"/></svg>
+          Disconnect Wallet
+        </button>
+      </div>
+
+      <!-- Privacy note -->
+      <div style="
+        padding:10px 20px 14px;
+        border-top:1px solid rgba(255,255,255,.05);
+        display:flex;align-items:center;justify-content:center;gap:5px;
+      ">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="flex-shrink:0"><path d="M5 1L1.5 2.5V5c0 2 1.6 3.6 3.5 4 1.9-.4 3.5-2 3.5-4V2.5L5 1z" fill="none" stroke="#374151" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        <span style="color:#374151;font-size:10px;">Secured by your wallet — no private keys stored</span>
+      </div>
     </div>
   `;
+
   document.body.appendChild(modal);
 }
 
@@ -720,8 +1082,9 @@ async function connectWithProvider(index) {
     showWalletToast(`✅ ${selected.name} conectada! ${shortenAddress(address)}`, 'success');
     addWalletLog(`[WALLET] ${selected.name} conectada: ${address}`, 'success');
 
-    // Salvar preferência no localStorage
-    localStorage.setItem('arc_wallet_last', JSON.stringify({ name: selected.name, address }));
+    // Salvar preferência no localStorage (com logoKey para o modal conectado)
+    const _lk = _getWalletLogoKey ? _getWalletLogoKey(selected) : 'default';
+    localStorage.setItem('arc_wallet_last', JSON.stringify({ name: selected.name, address, logoKey: _lk }));
 
     // Ouvir mudanças de conta/rede
     provider.on('accountsChanged', handleAccountsChanged);
