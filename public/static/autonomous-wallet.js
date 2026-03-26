@@ -544,6 +544,21 @@
         return;
       }
 
+      // ── Permit2 allowance check (advisory) ────────────────
+      if (data.unsignedTx && (data.intent === 'send' || data.intent === 'swap')) {
+        const p2 = window.p2CheckAllowance;
+        if (typeof p2 === 'function' && data.humanParams) {
+          const { token, amount, to } = data.humanParams;
+          const opScope  = data.intent === 'swap' ? 'swap' : 'payments';
+          const p2result = p2(addr, token || 'USDC', parseFloat(amount) || 0, opScope);
+          if (p2result.allowed) {
+            awAddChatMessage('system',
+              `🔐 Permit2 ✅ — Active spending permit covers this operation (${p2result.permit.amount} ${token}, scope: ${opScope}).`
+            );
+          }
+        }
+      }
+
       // ── Send / Swap — needs signing ────────────────────────
       if (data.unsignedTx && (data.intent === 'send' || data.intent === 'swap')) {
         const sim = data.simulation || data.quote;

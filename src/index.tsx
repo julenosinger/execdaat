@@ -2635,6 +2635,81 @@ app.get('/', (c) => {
         </div>
       </div>
 
+      <!-- ── Permit2 Spending Permissions Panel ─────────────────────────────── -->
+      <div class="mt-6 bg-gray-900/60 border border-yellow-500/30 rounded-xl p-6" id="permit2-section">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center">
+              <i class="fas fa-key text-white"></i>
+            </div>
+            <div>
+              <h3 class="text-white font-semibold flex items-center gap-2">
+                Permit2 Spending Permissions
+                <span id="permit2-count-badge" class="hidden bg-yellow-500 text-black text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">0</span>
+              </h3>
+              <p class="text-yellow-400 text-xs">Agent autonomous spending limits — off-chain EIP-712</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="sendQuickMessage('show my permissions'); toggleChat();"
+              class="text-xs text-yellow-400 hover:text-yellow-300 bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-3 py-1.5 transition-colors">
+              <i class="fas fa-sync mr-1"></i> Refresh
+            </button>
+            <button onclick="sendQuickMessage('allow the agent to spend 100 USDC for 24 hours'); toggleChat();"
+              class="text-xs text-white bg-yellow-600 hover:bg-yellow-500 border border-yellow-500/50 rounded-lg px-3 py-1.5 transition-colors font-semibold">
+              <i class="fas fa-plus mr-1"></i> New Permit
+            </button>
+          </div>
+        </div>
+
+        <!-- Active permits list -->
+        <div id="permit2-active-panel" class="space-y-2 mb-4">
+          <div class="text-center text-gray-600 text-sm py-4">
+            <i class="fas fa-lock text-gray-700 text-2xl mb-2 block"></i>
+            Connect wallet to view permits
+          </div>
+        </div>
+
+        <!-- Quick commands -->
+        <div class="bg-gray-800/50 rounded-lg p-4">
+          <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3">
+            <i class="fas fa-terminal mr-1"></i> Chat Commands
+          </h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button onclick="sendQuickMessage('allow the agent to spend 100 USDC for 24 hours'); toggleChat();"
+              class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
+              <div class="text-xs text-yellow-400 font-medium mb-0.5">Create USDC Permit</div>
+              <div class="text-[11px] text-gray-500 font-mono">allow 100 USDC for 24 hours</div>
+            </button>
+            <button onclick="sendQuickMessage('give permission for swaps up to 50 EURC for 3 days'); toggleChat();"
+              class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
+              <div class="text-xs text-yellow-400 font-medium mb-0.5">Swap Permit (EURC)</div>
+              <div class="text-[11px] text-gray-500 font-mono">swap 50 EURC for 3 days</div>
+            </button>
+            <button onclick="sendQuickMessage('authorize payments of 200 USDC for 7 days'); toggleChat();"
+              class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
+              <div class="text-xs text-yellow-400 font-medium mb-0.5">Payment Limit (7 days)</div>
+              <div class="text-[11px] text-gray-500 font-mono">200 USDC payments, 7 days</div>
+            </button>
+            <button onclick="sendQuickMessage('revoke all permits'); toggleChat();"
+              class="text-left bg-red-900/20 border border-red-700/20 rounded-lg p-2.5 hover:border-red-500/40 transition-colors">
+              <div class="text-xs text-red-400 font-medium mb-0.5">Revoke All</div>
+              <div class="text-[11px] text-gray-500 font-mono">revoke all permits</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Info banner -->
+        <div class="mt-3 p-3 bg-yellow-900/10 border border-yellow-700/20 rounded-lg">
+          <p class="text-xs text-yellow-400/80">
+            <i class="fas fa-info-circle mr-1"></i>
+            <strong>How it works:</strong> Permits grant the AI agent autonomous spending rights up to your set limit.
+            They require your EIP-712 wallet signature — <strong>no gas cost</strong>.
+            Maximum duration: <strong>7 days</strong>. The agent always respects scope and amount limits.
+          </p>
+        </div>
+      </div>
+
     </div>
 
 
@@ -3973,7 +4048,8 @@ app.get('/', (c) => {
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
-  <script src="/static/chat.js?v=20250325a"></script>
+  <script src="/static/permit2-chat.js?v=20250326a"></script>
+  <script src="/static/chat.js?v=20250326a"></script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
     function cfUpdateModeUI(mode) {

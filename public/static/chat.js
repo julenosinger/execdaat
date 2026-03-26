@@ -993,6 +993,12 @@ async function handleLocalCommand(msg) {
     await cmdShowContracts(); return true;
   }
 
+  // ── Permit2 intents (handled before ArcPay authorize to avoid collisions) ────
+  if (typeof handlePermitIntent === 'function') {
+    const p2handled = await handlePermitIntent(msg);
+    if (p2handled) return true;
+  }
+
   // ── Authorize ArcPay ──────────────────────────────────────────────────────
   if (/approve arcpay|authorize agent|enable agent|arcpay agent|autorizar|autorize/i.test(lower)) {
     await executeArcPayAuthorization(); return true;
@@ -1105,6 +1111,13 @@ async function cmdHelp() {
     `- \`create contract with 0x... for 100 USDC\`\n` +
     `- \`deposit 50 USDC to contract #3\`\n` +
     `- \`release milestone on contract #3\`\n\n` +
+    `**🔐 Permit2 — Spending Limits**\n` +
+    `- \`allow the agent to spend 100 USDC for 24 hours\`\n` +
+    `- \`give permission for swaps up to 50 USDC today\`\n` +
+    `- \`authorize payments of 200 USDC for 3 days\`\n` +
+    `- \`show my permissions\` — list active permits\n` +
+    `- \`revoke USDC permit\` — revoke specific permit\n` +
+    `- \`revoke all permits\` — remove all permits\n\n` +
     `**📊 Info**\n` +
     `- \`my wallet\` — balance & status\n` +
     `- \`network status\` — RPC & block\n` +
@@ -1693,12 +1706,12 @@ function scrollChatToBottom() {
 function getModuleColor(m) {
   return { payments:'text-blue-400', vaults:'text-green-400', swap:'text-purple-400',
            contracts:'text-orange-400', agents:'text-red-400', network:'text-cyan-400',
-           general:'text-gray-400', error:'text-red-400' }[m] || 'text-gray-400';
+           general:'text-gray-400', error:'text-red-400', permit2:'text-yellow-400' }[m] || 'text-gray-400';
 }
 function getModuleIcon(m) {
   return { payments:'fa-dollar-sign', vaults:'fa-vault', swap:'fa-exchange-alt',
            contracts:'fa-file-contract', agents:'fa-brain', network:'fa-network-wired',
-           general:'fa-robot', error:'fa-exclamation-triangle' }[m] || 'fa-robot';
+           general:'fa-robot', error:'fa-exclamation-triangle', permit2:'fa-key' }[m] || 'fa-robot';
 }
 function escapeHtml(t) {
   return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
