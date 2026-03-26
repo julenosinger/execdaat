@@ -1278,133 +1278,203 @@ details > summary .fa-chevron-down { transition: transform 0.2s ease; }
   to   { transform: scale(1); }
 }
 
-/* ============================================================
-   LIGHT MODE — Clean, modern, Web3-trustworthy
-   Scope: body.light-mode only. Dark mode untouched.
-   ============================================================ */
 
-/* ── CSS custom properties for light mode ── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT MODE — Premium, modern, Web3-professional
+   Scope: body.light-mode only. Dark mode is completely untouched.
+   Design system: layered off-white backgrounds, soft shadows, purple accents,
+   WCAG AA contrast, smooth 0.2s transitions on theme switch.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 1 — CSS Custom Properties (Design Tokens)
+   ───────────────────────────────────────────────────────────────────────── */
 body.light-mode {
-  --lm-bg:          #f0f2f7;
-  --lm-bg-card:     #ffffff;
-  --lm-bg-raised:   #f7f9fc;
-  --lm-bg-sunken:   #eef1f7;
-  --lm-border:      #dde3ee;
-  --lm-border-soft: #e8ecf5;
-  --lm-text-hi:     #0f172a;
-  --lm-text-md:     #334155;
-  --lm-text-lo:     #64748b;
-  --lm-text-dim:    #94a3b8;
-  --lm-accent:      #7c3aed;
-  --lm-accent-soft: rgba(124,58,237,0.08);
-  --lm-shadow-sm:   0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
-  --lm-shadow-md:   0 4px 12px rgba(15,23,42,0.08), 0 2px 4px rgba(15,23,42,0.05);
-  --lm-shadow-lg:   0 8px 28px rgba(15,23,42,0.10), 0 4px 8px rgba(15,23,42,0.06);
+  /* Backgrounds — layered depth */
+  --lm-bg:          #f1f5f9;          /* page canvas */
+  --lm-bg-card:     #ffffff;          /* elevated cards */
+  --lm-bg-raised:   #f8fafc;          /* slightly raised surfaces */
+  --lm-bg-sunken:   #e9eef7;          /* inset / recessed areas */
+  --lm-bg-hover:    #edf2fb;          /* interactive hover state */
+  --lm-bg-header:   rgba(255,255,255,0.97); /* header glass */
+
+  /* Borders */
+  --lm-border:      #dae1ec;
+  --lm-border-soft: #e4eaf4;
+  --lm-border-mid:  #c8d3e3;
+  --lm-border-focus: #7c3aed;
+
+  /* Typography */
+  --lm-text-hi:     #0f172a;          /* headings, high emphasis */
+  --lm-text-md:     #1e293b;          /* body text */
+  --lm-text-lo:     #475569;          /* secondary labels */
+  --lm-text-muted:  #64748b;          /* muted / caption */
+  --lm-text-dim:    #94a3b8;          /* placeholders, hints */
+
+  /* Accent — purple brand */
+  --lm-accent:         #6d28d9;
+  --lm-accent-light:   #7c3aed;
+  --lm-accent-soft:    rgba(109,40,217,0.08);
+  --lm-accent-border:  rgba(109,40,217,0.25);
+  --lm-accent-glow:    rgba(109,40,217,0.15);
+
+  /* Blue accent (payments, DEX) */
+  --lm-blue:           #1d4ed8;
+  --lm-blue-soft:      rgba(29,78,216,0.07);
+  --lm-blue-border:    rgba(29,78,216,0.22);
+
+  /* Status colors */
+  --lm-success:        #15803d;
+  --lm-success-soft:   rgba(21,128,61,0.07);
+  --lm-warning:        #92400e;
+  --lm-warning-soft:   rgba(217,119,6,0.07);
+  --lm-danger:         #b91c1c;
+  --lm-danger-soft:    rgba(185,28,28,0.06);
+
+  /* Shadows — crisp and layered */
+  --lm-shadow-xs: 0 1px 2px rgba(15,23,42,0.05);
+  --lm-shadow-sm: 0 1px 4px rgba(15,23,42,0.07), 0 1px 2px rgba(15,23,42,0.04);
+  --lm-shadow-md: 0 4px 14px rgba(15,23,42,0.09), 0 2px 4px rgba(15,23,42,0.05);
+  --lm-shadow-lg: 0 8px 30px rgba(15,23,42,0.11), 0 4px 8px rgba(15,23,42,0.06);
+  --lm-shadow-xl: 0 20px 60px rgba(15,23,42,0.14), 0 8px 20px rgba(15,23,42,0.08);
+
+  /* Radius */
+  --lm-radius-sm: 8px;
+  --lm-radius-md: 12px;
+  --lm-radius-lg: 16px;
+  --lm-radius-xl: 20px;
 
   background-color: var(--lm-bg) !important;
-  color: var(--lm-text-hi) !important;
+  color: var(--lm-text-md) !important;
 }
 
-/* ── Body & main background ── */
+/* ─────────────────────────────────────────────────────────────────────────
+   § 2 — Body & App Shell
+   ───────────────────────────────────────────────────────────────────────── */
 body.light-mode main,
 body.light-mode #app-shell {
   background-color: var(--lm-bg) !important;
 }
 
-/* ── Header ── */
-body.light-mode header {
-  background: rgba(255,255,255,0.96) !important;
-  backdrop-filter: blur(12px) !important;
-  border-bottom: 1px solid var(--lm-border) !important;
-  box-shadow: var(--lm-shadow-sm) !important;
+/* ─────────────────────────────────────────────────────────────────────────
+   § 3 — Smooth Theme Transition
+   ───────────────────────────────────────────────────────────────────────── */
+body {
+  transition: background-color 0.25s ease, color 0.2s ease;
 }
+body.light-mode *,
+body.light-mode *::before,
+body.light-mode *::after {
+  transition-property: background-color, border-color, color, box-shadow, opacity;
+  transition-duration: 0.18s;
+  transition-timing-function: ease;
+}
+/* Don't transition transforms/width to avoid breaking animations */
+body.light-mode [class*="transition-all"],
+body.light-mode [class*="transition-transform"] {
+  transition-property: all !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 4 — Header (Sticky top bar)
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode header#main-header {
+  background: var(--lm-bg-header) !important;
+  backdrop-filter: blur(16px) saturate(1.6) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.6) !important;
+  border-bottom: 1px solid var(--lm-border) !important;
+  box-shadow: 0 2px 12px rgba(15,23,42,0.07), 0 1px 3px rgba(15,23,42,0.04) !important;
+}
+
+/* Header text overrides */
 body.light-mode header .text-white,
 body.light-mode header .text-gray-100,
-body.light-mode header .text-gray-200,
-body.light-mode header .text-gray-300 { color: var(--lm-text-hi) !important; }
+body.light-mode header .text-gray-200 { color: var(--lm-text-hi) !important; }
+body.light-mode header .text-gray-300 { color: var(--lm-text-lo) !important; }
 body.light-mode header .text-gray-400,
-body.light-mode header .text-gray-500 { color: var(--lm-text-lo) !important; }
+body.light-mode header .text-gray-500 { color: var(--lm-text-muted) !important; }
+body.light-mode header .text-purple-400 { color: var(--lm-accent-light) !important; }
 
-/* ── Card / Panel backgrounds ── */
-body.light-mode .bg-gray-950,
-body.light-mode .bg-gray-950\/90,
-body.light-mode .bg-gray-900\/95,
-body.light-mode .bg-gray-900\/80,
-body.light-mode .bg-gray-900\/60 {
-  background-color: var(--lm-bg-card) !important;
-  box-shadow: var(--lm-shadow-md) !important;
-}
-body.light-mode .bg-gray-900 {
-  background-color: var(--lm-bg-raised) !important;
-  box-shadow: var(--lm-shadow-sm) !important;
-}
-body.light-mode .bg-gray-800 {
-  background-color: var(--lm-bg-sunken) !important;
-}
-body.light-mode .bg-gray-800\/60,
-body.light-mode .bg-gray-800\/40,
-body.light-mode .bg-gray-800\/20,
-body.light-mode .bg-gray-800\/80 {
-  background-color: rgba(238,241,247,0.85) !important;
-}
-body.light-mode .bg-gray-700 {
-  background-color: var(--lm-border) !important;
-}
-
-/* ── Text ── */
-body.light-mode .text-white      { color: var(--lm-text-hi) !important; }
-body.light-mode .text-gray-100,
-body.light-mode .text-gray-200   { color: var(--lm-text-md) !important; }
-body.light-mode .text-gray-300   { color: #475569 !important; }
-body.light-mode .text-gray-400   { color: var(--lm-text-lo) !important; }
-body.light-mode .text-gray-500   { color: #7b8fa8 !important; }
-body.light-mode .text-gray-600   { color: #94a3b8 !important; }
-body.light-mode .text-gray-700   { color: #b0bac9 !important; }
-
-/* ── Borders ── */
-body.light-mode .border-gray-700,
-body.light-mode .border-gray-700\/40,
-body.light-mode .border-gray-700\/60,
-body.light-mode .border-gray-800,
-body.light-mode .border-gray-800\/60 {
+/* Header language selector */
+body.light-mode #lang-selector button {
+  background: var(--lm-bg-raised) !important;
   border-color: var(--lm-border) !important;
-}
-body.light-mode .border-gray-600 { border-color: #c5cedc !important; }
-body.light-mode .border-gray-900 { border-color: var(--lm-border-soft) !important; }
-
-/* ── Dividers ── */
-body.light-mode hr,
-body.light-mode [class*="divide-gray"] > * + * {
-  border-color: var(--lm-border) !important;
-}
-
-/* ── Inputs, Selects, Textareas ── */
-body.light-mode input,
-body.light-mode select,
-body.light-mode textarea {
-  background-color: #ffffff !important;
-  border: 1px solid var(--lm-border) !important;
-  color: var(--lm-text-hi) !important;
-  box-shadow: var(--lm-shadow-sm) !important;
-}
-body.light-mode input::placeholder,
-body.light-mode textarea::placeholder { color: var(--lm-text-dim) !important; }
-body.light-mode input:focus,
-body.light-mode select:focus,
-body.light-mode textarea:focus {
-  border-color: var(--lm-accent) !important;
-  box-shadow: 0 0 0 3px rgba(124,58,237,0.12) !important;
-  outline: none !important;
-}
-body.light-mode input:hover,
-body.light-mode select:hover,
-body.light-mode textarea:hover {
-  border-color: #b5bfcf !important;
-}
-
-/* ── Tabs ── */
-body.light-mode .tab-btn {
   color: var(--lm-text-lo) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
+}
+body.light-mode #lang-selector button:hover {
+  background: var(--lm-bg-hover) !important;
+  border-color: var(--lm-border-mid) !important;
+  color: var(--lm-text-md) !important;
+}
+body.light-mode #lang-dropdown {
+  background: var(--lm-bg-card) !important;
+  border-color: var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-lg) !important;
+}
+body.light-mode #lang-dropdown .lang-option {
+  color: var(--lm-text-lo) !important;
+}
+body.light-mode #lang-dropdown .lang-option:hover {
+  background: var(--lm-bg-hover) !important;
+  color: var(--lm-text-md) !important;
+}
+
+/* Arc testnet badge */
+body.light-mode header .bg-green-900\/30 {
+  background: rgba(21,128,61,0.08) !important;
+  border-color: rgba(21,128,61,0.22) !important;
+}
+body.light-mode header .text-green-400 { color: #15803d !important; }
+
+/* Wallet info pill */
+body.light-mode #wallet-info {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
+}
+body.light-mode #wallet-info:hover {
+  border-color: var(--lm-accent-border) !important;
+  background: var(--lm-bg-hover) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+body.light-mode #wallet-address-display { color: var(--lm-text-hi) !important; }
+body.light-mode #wallet-network-display { color: #15803d !important; }
+body.light-mode #wallet-balance-display {
+  background: rgba(29,78,216,0.08) !important;
+  color: var(--lm-blue) !important;
+}
+
+/* Settings & Profile buttons */
+body.light-mode #settings-btn {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border) !important;
+  color: var(--lm-text-muted) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
+}
+body.light-mode #settings-btn:hover {
+  background: var(--lm-bg-hover) !important;
+  border-color: var(--lm-border-mid) !important;
+  color: var(--lm-text-md) !important;
+}
+
+/* Testnet banner */
+body.light-mode #testnet-banner {
+  background: #fffbeb !important;
+  border-bottom-color: rgba(217,119,6,0.2) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 5 — Tab Navigation Bar
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode #tab-nav {
+  background: rgba(255,255,255,0.96) !important;
+  border-bottom-color: var(--lm-border) !important;
+  box-shadow: 0 1px 0 var(--lm-border), 0 2px 6px rgba(15,23,42,0.04) !important;
+  backdrop-filter: blur(8px) !important;
+}
+body.light-mode .tab-btn {
+  color: var(--lm-text-muted) !important;
   border-color: transparent !important;
 }
 body.light-mode .tab-btn:hover:not(.active) {
@@ -1416,51 +1486,234 @@ body.light-mode .tab-btn.active {
   border-color: var(--lm-accent) !important;
   background: var(--lm-accent-soft) !important;
 }
+body.light-mode .tab-btn i { opacity: 0.85; }
+body.light-mode .tab-btn.active i { opacity: 1; }
 
-/* ── Buttons ── */
-body.light-mode .hover\:bg-gray-800:hover,
-body.light-mode .hover\:bg-gray-700:hover {
+/* ─────────────────────────────────────────────────────────────────────────
+   § 6 — Card & Panel Backgrounds (Tailwind class overrides)
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode .bg-gray-950,
+body.light-mode .bg-gray-950\/90,
+body.light-mode .bg-gray-900\/95,
+body.light-mode .bg-gray-900\/80,
+body.light-mode .bg-gray-900\/60,
+body.light-mode .bg-gray-900\/50 {
+  background-color: var(--lm-bg-card) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+body.light-mode .bg-gray-900 {
+  background-color: var(--lm-bg-raised) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+body.light-mode .bg-gray-800 {
   background-color: var(--lm-bg-sunken) !important;
 }
-body.light-mode button:not([class*="bg-purple"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-gradient"]):not([style*="background"]):not(.pay-tok-btn):not(.pay-cf-input) {
+body.light-mode .bg-gray-800\/80,
+body.light-mode .bg-gray-800\/60,
+body.light-mode .bg-gray-800\/40,
+body.light-mode .bg-gray-800\/20 {
+  background-color: rgba(233,238,247,0.7) !important;
+}
+body.light-mode .bg-gray-700 {
+  background-color: var(--lm-border) !important;
+}
+
+/* Specific rounded card enhancements */
+body.light-mode .rounded-2xl.bg-gray-900,
+body.light-mode .rounded-xl.bg-gray-900 {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border-soft) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 7 — Typography
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode .text-white          { color: var(--lm-text-hi) !important; }
+body.light-mode .text-gray-100,
+body.light-mode .text-gray-200       { color: var(--lm-text-md) !important; }
+body.light-mode .text-gray-300       { color: var(--lm-text-lo) !important; }
+body.light-mode .text-gray-400       { color: var(--lm-text-muted) !important; }
+body.light-mode .text-gray-500       { color: var(--lm-text-dim) !important; }
+body.light-mode .text-gray-600,
+body.light-mode .text-gray-700       { color: #b0bac9 !important; }
+
+/* Preserve accent colors */
+body.light-mode .text-purple-400     { color: var(--lm-accent-light) !important; }
+body.light-mode .text-purple-300     { color: #7c3aed !important; }
+body.light-mode .text-blue-400       { color: #2563eb !important; }
+body.light-mode .text-blue-300       { color: #1d4ed8 !important; }
+body.light-mode .text-green-400      { color: #15803d !important; }
+body.light-mode .text-green-300      { color: #166534 !important; }
+body.light-mode .text-yellow-400,
+body.light-mode .text-amber-400      { color: #92400e !important; }
+body.light-mode .text-red-400,
+body.light-mode .text-rose-400       { color: #b91c1c !important; }
+body.light-mode .text-cyan-400       { color: #0e7490 !important; }
+body.light-mode .text-indigo-400     { color: #3730a3 !important; }
+
+/* Preserve gradient text */
+body.light-mode .bg-gradient-to-r.from-purple-400,
+body.light-mode [class*="bg-clip-text"] {
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 8 — Borders & Dividers
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode .border-gray-900     { border-color: var(--lm-border-soft) !important; }
+body.light-mode .border-gray-800,
+body.light-mode .border-gray-800\/60,
+body.light-mode .border-gray-800\/40,
+body.light-mode .border-gray-800\/20 { border-color: var(--lm-border-soft) !important; }
+body.light-mode .border-gray-700,
+body.light-mode .border-gray-700\/60,
+body.light-mode .border-gray-700\/40 { border-color: var(--lm-border) !important; }
+body.light-mode .border-gray-600     { border-color: var(--lm-border-mid) !important; }
+body.light-mode .border-purple-700\/50,
+body.light-mode .border-purple-800\/30 { border-color: var(--lm-accent-border) !important; }
+
+body.light-mode hr,
+body.light-mode [class*="divide-gray"] > * + * {
+  border-color: var(--lm-border) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 9 — Inputs, Selects & Textareas (Premium form styling)
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+body.light-mode select,
+body.light-mode textarea {
+  background-color: #ffffff !important;
+  border: 1.5px solid var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
+  border-radius: var(--lm-radius-sm) !important;
+}
+body.light-mode input::placeholder,
+body.light-mode textarea::placeholder { color: var(--lm-text-dim) !important; }
+
+body.light-mode input:not([type="checkbox"]):not([type="radio"]):hover,
+body.light-mode select:hover,
+body.light-mode textarea:hover {
+  border-color: var(--lm-border-mid) !important;
+}
+body.light-mode input:not([type="checkbox"]):not([type="radio"]):focus,
+body.light-mode select:focus,
+body.light-mode textarea:focus {
+  border-color: var(--lm-border-focus) !important;
+  box-shadow: 0 0 0 3px var(--lm-accent-glow) !important;
+  background: #ffffff !important;
+  outline: none !important;
+}
+/* Disabled inputs */
+body.light-mode input:disabled,
+body.light-mode select:disabled,
+body.light-mode textarea:disabled {
+  background: var(--lm-bg-sunken) !important;
+  color: var(--lm-text-dim) !important;
+  border-color: var(--lm-border-soft) !important;
+  cursor: not-allowed !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 10 — Buttons (Generic overrides)
+   ───────────────────────────────────────────────────────────────────────── */
+/* Hover state for gray hover buttons */
+body.light-mode .hover\:bg-gray-800:hover,
+body.light-mode .hover\:bg-gray-700:hover { background-color: var(--lm-bg-hover) !important; }
+body.light-mode .hover\:bg-gray-900:hover { background-color: var(--lm-bg-sunken) !important; }
+
+/* Plain/ghost buttons that have no brand color */
+body.light-mode button:not([class*="bg-purple"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-gradient"]):not([style*="background"]):not(.pay-tok-btn):not(.pay-cf-input):not(.chat-quick-btn) {
   color: var(--lm-text-md);
 }
 
-/* ── Stat / Info cards ── */
-body.light-mode [class*="rounded"][class*="border"],
-body.light-mode [class*="rounded-xl"],
-body.light-mode [class*="rounded-2xl"] {
-  border-color: var(--lm-border) !important;
+/* Primary action button (purple) */
+body.light-mode .bg-purple-600,
+body.light-mode .bg-purple-700 {
+  /* keep vivid purple, just ensure text is white */
+  color: #ffffff !important;
 }
+body.light-mode .hover\:bg-purple-700:hover { opacity: 0.92; }
 
-/* ── History rows ── */
-body.light-mode .history-tx-row {
+/* ─────────────────────────────────────────────────────────────────────────
+   § 11 — Landing Page
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode #landing-page section {
+  background: linear-gradient(160deg, #f8fafc 0%, #eef2fb 50%, #f4f1ff 100%) !important;
+}
+body.light-mode #landing-page section .absolute {
+  /* background glow overlay stays soft */
+  opacity: 0.04 !important;
+}
+body.light-mode #landing-page footer {
+  background: transparent !important;
+  border-top-color: var(--lm-border) !important;
+}
+body.light-mode #landing-page footer a,
+body.light-mode #landing-page footer span {
+  color: var(--lm-text-muted) !important;
+}
+body.light-mode #landing-page footer a:hover { color: var(--lm-text-lo) !important; }
+
+/* Feature cards on landing */
+body.light-mode #landing-page .bg-gray-900 {
   background: var(--lm-bg-card) !important;
-  border-color: var(--lm-border-soft) !important;
+  border: 1px solid var(--lm-border-soft) !important;
+  box-shadow: var(--lm-shadow-md) !important;
 }
-body.light-mode .history-tx-row:hover {
-  background: var(--lm-bg-sunken) !important;
-  border-color: rgba(124,58,237,0.25) !important;
-}
-body.light-mode .history-filter-btn {
-  background: var(--lm-bg-sunken) !important;
-  border-color: var(--lm-border) !important;
-  color: var(--lm-text-lo) !important;
-}
-body.light-mode .history-filter-btn.active {
-  background: rgba(124,58,237,0.1) !important;
-  border-color: rgba(124,58,237,0.4) !important;
-  color: #5b21b6 !important;
+body.light-mode #landing-page .bg-gray-900:hover {
+  border-color: var(--lm-accent-border) !important;
+  box-shadow: var(--lm-shadow-lg), 0 0 0 1px var(--lm-accent-border) !important;
+  transform: translateY(-2px);
 }
 
-/* ── Modals / Overlays ── */
+/* ─────────────────────────────────────────────────────────────────────────
+   § 12 — Cards (Rounded containers everywhere)
+   ───────────────────────────────────────────────────────────────────────── */
+/* General rounded bordered elements */
+body.light-mode [class*="rounded-xl"][class*="border"],
+body.light-mode [class*="rounded-2xl"][class*="border"] {
+  border-color: var(--lm-border) !important;
+}
+body.light-mode [class*="rounded-xl"][class*="bg-gray"],
+body.light-mode [class*="rounded-2xl"][class*="bg-gray"] {
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+
+/* Stat / info cards */
+body.light-mode .stat-card,
+body.light-mode [id*="stat-"] {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border-soft) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+body.light-mode .stat-card:hover {
+  box-shadow: var(--lm-shadow-lg) !important;
+  border-color: var(--lm-border) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 13 — Modals & Overlays
+   ───────────────────────────────────────────────────────────────────────── */
+/* Overlay backgrounds */
+body.light-mode .fixed.inset-0.bg-black\/80,
+body.light-mode .fixed.inset-0.bg-black\/60,
+body.light-mode .fixed.inset-0.bg-black\/50 {
+  background: rgba(15,23,42,0.55) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* Modal panels */
 body.light-mode #settings-modal .bg-gray-900,
 body.light-mode #profile-modal  .bg-gray-900,
 body.light-mode #wallet-modal   .bg-gray-900,
 body.light-mode #pin-modal      .bg-gray-900 {
   background: var(--lm-bg-card) !important;
-  box-shadow: var(--lm-shadow-lg) !important;
-  border-color: var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-xl) !important;
+  border: 1px solid var(--lm-border) !important;
 }
 body.light-mode #settings-modal .bg-gray-800,
 body.light-mode #profile-modal  .bg-gray-800,
@@ -1470,389 +1723,665 @@ body.light-mode #pin-modal      .bg-gray-800 {
   border-color: var(--lm-border-soft) !important;
 }
 
-/* ── Toast ── */
-body.light-mode #toast .bg-gray-800 {
-  background: var(--lm-bg-card) !important;
-  border-color: var(--lm-border) !important;
-  color: var(--lm-text-hi) !important;
-  box-shadow: var(--lm-shadow-lg) !important;
+/* Modal header gradients */
+body.light-mode #settings-modal .bg-gradient-to-br,
+body.light-mode #profile-modal  .bg-gradient-to-br {
+  /* keep gradient but tint it lighter */
+  opacity: 0.9 !important;
 }
 
-/* ── Sidebar / Navigation panels ── */
+/* Pin modal */
+body.light-mode #pin-modal input[type="password"] {
+  background: var(--lm-bg-raised) !important;
+  border: 1.5px solid var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+  letter-spacing: 0.3em;
+  box-shadow: var(--lm-shadow-xs) !important;
+}
+
+/* Settings sidebar */
 body.light-mode .settings-tab-btn {
   color: var(--lm-text-lo) !important;
+  border-radius: var(--lm-radius-sm) !important;
+}
+body.light-mode .settings-tab-btn:hover:not(.active) {
+  background: var(--lm-bg-sunken) !important;
+  color: var(--lm-text-md) !important;
 }
 body.light-mode .settings-tab-btn.active {
   background: var(--lm-accent-soft) !important;
   color: var(--lm-accent) !important;
   border-color: var(--lm-accent) !important;
 }
-body.light-mode .settings-tab-btn:hover:not(.active) {
-  background: var(--lm-bg-sunken) !important;
-  color: var(--lm-text-md) !important;
+
+/* Wallet modal rounded cards */
+body.light-mode #wallet-modal .rounded-xl,
+body.light-mode #wallet-modal .rounded-2xl {
+  border-color: var(--lm-border) !important;
 }
 
-/* ── Contracts tab in light mode ── */
-body.light-mode .cf-panel {
+/* ─────────────────────────────────────────────────────────────────────────
+   § 14 — Toast Notifications
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode #toast .bg-gray-800,
+body.light-mode #toast [class*="bg-gray-8"] {
   background: var(--lm-bg-card) !important;
-  border-color: var(--lm-border) !important;
-  box-shadow: var(--lm-shadow-md) !important;
-}
-body.light-mode .cf-input {
-  background: #f8faff !important;
-  border-color: #b8c8dc !important;
+  border: 1px solid var(--lm-border) !important;
   color: var(--lm-text-hi) !important;
-  box-shadow: var(--lm-shadow-sm) !important;
+  box-shadow: var(--lm-shadow-lg) !important;
 }
-body.light-mode .cf-input::placeholder { color: #6b8fb5 !important; }
-body.light-mode .cf-input:hover { border-color: #8aaace !important; }
-body.light-mode .cf-input:focus {
-  border-color: #378ADD !important;
-  box-shadow: 0 0 0 3px rgba(55,138,221,0.14) !important;
-  background: #ffffff !important;
-}
-body.light-mode .cf-label { color: #2d5480 !important; font-weight: 700 !important; }
-body.light-mode .cf-card {
-  background: var(--lm-bg-raised) !important;
-  border-color: var(--lm-border) !important;
-}
-body.light-mode .cf-card:hover { border-color: rgba(55,138,221,0.4) !important; }
 
-/* ── Payments tab in light mode ── */
+/* ─────────────────────────────────────────────────────────────────────────
+   § 15 — Tab Content: Payments
+   ───────────────────────────────────────────────────────────────────────── */
 body.light-mode .pay-cf-panel {
   background: var(--lm-bg-card) !important;
-  border-color: var(--lm-border) !important;
+  border: 1px solid var(--lm-border) !important;
   box-shadow: var(--lm-shadow-md) !important;
+  border-radius: var(--lm-radius-lg) !important;
 }
 body.light-mode .pay-cf-input {
-  background: #f8faff !important;
-  border-color: #b8c8dc !important;
+  background: #f8fbff !important;
+  border: 1.5px solid var(--lm-border) !important;
   color: var(--lm-text-hi) !important;
-  box-shadow: var(--lm-shadow-sm) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
 }
-body.light-mode .pay-cf-input::placeholder { color: #6b8fb5 !important; }
-body.light-mode .pay-cf-input:hover { border-color: #8aaace !important; }
+body.light-mode .pay-cf-input::placeholder { color: var(--lm-text-dim) !important; }
+body.light-mode .pay-cf-input:hover { border-color: var(--lm-border-mid) !important; }
 body.light-mode .pay-cf-input:focus {
-  border-color: #378ADD !important;
-  box-shadow: 0 0 0 3px rgba(55,138,221,0.14) !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12) !important;
   background: #ffffff !important;
-  color: #0f172a !important;
+  color: var(--lm-text-hi) !important;
 }
-body.light-mode .pay-cf-label { color: #2d5480 !important; font-weight: 700 !important; }
+
+body.light-mode .pay-cf-label {
+  color: #1e3a5f !important;
+  font-weight: 600 !important;
+  font-size: 0.8rem !important;
+  letter-spacing: 0.01em;
+}
+
 body.light-mode .pay-side-panel {
   background: var(--lm-bg-card) !important;
-  border-color: var(--lm-border) !important;
+  border: 1px solid var(--lm-border) !important;
   box-shadow: var(--lm-shadow-sm) !important;
+  border-radius: var(--lm-radius-lg) !important;
 }
 body.light-mode .pay-side-hdr {
-  background: rgba(55,138,221,0.04) !important;
-  border-bottom-color: var(--lm-border) !important;
+  background: linear-gradient(135deg, rgba(29,78,216,0.05), rgba(109,40,217,0.04)) !important;
+  border-bottom: 1px solid var(--lm-border) !important;
 }
+
+/* Preview box */
 body.light-mode #pay-preview-box {
+  background: linear-gradient(135deg, #f0f6ff 0%, #f5f0ff 100%) !important;
+  border: 1px solid rgba(99,102,241,0.2) !important;
+  border-radius: var(--lm-radius-md) !important;
+}
+body.light-mode #pay-preview-box .prow { border-bottom-color: rgba(99,102,241,0.12) !important; }
+body.light-mode #pay-preview-box .pk {
+  color: #3b5a8c !important;
+  font-weight: 500 !important;
+}
+body.light-mode #pay-preview-box .pv {
+  color: var(--lm-text-hi) !important;
+  font-weight: 700 !important;
+}
+
+/* Payment note */
+body.light-mode .pay-note-input {
+  background: #f8fbff !important;
+  border: 1.5px solid var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
+}
+body.light-mode .pay-note-input::placeholder { color: var(--lm-text-dim) !important; }
+body.light-mode .pay-note-input:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.11) !important;
+  background: #ffffff !important;
+}
+body.light-mode .pay-note-counter       { color: var(--lm-text-muted) !important; }
+body.light-mode .pay-note-counter.warn  { color: #b45309 !important; }
+body.light-mode .pay-note-counter.over  { color: var(--lm-danger) !important; }
+
+/* Schedule panel */
+body.light-mode .pay-sched-panel {
+  background: rgba(29,78,216,0.03) !important;
+  border: 1px solid rgba(29,78,216,0.14) !important;
+  border-radius: var(--lm-radius-md) !important;
+}
+body.light-mode .pay-sched-opt {
+  background: var(--lm-bg-raised) !important;
+  border: 1px solid var(--lm-border) !important;
+  color: var(--lm-text-lo) !important;
+  border-radius: var(--lm-radius-sm) !important;
+  transition: all 0.18s ease !important;
+}
+body.light-mode .pay-sched-opt:hover {
+  border-color: var(--lm-blue-border) !important;
+  background: var(--lm-blue-soft) !important;
+}
+body.light-mode .pay-sched-opt.active-now {
+  background: rgba(29,78,216,0.08) !important;
+  border-color: rgba(29,78,216,0.35) !important;
+  color: #1e3a8a !important;
+}
+body.light-mode .pay-sched-opt.active-later {
+  background: var(--lm-accent-soft) !important;
+  border-color: var(--lm-accent-border) !important;
+  color: var(--lm-accent) !important;
+}
+body.light-mode .pay-sched-hint        { color: var(--lm-accent) !important; }
+body.light-mode .pay-sched-hint.ok     { color: var(--lm-success) !important; }
+body.light-mode .pay-sched-hint.err    { color: var(--lm-danger) !important; }
+body.light-mode #pay-sched-date,
+body.light-mode #pay-sched-time,
+body.light-mode #pay-sched-tz {
+  background: #f8fbff !important;
+  border: 1.5px solid var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+}
+body.light-mode #pay-sched-date:focus,
+body.light-mode #pay-sched-time:focus,
+body.light-mode #pay-sched-tz:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.11) !important;
+  background: #ffffff !important;
+}
+
+/* Field hints */
+body.light-mode .pay-field-hint.ok   { color: var(--lm-success) !important; }
+body.light-mode .pay-field-hint.err  { color: var(--lm-danger) !important; }
+body.light-mode .pay-field-hint.info { color: #3b5a8c !important; }
+
+/* Token buttons */
+body.light-mode .pay-tok-btn.tok-off {
+  background: var(--lm-bg-raised) !important;
+  border: 1px solid var(--lm-border-mid) !important;
+  color: var(--lm-text-lo) !important;
+}
+body.light-mode .pay-tok-btn.tok-off:hover {
+  border-color: var(--lm-blue-border) !important;
+  color: var(--lm-blue) !important;
+  background: var(--lm-blue-soft) !important;
+}
+
+/* Disabled send button */
+body.light-mode #pay-send-btn:disabled {
+  background: var(--lm-bg-sunken) !important;
+  border: 1px solid var(--lm-border) !important;
+  color: var(--lm-text-dim) !important;
+  cursor: not-allowed !important;
+}
+
+/* Status badges */
+body.light-mode .pay-status-scheduled  {
+  background: var(--lm-accent-soft) !important;
+  border: 1px solid var(--lm-accent-border) !important;
+  color: var(--lm-accent) !important;
+}
+body.light-mode .pay-status-processing {
+  background: rgba(29,78,216,0.07) !important;
+  border: 1px solid rgba(29,78,216,0.25) !important;
+  color: var(--lm-blue) !important;
+}
+body.light-mode .pay-status-completed  {
+  background: var(--lm-success-soft) !important;
+  border: 1px solid rgba(21,128,61,0.25) !important;
+  color: var(--lm-success) !important;
+}
+body.light-mode .pay-status-failed     {
+  background: var(--lm-danger-soft) !important;
+  border: 1px solid rgba(185,28,28,0.2) !important;
+  color: var(--lm-danger) !important;
+}
+
+/* Receipt modal */
+body.light-mode #pay-receipt-modal { background: rgba(15,23,42,0.6) !important; }
+body.light-mode .pay-receipt-modal-inner {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-xl) !important;
+  border-radius: var(--lm-radius-xl) !important;
+}
+body.light-mode .pay-receipt-modal-inner::-webkit-scrollbar-thumb {
+  background: rgba(29,78,216,0.2) !important;
+}
+
+/* History cards */
+body.light-mode #pay-history-list > div,
+body.light-mode #payments-list > div {
+  background: var(--lm-bg-raised) !important;
+  border: 1px solid var(--lm-border-soft) !important;
+  border-radius: var(--lm-radius-md) !important;
+}
+body.light-mode #pay-history-list > div:hover,
+body.light-mode #payments-list > div:hover {
+  border-color: rgba(29,78,216,0.3) !important;
+  background: var(--lm-bg-hover) !important;
+}
+
+/* Steps panel */
+body.light-mode #pay-steps-panel {
+  background: var(--lm-bg-raised) !important;
+  border: 1px solid var(--lm-border) !important;
+  border-radius: var(--lm-radius-lg) !important;
+}
+body.light-mode .pstep-idle  .pstep-label { color: #3b5a8c !important; font-weight: 500 !important; }
+body.light-mode .pstep-done  .pstep-label { color: var(--lm-text-muted) !important; }
+body.light-mode .pstep-idle  .pstep-icon {
+  background: var(--lm-bg-sunken) !important;
+  border: 1px solid var(--lm-border) !important;
+  color: #3b5a8c !important;
+}
+
+/* Fee preview */
+body.light-mode #cf-fee-preview { color: #3b5a8c !important; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 16 — Tab Content: Contracts
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode .cf-panel {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+  border-radius: var(--lm-radius-lg) !important;
+}
+body.light-mode .cf-input {
+  background: #f8fbff !important;
+  border: 1.5px solid var(--lm-border) !important;
+  color: var(--lm-text-hi) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
+}
+body.light-mode .cf-input::placeholder { color: var(--lm-text-dim) !important; }
+body.light-mode .cf-input:hover { border-color: var(--lm-border-mid) !important; }
+body.light-mode .cf-input:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12) !important;
+  background: #ffffff !important;
+}
+body.light-mode .cf-label {
+  color: #1e3a5f !important;
+  font-weight: 600 !important;
+  font-size: 0.8rem !important;
+}
+body.light-mode .cf-card {
+  background: var(--lm-bg-raised) !important;
+  border: 1px solid var(--lm-border-soft) !important;
+  border-radius: var(--lm-radius-md) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
+  transition: all 0.18s ease !important;
+}
+body.light-mode .cf-card:hover {
+  border-color: rgba(29,78,216,0.35) !important;
+  box-shadow: var(--lm-shadow-sm), 0 0 0 1px rgba(29,78,216,0.12) !important;
+  transform: translateY(-1px);
+}
+body.light-mode .cf-btn-disabled {
+  color: var(--lm-text-dim) !important;
+  background: var(--lm-bg-sunken) !important;
+  border: 1px solid var(--lm-border-soft) !important;
+}
+body.light-mode #cf-steps-panel {
+  background: var(--lm-bg-raised) !important;
+  border: 1px solid var(--lm-border) !important;
+  border-radius: var(--lm-radius-lg) !important;
+}
+body.light-mode .ct-step-idle .ct-step-icon i { color: #3b5a8c !important; }
+body.light-mode .ct-step-idle { color: #3b5a8c !important; }
+body.light-mode .ct-step-done span { color: var(--lm-text-muted) !important; }
+body.light-mode #cf-ms-sum { color: #3b5a8c !important; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 17 — Tab Content: DEX / Swap
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode #dex-swap-center,
+body.light-mode #dex-swap-inner {
+  background: transparent !important;
+}
+body.light-mode .dex-swap-card,
+body.light-mode [id*="dex-"][class*="rounded"],
+body.light-mode #tab-content-dex .bg-gray-900 {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+body.light-mode #tab-content-dex input {
+  background: #f8fbff !important;
+  border: 1.5px solid var(--lm-border) !important;
+}
+body.light-mode #tab-content-dex input:focus {
+  border-color: var(--lm-accent-light) !important;
+  box-shadow: 0 0 0 3px var(--lm-accent-glow) !important;
+  background: #ffffff !important;
+}
+body.light-mode #tab-content-dex select {
+  background: #f8fbff !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 18 — Tab Content: MultiSend
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode #tab-content-multisend .bg-gray-900 {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+body.light-mode #tab-content-multisend .bg-gray-800 {
   background: var(--lm-bg-raised) !important;
   border-color: var(--lm-border-soft) !important;
 }
-body.light-mode #pay-preview-box .prow { border-bottom-color: var(--lm-border-soft) !important; }
-body.light-mode #pay-preview-box .pk { color: #4a6888 !important; }
-body.light-mode #pay-preview-box .pv { color: var(--lm-text-hi) !important; }
+body.light-mode #tab-content-multisend input,
+body.light-mode #tab-content-multisend textarea {
+  background: #f8fbff !important;
+  border: 1.5px solid var(--lm-border) !important;
+}
+body.light-mode #tab-content-multisend input:focus,
+body.light-mode #tab-content-multisend textarea:focus {
+  border-color: #0e7490 !important;
+  box-shadow: 0 0 0 3px rgba(14,116,144,0.12) !important;
+  background: #ffffff !important;
+}
 
-/* ── Chat widget in light mode ── */
+/* MultiSend step indicators */
+body.light-mode .ms-step {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border) !important;
+  border-radius: var(--lm-radius-md) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+body.light-mode .ms-step.active {
+  border-color: rgba(14,116,144,0.45) !important;
+  background: rgba(14,116,144,0.04) !important;
+  box-shadow: var(--lm-shadow-sm), 0 0 0 1px rgba(14,116,144,0.15) !important;
+}
+body.light-mode .ms-step.done {
+  border-color: rgba(21,128,61,0.45) !important;
+  background: rgba(21,128,61,0.04) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 19 — Tab Content: History
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode .history-tx-row {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border-soft) !important;
+  border-radius: var(--lm-radius-md) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
+}
+body.light-mode .history-tx-row:hover {
+  background: var(--lm-bg-hover) !important;
+  border-color: var(--lm-accent-border) !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+  transform: translateX(2px);
+}
+body.light-mode .history-filter-btn {
+  background: var(--lm-bg-raised) !important;
+  border: 1px solid var(--lm-border) !important;
+  color: var(--lm-text-lo) !important;
+  border-radius: var(--lm-radius-sm) !important;
+  transition: all 0.18s ease !important;
+}
+body.light-mode .history-filter-btn:hover {
+  background: var(--lm-bg-hover) !important;
+  border-color: var(--lm-border-mid) !important;
+  color: var(--lm-text-md) !important;
+}
+body.light-mode .history-filter-btn.active {
+  background: var(--lm-accent-soft) !important;
+  border-color: var(--lm-accent-border) !important;
+  color: var(--lm-accent) !important;
+  box-shadow: 0 0 0 1px var(--lm-accent-border) !important;
+}
+body.light-mode #tab-content-history .bg-gray-900 {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 20 — Tab Content: Dashboard / Information
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode #tab-content-dashboard .bg-gray-900 {
+  background: var(--lm-bg-card) !important;
+  border: 1px solid var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+body.light-mode #tab-content-dashboard .bg-gray-800 {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border-soft) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 21 — Chat Widget
+   ───────────────────────────────────────────────────────────────────────── */
 body.light-mode #chat-widget {
   background: var(--lm-bg-card) !important;
-  border-color: rgba(124,58,237,0.2) !important;
-  box-shadow: var(--lm-shadow-lg), 0 0 0 1px rgba(124,58,237,0.1) !important;
+  border: 1.5px solid var(--lm-accent-border) !important;
+  box-shadow: var(--lm-shadow-xl), 0 0 0 1px var(--lm-accent-glow) !important;
   color: var(--lm-text-hi) !important;
+  border-radius: var(--lm-radius-xl) !important;
 }
 body.light-mode #chat-header {
-  background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(59,130,246,0.06)) !important;
-  border-bottom-color: rgba(124,58,237,0.15) !important;
+  background: linear-gradient(135deg, rgba(109,40,217,0.07) 0%, rgba(37,99,235,0.05) 100%) !important;
+  border-bottom: 1px solid rgba(109,40,217,0.12) !important;
+  border-radius: var(--lm-radius-xl) var(--lm-radius-xl) 0 0 !important;
 }
 body.light-mode #chat-header .text-white,
 body.light-mode #chat-header [class*="text-white"] { color: var(--lm-text-hi) !important; }
-body.light-mode #chat-header .text-green-400 { color: #16a34a !important; }
+body.light-mode #chat-header .text-green-400 { color: #15803d !important; }
+body.light-mode #chat-header .text-gray-400  { color: var(--lm-text-muted) !important; }
+
+/* ArcPay bar */
 body.light-mode #chat-arcpay-bar.unauthorized {
-  background: rgba(124,58,237,0.06) !important;
-  border-bottom-color: rgba(124,58,237,0.15) !important;
+  background: var(--lm-accent-soft) !important;
+  border-bottom: 1px solid var(--lm-accent-border) !important;
 }
 body.light-mode #chat-arcpay-bar.authorized {
-  background: rgba(22,163,74,0.07) !important;
-  border-bottom-color: rgba(22,163,74,0.2) !important;
+  background: var(--lm-success-soft) !important;
+  border-bottom: 1px solid rgba(21,128,61,0.2) !important;
 }
+
+/* Messages area */
 body.light-mode #chat-messages {
   background: var(--lm-bg-raised) !important;
 }
 body.light-mode #chat-messages .bg-gray-800,
 body.light-mode #chat-messages [class*="bg-gray-8"] {
-  background: #ffffff !important;
+  background: var(--lm-bg-card) !important;
   border: 1px solid var(--lm-border-soft) !important;
-  box-shadow: var(--lm-shadow-sm) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
 }
 body.light-mode #chat-messages .text-gray-300,
 body.light-mode #chat-messages .text-gray-400 { color: var(--lm-text-md) !important; }
 body.light-mode #chat-messages .text-gray-500,
-body.light-mode #chat-messages .text-gray-600 { color: var(--lm-text-lo) !important; }
-body.light-mode #chat-quick-actions .chat-quick-btn,
+body.light-mode #chat-messages .text-gray-600 { color: var(--lm-text-muted) !important; }
+
+/* Quick action buttons */
 body.light-mode .chat-quick-btn {
-  background: var(--lm-bg-sunken) !important;
-  border-color: var(--lm-border) !important;
+  background: var(--lm-bg-raised) !important;
+  border: 1px solid var(--lm-border) !important;
   color: var(--lm-text-lo) !important;
+  border-radius: var(--lm-radius-sm) !important;
+  transition: all 0.18s ease !important;
 }
-body.light-mode #chat-quick-actions .chat-quick-btn:hover,
 body.light-mode .chat-quick-btn:hover {
   background: var(--lm-bg-card) !important;
-  border-color: rgba(124,58,237,0.3) !important;
+  border-color: var(--lm-accent-border) !important;
   color: var(--lm-accent) !important;
+  box-shadow: var(--lm-shadow-xs) !important;
 }
-body.light-mode #chat-widget .bg-gray-800,
-body.light-mode #chat-widget [class*="focus-within\:border-purple"] {
-  background: #f4f6fb !important;
-  border-color: var(--lm-border) !important;
+
+/* Input area */
+body.light-mode #chat-widget .bg-gray-800 {
+  background: var(--lm-bg-raised) !important;
+  border: 1px solid var(--lm-border) !important;
 }
 body.light-mode #chat-input {
   background: transparent !important;
   color: var(--lm-text-hi) !important;
 }
 body.light-mode #chat-input::placeholder { color: var(--lm-text-dim) !important; }
-body.light-mode #chat-widget .text-gray-700 { color: #94a3b8 !important; }
+body.light-mode #chat-widget .text-gray-700 { color: var(--lm-text-dim) !important; }
+body.light-mode #chat-widget button.hover\:bg-gray-800:hover {
+  background: var(--lm-bg-hover) !important;
+}
+
+/* Size buttons */
 body.light-mode .chat-size-btn {
-  background: rgba(15,23,42,0.05) !important;
-  border-color: var(--lm-border) !important;
-  color: var(--lm-text-lo) !important;
+  background: var(--lm-bg-sunken) !important;
+  border: 1px solid var(--lm-border) !important;
+  color: var(--lm-text-muted) !important;
+  border-radius: 6px !important;
 }
 body.light-mode .chat-size-btn:hover,
 body.light-mode .chat-size-btn.active {
-  background: rgba(124,58,237,0.12) !important;
-  border-color: rgba(124,58,237,0.4) !important;
+  background: var(--lm-accent-soft) !important;
+  border-color: var(--lm-accent-border) !important;
   color: var(--lm-accent) !important;
 }
-body.light-mode #chat-widget button.hover\:bg-gray-800:hover {
-  background: var(--lm-bg-sunken) !important;
+
+/* FAB button */
+body.light-mode #chat-fab {
+  box-shadow: 0 6px 24px rgba(109,40,217,0.4), 0 3px 10px rgba(0,0,0,0.14) !important;
 }
 
-/* ── Dashboard stat cards ── */
-body.light-mode .stat-card,
-body.light-mode [id*="stat-"] {
-  background: var(--lm-bg-card) !important;
-  border-color: var(--lm-border) !important;
-  box-shadow: var(--lm-shadow-sm) !important;
-}
-
-/* ── Scrollbars ── */
-body.light-mode ::-webkit-scrollbar-track { background: var(--lm-bg-sunken) !important; }
-body.light-mode ::-webkit-scrollbar-thumb { background: #c5cedc !important; border-radius: 4px; }
-body.light-mode ::-webkit-scrollbar-thumb:hover { background: #a8b5c8 !important; }
-
-/* ── Selection ── */
-body.light-mode ::selection { background: rgba(124,58,237,0.15); color: var(--lm-text-hi); }
-
-/* ── Theme toggle buttons ── */
+/* ─────────────────────────────────────────────────────────────────────────
+   § 22 — Theme Toggle Buttons
+   ───────────────────────────────────────────────────────────────────────── */
 #theme-dark-btn, #theme-light-btn {
   cursor: pointer;
   user-select: none;
   transition: all 0.2s ease;
 }
 body.light-mode #theme-dark-btn {
-  border-color: #c5cedc !important;
-  background: rgba(196,206,220,0.2) !important;
-  color: var(--lm-text-lo) !important;
+  border: 1px solid var(--lm-border-mid) !important;
+  background: var(--lm-bg-raised) !important;
+  color: var(--lm-text-muted) !important;
+}
+body.light-mode #theme-dark-btn:hover {
+  background: var(--lm-bg-hover) !important;
+  color: var(--lm-text-md) !important;
 }
 body.light-mode #theme-light-btn {
-  border-color: #f59e0b !important;
-  background: rgba(245,158,11,0.1) !important;
-  color: #b45309 !important;
+  border: 1px solid rgba(245,158,11,0.45) !important;
+  background: rgba(245,158,11,0.09) !important;
+  color: #92400e !important;
+}
+body.light-mode #theme-light-btn:hover {
+  background: rgba(245,158,11,0.16) !important;
 }
 
-/* ── Gradient text preserves in light (keep purple brand) ── */
-body.light-mode .bg-gradient-to-r.from-purple-400,
-body.light-mode [class*="bg-clip-text"] {
-  -webkit-background-clip: text !important;
-  background-clip: text !important;
+/* ─────────────────────────────────────────────────────────────────────────
+   § 23 — Scrollbars
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode ::-webkit-scrollbar-track {
+  background: var(--lm-bg-sunken) !important;
+}
+body.light-mode ::-webkit-scrollbar-thumb {
+  background: #c2ccdb !important;
+  border-radius: 4px;
+  border: 2px solid var(--lm-bg-sunken);
+}
+body.light-mode ::-webkit-scrollbar-thumb:hover {
+  background: #a8b5c8 !important;
 }
 
-/* ── App info / info bar ── */
+/* ─────────────────────────────────────────────────────────────────────────
+   § 24 — Selection
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode ::selection {
+  background: rgba(109,40,217,0.15);
+  color: var(--lm-text-hi);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 25 — App Info / Info Bar
+   ───────────────────────────────────────────────────────────────────────── */
 body.light-mode [style*="background:rgba(8,11,24"],
-body.light-mode [style*="background:rgba(10,12,24"] {
+body.light-mode [style*="background:rgba(10,12,24"],
+body.light-mode [style*="background: rgba(8,11,24"],
+body.light-mode [style*="background: rgba(10,12,24"] {
   background: var(--lm-bg-card) !important;
   border-color: var(--lm-border) !important;
 }
 
-/* ── Steps panels ── */
-body.light-mode #pay-steps-panel,
-body.light-mode #cf-steps-panel {
+/* ─────────────────────────────────────────────────────────────────────────
+   § 26 — Arc Badge Overrides (light mode)
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode .arc-badge-pending    { background: var(--lm-warning-soft) !important;   border-color: rgba(217,119,6,0.25) !important;  color: var(--lm-warning) !important; }
+body.light-mode .arc-badge-scheduled  { background: var(--lm-accent-soft) !important;    border-color: var(--lm-accent-border) !important; color: var(--lm-accent) !important; }
+body.light-mode .arc-badge-processing { background: var(--lm-blue-soft) !important;      border-color: var(--lm-blue-border) !important;   color: var(--lm-blue) !important; }
+body.light-mode .arc-badge-completed  { background: var(--lm-success-soft) !important;   border-color: rgba(21,128,61,0.22) !important;    color: var(--lm-success) !important; }
+body.light-mode .arc-badge-failed     { background: var(--lm-danger-soft) !important;    border-color: rgba(185,28,28,0.2) !important;     color: var(--lm-danger) !important; }
+body.light-mode .arc-badge-cancelled  { background: rgba(71,85,105,0.07) !important;     border-color: rgba(71,85,105,0.2) !important;     color: #475569 !important; }
+body.light-mode .arc-badge-cached     { background: var(--lm-blue-soft) !important;      border-color: var(--lm-blue-border) !important;   color: var(--lm-blue) !important; }
+body.light-mode .arc-badge-synced     { background: var(--lm-success-soft) !important;   border-color: rgba(21,128,61,0.2) !important;     color: var(--lm-success) !important; }
+body.light-mode .arc-badge-partial    { background: var(--lm-warning-soft) !important;   border-color: rgba(217,119,6,0.2) !important;     color: var(--lm-warning) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 27 — Offline / Cached bars
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode .arc-offline-bar {
+  background: var(--lm-warning-soft) !important;
+  border-bottom-color: rgba(217,119,6,0.2) !important;
+  color: var(--lm-warning) !important;
+}
+body.light-mode .arc-offline-retry {
+  background: rgba(217,119,6,0.1) !important;
+  border-color: rgba(217,119,6,0.25) !important;
+  color: #78350f !important;
+}
+body.light-mode .arc-retry-btn {
+  background: rgba(217,119,6,0.07) !important;
+  border-color: rgba(217,119,6,0.2) !important;
+  color: #78350f !important;
+}
+body.light-mode .arc-retry-btn:hover {
+  background: rgba(217,119,6,0.14) !important;
+}
+body.light-mode .hist-cache-bar  {
+  background: var(--lm-blue-soft) !important;
+  border-color: var(--lm-blue-border) !important;
+  color: var(--lm-blue) !important;
+}
+body.light-mode .hist-offline-bar {
+  background: var(--lm-warning-soft) !important;
+  border-color: rgba(217,119,6,0.2) !important;
+  color: var(--lm-warning) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 28 — Accessibility — Focus Rings
+   ───────────────────────────────────────────────────────────────────────── */
+body.light-mode button:focus-visible,
+body.light-mode input:focus-visible,
+body.light-mode a:focus-visible,
+body.light-mode [role="button"]:focus-visible {
+  outline: 2.5px solid var(--lm-accent) !important;
+  outline-offset: 2px !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   § 29 — Miscellaneous
+   ───────────────────────────────────────────────────────────────────────── */
+/* Prevent testnet banner from override */
+body.light-mode #testnet-banner { /* amber styling is fine as-is */ }
+
+/* Footer */
+body.light-mode footer {
+  border-top-color: var(--lm-border) !important;
+}
+body.light-mode footer .text-gray-600 { color: var(--lm-text-muted) !important; }
+body.light-mode footer a:hover { color: var(--lm-text-lo) !important; }
+
+/* Multisend step bar */
+body.light-mode #ms-steps-bar .bg-gray-800,
+body.light-mode #ms-steps-bar [class*="bg-gray"] {
   background: var(--lm-bg-raised) !important;
   border-color: var(--lm-border) !important;
-}
-body.light-mode .pstep-idle  .pstep-label { color: #4a6888 !important; font-weight: 500 !important; }
-body.light-mode .pstep-done  .pstep-label { color: #7090b0 !important; }
-body.light-mode .pstep-idle  .pstep-icon { background: #eef3fa !important; border-color: #c8d8e8 !important; color: #4a6888 !important; }
-body.light-mode .ct-step-idle .ct-step-icon i { color: #4a6888 !important; }
-body.light-mode .ct-step-idle { color: #4a6888 !important; }
-body.light-mode .ct-step-done span { color: #7090b0 !important; }
-
-/* ── Preview box in light mode ── */
-body.light-mode #pay-preview-box {
-  background: #f0f5ff !important;
-  border-color: #c8d8ec !important;
-}
-body.light-mode #pay-preview-box .prow { border-bottom-color: #dde8f4 !important; }
-body.light-mode #pay-preview-box .pk { color: #4a6888 !important; font-weight: 600 !important; }
-body.light-mode #pay-preview-box .pv { color: #0f172a !important; font-weight: 700 !important; }
-
-/* ── Field hints in light mode ── */
-body.light-mode .pay-field-hint.ok  { color: #16803a !important; }
-body.light-mode .pay-field-hint.err { color: #dc2626 !important; }
-body.light-mode .pay-field-hint.info { color: #4a6888 !important; }
-
-/* ── Token buttons in light mode ── */
-body.light-mode .pay-tok-btn.tok-off { border-color: #c8d5e5 !important; color: #5070a0 !important; background: #f0f5ff !important; }
-
-/* ── Disabled send button in light mode ── */
-body.light-mode #pay-send-btn:disabled {
-  background: #e8eef8 !important;
-  border-color: #b8cce0 !important;
-  color: #6888a8 !important;
-}
-
-/* ── Fee preview & milestone sum ── */
-body.light-mode #cf-fee-preview,
-body.light-mode #cf-ms-sum { color: #4a6888 !important; }
-
-/* ── Cf-btn-disabled in light mode ── */
-body.light-mode .cf-btn-disabled { color: #6888a8 !important; background: #eef3fa !important; border-color: #c8d8e8 !important; }
-
-/* ── Amber / testnet banner — keep as-is (good contrast either mode) ── */
-body.light-mode #testnet-banner { /* no override — amber looks fine in light */ }
-
-/* ── FAB button stays vivid in both modes ── */
-body.light-mode #chat-fab {
-  box-shadow: 0 4px 20px rgba(124,58,237,0.35), 0 2px 8px rgba(0,0,0,0.12) !important;
-}
-
-/* ── Wallet modal / connect button ── */
-body.light-mode #wallet-modal .rounded-xl,
-body.light-mode #wallet-modal .rounded-2xl {
-  border-color: var(--lm-border) !important;
-}
-
-/* ── Pin modal ── */
-body.light-mode #pin-modal input[type="password"] {
-  background: var(--lm-bg-raised) !important;
-  border-color: var(--lm-border) !important;
-  color: var(--lm-text-hi) !important;
-  letter-spacing: 0.3em;
-}
-
-/* ── Transition on theme switch ── */
-body { transition: background-color 0.25s ease, color 0.2s ease; }
-*, *::before, *::after {
-  transition-property: background-color, border-color, color, box-shadow;
-  transition-duration: 0.2s;
-  transition-timing-function: ease;
-}
-
-/* ── Payment Note (light mode) ── */
-body.light-mode .pay-note-input {
-  background: #f8faff !important;
-  border-color: #b8c8dc !important;
-  color: var(--lm-text-hi) !important;
-  box-shadow: var(--lm-shadow-sm) !important;
-}
-body.light-mode .pay-note-input::placeholder { color: #6b8fb5 !important; }
-body.light-mode .pay-note-input:focus {
-  border-color: #378ADD !important;
-  box-shadow: 0 0 0 3px rgba(55,138,221,0.12) !important;
-  background: #ffffff !important;
-}
-body.light-mode .pay-note-counter { color: #4a6888 !important; }
-body.light-mode .pay-note-counter.warn { color: #b45309 !important; }
-body.light-mode .pay-note-counter.over { color: #dc2626 !important; }
-
-/* ── Schedule Panel (light mode) ── */
-body.light-mode .pay-sched-panel {
-  background: rgba(55,138,221,0.03) !important;
-  border-color: #c8d8ec !important;
-}
-body.light-mode .pay-sched-opt {
-  background: #f4f8ff !important;
-  border-color: #c8d8ec !important;
-  color: #4a6888 !important;
-}
-body.light-mode .pay-sched-opt.active-now {
-  background: rgba(55,138,221,0.1) !important;
-  border-color: #378ADD !important;
-  color: #1a4a80 !important;
-}
-body.light-mode .pay-sched-opt.active-later {
-  background: rgba(124,58,237,0.08) !important;
-  border-color: rgba(124,58,237,0.4) !important;
-  color: #5b21b6 !important;
-}
-body.light-mode .pay-sched-hint { color: #5b21b6 !important; }
-body.light-mode .pay-sched-hint.ok  { color: #15803d !important; }
-body.light-mode .pay-sched-hint.err { color: #dc2626 !important; }
-body.light-mode #pay-sched-date,
-body.light-mode #pay-sched-time,
-body.light-mode #pay-sched-tz {
-  background: #f8faff !important;
-  border-color: #b8c8dc !important;
-  color: var(--lm-text-hi) !important;
-}
-body.light-mode #pay-sched-date:focus,
-body.light-mode #pay-sched-time:focus,
-body.light-mode #pay-sched-tz:focus {
-  border-color: #378ADD !important;
-  box-shadow: 0 0 0 3px rgba(55,138,221,0.12) !important;
-  background: #ffffff !important;
-}
-
-/* ── Status badges (light mode) ── */
-body.light-mode .pay-status-scheduled  { background: rgba(124,58,237,0.08) !important; border-color: rgba(124,58,237,0.3) !important; color: #5b21b6 !important; }
-body.light-mode .pay-status-processing { background: rgba(37,99,235,0.08) !important; border-color: rgba(37,99,235,0.3) !important; color: #1d4ed8 !important; }
-body.light-mode .pay-status-completed  { background: rgba(22,163,74,0.08) !important; border-color: rgba(22,163,74,0.3) !important; color: #15803d !important; }
-body.light-mode .pay-status-failed     { background: rgba(220,38,38,0.07) !important; border-color: rgba(220,38,38,0.25) !important; color: #dc2626 !important; }
-
-/* ── Receipt Modal (light mode) ── */
-body.light-mode #pay-receipt-modal { background: rgba(10,20,50,0.65) !important; }
-body.light-mode .pay-receipt-modal-inner {
-  background: #ffffff !important;
-  border-color: #c8d8ec !important;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.18) !important;
-}
-body.light-mode .pay-receipt-modal-inner::-webkit-scrollbar-thumb { background: rgba(55,138,221,0.2) !important; }
-
-/* ── History cards in light mode ── */
-body.light-mode #pay-history-list > div,
-body.light-mode #payments-list > div {
-  background: rgba(55,138,221,0.03) !important;
-  border-color: #c8d8ec !important;
-}
-body.light-mode #pay-history-list > div:hover,
-body.light-mode #payments-list > div:hover {
-  border-color: #378ADD !important;
-}
-
-/* History tx row */
-.history-tx-row {
-  transition: all 0.15s ease;
-}
-.history-tx-row:hover {
-  background: rgba(139,92,246,0.05) !important;
-}
-.history-filter-btn.active {
-  box-shadow: 0 0 0 1px rgba(96,165,250,0.4);
-}
-
-/* Multisend step progress */
-.ms-step {
-  transition: all 0.3s ease;
-}
-.ms-step.active {
-  border-color: rgba(6,182,212,0.6) !important;
-  background: rgba(6,182,212,0.05) !important;
-}
-.ms-step.done {
-  border-color: rgba(16,185,129,0.6) !important;
-  background: rgba(16,185,129,0.05) !important;
 }
 
 /* ═══════════════════════════════════════════════
