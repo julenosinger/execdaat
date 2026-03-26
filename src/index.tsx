@@ -3460,16 +3460,18 @@ app.get('/', (c) => {
       <!-- Right: controls -->
       <div class="flex items-center gap-0.5 flex-shrink-0">
         <!-- Size buttons -->
-        <button id="chat-size-mini"   onclick="setChatSize('mini')"   class="chat-size-btn" title="Compacto"><i class="fas fa-compress-alt"></i></button>
-        <button id="chat-size-medium" onclick="setChatSize('medium')" class="chat-size-btn active" title="Médio"><i class="fas fa-expand-alt"></i></button>
-        <button id="chat-size-wide"   onclick="setChatSize('wide')"   class="chat-size-btn" title="Expandir (+12% largura)"><i class="fas fa-arrows-alt-h"></i></button>
+        <button id="chat-size-mini"   onclick="setChatSize('mini')"   class="chat-size-btn" title="Compacto (300px)"><i class="fas fa-compress-alt"></i></button>
+        <button id="chat-size-medium" onclick="setChatSize('medium')" class="chat-size-btn active" title="Médio (380px)"><i class="fas fa-expand-alt"></i></button>
+        <button id="chat-size-wide"   onclick="setChatSize('wide')"   class="chat-size-btn" title="Wide (650px)"><i class="fas fa-arrows-alt-h"></i></button>
         <button id="chat-size-full"   onclick="setChatSize('full')"   class="chat-size-btn" title="Tela cheia"><i class="fas fa-expand"></i></button>
-        <!-- Width expand toggle -->
+        <!-- Width expand toggle (+70%) -->
         <button id="chat-width-toggle-btn"
           onclick="toggleChatWidth()"
-          title="Expandir largura (1.5×)"
+          title="Expandir largura (+70%)"
           class="chat-size-btn"
-          style="font-size:13px;font-weight:700;letter-spacing:-0.5px;padding:0 5px;">↔</button>
+          style="font-size:11px;padding:3px 7px;">
+          <i class="fas fa-arrows-alt-h"></i>
+        </button>
         <!-- Clear -->
         <button onclick="clearChatHistory()" title="Clear chat" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
           <i class="fas fa-trash text-xs"></i>

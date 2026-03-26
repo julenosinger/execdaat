@@ -91,11 +91,15 @@ function isAgentActive() {
 // ── Size configurations ────────────────────────────────────────────────────────
 const CHAT_SIZES = {
   mini:   { width: '300px',  height: '420px', bottom: '70px', right: '20px' },
-  medium: { width: '400px',  height: '580px', bottom: '70px', right: '20px' },
-  // wide = medium + 12% of viewport width, capped at 92vw
-  wide:   { width: 'calc(min(400px + 12vw, 92vw))',  height: '600px', bottom: '70px', right: '20px' },
+  medium: { width: '380px',  height: '580px', bottom: '70px', right: '20px' },
+  // wide = 650px (~71% wider than medium 380px), capped at 92vw
+  wide:   { width: 'calc(min(650px, 92vw))',   height: '600px', bottom: '70px', right: '20px' },
   full:   { width: '100vw',  height: '100vh', bottom: '0',    right: '0', borderRadius: '0' },
 };
+
+// Expanded width target = base × 1.72 (≥ 70% increase), min 650px
+const CHAT_EXPAND_FACTOR = 1.72;
+const CHAT_EXPAND_MIN_PX = 650;
 
 // ── CSS injection ──────────────────────────────────────────────────────────────
 (function injectChatStyles() {
@@ -105,11 +109,19 @@ const CHAT_SIZES = {
   s.textContent = `
     #chat-widget {
       display: flex; flex-direction: column;
-      transition: width 0.3s cubic-bezier(.4,0,.2,1),
+      transition: width 0.35s cubic-bezier(.4,0,.2,1),
                   height 0.3s cubic-bezier(.4,0,.2,1),
-                  bottom 0.3s ease, right 0.3s ease,
+                  left 0.35s cubic-bezier(.4,0,.2,1),
+                  right 0.35s cubic-bezier(.4,0,.2,1),
+                  bottom 0.3s ease,
                   border-radius 0.3s ease,
                   opacity 0.25s ease, transform 0.25s ease;
+    }
+    /* Width-expanded state indicator on toggle button */
+    #chat-width-toggle-btn.expanded {
+      background: rgba(139,92,246,0.22) !important;
+      border-color: rgba(139,92,246,0.5) !important;
+      color: #c4b5fd !important;
     }
     /* Drag handle cursor */
     #chat-header { cursor: grab; user-select: none; }
@@ -239,6 +251,14 @@ const CHAT_SIZES = {
       }
       #chat-fab { bottom: 12px !important; right: 12px !important; }
     }
+    @media (max-width: 768px) {
+      /* On mobile, expanded width stays within 92vw */
+      #chat-widget.chat-width-expanded {
+        width: min(calc(100vw - 16px), 90vw) !important;
+        left: 8px !important;
+        right: auto !important;
+      }
+    }
   `;
   document.head.appendChild(s);
 })();
@@ -279,8 +299,15 @@ function toggleChat() {
     if (fabLbl)  { fabLbl.classList.remove('hidden'); fabLbl.textContent = 'Ask me'; }
     // Reset width expand state on close
     chatWidthExpanded = false;
+    const widget2 = document.getElementById('chat-widget');
+    if (widget2) widget2.classList.remove('chat-width-expanded');
     const wBtn = document.getElementById('chat-width-toggle-btn');
-    if (wBtn) { wBtn.style.color = ''; wBtn.style.background = ''; wBtn.textContent = '↔'; }
+    if (wBtn) {
+      wBtn.classList.remove('expanded');
+      wBtn.style.left = 'auto';
+      wBtn.style.right = '20px';
+      wBtn.innerHTML = '<i class="fas fa-arrows-alt-h"></i>';
+    }
   }
 }
 
@@ -288,8 +315,18 @@ function toggleChat() {
 function setChatSize(size) {
   // Reset width-expand toggle whenever a preset is chosen
   chatWidthExpanded = false;
+  const widget3 = document.getElementById('chat-widget');
+  if (widget3) {
+    widget3.classList.remove('chat-width-expanded');
+    // Restore right-anchor in case expand had shifted to left-anchor
+    widget3.style.left = 'auto';
+    widget3.style.top  = 'auto';
+  }
   const wBtn = document.getElementById('chat-width-toggle-btn');
-  if (wBtn) { wBtn.style.color = ''; wBtn.style.background = ''; }
+  if (wBtn) {
+    wBtn.classList.remove('expanded');
+    wBtn.innerHTML = '<i class="fas fa-arrows-alt-h"></i>';
+  }
 
   chatSize = size;
   localStorage.setItem('arc-chat-size', size);
@@ -310,12 +347,14 @@ function applyChatSize(size, animate = true) {
     bottom:       cfg.bottom,
     right:        cfg.right,
     borderRadius: cfg.borderRadius || '16px',
-    // Remove any dragged top/left so the preset bottom/right take effect
-    ...(size !== 'full' ? {} : { top: '', left: '', bottom: '0', right: '0' }),
+    // For non-full sizes, clear any dragged top/left so right/bottom take effect
+    ...(size !== 'full'
+      ? { top: 'auto', left: 'auto' }
+      : { top: '0', left: '0', bottom: '0', right: '0' }),
   });
   // For 'wide' size, also update max-width to allow the full computed width
   if (size === 'wide') {
-    widget.style.maxWidth = 'calc(min(400px + 12vw, 92vw))';
+    widget.style.maxWidth = 'calc(min(650px, 92vw))';
   } else {
     widget.style.maxWidth = 'calc(100vw - 16px)';
   }
@@ -324,8 +363,9 @@ function applyChatSize(size, animate = true) {
 }
 
 // ── Width-only expand toggle ─────────────────────────────────────────────────────
-// Toggles between collapsed (base preset width) and expanded (~1.5×, min 435px).
-// Uses a 0.3s CSS transition on width only; height/position/layout unchanged.
+// Toggles between base preset width and expanded width (≥70% increase).
+// Expands LEFT when the widget is near the right edge to avoid overflow.
+// Height and vertical position are never changed.
 function toggleChatWidth() {
   const widget = document.getElementById('chat-widget');
   const btn    = document.getElementById('chat-width-toggle-btn');
@@ -333,31 +373,72 @@ function toggleChatWidth() {
 
   chatWidthExpanded = !chatWidthExpanded;
 
-  // Ensure transition is active (don't let drag or applyChatSize kill it)
-  widget.style.transition = 'width 0.3s ease, height 0.3s cubic-bezier(.4,0,.2,1), bottom 0.3s ease, right 0.3s ease, border-radius 0.3s ease, opacity 0.25s ease, transform 0.25s ease';
+  // Restore full transition (drag/applyChatSize may have cleared it)
+  widget.style.transition = [
+    'width 0.35s cubic-bezier(.4,0,.2,1)',
+    'left 0.35s cubic-bezier(.4,0,.2,1)',
+    'right 0.35s cubic-bezier(.4,0,.2,1)',
+    'height 0.3s cubic-bezier(.4,0,.2,1)',
+    'bottom 0.3s ease',
+    'border-radius 0.3s ease',
+    'opacity 0.25s ease',
+    'transform 0.25s ease'
+  ].join(',');
 
   if (chatWidthExpanded) {
-    // Compute expanded width: 1.5× of current base, floored to at least 435px
-    const baseW    = widget.getBoundingClientRect().width || 400;
-    const expanded = Math.max(435, Math.min(Math.round(baseW * 1.5), window.innerWidth - 16));
+    // ── Compute expanded width: base × 1.72 (≥ 70%), min CHAT_EXPAND_MIN_PX ──
+    const baseW    = parseFloat(widget.getBoundingClientRect().width) || 380;
+    const vw       = window.innerWidth;
+    const maxW     = Math.floor(vw * 0.92); // 92vw hard cap
+    const expanded = Math.max(CHAT_EXPAND_MIN_PX, Math.min(Math.round(baseW * CHAT_EXPAND_FACTOR), maxW));
+
+    // ── Determine grow direction ──────────────────────────────────────────────
+    // If current right edge would overflow, shift the panel to the left.
+    const rect     = widget.getBoundingClientRect();
+    const rightEdge = rect.left + expanded;
+    const MARGIN    = 12; // px from viewport edge
+
+    widget.style.maxWidth = vw + 'px';
     widget.style.width    = expanded + 'px';
-    widget.style.maxWidth = 'calc(100vw - 16px)';
-    if (btn) {
-      btn.title            = 'Restaurar largura padrão';
-      btn.style.color      = '#a78bfa';
-      btn.style.background = 'rgba(167,139,250,0.15)';
-      btn.textContent      = '↔';
+
+    if (rightEdge > vw - MARGIN) {
+      // Expand to the left — anchor with left instead of right
+      const newLeft = Math.max(MARGIN, vw - expanded - MARGIN);
+      // If currently using bottom/right positioning, switch to top/left
+      if (!widget.style.left || widget.style.left === 'auto') {
+        const r = widget.getBoundingClientRect();
+        widget.style.top    = r.top    + 'px';
+        widget.style.bottom = 'auto';
+      }
+      widget.style.right = 'auto';
+      widget.style.left  = newLeft + 'px';
     }
+
+    // ── Toggle button visual — expanded state ─────────────────────────────────
+    widget.classList.add('chat-width-expanded');
+    if (btn) {
+      btn.classList.add('expanded');
+      btn.title = 'Restaurar largura padrão';
+      btn.innerHTML = '<i class="fas fa-compress-arrows-alt"></i>';
+    }
+
   } else {
-    // Restore preset width (re-apply current size preset without touching transition)
+    // ── Restore preset width ──────────────────────────────────────────────────
     const cfg = CHAT_SIZES[chatSize] || CHAT_SIZES.medium;
     widget.style.width    = cfg.width;
-    widget.style.maxWidth = chatSize === 'wide' ? 'calc(min(400px + 12vw, 92vw))' : 'calc(100vw - 16px)';
+    widget.style.maxWidth = chatSize === 'wide' ? 'calc(min(650px, 92vw))' : 'calc(100vw - 16px)';
+
+    // Restore right-anchored positioning if we shifted left
+    widget.style.left   = 'auto';
+    widget.style.right  = cfg.right || '20px';
+    widget.style.bottom = cfg.bottom || '70px';
+    widget.style.top    = 'auto';
+
+    widget.classList.remove('chat-width-expanded');
     if (btn) {
-      btn.title            = 'Expandir largura (1.5×)';
-      btn.style.color      = '';
-      btn.style.background = '';
-      btn.textContent      = '↔';
+      btn.classList.remove('expanded');
+      btn.title = 'Expandir largura (+70%)';
+      btn.innerHTML = '<i class="fas fa-arrows-alt-h"></i>';
     }
   }
 }
