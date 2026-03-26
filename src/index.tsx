@@ -386,14 +386,19 @@ app.get('/', (c) => {
   <!-- ══════════════════════════════════════════════════════════════════════
        HEADER LAYOUT CONTROLLER — inline script runs immediately
        Manages banner dismiss animation + CSS variable for tab-nav sticky offset
+       + Hide-on-scroll-down / show-on-scroll-up behaviour
        ══════════════════════════════════════════════════════════════════════ -->
   <script>
-    // Update --topbar-h so the tab nav always sticks directly below the topbar
+    // Update --topbar-h so the tab nav always sticks directly below the topbar.
+    // When the topbar is hidden (translateY(-100%)) we set the var to 0px so
+    // the tab-nav slides up to the very top of the viewport.
     function updateTopbarHeight() {
-      var tb = document.getElementById('sticky-topbar');
+      var tb = document.getElementById('sticky-topbar-anchor');
       if (!tb) return;
       var h = tb.getBoundingClientRect().height;
       document.documentElement.style.setProperty('--topbar-h', h + 'px');
+      // Also store the real height for the hide/show logic
+      document.documentElement.style.setProperty('--topbar-real-h', h + 'px');
     }
 
     // Dismiss the testnet banner with a smooth collapse animation
@@ -414,6 +419,69 @@ app.get('/', (c) => {
       try { sessionStorage.setItem('arc-banner-dismissed', '1'); } catch(e){}
     }
 
+    // ── Hide-on-scroll-down / Show-on-scroll-up ─────────────────────────────
+    (function() {
+      var lastY      = 0;
+      var hidden     = false;
+      var THRESHOLD  = 6;   // px — minimum scroll delta to trigger
+      var IGNORE_TOP = 80;  // px — don't hide while near the top of the page
+
+      function setTopbarVisibility(hide) {
+        var tb  = document.getElementById('sticky-topbar');   // inner: gets transform
+        var nav = document.getElementById('tab-nav');
+        if (!tb) return;
+        if (hide === hidden) return;   // nothing changed
+        hidden = hide;
+        if (hide) {
+          // Slide header up out of view
+          tb.style.transform = 'translateY(-100%)';
+          // Move tab-nav to top:0 so it fills the space the header left
+          document.documentElement.style.setProperty('--topbar-h', '0px');
+        } else {
+          // Bring header back
+          tb.style.transform = 'translateY(0)';
+          // Restore tab-nav offset
+          var realH = getComputedStyle(document.documentElement)
+                        .getPropertyValue('--topbar-real-h') || '0px';
+          document.documentElement.style.setProperty('--topbar-h', realH);
+        }
+      }
+
+      function onScroll() {
+        var y     = window.pageYOffset || document.documentElement.scrollTop;
+        var delta = y - lastY;
+
+        if (y < IGNORE_TOP) {
+          // Always show near the top
+          setTopbarVisibility(false);
+        } else if (delta > THRESHOLD) {
+          // Scrolling down — hide
+          setTopbarVisibility(true);
+        } else if (delta < -THRESHOLD) {
+          // Scrolling up — show
+          setTopbarVisibility(false);
+        }
+
+        lastY = y;
+      }
+
+      document.addEventListener('DOMContentLoaded', function() {
+        var tb = document.getElementById('sticky-topbar');   // inner element
+        if (tb) {
+          // Add the CSS transition for the slide animation
+          tb.style.transition = 'transform 0.3s cubic-bezier(0.4,0,0.2,1)';
+          tb.style.willChange = 'transform';
+        }
+        // tab-nav already has transition:top 0.25s ease; also add for --topbar-h
+        var nav = document.getElementById('tab-nav');
+        if (nav) {
+          nav.style.transition = 'top 0.3s cubic-bezier(0.4,0,0.2,1)';
+        }
+        window.addEventListener('scroll', onScroll, { passive: true });
+      });
+    })();
+    // ── end hide-on-scroll ───────────────────────────────────────────────────
+
     // Restore banner state on page load (if dismissed in this session)
     document.addEventListener('DOMContentLoaded', function() {
       try {
@@ -430,11 +498,14 @@ app.get('/', (c) => {
   </script>
 
   <!-- ══════════════════════════════════════════════════════════════════════
-       STICKY TOP-BAR WRAPPER — banner + header in one sticky block
-       Sticks at top:0. When banner is dismissed, header moves up naturally.
-       No hardcoded pixel offsets needed anywhere.
+       STICKY TOP-BAR WRAPPER — banner + header in one sticky block.
+       Two-div pattern: outer handles position:sticky, inner handles transform
+       (combining both on the same element breaks sticky in some browsers).
        ══════════════════════════════════════════════════════════════════════ -->
-  <div id="sticky-topbar" style="position:sticky;top:0;z-index:100;">
+  <!-- outer: sticky anchor — never gets transform applied to it -->
+  <div id="sticky-topbar-anchor" style="position:sticky;top:0;z-index:100;">
+  <!-- inner: slide target — receives translateY for hide/show animation -->
+  <div id="sticky-topbar">
 
   <!-- TESTNET WARNING BANNER — dismissible -->
   <div id="testnet-banner" style="background:#111;border-bottom:1px solid #2a2a2a;color:#fff;font-size:12px;padding:7px 16px;display:flex;align-items:center;justify-content:center;gap:8px;overflow:hidden;transition:max-height 0.25s ease,padding 0.25s ease,opacity 0.2s ease;max-height:48px;opacity:1;">
@@ -523,7 +594,8 @@ app.get('/', (c) => {
     </div>
   </header>
 
-  </div><!-- /#sticky-topbar -->
+  </div><!-- /#sticky-topbar (inner: slide target) -->
+  </div><!-- /#sticky-topbar-anchor (outer: sticky anchor) -->
 
   <!-- ══════════════════════════════════════════════════════════════════════
        LANDING PAGE — shown by default, hidden after "Enter App"
