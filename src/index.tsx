@@ -4077,7 +4077,7 @@ app.get('/', (c) => {
   <script src="/static/dashboard.js?v=20250322"></script>
   <script src="/static/hide-history.js?v=20250326a"></script>
   <script src="/static/user-profile.js?v=20250326d"></script>
-  <script src="/static/smart-autofill.js?v=20250326d"></script>
+  <script src="/static/smart-autofill.js?v=20250326e"></script>
   <script src="/static/permit2-chat.js?v=20250326a"></script>
   <script src="/static/chat.js?v=20250326c"></script>
   <script>

@@ -257,7 +257,7 @@
     const amounts = typeof getRecentAmounts === 'function' ? getRecentAmounts() : [];
     if (!amounts.length) return;
 
-    const box = makeSuggestBox('arc-af-pay-amts', 'Recent Amounts', 'fa-coins');
+    const box = makeSuggestBox('arc-af-pay-amts', 'Payment Values', 'fa-coins');
     const chipsRow = box.querySelector('#arc-af-pay-amts-chips');
 
     amounts.forEach(item => {
@@ -340,7 +340,7 @@
       getRecentAmounts().filter(a => a.token === 'USDC') : [];
     if (!amounts.length) return;
 
-    const box = makeSuggestBox('arc-af-cf-amts', 'Recent Contract Values', 'fa-coins');
+    const box = makeSuggestBox('arc-af-cf-amts', 'Contract Values', 'fa-coins');
     const chipsRow = box.querySelector('#arc-af-cf-amts-chips');
 
     amounts.forEach(item => {
