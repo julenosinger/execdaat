@@ -373,71 +373,39 @@ function toggleChatWidth() {
 
   chatWidthExpanded = !chatWidthExpanded;
 
-  // Restore full transition (drag/applyChatSize may have cleared it)
-  widget.style.transition = [
-    'width 0.35s cubic-bezier(.4,0,.2,1)',
-    'left 0.35s cubic-bezier(.4,0,.2,1)',
-    'right 0.35s cubic-bezier(.4,0,.2,1)',
-    'height 0.3s cubic-bezier(.4,0,.2,1)',
-    'bottom 0.3s ease',
-    'border-radius 0.3s ease',
-    'opacity 0.25s ease',
-    'transform 0.25s ease'
-  ].join(',');
+  // Garantir transição suave apenas na largura
+  widget.style.transition = 'width 0.35s cubic-bezier(.4,0,.2,1), height 0.3s ease, opacity 0.25s ease, transform 0.25s ease';
 
   if (chatWidthExpanded) {
-    // ── Compute expanded width: base × 1.72 (≥ 70%), min CHAT_EXPAND_MIN_PX ──
-    const baseW    = parseFloat(widget.getBoundingClientRect().width) || 380;
+    // Largura expandida: mínimo 650px, máximo 92vw
     const vw       = window.innerWidth;
-    const maxW     = Math.floor(vw * 0.92); // 92vw hard cap
-    const expanded = Math.max(CHAT_EXPAND_MIN_PX, Math.min(Math.round(baseW * CHAT_EXPAND_FACTOR), maxW));
+    const expanded = Math.min(650, Math.floor(vw * 0.92));
 
-    // ── Determine grow direction ──────────────────────────────────────────────
-    // If current right edge would overflow, shift the panel to the left.
-    const rect     = widget.getBoundingClientRect();
-    const rightEdge = rect.left + expanded;
-    const MARGIN    = 12; // px from viewport edge
-
-    widget.style.maxWidth = vw + 'px';
     widget.style.width    = expanded + 'px';
+    widget.style.maxWidth = Math.floor(vw * 0.92) + 'px';
+    // Manter ancorado na direita (right:20px) — expande naturalmente para esquerda
+    widget.style.right  = '20px';
+    widget.style.left   = 'auto';
 
-    if (rightEdge > vw - MARGIN) {
-      // Expand to the left — anchor with left instead of right
-      const newLeft = Math.max(MARGIN, vw - expanded - MARGIN);
-      // If currently using bottom/right positioning, switch to top/left
-      if (!widget.style.left || widget.style.left === 'auto') {
-        const r = widget.getBoundingClientRect();
-        widget.style.top    = r.top    + 'px';
-        widget.style.bottom = 'auto';
-      }
-      widget.style.right = 'auto';
-      widget.style.left  = newLeft + 'px';
-    }
-
-    // ── Toggle button visual — expanded state ─────────────────────────────────
     widget.classList.add('chat-width-expanded');
     if (btn) {
       btn.classList.add('expanded');
-      btn.title = 'Restaurar largura padrão';
+      btn.title     = 'Restaurar largura padrão';
       btn.innerHTML = '<i class="fas fa-compress-arrows-alt"></i>';
     }
 
   } else {
-    // ── Restore preset width ──────────────────────────────────────────────────
+    // Restaurar largura do preset atual
     const cfg = CHAT_SIZES[chatSize] || CHAT_SIZES.medium;
     widget.style.width    = cfg.width;
-    widget.style.maxWidth = chatSize === 'wide' ? 'calc(min(650px, 92vw))' : 'calc(100vw - 16px)';
-
-    // Restore right-anchored positioning if we shifted left
-    widget.style.left   = 'auto';
-    widget.style.right  = cfg.right || '20px';
-    widget.style.bottom = cfg.bottom || '70px';
-    widget.style.top    = 'auto';
+    widget.style.maxWidth = 'calc(100vw - 16px)';
+    widget.style.right    = cfg.right  || '20px';
+    widget.style.left     = 'auto';
 
     widget.classList.remove('chat-width-expanded');
     if (btn) {
       btn.classList.remove('expanded');
-      btn.title = 'Expandir largura (+70%)';
+      btn.title     = 'Expandir largura (+70%)';
       btn.innerHTML = '<i class="fas fa-arrows-alt-h"></i>';
     }
   }
