@@ -402,7 +402,7 @@ async function executeSwap() {
 
   // ── Validações básicas ─────────────────────────────────────────────────────
   if (!amount || isNaN(amount) || amount <= 0) {
-    showToast('Digite um valor válido', 'error'); return;
+    showToast(t('err_enter_amount'), 'error'); return;
   }
   if (!window.walletState?.connected) {
     showToast('Conecte sua wallet EVM primeiro', 'warning');
@@ -414,7 +414,7 @@ async function executeSwap() {
   const walletAddress = window.walletState.address;
 
   if (!provider || !walletAddress) {
-    showToast('Provider não encontrado. Reconecte.', 'error'); return;
+    showToast(t('err_provider_not_found'), 'error'); return;
   }
 
   // ── Exibir painel de steps ─────────────────────────────────────────────────
@@ -443,7 +443,7 @@ async function executeSwap() {
       _showSwapStep(1, 'error'); return;
     }
     if (amount > realBalance) {
-      showToast(`Saldo insuficiente: ${realBalance.toFixed(4)} ${fromToken} disponível`, 'error');
+      showToast(t('err_insufficient_balance', realBalance.toFixed(4), fromToken), 'error');
       _showSwapStep(1, 'error'); return;
     }
     _showSwapStep(1, 'done');
@@ -485,13 +485,13 @@ async function executeSwap() {
         } catch (e) {
           _showSwapStep(3, 'error');
           if (e.code === 4001 || e.message?.includes('reject') || e.message?.includes('denied')) {
-            showToast('Approve cancelado pelo usuário', 'warning');
+            showToast(t('warn_approve_cancelled'), 'warning');
           } else {
             showToast('Erro no approve: ' + e.message, 'error');
           }
           return;
         }
-        showToast(`⏳ Approve TX enviada…`, 'info');
+        showToast(t('ok_swap_sent'), 'info');
         await _waitTx(provider, approveTxHash, 20000);
         _setSwapEl('swap-approve-hash', approveTxHash ? `Approve: ${approveTxHash.slice(0,14)}…` : '');
       } else {
@@ -517,15 +517,15 @@ async function executeSwap() {
       const nativeGas   = await _estimateGas(provider, nativeTxObj);
       nativeTxObj.gas   = nativeGas;
 
-      showToast('📝 Confirme o Swap na sua wallet…', 'info');
+      showToast(t('info_swap_wallet'), 'info');
       try {
         swapTxHash = await _sendTx(provider, nativeTxObj);
       } catch (e) {
         _showSwapStep(4, 'error');
         if (e.code === 4001 || e.message?.includes('reject') || e.message?.includes('denied')) {
-          showToast('Swap cancelado pelo usuário', 'warning');
+          showToast(t('warn_swap_cancelled'), 'warning');
         } else {
-          showToast('Erro no swap: ' + e.message, 'error');
+          showToast(t('err_generic', e.message), 'error');
         }
         return;
       }
@@ -536,15 +536,15 @@ async function executeSwap() {
       const erc20Gas     = await _estimateGas(provider, erc20TxObj);
       erc20TxObj.gas     = erc20Gas;
 
-      showToast('📝 Confirme o Swap na sua wallet…', 'info');
+      showToast(t('info_swap_wallet'), 'info');
       try {
         swapTxHash = await _sendTx(provider, erc20TxObj);
       } catch (e) {
         _showSwapStep(4, 'error');
         if (e.code === 4001 || e.message?.includes('reject') || e.message?.includes('denied')) {
-          showToast('Swap cancelado pelo usuário', 'warning');
+          showToast(t('warn_swap_cancelled'), 'warning');
         } else {
-          showToast('Erro no swap: ' + e.message, 'error');
+          showToast(t('err_generic', e.message), 'error');
         }
         return;
       }
@@ -568,7 +568,7 @@ async function executeSwap() {
 
     if (receipt.status === '0x0' || receipt.status === 0) {
       _showSwapStep(5, 'error');
-      showToast('Transação revertida on-chain', 'error'); return;
+      showToast(t('err_transaction_reverted'), 'error'); return;
     }
     _showSwapStep(5, 'done');
 

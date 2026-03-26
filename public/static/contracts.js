@@ -283,8 +283,8 @@ function cfNetAmount(totalRaw) {
 async function cfInitProvider() {
   try {
     const rawProv = window.walletState?.provider;
-    if (!rawProv) return { ok: false, error: 'no_wallet', message: 'Carteira não conectada.' };
-    if (!window.ethers) return { ok: false, error: 'no_ethers', message: 'ethers.js não carregado.' };
+    if (!rawProv) return { ok: false, error: 'no_wallet', message: t('contracts_carteira_nao_conectada') };
+    if (!window.ethers) return { ok: false, error: 'no_ethers', message: t('contracts_ethers_not_loaded') };
 
     let provider;
     try { provider = new window.ethers.BrowserProvider(rawProv, 'any'); }
@@ -302,7 +302,7 @@ async function cfInitProvider() {
 
     let signer;
     try { signer = await provider.getSigner(); }
-    catch (e) { return { ok: false, error: 'no_signer', message: 'Não foi possível obter signer: ' + e.message }; }
+    catch (e) { return { ok: false, error: 'no_signer', message: t('contracts_no_signer', e.message) }; }
 
     const address = await signer.getAddress();
     const factory = new window.ethers.Contract(CF_FACTORY_ADDR, CF_ABI, signer);
@@ -322,7 +322,7 @@ async function cfInitProvider() {
 
 async function cfSwitchNetwork() {
   const rawProv = window.walletState?.provider;
-  if (!rawProv) { showToast('Conecte sua carteira primeiro.', 'warning'); return; }
+  if (!rawProv) { showToast(t('contracts_connect_wallet'), 'warning'); return; }
   try {
     await rawProv.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CF_CHAIN_HEX }] });
     await new Promise(r => setTimeout(r, 1000));
@@ -338,7 +338,7 @@ async function cfSwitchNetwork() {
         }]});
         await new Promise(r => setTimeout(r, 1000));
         cfLoadContracts();
-      } catch (e2) { showToast('Não foi possível adicionar Arc Testnet: ' + e2.message, 'error'); }
+      } catch (e2) { showToast('Could not add Arc Testnet: ' + e2.message, 'error'); }
     } else if (e.code !== 4001) { showToast('Erro ao trocar rede: ' + e.message, 'error'); }
   }
 }
@@ -863,7 +863,7 @@ function cfContractCard(c, wallet) {
   // Closed contracts: no actions at all
   if (isClosed) {
     actionBtns = `<span style="font-size:11px;color:#3a4870;display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(74,85,104,0.1);border:1px solid rgba(74,85,104,0.2);border-radius:8px;">
-      <i class="fas fa-lock" style="color:#4a5568;"></i>Contrato encerrado — interações bloqueadas
+      <i class="fas fa-lock" style="color:#4a5568;"></i>${t("contracts_contrato_encerrado")}
     </span>`;
   } else if (isInDispute) {
     // During active dispute: only resolution options for participants
@@ -980,7 +980,7 @@ function cfContractCard(c, wallet) {
           <button onclick="cfViewProof(${c.id},${pi})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:6px;cursor:pointer;flex-shrink:0;"><i class="fas fa-eye mr-1"></i>Ver</button>
           ${p.hash ? `<span style="font-size:9px;color:#3a4870;font-family:monospace;" title="SHA-256: ${p.hash}">${p.hash.slice(0,8)}…</span>` : ''}
         </div>`).join('')
-        : `<p style="font-size:11px;color:#252a40;font-style:italic;padding:4px 0;">Nenhuma prova enviada ainda.</p>`}
+        : `<p style="font-size:11px;color:#252a40;font-style:italic;padding:4px 0;">${t("cf_no_proof_submitted_yet")}</p>`}
       ${proofs.length > 0 && !isCommitted && isClient ? `
         <button onclick="cfCommitProof(${c.id})" style="width:100%;margin-top:6px;padding:7px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:#34d399;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">
           <i class="fas fa-stamp mr-1.5"></i>Commit Proof — Lock & Verify
@@ -1003,8 +1003,8 @@ function cfContractCard(c, wallet) {
     const evidences = dispute.evidence || [];
     const resolutionHtml = dispute.resolution ? `
       <div style="margin-top:8px;padding:7px 10px;background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.2);border-radius:8px;">
-        <div style="font-size:10px;font-weight:700;color:#34d399;margin-bottom:4px;"><i class="fas fa-check-circle mr-1"></i>Resolução</div>
-        <div style="font-size:11px;color:#8899bb;">${dispute.resolution.outcome === 'contractor' ? '💰 Fundos liberados para o Contratado' : dispute.resolution.outcome === 'client' ? '↩️ Fundos devolvidos ao Cliente' : '🤝 Acordo mútuo'}</div>
+        <div style="font-size:10px;font-weight:700;color:#34d399;margin-bottom:4px;"><i class="fas fa-check-circle mr-1"></i>${t("cf_resolution_label")}</div>
+        <div style="font-size:11px;color:#8899bb;">${dispute.resolution.outcome === 'contractor' ? t('cf_resolution_contractor') : dispute.resolution.outcome === 'client' ? t('cf_resolution_client') : t('cf_resolution_mutual')}</div>
         <div style="font-size:10px;color:#3a4870;margin-top:3px;">${new Date(dispute.resolution.resolvedAt).toLocaleString('pt-BR')}</div>
         ${dispute.resolution.note ? `<div style="font-size:11px;color:#6b7280;margin-top:3px;font-style:italic;">"${dispute.resolution.note}"</div>` : ''}
       </div>` : '';
@@ -1014,7 +1014,7 @@ function cfContractCard(c, wallet) {
       const contrApproved  = approvals[c.contractor?.toLowerCase()];
       return `
         <div style="margin-top:6px;padding:6px 10px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);border-radius:8px;font-size:11px;color:#fbbf24;">
-          <i class="fas fa-handshake mr-1"></i>Acordo mútuo em andamento:
+          <i class="fas fa-handshake mr-1"></i>${t("cf_mutual_agreement_ongoing")}
           <span style="color:${clientApproved?'#34d399':'#4a5568'};margin-left:6px;"><i class="fas fa-${clientApproved?'check':'times'}-circle mr-1"></i>Cliente</span>
           <span style="color:${contrApproved?'#34d399':'#4a5568'};margin-left:6px;"><i class="fas fa-${contrApproved?'check':'times'}-circle mr-1"></i>Contratado</span>
         </div>`;
@@ -1032,7 +1032,7 @@ function cfContractCard(c, wallet) {
         ${dispute.openedBy?.toLowerCase() === c.client?.toLowerCase() ? ' (Cliente)' : ' (Contratado)'}
       </div>
       ${evidences.length ? `
-        <div style="font-size:10px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:4px;">Evidências (${evidences.length})</div>
+        <div style="font-size:10px;color:#3a4870;text-transform:uppercase;font-weight:700;margin-bottom:4px;">${t("cf_evidences_label", evidences.length)}</div>
         ${evidences.map((ev, ei) => `
           <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:rgba(239,68,68,0.04);border:1px solid rgba(239,68,68,0.12);border-radius:6px;margin-bottom:3px;">
             <i class="fas ${ev.type==='image'?'fa-image':ev.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:#f87171;font-size:11px;"></i>
@@ -1184,8 +1184,8 @@ function cfShowProofUpload(contractId) {
 
     <div style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.15);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:#a78bfa;">
       <i class="fas fa-info-circle mr-1"></i>
-      Upload imagens, PDFs ou documentos como prova de entrega. Cada arquivo recebe um hash SHA-256 único.
-      <strong>Após o upload, o cliente deve "Commit Proof" para confirmar.</strong>
+      ${t("cf_upload_proof_desc")}
+      <strong>${t("cf_upload_proof_commit_hint")}</strong>
     </div>
 
     <!-- Drop zone -->
@@ -1197,7 +1197,7 @@ function cfShowProofUpload(contractId) {
       ondrop="cfHandleProofDrop(event,${contractId})">
       <i class="fas fa-cloud-upload-alt" style="font-size:28px;color:#a78bfa;margin-bottom:8px;display:block;"></i>
       <p style="color:#dde2f0;font-size:13px;font-weight:600;margin-bottom:4px;">Arraste arquivos ou clique para selecionar</p>
-      <p style="color:#4a3a7a;font-size:11px;">Imagens, PDFs, Word · Máx. 10MB por arquivo · Máx. 5 arquivos</p>
+      <p style="color:#4a3a7a;font-size:11px;">${t("cf_file_types_hint")}</p>
     </div>
     <input type="file" id="cf-proof-file-input" multiple accept="image/*,.pdf,.doc,.docx"
       style="display:none;" onchange="cfHandleProofFiles(event,${contractId})">
@@ -1219,7 +1219,7 @@ function cfShowProofUpload(contractId) {
       </button>
     </div>
     <p style="font-size:10px;color:#3a4870;margin-top:10px;text-align:center;">
-      <i class="fas fa-shield-alt mr-1"></i>Hash SHA-256 gerado localmente. Arquivo armazenado de forma segura.
+      <i class="fas fa-shield-alt mr-1"></i>${t("cf_hash_generated_locally")}
     </p>
   </div>`;
   document.body.appendChild(modal);
@@ -1240,9 +1240,9 @@ function cfHandleProofFilesRaw(files, contractId) {
   const MAX = 10 * 1024 * 1024;
   files.forEach(f => {
     if (f.size > MAX) { showToast(`${f.name} excede 10MB.`, 'error'); return; }
-    if (window._cfProofFiles.length >= 5) { showToast('Máximo 5 arquivos por vez.', 'warning'); return; }
+    if (window._cfProofFiles.length >= 5) { showToast('Max 5 files at a time.', 'warning'); return; }
     const dup = window._cfProofFiles.find(x => x.name === f.name && x.size === f.size);
-    if (dup) { showToast(`${f.name} já adicionado.`, 'warning'); return; }
+    if (dup) { showToast(`${f.name} already added.`, 'warning'); return; }
     window._cfProofFiles.push(f);
   });
   cfRenderProofPreview();
@@ -1339,7 +1339,7 @@ async function cfExecuteProofUpload(contractId) {
       status.style.border     = '1px solid rgba(52,211,153,0.2)';
       status.style.color      = '#34d399';
       status.innerHTML = `✅ ${newProofs.length} arquivo(s) armazenado(s)!<br>
-        <span style="font-size:10px;color:#60b4ff;">Hash SHA-256 gerado para cada arquivo. Agora o <strong>cliente</strong> deve clicar em "Commit Proof" para confirmar.</span>`;
+        <span style="font-size:10px;color:#60b4ff;">${t("cf_hash_click_commit")}</span>`;
     }
     showToast(`✅ ${newProofs.length} prova(s) enviada(s)! Aguardando commit do cliente.`, 'success');
     window._cfProofFiles = [];
@@ -1359,7 +1359,7 @@ async function cfExecuteProofUpload(contractId) {
 function cfViewProof(contractId, proofIndex) {
   const meta   = cfGetMeta(contractId);
   const proofs = meta.proofs || [];
-  if (!proofs.length) { showToast('Nenhuma prova disponível.', 'warning'); return; }
+  if (!proofs.length) { showToast('No proofs available.', 'warning'); return; }
 
   let idx = (proofIndex != null && proofIndex >= 0 && proofIndex < proofs.length) ? proofIndex : 0;
 
@@ -1369,7 +1369,7 @@ function cfViewProof(contractId, proofIndex) {
   modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.92);backdrop-filter:blur(4px);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:0;overflow:hidden;';
 
   function buildContent(p) {
-    if (!p || !p.url) return `<div style="color:#f87171;font-size:14px;padding:40px;text-align:center;"><i class="fas fa-exclamation-circle" style="font-size:32px;display:block;margin-bottom:12px;"></i>Arquivo não disponível ou corrompido.</div>`;
+    if (!p || !p.url) return `<div style="color:#f87171;font-size:14px;padding:40px;text-align:center;"><i class="fas fa-exclamation-circle" style="font-size:32px;display:block;margin-bottom:12px;"></i>${t("contracts_file_not_available")}</div>`;
 
     const isImg = p.type === 'image' || (p.mimeType && p.mimeType.startsWith('image/')) || /^data:image\//i.test(p.url);
     const isPdf = p.type === 'pdf' || p.mimeType === 'application/pdf' || /^data:application\/pdf/i.test(p.url);
@@ -1388,7 +1388,7 @@ function cfViewProof(contractId, proofIndex) {
           title="${p.name}" onerror="">
         </iframe>
         <div style="text-align:center;padding:8px;font-size:11px;color:#4a6490;">
-          Se o PDF não carregar, <button onclick="cfDownloadProof('${btoa(JSON.stringify({url:p.url,name:p.name}))}')" style="background:none;border:none;color:#a78bfa;cursor:pointer;font-size:11px;text-decoration:underline;">clique aqui para baixar</button>.
+          ${t("cf_pdf_download_hint").replace("{0}", `<button onclick="cfDownloadProof('${btoa(JSON.stringify({url:p.url,name:p.name}))}')" style="background:none;border:none;color:#a78bfa;cursor:pointer;font-size:11px;text-decoration:underline;">${t("contracts_download_here")}</button>`)}
         </div>
       </div>`;
     }
@@ -1400,7 +1400,7 @@ function cfViewProof(contractId, proofIndex) {
       <p style="color:#4a6490;font-size:12px;margin-bottom:20px;">${p.mimeType || 'Tipo desconhecido'} · ${p.size ? (p.size/1024).toFixed(0)+' KB' : ''}</p>
       <button onclick="cfDownloadProofByUrl('${contractId}',${proofs.indexOf(p)})"
         style="padding:11px 24px;background:linear-gradient(135deg,#6d28d9,#5b21b6);color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">
-        <i class="fas fa-download mr-2"></i>Baixar Arquivo
+        <i class="fas fa-download mr-2"></i>${t("cf_download_file")}
       </button>
     </div>`;
   }
@@ -1422,7 +1422,7 @@ function cfViewProof(contractId, proofIndex) {
           <i class="fas fa-times"></i>
         </button>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:700;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p?.name || 'Arquivo'}</div>
+          <div style="font-size:13px;font-weight:700;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p?.name || t('cf_file_label')}</div>
           <div style="display:flex;align-items:center;gap:8px;margin-top:2px;flex-wrap:wrap;">
             ${statusLabel}
             ${hashShort ? `<span style="font-size:9px;font-family:monospace;color:#3a4870;" title="SHA-256: ${hashFull}">${hashShort}</span>` : ''}
@@ -1494,7 +1494,7 @@ window.cfDownloadProofByUrl = function(contractId, proofIndex) {
   const meta   = cfGetMeta(contractId);
   const proofs = meta.proofs || [];
   const p      = proofs[proofIndex];
-  if (!p || !p.url) { showToast('Arquivo não disponível para download.', 'error'); return; }
+  if (!p || !p.url) { showToast(t('contracts_file_unavailable_download'), 'error'); return; }
   try {
     const a = document.createElement('a');
     a.href     = p.url;
@@ -1935,9 +1935,9 @@ async function cfCommitProof(contractId) {
   const meta = cfGetMeta(contractId);
   const proofs = meta.proofs || [];
 
-  if (!proofs.length) { showToast('Nenhuma prova para confirmar.', 'warning'); return; }
+  if (!proofs.length) { showToast(t('cf_no_proof_to_confirm'), 'warning'); return; }
   const uncommitted = proofs.filter(p => !p.committed);
-  if (!uncommitted.length) { showToast('Todas as provas já foram confirmadas.', 'info'); return; }
+  if (!uncommitted.length) { showToast(t('contracts_all_proofs_committed'), 'info'); return; }
 
   // Show confirmation modal
   document.getElementById('cf-commit-modal')?.remove();
@@ -1950,7 +1950,7 @@ async function cfCommitProof(contractId) {
       <i class="fas fa-stamp" style="color:#34d399;"></i>Confirmar Prova de Trabalho — #${contractId}
     </h3>
     <div style="background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:12px;margin-bottom:14px;">
-      <p style="font-size:12px;color:#6ee7b7;margin-bottom:8px;font-weight:600;">Arquivos a serem confirmados (${uncommitted.length}):</p>
+      <p style="font-size:12px;color:#6ee7b7;margin-bottom:8px;font-weight:600;">${t("cf_files_to_confirm", uncommitted.length)}</p>
       ${uncommitted.map(p => `
         <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(52,211,153,0.1);">
           <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:#34d399;font-size:12px;"></i>
@@ -1961,7 +1961,7 @@ async function cfCommitProof(contractId) {
     <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:10px;margin-bottom:14px;font-size:11px;color:#fbbf24;">
       <i class="fas fa-exclamation-triangle mr-1"></i>
       Ao confirmar, você atesta que revisou a prova de trabalho e está de acordo. Esta ação <strong>não pode ser desfeita</strong>.
-      ${(c?.milestoneCount || 0) > 0 ? `<br><br>Após confirmação, você poderá <strong>liberar milestones</strong> ou <strong>marcar o contrato como completo</strong>.` : ''}
+      ${(c?.milestoneCount || 0) > 0 ? `<br><br>${t("cf_after_confirm_hint")}` : ''}
     </div>
     <div style="display:flex;gap:10px;">
       <button onclick="cfExecuteCommitProof(${contractId})" id="cf-commit-btn"
@@ -2207,24 +2207,24 @@ function cfShowOffchainActions(contractId) {
     <div style="margin-bottom:14px;">
       <label style="font-size:11px;color:#3a4870;font-weight:700;display:block;margin-bottom:6px;">Status do Pagamento</label>
       <select id="cf-offchain-status" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(251,191,36,0.3);color:#dde2f0;border-radius:8px;padding:9px 12px;font-size:13px;outline:none;">
-        <option value="pending"   ${meta.offchainStatus==='pending'  ?'selected':''}>⏳ Pending — Aguardando pagamento</option>
-        <option value="in_custody" ${meta.offchainStatus==='in_custody'?'selected':''}>🔒 In Custody — Em custódia</option>
+        <option value="pending"   ${meta.offchainStatus==='pending'  ?'selected':''}>${t("cf_status_pending")}</option>
+        <option value="in_custody" ${meta.offchainStatus==='in_custody'?'selected':''}>${t("cf_status_in_custody")}</option>
         <option value="paid"      ${meta.offchainStatus==='paid'     ?'selected':''}>💳 Paid — Pago (aguardando confirmação)</option>
         <option value="confirmed" ${meta.offchainStatus==='confirmed'?'selected':''}>✅ Confirmed — Confirmado</option>
-        <option value="disputed"  ${meta.offchainStatus==='disputed' ?'selected':''}>⚠️ Disputed — Em disputa</option>
+        <option value="disputed"  ${meta.offchainStatus==='disputed' ?'selected':''}>${t("cf_status_disputed")}</option>
         <option value="released"  ${meta.offchainStatus==='released' ?'selected':''}>🎉 Released — Liberado</option>
       </select>
     </div>
 
     <div style="margin-bottom:14px;">
       <label style="font-size:11px;color:#3a4870;font-weight:700;display:block;margin-bottom:6px;">Nota de Pagamento</label>
-      <textarea id="cf-offchain-note" placeholder="Ex: PIX enviado, referência #123456, comprovante em anexo…"
+      <textarea id="cf-offchain-note" placeholder="${t('cf_offchain_note_placeholder')}"
         style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(251,191,36,0.2);color:#dde2f0;border-radius:8px;padding:9px 12px;font-size:12px;outline:none;resize:vertical;min-height:72px;">${meta.paymentNote || ''}</textarea>
     </div>
 
     ${mode === 'custodial' ? `
     <div style="margin-bottom:14px;">
-      <label style="font-size:11px;color:#3a4870;font-weight:700;display:block;margin-bottom:6px;">Referência de Custódia (ID / Hash)</label>
+      <label style="font-size:11px;color:#3a4870;font-weight:700;display:block;margin-bottom:6px;">${t("contracts_custody_reference")}</label>
       <input id="cf-escrow-ref" type="text" placeholder="Ex: escrow-abc123, hash da tx, ID da plataforma…"
         value="${meta.escrowRef || ''}"
         style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(167,139,250,0.2);color:#dde2f0;border-radius:8px;padding:9px 12px;font-size:12px;outline:none;">
@@ -2265,14 +2265,14 @@ function cfSaveOffchainStatus(contractId) {
 async function cfMarkComplete(contractId) {
   const wallet = window.walletState?.address;
   if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
-  if (cfState.pending) { showToast('Aguarde a transação atual.', 'warning'); return; }
+  if (cfState.pending) { showToast(t('contracts_pending_tx'), 'warning'); return; }
 
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (!c) { showToast('Contrato não encontrado.', 'error'); return; }
+  if (!c) { showToast(t('contracts_contract_not_found'), 'error'); return; }
   if (c.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Apenas o cliente pode marcar como completo.', 'error'); return; }
 
   const meta = cfGetMeta(contractId);
-  if (!meta.proofs?.length) { showToast('⚠️ Faça o upload de pelo menos uma prova de trabalho primeiro.', 'warning'); return; }
+  if (!meta.proofs?.length) { showToast(t('contracts_upload_proof_first'), 'warning'); return; }
 
   const milestones = c.milestones || [];
   const pending = milestones.filter(m => m.status === 'Pending');
@@ -2282,7 +2282,7 @@ async function cfMarkComplete(contractId) {
     `This will release ${pending.length} pending milestone(s) to the contractor.\n` +
     `Platform fee (0.2%) = $${cfFmtUsdc(cfCalcFee(BigInt(c.totalValue)))} USDC will be deducted.\n` +
     `Net to contractor: $${cfFmtUsdc(cfNetAmount(BigInt(c.totalValue)))} USDC.\n\n` +
-    `Esta ação é irreversível.`
+    t("contracts_irreversible_action")
   )) return;
 
   cfState.pending = true;
@@ -2325,7 +2325,7 @@ async function cfMarkComplete(contractId) {
   } catch (err) {
     cfErr('cfMarkComplete error:', err);
     const rej = err.code === 4001 || err.code === 'ACTION_REJECTED';
-    showToast(rej ? '⚠️ Transação rejeitada.' : `❌ ${err.reason || err.message}`, rej ? 'warning' : 'error');
+    showToast(rej ? t('cf_tx_rejected') : `❌ ${err.reason || err.message}`, rej ? 'warning' : 'error');
   } finally {
     cfState.pending = false;
   }
@@ -2503,7 +2503,7 @@ async function cfRunTx(label, fn, contractId = null) {
     const tx = await fn(init);
     cfLog(`${label} tx submitted:`, tx.hash);
     if (contractId !== null) cfLogTx(label, tx.hash, contractId);
-    showToast(`⏳ Aguardando confirmação…`, 'info');
+    showToast(t('cf_awaiting_confirmation'), 'info');
     const receipt = await tx.wait(1);
     if (receipt.status !== 1) throw new Error('Transação revertida on-chain.');
     cfLog(`${label} confirmed! Block: ${receipt.blockNumber}`);
@@ -2513,7 +2513,7 @@ async function cfRunTx(label, fn, contractId = null) {
   } catch (err) {
     cfErr('cfRunTx error:', err);
     const rej = err.code === 4001 || err.code === 'ACTION_REJECTED';
-    showToast(rej ? '⚠️ Transação rejeitada.' : `❌ ${err.reason || err.message}`, rej ? 'warning' : 'error');
+    showToast(rej ? t('cf_tx_rejected') : `❌ ${err.reason || err.message}`, rej ? 'warning' : 'error');
     return null;
   }
 }
@@ -2545,7 +2545,7 @@ async function cfEnsureApproval(init, amountRaw, stepFn = null) {
 // ─── Deposit modal ─────────────────────────────────────────────────────────────
 async function cfShowDepositModal(contractId) {
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (!c) { showToast('Contrato não encontrado.', 'error'); return; }
+  if (!c) { showToast(t('contracts_contract_not_found'), 'error'); return; }
 
   // Fetch live on-chain deposited value before showing modal
   let liveDeposited = BigInt(c.depositedValue);
@@ -2650,14 +2650,14 @@ function cfDepositToContract(contractId) {
   // The funds are already deposited when the contract is created.
   const c = cfState.contracts.find(x => x.id === contractId);
   const deposited = c ? `$${cfFmtUsdc(c.depositedValue)} USDC` : 'valor desconhecido';
-  showToast(`ℹ️ Contrato #${contractId} já tem ${deposited} depositado on-chain. Use "Release Milestone" para liberar pagamentos.`, 'info');
+  showToast(t('cf_contract_already_deposited', contractId, deposited), 'info');
   cfLog(`[INFO] depositToContract called but funds are already deposited at creation. Contract #${contractId} depositedValue=${c?.depositedValue}`);
 }
 
 async function cfExecuteDeposit(contractId) {
   // Not used — depositToContract does not exist in ContractFactory.sol.
   // Funds are deposited automatically during createContract().
-  showToast('ℹ️ O depósito ocorre automaticamente na criação do contrato. Não há função de depósito separada.', 'info');
+  showToast(t('cf_deposit_auto_on_creation'), 'info');
   cfLog('[INFO] cfExecuteDeposit: no depositToContract function on-chain — funds are deposited at createContract time.');
 }
 
@@ -2672,15 +2672,15 @@ async function cfWithdrawFromContract(contractId) {
   const relTotal = released.reduce((s, m) => s + BigInt(m.amount), 0n);
   cfLog(`[INFO] cfWithdrawFromContract: no separate withdraw fn. Released milestones: ${released.length}, total=$${cfFmtUsdc(relTotal)}`);
   if (released.length > 0) {
-    showToast(`ℹ️ ${released.length} milestone(s) liberado(s) — $${cfFmtUsdc(relTotal)} USDC foram enviados diretamente ao contratado via completeMilestone(). ${pending.length} milestone(s) pendente(s).`, 'info');
+    showToast(t('cf_milestones_released', released.length, cfFmtUsdc(relTotal), pending.length), 'info');
   } else {
-    showToast(`ℹ️ Nenhum milestone liberado ainda. O cliente deve chamar "Release Milestone" para enviar pagamentos ao contratado.`, 'info');
+    showToast(t('cf_no_milestone_released_yet'), 'info');
   }
 }
 
 async function cfExecuteWithdraw(contractId, releasedAmt) {
   // Stub — no withdrawFromContract on-chain.
-  showToast('ℹ️ Pagamentos são enviados automaticamente ao contratado via completeMilestone(). Não há saque manual.', 'info');
+  showToast(t('cf_payments_automatic'), 'info');
   cfLog('[INFO] cfExecuteWithdraw: no withdrawFromContract function in ContractFactory.sol.');
 }
 
@@ -2757,7 +2757,7 @@ async function cfCreateOffchainContract(mode) {
   const otcTerms        = (document.getElementById('cf-otc-terms')?.value || '').trim();
   const msRows          = document.querySelectorAll('.cf-milestone-row');
 
-  if (!contractor || !title || !totalValue) { showToast('Preencha todos os campos obrigatórios.', 'warning'); return; }
+  if (!contractor || !title || !totalValue) { showToast(t('cf_fill_required_fields'), 'warning'); return; }
   const humanAmount = parseFloat(totalValue);
   if (isNaN(humanAmount) || humanAmount <= 0) { showToast('Valor deve ser maior que 0.', 'error'); return; }
 
@@ -2860,9 +2860,9 @@ function cfLoadOffchainContracts() {
 
 // ─── Create contract (v6: on-chain escrow + off-chain/custodial modes) ────────
 async function cfCreateContract() {
-  if (cfState.pending) { showToast('Transação em andamento.', 'warning'); return; }
+  if (cfState.pending) { showToast(t('contracts_await_tx'), 'warning'); return; }
   const wallet = window.walletState?.address;
-  if (!wallet) { showToast('⚠️ Conecte sua carteira.', 'warning'); return; }
+  if (!wallet) { showToast(t('cf_connect_wallet_warning'), 'warning'); return; }
 
   const contractMode = cfGetSelectedMode();
   if (contractMode !== 'onchain') {
@@ -2888,16 +2888,16 @@ async function cfCreateContract() {
   const msRows           = document.querySelectorAll('.cf-milestone-row');
 
   // Validations
-  if (!contractor || !title || !totalValue) { showToast('Preencha todos os campos obrigatórios.', 'warning'); return; }
-  if (!/^0x[0-9a-fA-F]{40}$/.test(contractor)) { showToast('Endereço do contratado inválido.', 'error'); return; }
-  if (contractor.toLowerCase() === wallet.toLowerCase()) { showToast('Cliente e contratado não podem ser iguais.', 'error'); return; }
+  if (!contractor || !title || !totalValue) { showToast(t('cf_fill_required_fields'), 'warning'); return; }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(contractor)) { showToast(t('cf_invalid_contractor_address'), 'error'); return; }
+  if (contractor.toLowerCase() === wallet.toLowerCase()) { showToast(t('cf_client_contractor_same'), 'error'); return; }
 
   const humanAmount = parseFloat(totalValue);
   if (isNaN(humanAmount) || humanAmount <= 0) { showToast('Valor deve ser maior que 0.', 'error'); return; }
-  if (humanAmount < 1) { showToast('Valor mínimo: $1 USDC.', 'error'); return; }
+  if (humanAmount < 1) { showToast(t('cf_min_value'), 'error'); return; }
 
-  if (clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) { showToast('Email do cliente inválido.', 'error'); return; }
-  if (contractorEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contractorEmail)) { showToast('Email do contratado inválido.', 'error'); return; }
+  if (clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) { showToast(t('cf_invalid_client_email'), 'error'); return; }
+  if (contractorEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contractorEmail)) { showToast(t('cf_invalid_contractor_email'), 'error'); return; }
 
   const milestoneDescs   = [];
   const milestoneAmounts = [];
@@ -2908,13 +2908,13 @@ async function cfCreateContract() {
   });
 
   if (!milestoneDescs.length) { showToast('Adicione pelo menos 1 milestone.', 'warning'); return; }
-  if (milestoneDescs.length > 10) { showToast('Máximo de 10 milestones.', 'error'); return; }
+  if (milestoneDescs.length > 10) { showToast(t('cf_max_10_milestones'), 'error'); return; }
 
   const totalRaw = cfParseUsdc(humanAmount);
   const sumMs    = milestoneAmounts.reduce((a, b) => a + b, 0n);
   if (sumMs !== totalRaw) {
     const diff = Math.abs(Number(totalRaw - sumMs)) / 1e6;
-    showToast(`Soma milestones ($${Number(sumMs)/1e6}) ≠ total ($${humanAmount}). Diff: $${diff.toFixed(6)}.`, 'error');
+    showToast(t('cf_milestone_sum_mismatch', Number(sumMs)/1e6, humanAmount, diff.toFixed(6)), 'error');
     return;
   }
 
@@ -3048,7 +3048,7 @@ async function cfCreateContract() {
   } catch (err) {
     cfErr('cfCreateContract:', err);
     const rej = err.code===4001||err.code==='ACTION_REJECTED'||err.message?.includes('rejected')||err.message?.includes('denied');
-    if (rej) { showToast('⚠️ Transação rejeitada.','warning'); cfHideSteps(); }
+    if (rej) { showToast(t('cf_tx_rejected'),'warning'); cfHideSteps(); }
     else { showToast(`❌ ${err.reason||err.message}`,'error'); cfSetStep(0,'error',err.message?.slice(0,50)); }
   } finally {
     unlock();
@@ -3084,7 +3084,7 @@ function cfUpdateFeePreview() {
 let cfMilestoneCount = 1;
 
 function cfAddMilestone() {
-  if (cfMilestoneCount >= 10) { showToast('Máximo de 10 milestones.', 'warning'); return; }
+  if (cfMilestoneCount >= 10) { showToast(t('cf_max_10_milestones'), 'warning'); return; }
   cfMilestoneCount++;
   const container = cfEl('cf-milestones-container');
   if (!container) return;
@@ -3175,7 +3175,7 @@ setInterval(() => {
 function cfShowOpenDispute(contractId) {
   const wallet = window.walletState?.address;
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (!c) { showToast('Contrato não encontrado.', 'error'); return; }
+  if (!c) { showToast(t('contracts_contract_not_found'), 'error'); return; }
 
   const isClient = c.client?.toLowerCase() === wallet?.toLowerCase();
   const isContr  = c.contractor?.toLowerCase() === wallet?.toLowerCase();
@@ -3183,10 +3183,10 @@ function cfShowOpenDispute(contractId) {
 
   // Check for existing open dispute
   if (cfGetDisputeStatus(contractId) === 'open') {
-    showToast('Já existe uma disputa aberta para este contrato.', 'warning'); return;
+    showToast(t('cf_dispute_already_open'), 'warning'); return;
   }
   const meta = cfGetMeta(contractId);
-  if (meta.contractClosed) { showToast('Contrato encerrado — interações bloqueadas.', 'error'); return; }
+  if (meta.contractClosed) { showToast(t('cf_contract_closed_blocked'), 'error'); return; }
 
   document.getElementById('cf-dispute-open-modal')?.remove();
   window._cfDisputeFiles = [];
@@ -3220,7 +3220,7 @@ function cfShowOpenDispute(contractId) {
     <!-- Evidence upload -->
     <div style="margin-bottom:14px;">
       <label style="font-size:11px;color:#8899bb;display:block;margin-bottom:6px;font-weight:600;">
-        <i class="fas fa-paperclip mr-1" style="color:#f87171;"></i>Evidências (opcional)
+        <i class="fas fa-paperclip mr-1" style="color:#f87171;"></i>${t("cf_evidences_optional")}
       </label>
       <div id="cf-dispute-drop"
         onclick="document.getElementById('cf-dispute-file-input').click()"
@@ -3230,7 +3230,7 @@ function cfShowOpenDispute(contractId) {
         style="border:2px dashed rgba(239,68,68,0.3);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:all 0.2s;">
         <i class="fas fa-cloud-upload-alt" style="font-size:22px;color:#f87171;display:block;margin-bottom:6px;"></i>
         <p style="font-size:12px;color:#8899bb;">Arraste ou clique para adicionar evidências</p>
-        <p style="font-size:10px;color:#4a3a7a;">Imagens, PDFs · Máx. 10MB · Máx. 5 arquivos</p>
+        <p style="font-size:10px;color:#4a3a7a;">${t("cf_file_types_small")}</p>
       </div>
       <input type="file" id="cf-dispute-file-input" multiple accept="image/*,.pdf,.doc,.docx"
         style="display:none;" onchange="cfHandleDisputeFileInput(event,${contractId})">
@@ -3262,8 +3262,8 @@ function cfHandleDisputeFilesRaw(files) {
   const MAX = 10 * 1024 * 1024;
   files.forEach(f => {
     if (f.size > MAX) { showToast(`${f.name} excede 10MB.`, 'error'); return; }
-    if (window._cfDisputeFiles.length >= 5) { showToast('Máximo 5 arquivos.', 'warning'); return; }
-    if (window._cfDisputeFiles.find(x => x.name === f.name && x.size === f.size)) { showToast(`${f.name} já adicionado.`, 'warning'); return; }
+    if (window._cfDisputeFiles.length >= 5) { showToast(t('cf_max_5_files'), 'warning'); return; }
+    if (window._cfDisputeFiles.find(x => x.name === f.name && x.size === f.size)) { showToast(`${f.name} already added.`, 'warning'); return; }
     window._cfDisputeFiles.push(f);
   });
   cfRenderDisputeFileList();
@@ -3343,8 +3343,8 @@ function cfShowDisputeResolution(contractId) {
   const wallet = window.walletState?.address;
   const c = cfState.contracts.find(x => x.id === contractId);
   const dispute = cfGetDispute(contractId);
-  if (!c || !dispute) { showToast('Dados de disputa não encontrados.', 'error'); return; }
-  if (dispute.status !== 'open') { showToast('Disputa já resolvida.', 'info'); return; }
+  if (!c || !dispute) { showToast(t('cf_dispute_data_not_found'), 'error'); return; }
+  if (dispute.status !== 'open') { showToast(t('cf_dispute_already_resolved'), 'info'); return; }
 
   const isClient = c.client?.toLowerCase() === wallet?.toLowerCase();
   const isContr  = c.contractor?.toLowerCase() === wallet?.toLowerCase();
@@ -3384,7 +3384,7 @@ function cfShowDisputeResolution(contractId) {
     <!-- Resolution options (manual — for client only) -->
     ${isClient ? `
     <div style="margin-bottom:16px;">
-      <p style="font-size:11px;color:#8899bb;font-weight:700;margin-bottom:8px;"><i class="fas fa-user-shield mr-1" style="color:#60b4ff;"></i>Resolução Manual (você é o Cliente):</p>
+      <p style="font-size:11px;color:#8899bb;font-weight:700;margin-bottom:8px;"><i class="fas fa-user-shield mr-1" style="color:#60b4ff;"></i>${t("cf_manual_resolution_label")}</p>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button onclick="cfExecuteDisputeResolution(${contractId},'contractor')"
           style="padding:12px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:#34d399;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;">
@@ -3428,7 +3428,7 @@ async function cfExecuteDisputeResolution(contractId, outcome) {
   if (!c || !dispute) return;
 
   const isClient = c.client?.toLowerCase() === wallet?.toLowerCase();
-  if (!isClient) { showToast('Apenas o cliente pode executar resolução manual.', 'error'); return; }
+  if (!isClient) { showToast(t('cf_only_client_can_resolve'), 'error'); return; }
 
   const note = document.getElementById('cf-resolve-note')?.value?.trim() || '';
   const outcomeLabel = outcome === 'contractor' ? 'liberar para o Contratado' : 'devolver ao Cliente';
@@ -3491,12 +3491,12 @@ async function cfApproveMutualResolution(contractId) {
     });
     cfSetMeta(contractId, { disputeResolvedAt: Date.now(), disputeOutcome: 'mutual' });
     cfLogTx('resolveDispute', null, contractId, { outcome: 'mutual' });
-    showToast('🤝 Acordo mútuo confirmado! Disputa resolvida.', 'success');
+    showToast(t('cf_mutual_agreement_confirmed'), 'success');
     document.getElementById('cf-dispute-resolve-modal')?.remove();
   } else {
     // First party approved — update and wait
     cfSetDispute(contractId, { mutualApproval: approvals });
-    showToast('✅ Você aprovou. Aguardando aprovação da contraparte.', 'info');
+    showToast(t('cf_waiting_counterparty'), 'info');
     document.getElementById('cf-dispute-resolve-modal')?.remove();
   }
   cfLoadContracts({ force: true });
@@ -3507,7 +3507,7 @@ function cfViewDisputeEvidence(contractId, evidenceIndex) {
   const dispute = cfGetDispute(contractId);
   const evidences = dispute?.evidence || [];
   const ev = evidences[evidenceIndex];
-  if (!ev || !ev.url) { showToast('Evidência não disponível.', 'error'); return; }
+  if (!ev || !ev.url) { showToast(t('cf_evidence_not_available'), 'error'); return; }
 
   document.getElementById('cf-dispute-evidence-modal')?.remove();
   const modal = document.createElement('div');
@@ -3532,7 +3532,7 @@ function cfViewDisputeEvidence(contractId, evidenceIndex) {
       <p style="color:#dde2f0;font-size:15px;font-weight:700;margin-bottom:20px;">${ev.name}</p>
       <button onclick="(()=>{const a=document.createElement('a');a.href='${ev.url}';a.download='${ev.name}';a.click()})()"
         style="padding:11px 24px;background:linear-gradient(135deg,#991b1b,#7f1d1d);color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">
-        <i class="fas fa-download mr-2"></i>Baixar Arquivo
+        <i class="fas fa-download mr-2"></i>${t("cf_download_file")}
       </button>
     </div>`;
   }
@@ -3563,18 +3563,18 @@ function cfViewDisputeEvidence(contractId, evidenceIndex) {
 function cfCloseContract(contractId) {
   const wallet = window.walletState?.address;
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (!c) { showToast('Contrato não encontrado.', 'error'); return; }
+  if (!c) { showToast(t('contracts_contract_not_found'), 'error'); return; }
 
   const isClient = c.client?.toLowerCase() === wallet?.toLowerCase();
   const isContr  = c.contractor?.toLowerCase() === wallet?.toLowerCase();
   if (!isClient && !isContr) { showToast('Apenas participantes podem encerrar o contrato.', 'error'); return; }
 
   const meta = cfGetMeta(contractId);
-  if (meta.contractClosed) { showToast('Contrato já está encerrado.', 'info'); return; }
+  if (meta.contractClosed) { showToast(t('cf_contract_already_closed'), 'info'); return; }
 
   // Cannot close while dispute is open
   if (cfGetDisputeStatus(contractId) === 'open') {
-    showToast('❌ Não é possível encerrar com disputa ativa. Resolva a disputa primeiro.', 'error'); return;
+    showToast(t('cf_cannot_close_dispute_active'), 'error'); return;
   }
 
   const uiStatus = cfUiStatus(c);

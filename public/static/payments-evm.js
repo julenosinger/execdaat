@@ -183,13 +183,13 @@ async function paySendSingle() {
 
   // ── Validações básicas ────────────────────────────────────────────────────
   if (!to || !/^0x[0-9a-fA-F]{40}$/.test(to)) {
-    showToast('Endereço do destinatário inválido (deve ser 0x...42 chars)', 'error'); return;
+    showToast(t('err_invalid_recipient'), 'error'); return;
   }
   if (!amount || isNaN(amount) || amount <= 0) {
-    showToast('Digite um valor válido', 'error'); return;
+    showToast(t('err_enter_amount'), 'error'); return;
   }
   if (!window.walletState?.connected) {
-    showToast('Conecte sua wallet EVM primeiro', 'warning');
+    showToast(t('err_connect_wallet'), 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
@@ -212,7 +212,7 @@ async function paySendSingle() {
     const onArc = await _payEnsureNetwork(provider);
     if (!onArc) {
       _payUpdateStep(0, 'error');
-      showToast('Troque para Arc Testnet (Chain 5042002)', 'error'); return;
+      showToast(t('err_switch_network'), 'error'); return;
     }
     _payUpdateStep(0, 'done');
 
@@ -221,11 +221,11 @@ async function paySendSingle() {
     setBtn('<i class="fas fa-coins fa-spin mr-2"></i>Checking balance…');
     const balance = await payReadBalance(token, from);
     if (balance === null) {
-      showToast('Erro ao ler saldo on-chain', 'error'); _payUpdateStep(1, 'error'); return;
+      showToast(t('err_read_balance'), 'error'); _payUpdateStep(1, 'error'); return;
     }
     const reserveGas = token === 'USDC' ? 0.001 : 0;
     if (amount + reserveGas > balance) {
-      showToast(`Saldo insuficiente: ${balance.toFixed(4)} ${token} disponível`, 'error');
+      showToast(t('err_insufficient_balance', balance.toFixed(4), token), 'error');
       _payUpdateStep(1, 'error'); return;
     }
     _payUpdateStep(1, 'done');
@@ -247,7 +247,7 @@ async function paySendSingle() {
     // ── STEP 3: Construir e enviar TX ──────────────────────────────────────
     _payUpdateStep(3, 'active');
     setBtn('<i class="fas fa-signature fa-spin mr-2"></i>Confirm in wallet…');
-    showToast('📝 Confirme a transação na sua wallet…', 'info');
+    showToast(t('info_confirm_tx_wallet'), 'info');
 
     const amountRaw = BigInt(Math.round(amount * 1_000_000));
     let txHash;
@@ -263,9 +263,9 @@ async function paySendSingle() {
       } catch (e) {
         _payUpdateStep(3, 'error');
         if (e.code === 4001 || e.message?.includes('reject') || e.message?.includes('denied')) {
-          showToast('Transação cancelada pelo usuário', 'warning');
+          showToast(t('warn_tx_cancelled'), 'warning');
         } else {
-          showToast('Erro na transação: ' + e.message, 'error');
+          showToast(t('err_generic', e.message), 'error');
         }
         return;
       }
@@ -280,9 +280,9 @@ async function paySendSingle() {
       } catch (e) {
         _payUpdateStep(3, 'error');
         if (e.code === 4001 || e.message?.includes('reject') || e.message?.includes('denied')) {
-          showToast('Transação cancelada pelo usuário', 'warning');
+          showToast(t('warn_tx_cancelled'), 'warning');
         } else {
-          showToast('Erro na transação: ' + e.message, 'error');
+          showToast(t('err_generic', e.message), 'error');
         }
         return;
       }
@@ -301,7 +301,7 @@ async function paySendSingle() {
     const receipt = await _payWaitReceipt(provider, txHash, 30000);
     if (receipt.status === '0x0' || receipt.status === 0) {
       _payUpdateStep(4, 'error');
-      showToast('Transação revertida on-chain', 'error'); return;
+      showToast(t('err_transaction_reverted'), 'error'); return;
     }
     _payUpdateStep(4, 'done');
 
@@ -381,10 +381,10 @@ async function paySendSingle() {
 async function payExecuteMultisend(rows) {
   // rows: [{to, amount, note}]
   if (!rows || rows.length === 0) {
-    showToast('Nenhum destinatário para enviar', 'error'); return;
+    showToast(t('err_no_recipients'), 'error'); return;
   }
   if (!window.walletState?.connected) {
-    showToast('Conecte sua wallet EVM primeiro', 'warning');
+    showToast(t('err_connect_wallet'), 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
@@ -395,7 +395,7 @@ async function payExecuteMultisend(rows) {
 
   // Verificar rede
   const onArc = await _payEnsureNetwork(provider);
-  if (!onArc) { showToast('Troque para Arc Testnet (5042002)', 'error'); return; }
+  if (!onArc) { showToast(t('err_switch_network'), 'error'); return; }
 
   // Verificar saldo total
   const totalAmt = rows.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
@@ -416,7 +416,7 @@ async function payExecuteMultisend(rows) {
     const note = row.note || `Payment ${i + 1} of ${rows.length}`;
 
     if (!to || !/^0x[0-9a-fA-F]{40}$/.test(to) || !amt || amt <= 0) {
-      showToast(`Linha ${i+1}: endereço ou valor inválido — pulando`, 'warning');
+      showToast(t('warn_row_invalid', i+1), 'warning');
       continue;
     }
 
@@ -457,15 +457,15 @@ async function payExecuteMultisend(rows) {
 
     } catch (e) {
       if (e.code === 4001 || e.message?.includes('reject') || e.message?.includes('denied')) {
-        showToast(`❌ ${i+1}/${rows.length}: cancelado pelo usuário`, 'warning');
+        showToast(t('warn_row_cancelled', i+1, rows.length), 'warning');
         break; // user rejected → parar batch
       }
-      showToast(`⚠️ ${i+1}/${rows.length}: erro — ${e.message}`, 'error');
+      showToast(`⚠️ ${i+1}/${rows.length}: error — ${e.message}`, 'error');
     }
   }
 
   if (successCount > 0) {
-    showToast(`🎉 Batch concluído: ${successCount}/${rows.length} pagamentos enviados`, 'success');
+    showToast(`🎉 Batch done: ${successCount}/${rows.length} payments sent`, 'success');
     await payRefreshBalancePanel();
     if (typeof loadPayments === 'function') await loadPayments();
 
@@ -481,7 +481,7 @@ async function payExecuteMultisend(rows) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function paySignContract(contractId, role) {
   if (!window.walletState?.connected) {
-    showToast('Conecte sua wallet EVM primeiro', 'warning');
+    showToast(t('err_connect_wallet'), 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
@@ -490,7 +490,7 @@ async function paySignContract(contractId, role) {
   const from     = window.walletState.address;
 
   const onArc = await _payEnsureNetwork(provider);
-  if (!onArc) { showToast('Troque para Arc Testnet (5042002)', 'error'); return; }
+  if (!onArc) { showToast(t('err_switch_network'), 'error'); return; }
 
   // Obter dados do contrato
   let contractData;
@@ -530,7 +530,7 @@ async function paySignContract(contractId, role) {
     });
   } catch (e) {
     if (e.code === 4001 || e.message?.includes('reject') || e.message?.includes('denied')) {
-      showToast('Assinatura cancelada pelo usuário', 'warning');
+      showToast(t('warn_sign_cancelled'), 'warning');
     } else {
       showToast('Erro na assinatura: ' + e.message, 'error');
     }
@@ -563,7 +563,7 @@ async function paySignContract(contractId, role) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function payActivateContractEVM(contractId) {
   if (!window.walletState?.connected) {
-    showToast('Conecte sua wallet EVM primeiro', 'warning');
+    showToast(t('err_connect_wallet'), 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
@@ -572,7 +572,7 @@ async function payActivateContractEVM(contractId) {
   const from     = window.walletState.address;
 
   const onArc = await _payEnsureNetwork(provider);
-  if (!onArc) { showToast('Troque para Arc Testnet (5042002)', 'error'); return; }
+  if (!onArc) { showToast(t('err_switch_network'), 'error'); return; }
 
   let contractData;
   try {
@@ -588,7 +588,7 @@ async function payActivateContractEVM(contractId) {
     return;
   }
 
-  showToast(`📝 Confirme o depósito de escrow: ${totalUSDC} USDC na wallet…`, 'info');
+  showToast(t('info_escrow_deposit_wallet', totalUSDC), 'info');
 
   const amtRaw = BigInt(Math.round(totalUSDC * 1_000_000));
   const valHex = '0x' + (amtRaw * BigInt(1_000_000_000_000n)).toString(16);
@@ -602,18 +602,18 @@ async function payActivateContractEVM(contractId) {
     txHash = await provider.request({ method: 'eth_sendTransaction', params: [txObj] });
   } catch (e) {
     if (e.code === 4001 || e.message?.includes('reject') || e.message?.includes('denied')) {
-      showToast('Depósito de escrow cancelado', 'warning');
+      showToast(t('warn_escrow_cancelled'), 'warning');
     } else {
       showToast('Erro no escrow: ' + e.message, 'error');
     }
     return;
   }
 
-  showToast(`⏳ Depósito enviado (${txHash.slice(0,16)}…), aguardando confirmação…`, 'info');
+  showToast(`⏳ Deposit sent (${txHash.slice(0,16)}…), awaiting confirmation…`, 'info');
   const receipt = await _payWaitReceipt(provider, txHash, 25000);
 
   if (receipt.status === '0x0' || receipt.status === 0) {
-    showToast('Depósito de escrow revertido on-chain', 'error'); return;
+    showToast(t('err_transaction_reverted'), 'error'); return;
   }
 
   // Ativar contrato no backend
@@ -633,7 +633,7 @@ async function payActivateContractEVM(contractId) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function payCompleteMilestoneEVM(contractId, milestoneId, evidence) {
   if (!window.walletState?.connected) {
-    showToast('Conecte sua wallet EVM primeiro', 'warning');
+    showToast(t('err_connect_wallet'), 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
@@ -642,12 +642,12 @@ async function payCompleteMilestoneEVM(contractId, milestoneId, evidence) {
   const from     = window.walletState.address;
 
   const onArc = await _payEnsureNetwork(provider);
-  if (!onArc) { showToast('Troque para Arc Testnet (5042002)', 'error'); return; }
+  if (!onArc) { showToast(t('err_switch_network'), 'error'); return; }
 
   // Assinar a evidência do milestone
   const msgStr = `ARC Milestone Completion\n\nContract: #${contractId}\nMilestone: #${milestoneId}\nEvidence: ${evidence}\nSigner: ${from}\nTimestamp: ${new Date().toISOString()}\nNetwork: Arc Testnet`;
 
-  showToast('📝 Assine a evidência do milestone na wallet…', 'info');
+  showToast(t('info_sign_milestone_wallet'), 'info');
 
   let sigHash;
   try {
@@ -677,7 +677,7 @@ async function payCompleteMilestoneEVM(contractId, milestoneId, evidence) {
       showToast(res.data.message || `Milestone #${milestoneId} verificado com sucesso!`, 'success');
       if (typeof loadContracts === 'function') await loadContracts();
     } else {
-      showToast(res.data.message || 'Verificação pendente', 'warning');
+      showToast(res.data.message || 'Verification pending', 'warning');
     }
   } catch (e) {
     showToast('Erro ao registrar milestone: ' + e.message, 'error');
@@ -791,7 +791,7 @@ function _payShowReceiptModal(rec) {
 // 13. DOWNLOAD RECEIPT JSON
 // ─────────────────────────────────────────────────────────────────────────────
 function payDownloadReceiptJSON(rec) {
-  if (!rec) { showToast('Nenhum recibo disponível', 'error'); return; }
+  if (!rec) { showToast(t('err_no_receipt'), 'error'); return; }
   const data = JSON.stringify(rec, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
@@ -807,7 +807,7 @@ function payDownloadReceiptJSON(rec) {
 // 14. DOWNLOAD RECEIPT PDF (gerado via HTML → print)
 // ─────────────────────────────────────────────────────────────────────────────
 function payDownloadReceiptPDF(rec) {
-  if (!rec) { showToast('Nenhum recibo disponível', 'error'); return; }
+  if (!rec) { showToast(t('err_no_receipt'), 'error'); return; }
 
   const html = `<!DOCTYPE html>
 <html>
@@ -890,7 +890,7 @@ function payDownloadReceiptPDF(rec) {
     a.click();
   }
   setTimeout(() => URL.revokeObjectURL(url), 3000);
-  showToast('🖨️ Recibo PDF aberto para impressão', 'success');
+  showToast('🖨️ PDF receipt opened for printing', 'success');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

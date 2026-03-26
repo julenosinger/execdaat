@@ -554,7 +554,7 @@ async function completeMilestone(contractId) {
   const idx = prompt('Índice do milestone (0 = primeiro, 1 = segundo…):');
   if (idx === null || idx === '') return;
   const i = parseInt(idx);
-  if (isNaN(i) || i < 0) { showToast('Índice inválido.', 'error'); return; }
+  if (isNaN(i) || i < 0) { showToast(t('err_invalid_index'), 'error'); return; }
   if (typeof window.cfCompleteMilestone === 'function') await window.cfCompleteMilestone(contractId, i);
   else {
   

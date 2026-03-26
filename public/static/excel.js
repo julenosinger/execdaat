@@ -25,7 +25,7 @@ const COL_ALIASES = {
 // ============================================================
 function downloadExcelTemplate() {
   if (typeof XLSX === 'undefined') {
-    showToast('SheetJS não carregado ainda. Aguarde e tente novamente.', 'error');
+    showToast(t('excel_sheetjs_not_loaded'), 'error');
     return;
   }
 

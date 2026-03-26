@@ -241,7 +241,7 @@ function setVaultAction(token, action) {
   if (balHint) {
     const pos = walletVaultPositions[token];
     if (action === 'withdraw' && pos?.hasPosition) {
-      balHint.innerHTML = `<i class="fas fa-info-circle mr-1"></i>Disponível no vault: ${parseFloat(pos.balance).toFixed(4)} ${token.toUpperCase()}`;
+      balHint.innerHTML = `<i class="fas fa-info-circle mr-1"></i>${t("vault_available_balance", parseFloat(pos.balance).toFixed(4), token.toUpperCase())}`;
       balHint.classList.remove('hidden');
     } else {
       balHint.classList.add('hidden');
@@ -269,10 +269,10 @@ async function submitVaultAction(token) {
   const strategy = document.getElementById(`${token}-strategy`)?.value || 'balanced';
 
   if (!amount || isNaN(amount) || amount <= 0) {
-    showToast('Digite um valor válido', 'error'); return;
+    showToast(t('err_enter_amount'), 'error'); return;
   }
   if (amount < 0.000001) {
-    showToast('Valor mínimo: 0.000001', 'error'); return;
+    showToast(t('err_enter_amount'), 'error'); return;
   }
 
   if (!window.walletState?.connected) {
@@ -331,7 +331,7 @@ async function submitVaultAction(token) {
     // ── DEPÓSITO ─────────────────────────────────────────────────────────────
     const provider = window.walletState?.provider;
     if (!provider) {
-      showToast('Provider da wallet não encontrado. Reconecte.', 'error'); return;
+      showToast(t('err_vault_provider'), 'error'); return;
     }
 
     // ── Verificar rede SEMPRE antes de qualquer tx ────────────────────────────
@@ -362,7 +362,7 @@ async function submitVaultAction(token) {
         window.walletState.chainId = 5042002;
         window.walletState.onArcNetwork = true;
       } catch (netErr) {
-        showToast('Erro ao trocar rede: ' + netErr.message, 'error'); return;
+        showToast(t('err_generic', netErr.message), 'error'); return;
       }
     }
 
@@ -417,16 +417,16 @@ async function submitVaultAction(token) {
         });
 
         _updateStep(token, 1, 'done', txHash);
-        showToast(`⏳ TX enviada! Confirmando...`, 'info');
+        showToast(t('vault_tx_sent_confirming'), 'info');
         addVaultLog(`[VAULT] TX nativa USDC: ${txHash?.slice(0, 18)}...`, 'success');
 
       } catch (txErr) {
         _updateStep(token, 1, 'error');
         _closeStepPanel(token);
         if (txErr.code === 4001 || txErr.message?.includes('reject') || txErr.message?.includes('denied') || txErr.message?.includes('cancel')) {
-          showToast('Transação cancelada pelo usuário', 'warning');
+          showToast(t('warn_vault_tx_cancelled'), 'warning');
         } else {
-          showToast('Erro ao enviar USDC: ' + txErr.message, 'error');
+          showToast(t('err_generic', txErr.message), 'error');
         }
         return;
       }
@@ -459,7 +459,7 @@ async function submitVaultAction(token) {
         await _refreshVaultUI(token, walletAddress);
       } else {
         _closeStepPanel(token);
-        showToast(depRes.data.error || 'Erro ao registrar depósito', 'error');
+        showToast(depRes.data.error || t('toast_error'), 'error');
       }
 
     } else {
@@ -500,7 +500,7 @@ async function submitVaultAction(token) {
         });
 
         _updateStep(token, 1, 'done', approveTxHash);
-        showToast(`✅ Approve confirmado! Enviando EURC...`, 'info');
+        showToast(t('vault_approve_confirmed_sending'), 'info');
         addVaultLog(`[VAULT] Approve TX: ${approveTxHash?.slice(0, 18)}...`, 'success');
         await new Promise(r => setTimeout(r, 1200));
 
@@ -508,9 +508,9 @@ async function submitVaultAction(token) {
         _updateStep(token, 1, 'error');
         _closeStepPanel(token);
         if (approveErr.code === 4001 || approveErr.message?.includes('reject') || approveErr.message?.includes('denied')) {
-          showToast('Approve cancelado pelo usuário', 'warning');
+          showToast(t('warn_vault_approve_cancelled'), 'warning');
         } else {
-          showToast('Erro no approve: ' + approveErr.message, 'error');
+          showToast(t('vault_approve_error', approveErr.message), 'error');
         }
         return;
       }
@@ -541,16 +541,16 @@ async function submitVaultAction(token) {
         });
 
         _updateStep(token, 2, 'done', transferTxHash);
-        showToast(`⏳ Transferência EURC enviada! Confirmando...`, 'info');
+        showToast(t('vault_eurc_sent_confirming'), 'info');
         addVaultLog(`[VAULT] Transfer TX: ${transferTxHash?.slice(0, 18)}...`, 'success');
 
       } catch (transferErr) {
         _updateStep(token, 2, 'error');
         _closeStepPanel(token);
         if (transferErr.code === 4001 || transferErr.message?.includes('reject') || transferErr.message?.includes('denied')) {
-          showToast('Transferência cancelada pelo usuário', 'warning');
+          showToast(t('warn_vault_transfer_cancelled'), 'warning');
         } else {
-          showToast('Erro na transferência: ' + transferErr.message, 'error');
+          showToast(t('err_generic', transferErr.message), 'error');
         }
         return;
       }
@@ -586,7 +586,7 @@ async function submitVaultAction(token) {
         await _refreshVaultUI(token, walletAddress);
       } else {
         _closeStepPanel(token);
-        showToast(depRes.data.error || 'Erro ao registrar depósito', 'error');
+        showToast(depRes.data.error || t('toast_error'), 'error');
       }
     }
 
@@ -786,12 +786,12 @@ async function runVaultAgent(token = null) {
   try {
     const res = await axios.post('/api/vaults/agent/run', token ? { token } : {});
     if (res.data.success) {
-      showToast(`🤖 Agente executou ${res.data.operations?.length || 0} operações`, 'info');
+      showToast(`🤖 Agent ran ${res.data.operations?.length || 0} operations`, 'info');
       await loadVaultAgentOps(token);
       await loadVaults();
     }
   } catch (e) {
-    showToast('Erro ao executar agente: ' + e.message, 'error');
+    showToast(t('err_generic', e.message), 'error');
   }
 }
 
@@ -884,7 +884,7 @@ window.addEventListener('walletDisconnected', () => {
   walletVaultPositions = { usdc: null, eurc: null };
   ['usdc', 'eurc'].forEach(t => {
     const posEl = document.getElementById(`${t}-wallet-position`);
-    if (posEl) posEl.innerHTML = `<div class="text-center py-3 text-gray-500 text-xs">Conecte sua wallet para ver sua posição</div>`;
+    if (posEl) posEl.innerHTML = `<div class="text-center py-3 text-gray-500 text-xs">${t("vault_connect_to_view_position")}</div>`;
     const onchainEl = document.getElementById(`${t}-onchain-balance`);
     if (onchainEl) onchainEl.classList.add('hidden');
   });

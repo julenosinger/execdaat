@@ -230,7 +230,7 @@ async function switchToArcTestnet(provider) {
         return true;
       } catch (addError) {
         console.error('[WALLET] Erro ao adicionar rede Arc:', addError);
-        showWalletToast('Erro ao adicionar Arc Testnet: ' + (addError.message || addError), 'error');
+        showWalletToast(t('wallet_network_add_error', addError.message || addError), 'error');
         return false;
       }
     }
@@ -239,12 +239,12 @@ async function switchToArcTestnet(provider) {
     if (switchError.code === 4001 ||
         switchError.message?.includes('User rejected') ||
         switchError.message?.includes('user denied')) {
-      showWalletToast('Troca de rede cancelada pelo usuário', 'warning');
+      showWalletToast(t('wallet_network_switch_cancelled'), 'warning');
       return false;
     }
 
     console.error('[WALLET] Erro ao trocar rede:', switchError);
-    showWalletToast('Erro ao trocar rede: ' + (switchError.message || switchError), 'error');
+    showWalletToast(t('wallet_network_switch_error', switchError.message || switchError), 'error');
     return false;
   }
 }
@@ -345,9 +345,9 @@ function updateWalletPanel(connected) {
         <div class="w-14 h-14 rounded-full bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center">
           <i class="fas fa-wallet text-gray-500 text-xl"></i>
         </div>
-        <p class="text-gray-400 text-sm text-center">Conecte sua wallet EVM para interagir com a rede Arc Testnet</p>
+        <p class="text-gray-400 text-sm text-center">${t('wallet_connect_prompt_evm')}</p>
         <button onclick="openWalletModal()" class="wallet-connect-pulse bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-all flex items-center gap-2">
-          <i class="fas fa-plug mr-1"></i>Conectar Wallet
+          <i class="fas fa-plug mr-1"></i>${t('btn_connect_wallet')}
         </button>
         <p class="text-xs text-gray-600">MetaMask, Coinbase, Rabby e outros</p>
       </div>
@@ -366,15 +366,15 @@ function updateWalletPanel(connected) {
           <div class="text-white font-medium text-sm font-mono truncate">${state.shortAddress}</div>
           <div class="text-xs text-gray-500 truncate">${state.address}</div>
         </div>
-        <button onclick="copyAddress()" title="Copiar endereço" class="text-gray-400 hover:text-white transition-colors flex-shrink-0">
+        <button onclick="copyAddress()" title="${t('wallet_copy_address_title')}" class="text-gray-400 hover:text-white transition-colors flex-shrink-0">
           <i class="fas fa-copy text-sm"></i>
         </button>
       </div>
 
-      <!-- Saldo USDC -->
+      <!-- USDC Balance -->
       <div class="bg-gradient-to-r from-blue-900/40 to-purple-900/40 border border-blue-700/30 rounded-xl p-4">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-gray-400">Saldo USDC</span>
+          <span class="text-xs text-gray-400">${t('wallet_usdc_balance')}</span>
           <button onclick="refreshBalance()" class="text-xs text-blue-400 hover:text-blue-300">
             <i class="fas fa-sync-alt"></i>
           </button>
@@ -429,7 +429,7 @@ function updateWalletPanel(connected) {
 function copyAddress() {
   if (window.walletState.address) {
     navigator.clipboard.writeText(window.walletState.address).then(() => {
-      showWalletToast('Endereço copiado!', 'success');
+      showWalletToast(t('wallet_address_copied'), 'success');
     }).catch(() => {
       // Fallback para browsers sem clipboard API
       const el = document.createElement('textarea');
@@ -438,7 +438,7 @@ function copyAddress() {
       el.select();
       document.execCommand('copy');
       document.body.removeChild(el);
-      showWalletToast('Endereço copiado!', 'success');
+      showWalletToast(t('wallet_address_copied'), 'success');
     });
   }
 }
@@ -554,7 +554,7 @@ function _renderWalletModal() {
             </div>
             <div style="flex:1;text-align:left;">
               <div style="color:white;font-weight:600;font-size:0.875rem;">${p.name}</div>
-              <div style="color:#6b7280;font-size:0.75rem;">Detectado • Clique para conectar</div>
+              <div style="color:#6b7280;font-size:0.75rem;">${t('wallet_detected_click')}</div>
             </div>
             <i class="fas fa-chevron-right" style="color:#4b5563;"></i>
           </button>
@@ -563,20 +563,20 @@ function _renderWalletModal() {
             <div style="width:56px;height:56px;border-radius:50%;background:rgba(31,41,55,0.8);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
               <i class="fas fa-exclamation-triangle" style="color:#fbbf24;font-size:1.25rem;"></i>
             </div>
-            <p style="color:#d1d5db;font-size:0.875rem;font-weight:500;margin-bottom:4px;">Nenhuma wallet detectada</p>
-            <p style="color:#6b7280;font-size:0.75rem;margin-bottom:16px;">Instale uma extensão de wallet EVM para continuar</p>
+            <p style="color:#d1d5db;font-size:0.875rem;font-weight:500;margin-bottom:4px;">${t('wallet_no_wallet_detected')}</p>
+            <p style="color:#6b7280;font-size:0.75rem;margin-bottom:16px;">${t('modal_subtitle')}</p>
             <div style="display:flex;flex-direction:column;gap:8px;">
               <a href="https://metamask.io/download/" target="_blank" 
                 style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(234,88,12,0.2);border:1px solid rgba(234,88,12,0.4);color:#fb923c;border-radius:8px;padding:12px;font-size:0.875rem;text-decoration:none;transition:all 0.2s;">
-                <i class="fab fa-ethereum"></i>Instalar MetaMask
+                <i class="fab fa-ethereum"></i>Install MetaMask
               </a>
               <a href="https://www.coinbase.com/wallet/downloads" target="_blank"
                 style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(37,99,235,0.2);border:1px solid rgba(37,99,235,0.4);color:#60a5fa;border-radius:8px;padding:12px;font-size:0.875rem;text-decoration:none;transition:all 0.2s;">
-                <i class="fas fa-wallet"></i>Instalar Coinbase Wallet
+                <i class="fas fa-wallet"></i>Install Coinbase Wallet
               </a>
               <a href="https://rabby.io" target="_blank"
                 style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(5,150,105,0.2);border:1px solid rgba(5,150,105,0.4);color:#34d399;border-radius:8px;padding:12px;font-size:0.875rem;text-decoration:none;transition:all 0.2s;">
-                <i class="fas fa-shield-alt"></i>Instalar Rabby
+                <i class="fas fa-shield-alt"></i>Install Rabby
               </a>
             </div>
           </div>
@@ -584,7 +584,7 @@ function _renderWalletModal() {
       </div>
 
       <p style="text-align:center;font-size:0.75rem;color:#4b5563;margin-top:8px;">
-        Ao conectar você aceita interagir com a Arc Testnet (Chain 5042002)
+        ${t('wallet_accept_terms')}
       </p>
     </div>
   `;
@@ -607,7 +607,7 @@ function openConnectedWalletModal() {
     <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeWalletModal()"></div>
     <div style="position:relative;z-index:10;background:#111827;border:1px solid rgba(55,65,81,0.6);border-radius:1rem;padding:1.5rem;width:100%;max-width:360px;box-shadow:0 25px 50px rgba(0,0,0,0.8);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h3 style="color:white;font-weight:700;">Wallet Conectada</h3>
+        <h3 style="color:white;font-weight:700;">${t('wallet_already_connected_title')}</h3>
         <button onclick="closeWalletModal()" style="background:none;border:none;cursor:pointer;color:#9ca3af;">
           <i class="fas fa-times"></i>
         </button>
@@ -615,18 +615,18 @@ function openConnectedWalletModal() {
       <div style="background:rgba(31,41,55,0.6);border-radius:12px;padding:16px;margin-bottom:12px;">
         <div style="color:white;font-family:monospace;font-size:0.875rem;word-break:break-all;">${state.address}</div>
         <div style="color:${state.onArcNetwork ? '#34d399' : '#fbbf24'};font-size:0.75rem;margin-top:4px;">
-          ${state.onArcNetwork ? '✅ Arc Testnet (5042002)' : '⚠️ Rede incorreta'}
+          ${state.onArcNetwork ? '✅ Arc Testnet (5042002)' : t('wallet_wrong_network_badge')}
         </div>
       </div>
       ${!state.onArcNetwork ? `
       <button onclick="switchNetworkFromUI();closeWalletModal();" 
         style="width:100%;background:rgba(217,119,6,0.8);border:none;border-radius:8px;padding:10px;color:white;cursor:pointer;margin-bottom:8px;font-weight:600;">
-        <i class="fas fa-exchange-alt mr-1"></i>Trocar para Arc Testnet
+        <i class="fas fa-exchange-alt mr-1"></i>${t('wallet_switch_to_arc_btn')}
       </button>
       ` : ''}
       <a href="https://testnet.arcscan.app/address/${state.address}" target="_blank"
         style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(31,41,55,0.8);border:1px solid rgba(55,65,81,0.4);border-radius:8px;padding:10px;color:#d1d5db;font-size:0.875rem;text-decoration:none;margin-bottom:8px;">
-        <i class="fas fa-external-link-alt" style="color:#a855f7;"></i>Ver no Explorer
+        <i class="fas fa-external-link-alt" style="color:#a855f7;"></i>${t('wallet_view_explorer')}
       </a>
       <button onclick="disconnectWallet();closeWalletModal();" 
         style="width:100%;background:none;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px;color:#f87171;cursor:pointer;font-size:0.875rem;">
@@ -659,8 +659,8 @@ async function connectWithProvider(index) {
     modalList.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 0;gap:12px;">
         <div style="width:48px;height:48px;border-radius:50%;border:4px solid #7c3aed;border-top-color:transparent;animation:spin 1s linear infinite;"></div>
-        <p style="color:#d1d5db;font-size:0.875rem;">Conectando com ${selected.name}...</p>
-        <p style="color:#6b7280;font-size:0.75rem;">Aprove a conexão na sua wallet</p>
+        <p style="color:#d1d5db;font-size:0.875rem;">${t('wallet_connecting_with', selected.name)}</p>
+        <p style="color:#6b7280;font-size:0.75rem;">${t('wallet_approve_connection')}</p>
       </div>
       <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
     `;
@@ -673,7 +673,7 @@ async function connectWithProvider(index) {
     const accounts = await provider.request({ method: 'eth_requestAccounts' });
 
     if (!accounts || accounts.length === 0) {
-      throw new Error('Nenhuma conta autorizada');
+      throw new Error(t('wallet_no_account'));
     }
 
     const address = accounts[0];
@@ -732,11 +732,11 @@ async function connectWithProvider(index) {
     closeWalletModal();
     console.error('[WALLET] Erro ao conectar:', err);
     if (err.code === 4001) {
-      showWalletToast('❌ Conexão recusada pelo usuário', 'warning');
+      showWalletToast(t('wallet_connection_refused'), 'warning');
     } else if (err.code === -32002) {
-      showWalletToast('⏳ Requisição já pendente na wallet. Verifique sua extensão.', 'warning');
+      showWalletToast(t('wallet_pending_request'), 'warning');
     } else {
-      showWalletToast('Erro ao conectar: ' + (err.message || String(err)), 'error');
+      showWalletToast(t('wallet_connect_error', err.message || String(err)), 'error');
     }
     addWalletLog(`[WALLET] Erro ao conectar: ${err.message}`, 'error');
   }
@@ -756,7 +756,7 @@ function handleAccountsChanged(accounts) {
   window.walletState.usdcBalance = null;
 
   updateWalletUI();
-  showWalletToast(`Conta trocada: ${shortenAddress(newAddress)}`, 'info');
+  showWalletToast(t('wallet_account_changed', shortenAddress(newAddress)), 'info');
   addWalletLog(`[WALLET] Conta trocada: ${newAddress}`, 'info');
 
   if (window.walletState.onArcNetwork) {
@@ -775,14 +775,14 @@ function handleChainChanged(chainIdHex) {
   updateWalletUI();
 
   if (window.walletState.onArcNetwork) {
-    showWalletToast('✅ Conectado à Arc Testnet!', 'success');
+    showWalletToast(t('wallet_connected_arc'), 'success');
     addWalletLog('[WALLET] Rede trocada para Arc Testnet (5042002)', 'success');
     fetchUSDCBalance(window.walletState.address, window.walletState.provider).then(bal => {
       window.walletState.usdcBalance = bal;
       updateWalletUI();
     });
   } else {
-    showWalletToast(`⚠️ Rede trocada para Chain ${chainId}. Use Arc Testnet.`, 'warning');
+    showWalletToast(t('wallet_wrong_chain', chainId), 'warning');
     addWalletLog(`[WALLET] Rede incorreta: Chain ${chainId}`, 'warning');
   }
 }
