@@ -145,10 +145,13 @@ const cfState = {
   debugMode:    true,    // verbose on-chain debug logging
 };
 
-// ─── Local Dismiss state (Contracts tab — isolated, cleared on Refresh) ───────
-const _cfDismiss = (typeof arcMakeDismissState === 'function')
-  ? arcMakeDismissState()
-  : { dismissed: new Set(), dismiss: id => { _cfDismiss.dismissed.add(id); }, isVisible: id => !_cfDismiss.dismissed.has(id), reset: () => _cfDismiss.dismissed.clear() };
+// ─── Persistent Hide State (Contracts) ──────────────────────────────────────────
+// Uses localStorage key 'hiddenContracts' — survives page reload.
+const _cfDismiss = {
+  isVisible: (id) => typeof arcIsVisibleContract === 'function' ? arcIsVisibleContract(id) : true,
+  dismiss:   (id) => typeof arcHideContract      === 'function' ? arcHideContract(id)      : undefined,
+  reset:     ()   => { /* no-op: persistent hide does NOT reset on reload */ },
+};
 
 // ─── Off-chain metadata (localStorage) ────────────────────────────────────────
 // Stores: { [contractId]: { clientEmail, contractorEmail, otcPoints, otcTerms, proofs: [], completedAt, receiptData } }
@@ -554,8 +557,7 @@ async function cfLoadContracts(opts = {}) {
     return;
   }
 
-  // Reset local dismiss state on every Refresh
-  _cfDismiss.reset();
+  // NOTE: persistent hide — items stay hidden across reloads (user can unhide via 'Show Hidden')
 
   cfState.loadingIds = true;
   cfShowListState('loading');
@@ -1089,10 +1091,10 @@ function cfContractCard(c, wallet) {
             <div style="font-size:10px;color:#3a4870;">USDC · 0.2% fee</div>
             <div style="font-size:10px;color:#4a6490;">Net: $${cfFmtUsdc(netRaw)}</div>
           </div>
-          <!-- ✕ Local dismiss — does NOT touch on-chain state -->
+          <!-- ✕ Persistent hide — contract still exists on-chain, only hidden from view -->
           <button class="arc-dismiss-btn"
-            onclick="event.stopPropagation();arcAnimatedDismiss('cf-contract-${c.id}',function(){_cfDismiss.dismiss('${c.id}');cfRenderContracts(cfState.contracts,window.walletState?.address);})"
-            title="Hide from local view (contract still exists on-chain)">✕</button>
+            onclick="event.stopPropagation();arcAnimatedDismiss('cf-contract-${c.id}',function(){if(typeof arcHideContract==='function')arcHideContract('${c.id}');cfRenderContracts(cfState.contracts,window.walletState?.address);})"
+            title="Hide from view — on-chain contracts cannot be deleted, only hidden">✕</button>
         </div>
       </div>
 

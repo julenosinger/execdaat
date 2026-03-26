@@ -78,10 +78,13 @@ let msCurrentStep   = 1;
 let msValidatedRows = [];
 let msExecuting     = false; // guard against duplicate sends
 
-// ─── Local Dismiss state (MultiSend Receipts — isolated, cleared on Refresh) ──
-const _msDismiss = (typeof arcMakeDismissState === 'function')
-  ? arcMakeDismissState()
-  : { dismissed: new Set(), dismiss: id => { _msDismiss.dismissed.add(id); }, isVisible: id => !_msDismiss.dismissed.has(id), reset: () => _msDismiss.dismissed.clear() };
+// ─── Persistent Hide State (Multisend Receipts) ───────────────────────────────
+// Uses localStorage key 'hiddenMultisend' — survives page reload.
+const _msDismiss = {
+  isVisible: (id) => typeof arcIsVisibleMs === 'function' ? arcIsVisibleMs(id) : true,
+  dismiss:   (id) => typeof arcHideMs      === 'function' ? arcHideMs(id)      : undefined,
+  reset:     ()   => { /* no-op: persistent hide does NOT reset on reload */ },
+};
 
 // ─── Fee calculator ────────────────────────────────────────────────────────────
 function msCalcFee(total, count) {
@@ -1067,8 +1070,7 @@ const MS_HISTORY_KEY = 'arc_ms_history_v2';
 
 // Load receipts from localStorage on startup
 function msLoadPersistedReceipts() {
-  // Reset local dismiss state so dismissed receipts reappear after Refresh
-  _msDismiss.reset();
+  // NOTE: persistent hide — items stay hidden across reloads (user can unhide via 'Show Hidden')
   try {
     const stored = JSON.parse(localStorage.getItem(MS_HISTORY_KEY) || '[]');
     if (!Array.isArray(stored)) return;
@@ -1390,9 +1392,9 @@ function msRenderReceipts() {
             <div class="text-green-400 font-bold text-sm">$${r.totalAmount} USDC</div>
             <div class="text-gray-600 text-xs">${r.count} recipient${r.count !== 1 ? 's' : ''}</div>
           </div>
-          <!-- ✕ Local dismiss — does NOT delete from localStorage -->
+          <!-- ✕ Persistent hide — survives page reload, data is NOT deleted -->
           <button class="arc-dismiss-btn"
-            onclick="event.stopPropagation();arcAnimatedDismiss('ms-receipt-${r.id}',function(){_msDismiss.dismiss('${r.id}');msRenderReceipts();})"
+            onclick="event.stopPropagation();arcAnimatedDismiss('ms-receipt-${r.id}',function(){if(typeof arcHideMs==='function')arcHideMs('${r.id}');msRenderReceipts();})"
             title="Remove receipt from local view">✕</button>
         </div>
       </div>

@@ -1591,6 +1591,12 @@ app.get('/', (c) => {
                 <i class="fas fa-history" style="color:#378ADD;"></i> Transaction History
               </span>
               <div style="display:flex;align-items:center;gap:6px;">
+                <button onclick="typeof arcShowHiddenPayments==='function'&&arcShowHiddenPayments()"
+                  style="font-size:10px;color:#8aaac8;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.2);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+                  title="Show hidden transactions"
+                  onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.5)'" onmouseout="this.style.color='#8aaac8';this.style.borderColor='rgba(55,138,221,0.2)'">
+                  <i class="fas fa-eye" style="font-size:9px;"></i> Show Hidden
+                </button>
                 <button onclick="refreshPaymentBalances();renderPaymentHistory()"
                   style="font-size:10px;color:#8aaac8;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
                   onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.5)'" onmouseout="this.style.color='#8aaac8';this.style.borderColor='rgba(55,138,221,0.28)'">
@@ -1937,11 +1943,19 @@ app.get('/', (c) => {
               <i class="fas fa-file-contract" style="color:#60b4ff;font-size:14px;"></i>
               <span style="color:#dde2f0;font-size:14px;font-weight:700;">My Contracts</span>
             </div>
-            <button onclick="cfLoadContracts()"
-              style="font-size:11px;color:#60b4ff;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);padding:5px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;"
-              onmouseover="this.style.background='rgba(55,138,221,0.18)'" onmouseout="this.style.background='rgba(55,138,221,0.08)'">
-              <i class="fas fa-rotate" style="font-size:10px;"></i>Refresh
-            </button>
+            <div class="flex items-center gap-2">
+              <button onclick="typeof arcShowHiddenContracts==='function'&&arcShowHiddenContracts()"
+                style="font-size:11px;color:#8aaac8;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.18);padding:5px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;"
+                title="Show hidden contracts"
+                onmouseover="this.style.background='rgba(55,138,221,0.14)'" onmouseout="this.style.background='rgba(55,138,221,0.06)'">
+                <i class="fas fa-eye" style="font-size:10px;"></i>Show Hidden
+              </button>
+              <button onclick="cfLoadContracts()"
+                style="font-size:11px;color:#60b4ff;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);padding:5px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;"
+                onmouseover="this.style.background='rgba(55,138,221,0.18)'" onmouseout="this.style.background='rgba(55,138,221,0.08)'">
+                <i class="fas fa-rotate" style="font-size:10px;"></i>Refresh
+              </button>
+            </div>
           </div>
 
           <!-- Contracts list container -->
@@ -2229,6 +2243,11 @@ app.get('/', (c) => {
             </h3>
             <div class="flex items-center gap-2">
               <span class="text-xs text-gray-500" id="ms-receipts-count">0 receipts</span>
+              <button onclick="typeof arcShowHiddenMultisend==='function'&&arcShowHiddenMultisend()"
+                class="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-800/40 border border-gray-700/30 text-gray-400 hover:text-white rounded-xl transition"
+                title="Show hidden batch receipts">
+                <i class="fas fa-eye text-xs"></i>Show Hidden
+              </button>
               <button onclick="msOpenHybridHistory()"
                 class="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-cyan-900/20 border border-cyan-700/30 text-cyan-400 hover:text-cyan-300 rounded-xl transition font-semibold">
                 <i class="fas fa-history text-xs"></i>Full History
@@ -4048,6 +4067,7 @@ app.get('/', (c) => {
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
+  <script src="/static/hide-history.js?v=20250326a"></script>
   <script src="/static/permit2-chat.js?v=20250326a"></script>
   <script src="/static/chat.js?v=20250326a"></script>
   <script>

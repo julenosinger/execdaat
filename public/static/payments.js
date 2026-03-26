@@ -41,12 +41,16 @@ const payState = {
   schedTimerId: null,   // setInterval for polling scheduled jobs
 };
 
-// ─── Local Dismiss state (Payments tab — isolated, cleared on Refresh) ────────
-const _payDismiss = (typeof arcMakeDismissState === 'function')
-  ? arcMakeDismissState()
-  : { dismissed: new Set(), dismiss: id => { _payDismiss.dismissed.add(id); }, isVisible: id => !_payDismiss.dismissed.has(id), reset: () => _payDismiss.dismissed.clear() };
-// Expose reset so payLoadLocalHistory / payInit can call it on Refresh
-window._payDismissReset = () => _payDismiss.reset();
+// ─── Persistent Hide State (Payments) ──────────────────────────────────────────
+// Uses localStorage key 'hiddenPayments' — survives page reload.
+// Falls back gracefully if hide-history.js not yet loaded.
+const _payDismiss = {
+  isVisible: (id) => typeof arcIsVisiblePay === 'function' ? arcIsVisiblePay(id) : true,
+  dismiss:   (id) => typeof arcHidePay      === 'function' ? arcHidePay(id)      : undefined,
+  reset:     ()   => { /* no-op: persistent hide does NOT reset on reload */ },
+};
+// Legacy compat (no-op reset)
+window._payDismissReset = () => { /* persistent — no reset */ };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function payEl(id)       { return document.getElementById(id); }
@@ -1262,8 +1266,10 @@ function renderPaymentHistory() {
       : '';
     const viewBtn = `<button onclick="(typeof arcViewPaymentReceipt==='function'?arcViewPaymentReceipt:payOpenReceiptModal)(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Open Receipt" style="background:rgba(29,158,117,0.07);border:1px solid rgba(29,158,117,0.22);border-radius:6px;color:#34d399;font-size:10px;padding:2px 7px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(29,158,117,0.15)'" onmouseout="this.style.background='rgba(29,158,117,0.07)'"><i class="fas fa-eye"></i></button>`;
 
-    // ── Dismiss button — local only, no RPC ──────────────────────────────────
-    const dismissBtn = uid ? `<button class="arc-dismiss-btn" onclick="event.stopPropagation();arcAnimatedDismiss('pay-tx-${uid}',function(){_payDismiss.dismiss('${uid}');renderPaymentHistory();})" title="Remove from local view">✕</button>` : '';
+    // ── Hide button — persistent, survives reload ────────────────────────────
+    const dismissBtn = uid
+      ? `<button class="arc-dismiss-btn" onclick="event.stopPropagation();arcAnimatedDismiss('pay-tx-${uid}',function(){if(typeof arcHidePay==='function')arcHidePay('${uid}');renderPaymentHistory();})" title="Hide from view — on-chain transactions cannot be deleted, only hidden">✕</button>`
+      : '';
 
     return `
     <div id="pay-tx-${uid}" style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.14);border-radius:10px;padding:10px 12px;transition:border-color 0.2s;max-height:200px;"
@@ -1296,8 +1302,7 @@ async function payLoadLocalHistory() {
   const wallet = window.walletState?.address;
   const walletKey = wallet ? wallet.toLowerCase() : null;
 
-  // Reset local dismiss state on every Refresh so items reappear
-  _payDismiss.reset();
+  // NOTE: persistent hide — items stay hidden across reloads (user can unhide via 'Show Hidden')
 
   console.log('[PAY:history] Loading history for wallet:', walletKey || 'NONE');
 
