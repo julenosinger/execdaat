@@ -299,13 +299,13 @@ function toggleChat() {
     if (fabLbl)  { fabLbl.classList.remove('hidden'); fabLbl.textContent = 'Ask me'; }
     // Reset width expand state on close
     chatWidthExpanded = false;
+    const _ov1 = document.getElementById('chat-expand-override');
+    if (_ov1) _ov1.textContent = '';
     const widget2 = document.getElementById('chat-widget');
     if (widget2) widget2.classList.remove('chat-width-expanded');
     const wBtn = document.getElementById('chat-width-toggle-btn');
     if (wBtn) {
       wBtn.classList.remove('expanded');
-      wBtn.style.left = 'auto';
-      wBtn.style.right = '20px';
       wBtn.innerHTML = '<i class="fas fa-arrows-alt-h"></i>';
     }
   }
@@ -315,6 +315,8 @@ function toggleChat() {
 function setChatSize(size) {
   // Reset width-expand toggle whenever a preset is chosen
   chatWidthExpanded = false;
+  const _ov2 = document.getElementById('chat-expand-override');
+  if (_ov2) _ov2.textContent = '';
   const widget3 = document.getElementById('chat-widget');
   if (widget3) {
     widget3.classList.remove('chat-width-expanded');
@@ -373,19 +375,28 @@ function toggleChatWidth() {
 
   chatWidthExpanded = !chatWidthExpanded;
 
-  // Garantir transição suave apenas na largura
-  widget.style.transition = 'width 0.35s cubic-bezier(.4,0,.2,1), height 0.3s ease, opacity 0.25s ease, transform 0.25s ease';
+  // Remover regra anterior se existir
+  let styleTag = document.getElementById('chat-expand-override');
+  if (!styleTag) {
+    styleTag = document.createElement('style');
+    styleTag.id = 'chat-expand-override';
+    document.head.appendChild(styleTag);
+  }
 
   if (chatWidthExpanded) {
-    // Largura expandida: mínimo 650px, máximo 92vw
-    const vw       = window.innerWidth;
-    const expanded = Math.min(650, Math.floor(vw * 0.92));
+    const vw = window.innerWidth;
+    const targetW = Math.min(650, Math.floor(vw * 0.92));
 
-    widget.style.width    = expanded + 'px';
-    widget.style.maxWidth = Math.floor(vw * 0.92) + 'px';
-    // Manter ancorado na direita (right:20px) — expande naturalmente para esquerda
-    widget.style.right  = '20px';
-    widget.style.left   = 'auto';
+    // CSS com !important sobrescreve tudo — ancorado na direita, expande para esquerda
+    styleTag.textContent = `
+      #chat-widget {
+        width: ${targetW}px !important;
+        max-width: ${targetW}px !important;
+        right: 20px !important;
+        left: auto !important;
+        transition: width 0.35s cubic-bezier(.4,0,.2,1) !important;
+      }
+    `;
 
     widget.classList.add('chat-width-expanded');
     if (btn) {
@@ -395,7 +406,14 @@ function toggleChatWidth() {
     }
 
   } else {
-    // Restaurar largura do preset atual
+    // Limpar override — volta ao comportamento padrão do preset
+    styleTag.textContent = `
+      #chat-widget {
+        transition: width 0.35s cubic-bezier(.4,0,.2,1) !important;
+      }
+    `;
+
+    // Restaurar preset via applyChatSize
     const cfg = CHAT_SIZES[chatSize] || CHAT_SIZES.medium;
     widget.style.width    = cfg.width;
     widget.style.maxWidth = 'calc(100vw - 16px)';
