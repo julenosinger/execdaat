@@ -378,7 +378,7 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20250323e" rel="stylesheet">
+  <link href="/static/styles.css?v=20250326c" rel="stylesheet">
   <script src="/static/i18n.js?v=20250322"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
@@ -4079,7 +4079,7 @@ app.get('/', (c) => {
   <script src="/static/user-profile.js?v=20250326b"></script>
   <script src="/static/smart-autofill.js?v=20250326b"></script>
   <script src="/static/permit2-chat.js?v=20250326a"></script>
-  <script src="/static/chat.js?v=20250326b"></script>
+  <script src="/static/chat.js?v=20250326c"></script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
     function cfUpdateModeUI(mode) {
