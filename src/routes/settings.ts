@@ -258,15 +258,30 @@ router.post('/circle/test', async (c) => {
       ? 'https://api.circle.com/v1'
       : 'https://api-sandbox.circle.com/v1'
 
-    // Teste real: GET /ping
-    const response = await fetch(`${baseUrl}/ping`, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    })
+    // Teste real: GET /v1/w3s/config/entity (endpoint válido para W3S API)
+    // Também tenta /v1/configuration para Circle Mint/Payments API
+    let response: Response | null = null
+    let data: any = {}
+    let usedEndpoint = ''
 
-    const data = await response.json().catch(() => ({}))
+    // Primeiro tenta W3S API (retorna appId se válido)
+    const w3sUrl = `${baseUrl}/w3s/config/entity`
+    const w3sResp = await fetch(w3sUrl, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    })
+    if (w3sResp.ok) {
+      response = w3sResp
+      data = await w3sResp.json().catch(() => ({}))
+      usedEndpoint = 'w3s/config/entity'
+    } else {
+      // Fallback: tenta /v1/configuration (Circle Mint)
+      const cfgResp = await fetch(`${baseUrl}/configuration`, {
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      })
+      data = await cfgResp.json().catch(() => ({}))
+      usedEndpoint = 'configuration'
+      response = cfgResp
+    }
 
     if (response.ok) {
       settingsStore.circle.isConnected = true
@@ -278,6 +293,7 @@ router.post('/circle/test', async (c) => {
         message: 'Circle API connected successfully',
         environment,
         keySource: fromEnv ? 'cloudflare_secret' : 'in_memory',
+        endpoint: usedEndpoint,
         data,
       })
     } else if (response.status === 401) {
@@ -308,9 +324,15 @@ router.get('/circle/balance', async (c) => {
       ? 'https://api.circle.com/v1'
       : 'https://api-sandbox.circle.com/v1'
 
-    const res = await fetch(`${baseUrl}/businessAccount/balances`, {
+    // Tenta W3S wallets primeiro, fallback para businessAccount/balances
+    let res = await fetch(`${baseUrl}/w3s/wallets?pageSize=5`, {
       headers: { 'Authorization': `Bearer ${apiKey}` },
     })
+    if (!res.ok && res.status === 404) {
+      res = await fetch(`${baseUrl}/businessAccount/balances`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      })
+    }
     const data = await res.json()
     return c.json({ success: res.ok, data, status: res.status, keySource: fromEnv ? 'cloudflare_secret' : 'in_memory' })
   } catch (err: any) {
