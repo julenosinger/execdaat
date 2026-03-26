@@ -1024,6 +1024,35 @@ async function handleLocalCommand(msg) {
     await cmdShowDashboard(); return true;
   }
 
+  // ── Profile commands ──────────────────────────────────────────────────────
+  if (/^(my profile|edit profile|meu perfil|editar perfil|profile)$/i.test(lower)) {
+    await cmdShowProfile(); return true;
+  }
+  if (/^(my email|meu email|use my email|usar meu email|default email)$/i.test(lower)) {
+    await cmdUseMyEmail(); return true;
+  }
+  if (/^(last address|último endereço|ultimo endereco|recent address|use last address)$/i.test(lower)) {
+    await cmdUseLastAddress(); return true;
+  }
+  if (/^(recent amounts?|recent values?|valores recentes|últimos valores)$/i.test(lower)) {
+    await cmdShowRecentAmounts(); return true;
+  }
+  if (/^(clear profile|limpar perfil|clear saved data|limpar dados)$/i.test(lower)) {
+    await cmdClearProfile(); return true;
+  }
+  // "send X USDC to last" — resolve last address from profile
+  const sendLastMatch = msg.match(/^(?:send|pay|enviar|pagar)\s+([\d.]+)\s*(usdc|eurc)?\s+(?:to|para)\s+(?:last|último|ultimo|recent|last address)/i);
+  if (sendLastMatch) {
+    const lastAddr = typeof getLastAddress === 'function' ? getLastAddress() : null;
+    if (lastAddr) {
+      await cmdSendPayment(sendLastMatch[1], (sendLastMatch[2] || 'USDC').toUpperCase(), lastAddr.addr);
+    } else {
+      hideTypingIndicator();
+      appendChatMessage('assistant', '⚠️ No saved address found. Use `send X USDC to 0x...` with a full address first.', 'payments');
+    }
+    return true;
+  }
+
   // ── Send/Pay command: "send X USDC to 0x…" ───────────────────────────────
   const sendMatch = msg.match(/^(?:send|pay|enviar|pagar)\s+([\d.]+)\s*(usdc|eurc)?\s+(?:to|para)\s+(0x[0-9a-fA-F]{40})/i);
   if (sendMatch) {
@@ -1093,7 +1122,116 @@ async function handleLocalCommand(msg) {
   return false; // Let AI handle
 }
 
-// ── Command implementations ────────────────────────────────────────────────────
+// ── Profile command implementations ────────────────────────────────────────────
+
+async function cmdShowProfile() {
+  hideTypingIndicator();
+  const profile  = typeof getUserProfile      === 'function' ? getUserProfile()      : {};
+  const prefs    = typeof getUserPreferences  === 'function' ? getUserPreferences()  : {};
+  const addrs    = typeof getRecentAddresses  === 'function' ? getRecentAddresses()  : [];
+  const amounts  = typeof getRecentAmounts    === 'function' ? getRecentAmounts()    : [];
+  const emails   = typeof getRecentEmails     === 'function' ? getRecentEmails()     : [];
+  const score    = typeof getProfileScore     === 'function' ? getProfileScore()     : 0;
+
+  const shortAddr = (a) => a ? a.slice(0,8)+'…'+a.slice(-6) : '—';
+
+  let msg = `👤 **Your Saved Profile**\n\n`;
+  msg += `**Identity**\n`;
+  msg += `- Name: ${profile.name  || '_(not set)_'}\n`;
+  msg += `- Email: ${profile.email || '_(not set)_'}\n`;
+  msg += `- Wallet: ${profile.wallet ? shortAddr(profile.wallet) : '_(not connected)_'}\n\n`;
+
+  if (addrs.length) {
+    msg += `**📋 Recent Recipients** (${addrs.length})\n`;
+    addrs.slice(0,5).forEach(a => {
+      msg += `- ${a.label ? a.label+' · ' : ''}${shortAddr(a.addr)} _(${a.count}x used)_\n`;
+    });
+    msg += '\n';
+  }
+  if (amounts.length) {
+    msg += `**💰 Recent Amounts** (${amounts.length})\n`;
+    amounts.slice(0,5).forEach(a => { msg += `- ${a.value} ${a.token}\n`; });
+    msg += '\n';
+  }
+  if (emails.length) {
+    msg += `**✉️ Recent Emails** (${emails.length})\n`;
+    emails.slice(0,4).forEach(e => { msg += `- ${e.email}\n`; });
+    msg += '\n';
+  }
+
+  msg += `**Profile completeness:** ${score}%\n`;
+  msg += `\n_Type_ \`edit profile\` _to update your name/email or_ \`clear profile\` _to reset._`;
+
+  appendChatMessage('assistant', msg, 'general');
+  createActionCard([
+    { label: '✏️ Edit Profile', onclick: 'arcOpenProfileModal && arcOpenProfileModal()' },
+    { label: '🗑 Clear Data',   onclick: 'cmdClearProfile && cmdClearProfile()' },
+  ]);
+}
+
+async function cmdUseMyEmail() {
+  hideTypingIndicator();
+  const profile = typeof getUserProfile === 'function' ? getUserProfile() : {};
+  if (!profile.email) {
+    appendChatMessage('assistant',
+      '⚠️ No default email saved yet. Open **Edit Profile** to set your email.',
+      'general');
+    createActionCard([{ label: '✏️ Edit Profile', onclick: 'arcOpenProfileModal && arcOpenProfileModal()' }]);
+    return;
+  }
+  // Pre-fill payment email
+  const emailEl = document.getElementById('pay-email');
+  if (emailEl) { emailEl.value = profile.email; emailEl.dispatchEvent(new Event('input')); }
+  appendChatMessage('assistant',
+    `✅ Email **${profile.email}** applied to the Payments form.`,
+    'payments');
+  createActionCard([{ label: '💳 Go to Payments', onclick: "switchTab('payments');toggleChat()" }]);
+}
+
+async function cmdUseLastAddress() {
+  hideTypingIndicator();
+  const last = typeof getLastAddress === 'function' ? getLastAddress() : null;
+  if (!last) {
+    appendChatMessage('assistant',
+      '⚠️ No recent address saved. Send a payment first to save a recipient address.',
+      'payments');
+    return;
+  }
+  const recipEl = document.getElementById('pay-recipient');
+  if (recipEl) { recipEl.value = last.addr; recipEl.dispatchEvent(new Event('input')); }
+  if (typeof payValidateField === 'function') payValidateField('recipient');
+  if (typeof updatePayPreview === 'function') updatePayPreview();
+
+  const short = last.addr.slice(0,8)+'…'+last.addr.slice(-6);
+  appendChatMessage('assistant',
+    `✅ Last used address **${last.label || short}** applied to Recipient field.`,
+    'payments');
+  createActionCard([{ label: '💳 Go to Payments', onclick: "switchTab('payments');toggleChat()" }]);
+}
+
+async function cmdShowRecentAmounts() {
+  hideTypingIndicator();
+  const amounts = typeof getRecentAmounts === 'function' ? getRecentAmounts() : [];
+  if (!amounts.length) {
+    appendChatMessage('assistant', '⚠️ No recent amounts saved yet.', 'payments');
+    return;
+  }
+  let msg = `💰 **Recent Amounts Used**\n\n`;
+  amounts.forEach((a, i) => {
+    msg += `${i+1}. **${a.value} ${a.token}** _(${a.count}x used)_\n`;
+  });
+  msg += `\n_Click a chip in the Payments form to auto-fill._`;
+  appendChatMessage('assistant', msg, 'payments');
+}
+
+async function cmdClearProfile() {
+  hideTypingIndicator();
+  if (!confirm('Clear all saved profile data (addresses, emails, amounts)? This cannot be undone.')) return;
+  if (typeof clearAllProfileData === 'function') clearAllProfileData();
+  appendChatMessage('assistant', '🗑 All saved profile data has been cleared.', 'general');
+}
+
+// ── cmd implementations ─────────────────────────────────────────────────────────
 
 async function cmdHelp() {
   hideTypingIndicator();
@@ -1103,6 +1241,7 @@ async function cmdHelp() {
     `${active ? '✅ ArcPay Agent Active' : '⚠️ ArcPay not authorized — some commands need authorization'}\n\n` +
     `**💳 Payments**\n` +
     `- \`send 10 USDC to 0x...\`\n` +
+    `- \`send 10 USDC to last\` — use last recipient\n` +
     `- \`pay 0xA:10, 0xB:20\` (batch)\n\n` +
     `**🔄 Swap**\n` +
     `- \`swap 5 USDC to EURC\`\n\n` +
@@ -1118,6 +1257,13 @@ async function cmdHelp() {
     `- \`show my permissions\` — list active permits\n` +
     `- \`revoke USDC permit\` — revoke specific permit\n` +
     `- \`revoke all permits\` — remove all permits\n\n` +
+    `**👤 Profile & Smart Fill**\n` +
+    `- \`my profile\` — view saved name, email & addresses\n` +
+    `- \`edit profile\` — update name/email & preferences\n` +
+    `- \`my email\` — pre-fill email in Payments form\n` +
+    `- \`last address\` — pre-fill last recipient in Payments\n` +
+    `- \`recent amounts\` — show saved amounts\n` +
+    `- \`clear profile\` — erase all saved data\n\n` +
     `**📊 Info**\n` +
     `- \`my wallet\` — balance & status\n` +
     `- \`network status\` — RPC & block\n` +

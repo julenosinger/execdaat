@@ -873,6 +873,9 @@ async function executePayment() {
 
     showToast('📅 Payment scheduled for ' + target.toLocaleString(), 'success');
 
+    // ── Capture data for smart autofill ───────────────────────────────────────
+    if (typeof arcCapturePayData === 'function') arcCapturePayData();
+
     // Clear form
     payResetForm();
     return;
@@ -912,6 +915,9 @@ async function executePayment() {
     if (typeof arcSavePaymentReceipt === 'function') {
       arcSavePaymentReceipt(receiptData).catch(() => {});
     }
+
+    // ── Capture data for smart autofill ───────────────────────────────────────
+    if (typeof arcCapturePayData === 'function') arcCapturePayData();
 
     // Clear form
     payResetForm();
@@ -1451,10 +1457,15 @@ async function initPayments() {
   try {
     await payLoadLocalHistory();
     console.log('[PAY:init] History loaded:', payState.history.length, 'records');
+    // Dispatch event so smart-autofill can learn from existing history
+    window.dispatchEvent(new CustomEvent('arcPayHistoryLoaded', { detail: { items: payState.history } }));
   } catch (e) {
     console.error('[PAY:init] History load error (non-fatal):', e.message);
     payState.history = [];
   }
+
+  // Init smart autofill for Payments tab
+  if (typeof arcInitPayAutofill === 'function') setTimeout(arcInitPayAutofill, 300);
 
   payInitTimezones();
   selectPayToken(payState.token || 'USDC');

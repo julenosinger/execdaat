@@ -1357,6 +1357,9 @@ app.get('/', (c) => {
                 <p style="color:#fca5a5;font-size:11px;margin:0;">Never enter private keys or seed phrases. All interactions use wallet approval only.</p>
               </div>
 
+              <!-- Smart Autofill Profile Bar -->
+              <div id="pay-form-top"></div>
+
               <div class="space-y-3">
 
                 <!-- Name + Email row -->
@@ -1793,6 +1796,9 @@ app.get('/', (c) => {
                 <i class="fas fa-shield-alt" style="color:#f87171;font-size:11px;flex-shrink:0;margin-top:1px;"></i>
                 <p style="color:#fca5a5;font-size:11px;margin:0;">Never enter private key or seed phrase. All interactions use wallet approval only.</p>
               </div>
+
+              <!-- Smart Autofill Profile Bar (Contracts) -->
+              <div id="cf-form-top"></div>
 
               <div class="space-y-3">
                 <!-- Title -->
@@ -4068,8 +4074,10 @@ app.get('/', (c) => {
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
   <script src="/static/hide-history.js?v=20250326a"></script>
+  <script src="/static/user-profile.js?v=20250326b"></script>
+  <script src="/static/smart-autofill.js?v=20250326b"></script>
   <script src="/static/permit2-chat.js?v=20250326a"></script>
-  <script src="/static/chat.js?v=20250326a"></script>
+  <script src="/static/chat.js?v=20250326b"></script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
     function cfUpdateModeUI(mode) {

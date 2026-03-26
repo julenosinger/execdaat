@@ -87,8 +87,14 @@ function switchTab(tab) {
         if (window.refreshPaymentBalances) window.refreshPaymentBalances().catch(() => {});
         if (window.renderPaymentHistory) window.renderPaymentHistory();
       }
+      // Smart autofill
+      if (typeof arcInitPayAutofill === 'function') setTimeout(arcInitPayAutofill, 400);
     }
-    if (tab === 'contracts') { cfWalletGateUpdate(); cfLoadContracts(); }
+    if (tab === 'contracts') {
+      cfWalletGateUpdate(); cfLoadContracts();
+      // Smart autofill
+      if (typeof arcInitCfAutofill === 'function') setTimeout(arcInitCfAutofill, 600);
+    }
     if (tab === 'multisend') {
       if (window.msInit) window.msInit();
       const gate = document.getElementById('ms-wallet-gate');

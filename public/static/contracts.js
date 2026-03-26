@@ -660,6 +660,10 @@ async function cfLoadContracts(opts = {}) {
     cfRenderContracts(merged, address);
     cfRenderSummary(merged, address);
     cfLog(`━━━ cfLoadContracts DONE: ${contracts.length} on-chain + ${offchain.length} off-chain ━━━`);
+    // Dispatch event so smart-autofill can learn from contract history
+    window.dispatchEvent(new CustomEvent('arcContractHistoryLoaded', { detail: { contracts: merged } }));
+    // Init smart autofill
+    if (typeof arcInitCfAutofill === 'function') setTimeout(arcInitCfAutofill, 300);
 
     // ── 8. Persist to IndexedDB (non-blocking) ────────────────────────────────
     if (typeof arcSave === 'function') {
@@ -3033,6 +3037,9 @@ async function cfCreateContract() {
     showToast(`✅ Contrato${newId!==null?` #${newId}`:''} criado on-chain! Fee: $${cfFmtUsdc(feeRaw)} · Net: $${cfFmtUsdc(netRaw)} · <a href="${arcScanLink}" target="_blank" class="underline">ArcScan ↗</a>`, 'success');
     cfShowTxBadge(receipt.hash, `Contract #${newId !== null ? newId : 'new'} created!`);
 
+    // ─── Capture data for smart autofill (on-chain path) ───────────────────────
+    if (typeof arcCaptureCfData === 'function') arcCaptureCfData();
+
     // ─── Reset form ─────────────────────────────────────────────────────────────
     cfEl('cf-title').value = '';
     cfEl('cf-contractor').value = '';
@@ -3140,6 +3147,8 @@ function cfWalletGateUpdate() {
 window.addEventListener('walletConnected', () => {
   cfLog('walletConnected event → loading contracts');
   cfLoadContracts({ force: true });
+  // Init smart autofill for Contracts tab
+  setTimeout(() => { if (typeof arcInitCfAutofill === 'function') arcInitCfAutofill(); }, 800);
 });
 window.addEventListener('walletDisconnected', () => {
   cfLog('walletDisconnected event');
