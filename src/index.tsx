@@ -12,7 +12,15 @@ import dexRouter from './routes/dex'
 import { ARC_TESTNET } from './types/arc'
 import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 
-const app = new Hono()
+const app = new Hono<{
+  Bindings: {
+    OPENAI_API_KEY?: string;
+    OPENAI_BASE_URL?: string;
+    CIRCLE_API_KEY?: string;
+    CIRCLE_ENVIRONMENT?: string;
+    CIRCLE_WEBHOOK_SECRET?: string;
+  }
+}>()
 
 // ─── Security Middleware (first — runs before everything) ─────────────────────
 app.use('*', securityMiddleware)
@@ -4077,9 +4085,9 @@ app.get('/', (c) => {
   <script src="/static/dashboard.js?v=20250322"></script>
   <script src="/static/hide-history.js?v=20250326a"></script>
   <script src="/static/user-profile.js?v=20250326d"></script>
-  <script src="/static/smart-autofill.js?v=20250326e"></script>
+  <script src="/static/smart-autofill.js?v=20260327a"></script>
   <script src="/static/permit2-chat.js?v=20250326a"></script>
-  <script src="/static/chat.js?v=20250326c"></script>
+  <script src="/static/chat.js?v=20250326f"></script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
     function cfUpdateModeUI(mode) {

@@ -188,13 +188,18 @@
     const chip = document.createElement('span');
     chip.className = 'arc-af-chip ' + extraClass;
     chip.title = text;
-    chip.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">${escHtml(text)}</span>
-      <span class="arc-af-remove" title="Remove" onclick="event.stopPropagation();">✕</span>`;
-    chip.querySelector('.arc-af-remove').addEventListener('click', (e) => {
-      e.stopPropagation();
-      onRemoveFn && onRemoveFn();
-      chip.remove();
-    });
+    // Only show remove button when a remove callback is provided
+    const removeBtn = onRemoveFn
+      ? `<span class="arc-af-remove" title="Remove" onclick="event.stopPropagation();">✕</span>`
+      : '';
+    chip.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">${escHtml(text)}</span>${removeBtn}`;
+    if (onRemoveFn) {
+      chip.querySelector('.arc-af-remove').addEventListener('click', (e) => {
+        e.stopPropagation();
+        onRemoveFn();
+        chip.remove();
+      });
+    }
     chip.addEventListener('click', onClickFn);
     return chip;
   }
@@ -252,15 +257,24 @@
     insertAfterField('pay-recipient', box);
   }
 
-  // ─── PAYMENTS: Amount suggestions ────────────────────────────────────────────
-  function buildPayAmountSuggestions() {
-    const amounts = typeof getRecentAmounts === 'function' ? getRecentAmounts() : [];
-    if (!amounts.length) return;
+  // ─── PAYMENTS: Amount suggestions (preset quick-pick values) ────────────────
+  // Shows fixed preset values — never fake/historical data from localStorage
+  const PAY_PRESET_AMOUNTS = [
+    { value: '10',   token: 'USDC' },
+    { value: '25',   token: 'USDC' },
+    { value: '50',   token: 'USDC' },
+    { value: '100',  token: 'USDC' },
+    { value: '250',  token: 'USDC' },
+    { value: '500',  token: 'USDC' },
+    { value: '1000', token: 'USDC' }
+  ];
 
+  function buildPayAmountSuggestions() {
+    // Build from preset list — always deterministic, never stale localStorage data
     const box = makeSuggestBox('arc-af-pay-amts', 'Payment Values', 'fa-coins');
     const chipsRow = box.querySelector('#arc-af-pay-amts-chips');
 
-    amounts.forEach(item => {
+    PAY_PRESET_AMOUNTS.forEach(item => {
       const chip = makeChip(`${item.value} ${item.token}`,
         () => {
           const inp = el('pay-amount');
@@ -269,9 +283,7 @@
           if (typeof updatePayPreview === 'function') updatePayPreview();
           if (typeof payValidateForm === 'function') payValidateForm();
         },
-        () => {
-          if (typeof removeRecentAmount === 'function') removeRecentAmount(item.value, item.token);
-        },
+        null, // preset chips cannot be removed
         'arc-af-amount'
       );
       chipsRow.appendChild(chip);
@@ -334,16 +346,23 @@
     insertAfterField('cf-contractor', box);
   }
 
-  // ─── CONTRACTS: Amount suggestions ───────────────────────────────────────────
-  function buildCfAmountSuggestions() {
-    const amounts = typeof getRecentAmounts === 'function' ?
-      getRecentAmounts().filter(a => a.token === 'USDC') : [];
-    if (!amounts.length) return;
+  // ─── CONTRACTS: Amount suggestions (preset quick-pick values) ───────────────
+  // Shows fixed preset values — never fake/historical data from localStorage
+  const CF_PRESET_AMOUNTS = [
+    { value: '100',  token: 'USDC' },
+    { value: '250',  token: 'USDC' },
+    { value: '500',  token: 'USDC' },
+    { value: '1000', token: 'USDC' },
+    { value: '2500', token: 'USDC' },
+    { value: '5000', token: 'USDC' }
+  ];
 
+  function buildCfAmountSuggestions() {
+    // Build from preset list — always deterministic, never stale localStorage data
     const box = makeSuggestBox('arc-af-cf-amts', 'Contract Values', 'fa-coins');
     const chipsRow = box.querySelector('#arc-af-cf-amts-chips');
 
-    amounts.forEach(item => {
+    CF_PRESET_AMOUNTS.forEach(item => {
       const chip = makeChip(`${item.value} USDC`,
         () => {
           const inp = el('cf-value');
@@ -354,9 +373,7 @@
             if (typeof cfUpdateFeePreview === 'function') cfUpdateFeePreview();
           }
         },
-        () => {
-          if (typeof removeRecentAmount === 'function') removeRecentAmount(item.value, 'USDC');
-        },
+        null, // preset chips cannot be removed
         'arc-af-amount'
       );
       chipsRow.appendChild(chip);
