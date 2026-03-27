@@ -1,5 +1,5 @@
 // ============================================================
-// ARC AI Agents — Excel Batch Payment Module
+// ExecDaat — Excel Batch Payment Module
 // Depende de SheetJS (XLSX) carregado antes deste script
 // ============================================================
 

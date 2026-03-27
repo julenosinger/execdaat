@@ -1,6 +1,6 @@
 // ============================================================
 // HIDE-HISTORY.JS — Persistent "Hide from View" System
-// ARC AI Agents · Payments · Contracts · Multisend
+// ExecDaat · Payments · Contracts · Multisend
 //
 // Replaces the in-memory arcMakeDismissState with a localStorage-
 // backed system so hidden items stay hidden across page reloads.

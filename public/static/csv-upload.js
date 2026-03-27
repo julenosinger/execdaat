@@ -1,6 +1,6 @@
 // ============================================================
 // CSV BATCH UPLOAD + MULTI-SEND MODULE
-// ARC AI Agents — parser RFC-4180 puro (sem dependências)
+// ExecDaat — parser RFC-4180 puro (sem dependências)
 // ============================================================
 
 // ── Constantes ────────────────────────────────────────────

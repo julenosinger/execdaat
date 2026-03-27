@@ -1,4 +1,4 @@
-// ARC AI Agents - Frontend Application
+// ExecDaat - Frontend Application
 // Pagamentos e Contratos Autônomos na Arc Testnet
 
 const API = {
@@ -764,7 +764,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentTab === 'history' && window.historyRefresh) window.historyRefresh();
   }, 30000);
   
-  addLog('[SYSTEM] ARC AI Agents interface loaded', 'system');
+  addLog('[SYSTEM] ExecDaat interface loaded', 'system');
   addLog('[NETWORK] Arc Testnet - Chain ID: 5042002 - USDC Gas', 'info');
 
   // ============================================================

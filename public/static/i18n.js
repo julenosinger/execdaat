@@ -1,5 +1,5 @@
 // ============================================================
-// ARC AI Agents — Internationalization (i18n)
+// ExecDaat — Internationalization (i18n)
 // Supported: en (default), pt, es, zh, ko
 // Usage: t('key') → translated string
 //        applyTranslations() → apply data-i18n to DOM
@@ -12,7 +12,7 @@ const TRANSLATIONS = {
   // ══════════════════════════════════════════════
   en: {
     // App
-    app_name: 'ARC AI Agents',
+    app_name: 'ExecDaat',
     app_subtitle: 'Autonomous Payments & Contracts',
     lang_label: 'Language',
 
@@ -439,7 +439,7 @@ const TRANSLATIONS = {
   // PORTUGUESE
   // ══════════════════════════════════════════════
   pt: {
-    app_name: 'ARC AI Agents',
+    app_name: 'ExecDaat',
     app_subtitle: 'Pagamentos & Contratos Autônomos',
     lang_label: 'Idioma',
     btn_connect: 'Conectar',
@@ -841,7 +841,7 @@ const TRANSLATIONS = {
   },
   // ══════════════════════════════════════════════
   es: {
-    app_name: 'ARC AI Agents',
+    app_name: 'ExecDaat',
     app_subtitle: 'Pagos y Contratos Autónomos',
     lang_label: 'Idioma',
     btn_connect: 'Conectar',

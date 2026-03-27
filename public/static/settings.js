@@ -1,5 +1,5 @@
 // ============================================================
-// ARC AI Agents — Settings & Profile Module
+// ExecDaat — Settings & Profile Module
 // Manages: PIN gate, Settings modal, Profile modal
 // ============================================================
 

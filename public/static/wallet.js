@@ -1,5 +1,5 @@
 // ============================================================
-// ARC AI Agents - EVM Wallet Connection
+// ExecDaat - EVM Wallet Connection
 // Suporta MetaMask, Coinbase Wallet, Rabby, Brave Wallet,
 // e qualquer injetor EIP-1193 (window.ethereum)
 // Compatível com EIP-6963 (múltiplos provedores)

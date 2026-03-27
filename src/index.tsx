@@ -119,7 +119,7 @@ const LEGAL_STYLE = `
     a{color:#818cf8;text-decoration:none}a:hover{text-decoration:underline}
     .badge{display:inline-flex;align-items:center;gap:6px;background:#451a03;border:1px solid #92400e;color:#fcd34d;padding:6px 14px;border-radius:999px;font-size:.8rem;font-weight:600;margin-bottom:24px}
     .nav{background:#111827;border-bottom:1px solid #1f2937;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
-    .nav-brand{color:#fff;font-weight:700;font-size:.95rem;text-decoration:none;display:flex;align-items:center;gap:8px}
+    .nav-brand{color:#fff;font-weight:800;font-size:1rem;text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:.04em;font-family:'Inter',system-ui,sans-serif}
     .nav-links{display:flex;gap:20px}
     .nav-links a{color:#6b7280;font-size:.85rem}
     footer{border-top:1px solid #1f2937;padding:20px 24px;text-align:center;color:#4b5563;font-size:.8rem}
@@ -128,7 +128,7 @@ const LEGAL_STYLE = `
 
 const LEGAL_NAV = `
   <nav class="nav">
-    <a href="/" class="nav-brand">⚡ ARC AI Agents</a>
+    <a href="/" class="nav-brand"><span style="background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:900;letter-spacing:.06em">ExecDaat</span></a>
     <div class="nav-links">
       <a href="/about">About</a>
       <a href="/privacy-policy">Privacy</a>
@@ -136,14 +136,14 @@ const LEGAL_NAV = `
     </div>
   </nav>
 `;
-const LEGAL_FOOTER = `<footer>© 2025 ARC AI Agents — Open Source · MIT License · <a href="https://github.com/julenosinger/Agentes-de-IA">GitHub</a></footer>`;
+const LEGAL_FOOTER = `<footer>© 2025 ExecDaat — Open Source · MIT License · <a href="https://github.com/julenosinger/Agentes-de-IA">GitHub</a></footer>`;
 
-app.get('/about', (c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>About — ARC AI Agents</title>${LEGAL_STYLE}</head><body>
+app.get('/about', (c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>About — ExecDaat</title>${LEGAL_STYLE}</head><body>
 ${LEGAL_NAV}
 <div class="wrap">
   <div class="badge">🧪 Testnet Application</div>
-  <h1>About ARC AI Agents</h1>
-  <p>ARC AI Agents is an <strong style="color:#fff">open-source, non-custodial testnet dApp</strong> built on <a href="https://arc.network" target="_blank">Arc Network</a>. It is designed for developers and users to explore autonomous Web3 interactions in a safe testnet environment.</p>
+  <h1>About ExecDaat</h1>
+  <p>ExecDaat is an <strong style="color:#fff">open-source, non-custodial testnet dApp</strong> built on <a href="https://arc.network" target="_blank">Arc Network</a>. It is designed for developers and users to explore autonomous Web3 interactions in a safe testnet environment.</p>
 
   <h2>What This App Does</h2>
   <ul>
@@ -185,13 +185,13 @@ ${LEGAL_NAV}
 ${LEGAL_FOOTER}
 </body></html>`));
 
-app.get('/privacy-policy', (c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy Policy — ARC AI Agents</title>${LEGAL_STYLE}</head><body>
+app.get('/privacy-policy', (c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy Policy — ExecDaat</title>${LEGAL_STYLE}</head><body>
 ${LEGAL_NAV}
 <div class="wrap">
   <div class="badge">🔒 Privacy Policy</div>
   <h1>Privacy Policy</h1>
   <p><em>Last updated: March 2025</em></p>
-  <p>ARC AI Agents ("we", "the app") is an open-source testnet application. This policy explains what data, if any, is collected and how it is handled.</p>
+  <p>ExecDaat ("we", "the app") is an open-source testnet application. This policy explains what data, if any, is collected and how it is handled.</p>
 
   <h2>Data We Do NOT Collect</h2>
   <ul>
@@ -227,13 +227,13 @@ ${LEGAL_NAV}
 ${LEGAL_FOOTER}
 </body></html>`));
 
-app.get('/terms-of-service', (c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Terms of Service — ARC AI Agents</title>${LEGAL_STYLE}</head><body>
+app.get('/terms-of-service', (c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Terms of Service — ExecDaat</title>${LEGAL_STYLE}</head><body>
 ${LEGAL_NAV}
 <div class="wrap">
   <div class="badge">📄 Terms of Service</div>
   <h1>Terms of Service</h1>
   <p><em>Last updated: March 2025</em></p>
-  <p>By using ARC AI Agents ("the App"), you agree to the following terms.</p>
+  <p>By using ExecDaat ("the App"), you agree to the following terms.</p>
 
   <h2>1. Testnet Only</h2>
   <p>This application operates exclusively on <strong style="color:#fff">Arc Testnet</strong>. All tokens used are testnet tokens with no real monetary value. Do not attempt to use mainnet assets with this application.</p>
@@ -242,7 +242,7 @@ ${LEGAL_NAV}
   <p>Nothing in this application constitutes financial, investment, or legal advice. Use at your own risk. This is an experimental testnet application for educational and development purposes only.</p>
 
   <h2>3. No Custody of Funds</h2>
-  <p>ARC AI Agents is a <strong style="color:#fff">non-custodial</strong> application. We do not hold, control, or have access to your funds at any time. Your wallet and private keys remain solely in your possession.</p>
+  <p>ExecDaat is a <strong style="color:#fff">non-custodial</strong> application. We do not hold, control, or have access to your funds at any time. Your wallet and private keys remain solely in your possession.</p>
 
   <h2>4. No Guarantees</h2>
   <p>The App is provided "as is" without warranties of any kind. We do not guarantee:</p>
@@ -263,7 +263,7 @@ ${LEGAL_NAV}
   <p>Smart contracts deployed by this project are open source and available for review. However, they have not been formally audited. Use with caution even on testnet.</p>
 
   <h2>7. Limitation of Liability</h2>
-  <p>To the maximum extent permitted by law, ARC AI Agents and its contributors shall not be liable for any loss or damage resulting from use of this application.</p>
+  <p>To the maximum extent permitted by law, ExecDaat and its contributors shall not be liable for any loss or damage resulting from use of this application.</p>
 
   <h2>8. Changes</h2>
   <p>These terms may be updated at any time. Continued use of the App constitutes acceptance of updated terms.</p>
@@ -276,13 +276,84 @@ ${LEGAL_FOOTER}
 
 
 // ─── 404 Page ─────────────────────────────────────────────────────────────────
-app.notFound((c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>404 — Page Not Found | ARC AI Agents</title>${LEGAL_STYLE}<style>.hero{text-align:center;padding:80px 24px}.code{font-size:6rem;font-weight:900;background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1}.msg{color:#9ca3af;margin:16px 0 32px;font-size:1.1rem}.btn{display:inline-flex;align-items:center;gap:8px;background:#6366f1;color:#fff;padding:12px 28px;border-radius:12px;text-decoration:none;font-weight:600;transition:background .2s}.btn:hover{background:#4f46e5;text-decoration:none}</style></head><body>${LEGAL_NAV}<div class="wrap"><div class="hero"><div class="code">404</div><p class="msg">Page not found — this route doesn't exist.</p><a href="/" class="btn">⚡ Back to ARC AI Agents</a></div></div>${LEGAL_FOOTER}</body></html>`, 404));
+app.notFound((c) => c.html(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>404 — Page Not Found | ExecDaat</title>${LEGAL_STYLE}<style>.hero{text-align:center;padding:80px 24px}.code{font-size:6rem;font-weight:900;background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1}.msg{color:#9ca3af;margin:16px 0 32px;font-size:1.1rem}.btn{display:inline-flex;align-items:center;gap:8px;background:#6366f1;color:#fff;padding:12px 28px;border-radius:12px;text-decoration:none;font-weight:600;transition:background .2s}.btn:hover{background:#4f46e5;text-decoration:none}</style></head><body>${LEGAL_NAV}<div class="wrap"><div class="hero"><div class="code">404</div><p class="msg">Page not found — this route doesn't exist.</p><a href="/" class="btn">⚡ Back to ExecDaat</a></div></div>${LEGAL_FOOTER}</body></html>`, 404));
 
+
+app.get('/circle-setup', (c) => {
+  const CIPHERTEXT = `bf+LSANypWThbGCiYYscYRlBKjzyzXHFiNWAhTnTPtVL/haz7jZ4x9faFVjES5/FgWjN0MdNxqoTt+bPTVMDyhPaDBkTtJ9ZOZEhJ4wje9jLCscL12ET7e69arJ5xlMthv79+CNxBe/UwhDuHT552HsHp/CLRR+O/Y3oOV8JK/3vICqTofZr0jGO7BWbSDgwfeMj8kT2FxevsgILDpe9bZRQ6PJNQhVHl2OL/30tLBAPl4CtlVTgi3xE7m2Lga6KEnGBJzGeLqukbb6ta2MchMI66sNTfrMcfOz8rF2JVIkrxV8HA8mUQUBR9jOgW4mQJl60xgmbef9i/eQ69+VVUhIdMTE/pTAeaI8vPe4TxhUDGKYjTfSYA7eGI46tVcPeLA8JPNuycObEqjnz/oAbubMNBUr7YjFbEX0ZE4O69WPYIfoawa+JVBEtZr2EbzxyoKEOm8A1maYDaUmblnbdziy57iINqIc/6vhuM8XcBv73nS7PE4Wreqdb4pXUGlIUe89O/xUl2RsByatguJbb+NiMNf9e1i0PuXlDw+ju8H4rvBc5YPPznkXfTFwUMLehCxrt0NLDTN/Md2Qs0/+piKISzRNDJijUiC+QWwsUmzesbSsseljcVfbPMaF38Gtl9dnjjypIoTIGe6Sk37gTZsZ6NzHhxeMlYn/LH+Rj5no=`;
+  return c.html(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Circle — Entity Secret Ciphertext</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:monospace;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px;max-width:780px;width:100%}
+  h1{color:#38bdf8;font-size:20px;margin-bottom:8px}
+  .sub{color:#94a3b8;font-size:13px;margin-bottom:24px}
+  .label{color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+  .box{background:#0f172a;border:1px solid #1e40af;border-radius:8px;padding:16px;font-size:12px;color:#7dd3fc;word-break:break-all;line-height:1.8;margin-bottom:16px;user-select:all;cursor:text}
+  .btn{width:100%;padding:14px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:12px;transition:.2s}
+  .btn:hover{background:#1d4ed8}
+  .btn.ok{background:#059669}
+  .badge{display:inline-block;background:#166534;color:#86efac;padding:4px 10px;border-radius:20px;font-size:12px;margin-bottom:20px}
+  .info{background:#1e3a5f;border-left:4px solid #38bdf8;padding:12px 16px;border-radius:4px;font-size:12px;color:#93c5fd;margin-bottom:20px;line-height:1.6}
+  .steps{background:#1a1a2e;border-radius:8px;padding:16px;font-size:13px;color:#94a3b8;line-height:2}
+  .steps b{color:#e2e8f0}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🔐 Circle Entity Secret — Reset</h1>
+  <p class="sub">Cole este ciphertext no campo <strong style="color:#38bdf8">"New entity secret ciphertext"</strong></p>
+  <span class="badge">✅ 684 caracteres — tamanho exato exigido</span>
+
+  <div class="info">
+    ⚠️ <strong>Campo .dat é OPCIONAL</strong> — deixe o upload em branco.<br>
+    Só o ciphertext abaixo é obrigatório. Clique no botão para copiar.
+  </div>
+
+  <div class="label">New entity secret ciphertext (clique na caixa para selecionar tudo)</div>
+  <div class="box" id="ct" onclick="this.focus();document.execCommand('selectAll')">${CIPHERTEXT}</div>
+
+  <button class="btn" id="btn" onclick="copyIt()">📋 COPIAR CIPHERTEXT (1 clique)</button>
+
+  <div class="steps">
+    <b>Passos no console.circle.com:</b><br>
+    1. Configurator → Entity Secret → botão <b>Reset</b><br>
+    2. <b>Deixe o upload .dat VAZIO</b><br>
+    3. Cole o ciphertext acima no campo<br>
+    4. Marque a checkbox de confirmação<br>
+    5. Clique <b>Reset</b>
+  </div>
+</div>
+<script>
+function copyIt(){
+  const t="${CIPHERTEXT}";
+  navigator.clipboard.writeText(t).then(()=>{
+    const b=document.getElementById('btn');
+    b.textContent='✅ Copiado! Agora cole no console Circle';
+    b.className='btn ok';
+    setTimeout(()=>{b.textContent='📋 COPIAR CIPHERTEXT (1 clique)';b.className='btn'},4000);
+  }).catch(()=>{
+    const el=document.getElementById('ct');
+    const r=document.createRange();r.selectNodeContents(el);
+    const s=window.getSelection();s.removeAllRanges();s.addRange(r);
+    document.execCommand('copy');
+    alert('Copiado!');
+  });
+}
+</script>
+</body>
+</html>`);
+});
 
 app.get('/api/status', (c) => {
   return c.json({
     status: 'online',
-    app: 'ARC AI Agents - Pagamentos & Contratos',
+    app: 'ExecDaat - Pagamentos & Contratos',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     network: {
@@ -327,29 +398,29 @@ app.get('/', (c) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-  <title>ARC AI Agents — Testnet dApp | Payments, Swap &amp; Contracts on Arc Network</title>
+  <title>ExecDaat — Testnet dApp | Payments, Swap &amp; Contracts on Arc Network</title>
 
   <!-- ── SEO & Trust Meta Tags ─────────────────────────────────────────── -->
-  <meta name="description" content="ARC AI Agents is an open-source testnet dApp on Arc Network. Explore autonomous payments, token swaps, smart contracts, and liquidity pools — all on testnet. No real funds involved.">
+  <meta name="description" content="ExecDaat is an open-source testnet dApp on Arc Network. Explore autonomous payments, token swaps, smart contracts, and liquidity pools — all on testnet. No real funds involved.">
   <meta name="keywords" content="ARC Network, testnet, dApp, USDC, EURC, swap, AMM, Web3, blockchain, open source">
-  <meta name="author" content="ARC AI Agents — Open Source Project">
+  <meta name="author" content="ExecDaat — Open Source Project">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#1e1b4b">
 
   <!-- ── Open Graph (Facebook/LinkedIn) ──────────────────────────────── -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://arc-ai-agents.pages.dev/">
-  <meta property="og:title" content="ARC AI Agents — Testnet dApp">
+  <meta property="og:title" content="ExecDaat — Testnet dApp">
   <meta property="og:description" content="Open-source testnet application on Arc Network. Autonomous payments, token swaps, AMM liquidity pools. No real funds — testnet only.">
-  <meta property="og:site_name" content="ARC AI Agents">
+  <meta property="og:site_name" content="ExecDaat">
 
   <!-- ── Twitter Card ─────────────────────────────────────────────────── -->
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="ARC AI Agents — Testnet dApp">
+  <meta name="twitter:title" content="ExecDaat — Testnet dApp">
   <meta name="twitter:description" content="Open-source testnet dApp on Arc Network. No real funds involved.">
 
   <!-- ── Security & Anti-Phishing ─────────────────────────────────────── -->
-  <meta name="application-name" content="ARC AI Agents">
+  <meta name="application-name" content="ExecDaat">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <meta name="referrer" content="strict-origin-when-cross-origin">
 
@@ -365,13 +436,13 @@ app.get('/', (c) => {
   {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    "name": "ARC AI Agents",
+    "name": "ExecDaat",
     "description": "Open-source testnet dApp on Arc Network for autonomous payments, token swaps and smart contracts.",
     "url": "https://arc-ai-agents.pages.dev",
     "applicationCategory": "FinanceApplication",
     "operatingSystem": "Web Browser",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "author": { "@type": "Organization", "name": "ARC AI Agents Open Source" }
+    "author": { "@type": "Organization", "name": "ExecDaat Open Source" }
   }
   </script>
 
@@ -387,7 +458,7 @@ app.get('/', (c) => {
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <link href="/static/styles.css?v=20250326c" rel="stylesheet">
-  <script src="/static/i18n.js?v=20250322"></script>
+  <script src="/static/i18n.js?v=20260327b"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
 
@@ -539,7 +610,7 @@ app.get('/', (c) => {
           <i class="fas fa-robot text-white text-base"></i>
         </div>
         <div class="text-left">
-          <div class="font-bold text-base text-white leading-none">ARC AI Agents</div>
+          <div class="font-bold text-base leading-none" style="background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.06em;font-weight:900">ExecDaat</div>
           <div class="text-[10px] text-purple-400 leading-none mt-0.5">Autonomous Payments &amp; Contracts</div>
         </div>
       </button>
@@ -676,7 +747,7 @@ app.get('/', (c) => {
             <div class="text-xs text-purple-400 font-semibold uppercase tracking-wider mb-2">What is this?</div>
             <h2 class="text-2xl font-bold text-white mb-4">A trustless financial automation platform</h2>
             <p class="text-gray-400 leading-relaxed mb-4">
-              ARC AI Agents is a decentralized testnet application that lets you explore autonomous financial operations
+              ExecDaat is a decentralized testnet application that lets you explore autonomous financial operations
               on the Arc Network. Connect your EVM wallet to interact with smart contracts,
               send batch payments, swap tokens, and manage on-chain escrow — all without custodians.
             </p>
@@ -853,7 +924,7 @@ app.get('/', (c) => {
           <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
             <i class="fas fa-robot text-white text-[10px]"></i>
           </div>
-          <span>ARC AI Agents — Open Source Testnet dApp</span>
+          <span style="font-weight:700;letter-spacing:.04em">ExecDaat</span><span style="color:#6b7280"> — Open Source Testnet dApp</span>
         </div>
         <div class="flex items-center gap-4">
           <a href="/about" class="hover:text-gray-400 transition-colors">About</a>
@@ -2417,7 +2488,7 @@ app.get('/', (c) => {
           </button>
         </div>
         <div id="agent-logs" class="font-mono text-xs space-y-1 max-h-64 overflow-y-auto bg-black/40 rounded-lg p-4">
-          <div class="text-green-400">[SYSTEM] ARC AI Agents initialized...</div>
+          <div class="text-green-400">[SYSTEM] ExecDaat initialized...</div>
           <div class="text-blue-400">[NETWORK] Connected to Arc Testnet (Chain ID: 5042002)</div>
           <div class="text-purple-400">[AGENT:PAY] ArcPay Agent v1.0 ready</div>
           <div class="text-cyan-400">[AGENT:CTR] ArcContract Agent v1.0 ready</div>
@@ -3875,7 +3946,7 @@ app.get('/', (c) => {
           <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
             <i class="fas fa-bolt text-white text-sm"></i>
           </div>
-          <span class="font-bold text-white text-sm">ARC AI Agents</span>
+          <span class="text-sm" style="background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:900;letter-spacing:.06em">ExecDaat</span>
         </div>
         <p class="text-xs text-gray-500 leading-relaxed">
           Open-source testnet dApp built on Arc Network. Explore autonomous payments, AMM swaps, and smart contracts — safely, on testnet.
@@ -3964,7 +4035,7 @@ app.get('/', (c) => {
     <!-- Bottom bar -->
     <div class="border-t border-gray-800/60 px-6 py-4">
       <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-600">
-        <span>© 2025 ARC AI Agents — Open Source Project · MIT License</span>
+        <span>© 2025 ExecDaat — Open Source Project · MIT License</span>
         <div class="flex items-center gap-4">
           <span class="flex items-center gap-1.5">
             <i class="fas fa-lock text-green-500 text-[10px]"></i>
@@ -3986,14 +4057,14 @@ app.get('/', (c) => {
   <script src="/static/wallet.js?v=20260327a"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.js?v=20250323"></script>
-  <script src="/static/receipt-viewer.js?v=20250323b"></script>
-  <script src="/static/app.js?v=20250325e"></script>
-  <script src="/static/payments.js?v=20250325c"></script>
+  <script src="/static/receipt-viewer.js?v=20260327b"></script>
+  <script src="/static/app.js?v=20260327b"></script>
+  <script src="/static/payments.js?v=20260327b"></script>
   <script src="/static/contracts.js?v=20250325a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250325b"></script>
-  <script src="/static/multisend.js?v=20250323c"></script>
+  <script src="/static/multisend.js?v=20260327b"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>

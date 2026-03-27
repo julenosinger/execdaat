@@ -1,5 +1,5 @@
 /**
- * ARC AI Agents — Unified Security Middleware
+ * ExecDaat — Unified Security Middleware
  * ============================================
  * Covers:
  *  1. Secure HTTP response headers (CSP, HSTS, X-Frame, X-Content-Type, etc.)

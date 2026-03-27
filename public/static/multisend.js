@@ -1,5 +1,5 @@
 // ============================================================
-// MULTISEND MODULE v7 — ARC AI Agents
+// MULTISEND MODULE v7 — ExecDaat
 //
 // ROOT CAUSE ANALYSIS (v6 bugs fixed):
 //  1. Approval ordering: MUST approve Multicall3 BEFORE fee tx
@@ -1591,7 +1591,7 @@ function msPdfReceipt(receiptId) {
     rect(0, 0, pW, pH, C.bg);
     rect(0, 0, pW, 28, C.header);
     rect(0, 26, pW, 2, C.cyan);
-    setFont(15, 'bold', C.white); text('⚡ ARC AI Agents', margin, 12);
+    setFont(15, 'bold', C.white); text('⚡ ExecDaat', margin, 12);
     setFont(8, 'normal', [180, 240, 255]); text('arc-ai-agents-618-3v1.pages.dev', margin, 18);
     setFont(10, 'bold', [220, 255, 255]); text('Testnet Transaction Receipt', pW - margin, 12, { align: 'right' });
     setFont(7, 'normal', [140, 200, 230]); text('Arc Testnet · Chain ID 5042002', pW - margin, 18, { align: 'right' });
@@ -1706,7 +1706,7 @@ function msPdfReceipt(receiptId) {
       rect(0, pH - 10, pW, 10, C.header);
       rect(0, pH - 11, pW, 1, C.cyan);
       setFont(6.5, 'normal', [180, 220, 240]);
-      text('ARC AI Agents · Testnet Receipt · Not a financial document', margin, pH - 5);
+      text('ExecDaat · Testnet Receipt · Not a financial document', margin, pH - 5);
       setFont(6.5, 'normal', C.gray2);
       text(`Page ${pg} of ${totalPages}  ·  Generated ${new Date().toLocaleString()}`, pW - margin, pH - 5, { align: 'right' });
     }

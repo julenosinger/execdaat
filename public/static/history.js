@@ -1,5 +1,5 @@
 // ============================================================
-// HISTORY MODULE — ARC AI Agents  v2 (Real On-Chain)
+// HISTORY MODULE — ExecDaat  v2 (Real On-Chain)
 // Fetches real transaction history from Arc Testnet via RPC
 // Arc Testnet (chainId 5042002) | ethers.js v6
 // ============================================================

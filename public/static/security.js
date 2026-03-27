@@ -1,5 +1,5 @@
 /**
- * ARC AI Agents — Frontend Runtime Security Layer
+ * ExecDaat — Frontend Runtime Security Layer
  * ================================================
  * Loaded as the FIRST script on the page.
  * Provides:

@@ -1,6 +1,6 @@
 // ============================================================
 // PERMIT2-CHAT.JS — Chatbot-Based Permit2 Authorization
-// ARC AI Agents · Arc Testnet · ChainId 5042002
+// ExecDaat · Arc Testnet · ChainId 5042002
 //
 // Responsibilities:
 //  • Parse natural language permit intents from chatbot

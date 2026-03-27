@@ -272,7 +272,7 @@ async function evmSignOperation(operationType, params) {
   const from = window.walletState?.address;
   if (!from) throw new Error('Wallet not connected');
 
-  const message = `ARC AI Agents\nOperation: ${operationType}\nFrom: ${from}\nTimestamp: ${timestamp}\nParams: ${JSON.stringify(params)}`;
+  const message = `ExecDaat\nOperation: ${operationType}\nFrom: ${from}\nTimestamp: ${timestamp}\nParams: ${JSON.stringify(params)}`;
 
   const signature = await evmPersonalSign(message);
   return { signature, timestamp, from, operationType, message };
