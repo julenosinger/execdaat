@@ -77,52 +77,64 @@ window.dispatchEvent(new Event('eip6963:requestProvider'));
 // ============================================================
 function detectProviders() {
   const providers = [];
-  const seen = new Set();
+  const seen = new Set(); // tracks normalized logo-keys to prevent duplicates
 
-  // 1. Provedores EIP-6963 (descoberta moderna)
+  // ── Helper: get a stable dedup key from a provider ────────────────────────
+  function _dedupKey(p) {
+    const rdns = (p.rdns || '').toLowerCase();
+    const name = (p.name || '').toLowerCase();
+    if (rdns.includes('metamask')  || p.isMetaMask)       return 'metamask';
+    if (rdns.includes('coinbase')  || p.isCoinbaseWallet)  return 'coinbase';
+    if (rdns.includes('rabby')     || p.isRabby)           return 'rabby';
+    if (rdns.includes('brave')     || p.isBraveWallet)     return 'brave';
+    if (rdns.includes('phantom')   || name.includes('phantom'))  return 'phantom';
+    if (rdns.includes('backpack')  || name.includes('backpack')) return 'backpack';
+    if (rdns.includes('okx')       || name.includes('okx'))      return 'okx';
+    if (rdns.includes('keplr')     || name.includes('keplr'))    return 'keplr';
+    if (rdns.includes('starkey')   || name.includes('starkey'))  return 'starkey';
+    // Fallback: use rdns or lowercased name
+    return rdns || name.replace(/\s/g, '') || 'unknown';
+  }
+
+  // 1. Provedores EIP-6963 (modern wallet discovery — preferred)
   window._eip6963Providers.forEach(({ info, provider }) => {
-    const key = info.rdns || info.uuid;
+    const key = _dedupKey({ rdns: info.rdns, name: info.name });
     if (!seen.has(key)) {
       seen.add(key);
-      let icon = 'fas fa-wallet';
-      if (info.rdns === 'io.metamask') icon = 'fab fa-ethereum';
-      else if (info.rdns === 'com.coinbase.wallet') icon = 'fas fa-wallet';
-      else if (info.rdns === 'io.rabby') icon = 'fas fa-shield-alt';
-      else if (info.rdns === 'com.brave.wallet') icon = 'fas fa-shield-alt';
-      providers.push({ name: info.name, icon, provider, rdns: info.rdns });
+      providers.push({ name: info.name, icon: 'fas fa-wallet', provider, rdns: info.rdns });
     }
   });
 
-  // 2. Fallback: window.ethereum (EIP-1193 clássico)
+  // 2. Fallback: window.ethereum (EIP-1193 legacy)
   if (window.ethereum) {
-    // Múltiplos provedores via window.ethereum.providers
+    // Multiple providers via window.ethereum.providers array
     if (window.ethereum.providers && Array.isArray(window.ethereum.providers)) {
       window.ethereum.providers.forEach(p => {
         let name = 'Browser Wallet';
-        let icon = 'fas fa-wallet';
-        if (p.isMetaMask) { name = 'MetaMask'; icon = 'fab fa-ethereum'; }
-        else if (p.isCoinbaseWallet) { name = 'Coinbase Wallet'; icon = 'fas fa-wallet'; }
-        else if (p.isRabby) { name = 'Rabby'; icon = 'fas fa-shield-alt'; }
-        else if (p.isBraveWallet) { name = 'Brave Wallet'; icon = 'fas fa-shield-alt'; }
-        // Usar rdns como chave única se disponível
-        const key = p.isMetaMask ? 'metamask' : (p.isCoinbaseWallet ? 'coinbase' : name.toLowerCase().replace(/\s/g,''));
+        if (p.isMetaMask && !p.isBraveWallet) name = 'MetaMask';
+        else if (p.isCoinbaseWallet) name = 'Coinbase Wallet';
+        else if (p.isRabby) name = 'Rabby';
+        else if (p.isBraveWallet) name = 'Brave Wallet';
+        else if (p.isPhantom) name = 'Phantom';
+        const key = _dedupKey({ ...p, name });
         if (!seen.has(key)) {
           seen.add(key);
-          providers.push({ name, icon, provider: p });
+          providers.push({ name, icon: 'fas fa-wallet', provider: p });
         }
       });
     } else {
-      // Provedor único window.ethereum
+      // Single window.ethereum provider
       let name = 'Browser Wallet';
-      let icon = 'fas fa-wallet';
-      if (window.ethereum.isMetaMask) { name = 'MetaMask'; icon = 'fab fa-ethereum'; }
-      else if (window.ethereum.isCoinbaseWallet) { name = 'Coinbase Wallet'; icon = 'fas fa-wallet'; }
-      else if (window.ethereum.isRabby) { name = 'Rabby'; icon = 'fas fa-shield-alt'; }
-      else if (window.ethereum.isBraveWallet) { name = 'Brave Wallet'; icon = 'fas fa-shield-alt'; }
-      const key = name.toLowerCase().replace(/\s/g,'');
+      // Note: Brave injects both isBraveWallet AND isMetaMask — check Brave first
+      if (window.ethereum.isBraveWallet)      name = 'Brave Wallet';
+      else if (window.ethereum.isMetaMask)    name = 'MetaMask';
+      else if (window.ethereum.isCoinbaseWallet) name = 'Coinbase Wallet';
+      else if (window.ethereum.isRabby)       name = 'Rabby';
+      else if (window.ethereum.isPhantom)     name = 'Phantom';
+      const key = _dedupKey({ ...window.ethereum, name });
       if (!seen.has(key)) {
         seen.add(key);
-        providers.push({ name, icon, provider: window.ethereum });
+        providers.push({ name, icon: 'fas fa-wallet', provider: window.ethereum });
       }
     }
   }
@@ -525,18 +537,41 @@ function _getWalletLogoKey(p) {
 function _renderWalletModal() {
   const providers = detectProviders();
 
-  // ── SVG logos for known wallets ─────────────────────────────────────────────
+  // ── SVG logos — Official brand-faithful wallet icons ────────────────────────
+  // All icons are inline SVGs derived from official brand assets.
+  // No external scripts — purely self-contained SVG paths.
+  const WS = 'width:38px;height:38px;display:block;'; // common size style
   const WALLET_LOGOS = {
-    'metamask': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#1A1A1A"/><path d="M33.5 7L22.1 15.6l2.1-4.9L33.5 7z" fill="#E17726" stroke="#E17726" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 7l11.3 8.7-2-5L6.5 7z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M29.1 26.5l-3 4.6 6.4 1.8 1.8-6.3-5.2-.1z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.6 26.6l1.8 6.3 6.4-1.8-3-4.6-5.2.1z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 19.3l-1.8 2.7 6.3.3-.2-6.8-4.3 3.8z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M25.5 19.3l-4.4-3.9-.1 6.9 6.3-.3-1.8-2.7z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.8 31.1l3.8-1.8-3.3-2.6-.5 4.4z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/><path d="M21.4 29.3l3.8 1.8-.5-4.4-3.3 2.6z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-    'rabby': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#1A1A2E"/><path d="M20 8C13.4 8 8 13.4 8 20s5.4 12 12 12 12-5.4 12-12S26.6 8 20 8z" fill="#7084FF"/><path d="M16 17a2 2 0 100 4 2 2 0 000-4zm8 0a2 2 0 100 4 2 2 0 000-4z" fill="white"/><path d="M13 23s1.5 4 7 4 7-4 7-4H13z" fill="white"/></svg>`,
-    'phantom': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#AB9FF2"/><path d="M20.3 9C14.1 9 9 14.1 9 20.3c0 5.7 4.3 10.4 9.8 11.1.5.1 1 .1 1.5.1h11.3c.2-1 .4-2 .4-3.1C32 14.8 26.9 9 20.3 9z" fill="url(#phg)"/><path d="M14.5 21.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm7 0a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" fill="#1A1A2E"/><defs><linearGradient id="phg" x1="9" y1="9" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop stop-color="#534BB1"/><stop offset="1" stop-color="#551BF9"/></linearGradient></defs></svg>`,
-    'coinbase': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#0052FF"/><circle cx="20" cy="20" r="10" fill="white"/><path d="M20 14a6 6 0 100 12A6 6 0 0020 14zm-1.5 3h3v6h-3v-6z" fill="#0052FF"/></svg>`,
-    'okx': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#000"/><rect x="10" y="10" width="7" height="7" rx="1" fill="white"/><rect x="22" y="10" width="7" height="7" rx="1" fill="white"/><rect x="10" y="23" width="7" height="7" rx="1" fill="white"/><rect x="22" y="23" width="7" height="7" rx="1" fill="white"/></svg>`,
-    'brave': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#FF5500"/><path d="M20 8l10 4-2 14-8 6-8-6-2-14 10-4z" fill="#FB5422"/><path d="M20 8l10 4-2 14-8 6-8-6-2-14 10-4z" fill="none" stroke="#FF8C42" stroke-width="1"/><path d="M20 12l7 3-1.5 10-5.5 4-5.5-4L13 15l7-3z" fill="#F26422"/><path d="M17 20.5c.5.5 1.5.8 3 .8s2.5-.3 3-.8" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg>`,
-    'backpack': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#E33E3F"/><path d="M20 9c-4 0-7 3-7 7v1h-1a2 2 0 00-2 2v9a2 2 0 002 2h16a2 2 0 002-2v-9a2 2 0 00-2-2h-1v-1c0-4-3-7-7-7zm0 3c2.2 0 4 1.8 4 4v1h-8v-1c0-2.2 1.8-4 4-4zm0 10a2 2 0 100 4 2 2 0 000-4z" fill="white"/></svg>`,
-    'keplr': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#1C1C2E"/><path d="M13 11h4v7l6-7h5l-7 8 7 9h-5l-6-7v7h-4V11z" fill="url(#kg)"/><defs><linearGradient id="kg" x1="13" y1="11" x2="28" y2="29" gradientUnits="userSpaceOnUse"><stop stop-color="#6B7BF7"/><stop offset="1" stop-color="#A855F7"/></linearGradient></defs></svg>`,
-    'starkey': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#0A0A0A"/><path d="M20 9l2.9 6 6.6.9-4.8 4.6 1.1 6.5L20 24l-5.9 3 1.2-6.5L10.5 16l6.6-.9L20 9z" fill="url(#skg)"/><defs><linearGradient id="skg" x1="10" y1="9" x2="31" y2="30" gradientUnits="userSpaceOnUse"><stop stop-color="#00E5FF"/><stop offset="1" stop-color="#7B2FFF"/></linearGradient></defs></svg>`,
-    'default': `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:36px;height:36px;"><rect width="40" height="40" rx="10" fill="#1e2d3d"/><path d="M10 16a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H12a2 2 0 01-2-2V16zm18 0H12v10h16V16zm-3 5a1 1 0 110 2 1 1 0 010-2z" fill="#7b9cc0"/><path d="M10 18h20" stroke="#7b9cc0" stroke-width="1.5"/></svg>`,
+
+    // MetaMask — iconic fox head with full orange palette
+    'metamask': `<svg viewBox="0 0 212 189" xmlns="http://www.w3.org/2000/svg" style="${WS}"><defs><style>.mm-bg{fill:#1a1a1a}</style></defs><rect width="212" height="189" rx="28" class="mm-bg"/><g transform="translate(16,8) scale(0.85)"><polygon fill="#E17726" stroke="#E17726" stroke-width="0.5" points="132.4,0 0,96 24.3,139.9 132.4,0"/><polygon fill="#E27625" stroke="#E27625" stroke-width="0.5" points="42.3,0 174.7,96 150.4,139.9 42.3,0"/><polygon fill="#E27625" stroke="#E27625" stroke-width="0.5" points="150,155 122.9,186 174.7,200 190,155.4 150,155"/><polygon fill="#E27625" stroke="#E27625" stroke-width="0.5" points="24.7,155 8.6,155.4 24,200 76,186 48.9,155 24.7,155"/><polygon fill="#E27625" stroke="#E27625" stroke-width="0.5" points="73,113.5 65.5,124.8 116.8,127.1 115.2,74.7 73,113.5"/><polygon fill="#E27625" stroke="#E27625" stroke-width="0.5" points="105.7,113.5 148.5,74.7 83.6,127.1 134.9,124.8 105.7,113.5"/><polygon fill="#D5BFB2" stroke="#D5BFB2" stroke-width="0.5" points="76,186 113.9,167.4 81.3,156.3 76,186"/><polygon fill="#D5BFB2" stroke="#D5BFB2" stroke-width="0.5" points="98.8,167.4 122.9,186 117.5,156.3 98.8,167.4"/><polygon fill="#233447" stroke="#233447" stroke-width="0.5" points="122.9,186 98.8,167.4 100.8,185 100.5,191.8 122.9,186"/><polygon fill="#233447" stroke="#233447" stroke-width="0.5" points="76,186 98.2,191.8 98.1,185 100.2,167.4 76,186"/><polygon fill="#CC6228" stroke="#CC6228" stroke-width="0.5" points="98.2,191.8 100.2,167.4 81.3,156.3 98.2,191.8"/><polygon fill="#CC6228" stroke="#CC6228" stroke-width="0.5" points="100.5,191.8 117.5,156.3 98.8,167.4 100.5,191.8"/><polygon fill="#E27525" stroke="#E27525" stroke-width="0.5" points="100.5,191.8 98.1,185 116.5,186.6 100.5,191.8"/><polygon fill="#E27525" stroke="#E27525" stroke-width="0.5" points="82.2,186.6 100.8,185 98.2,191.8 82.2,186.6"/><polygon fill="#F5841F" stroke="#F5841F" stroke-width="0.5" points="82.2,186.6 81.3,156.3 98.2,191.8 82.2,186.6"/><polygon fill="#F5841F" stroke="#F5841F" stroke-width="0.5" points="117.5,156.3 116.5,186.6 100.5,191.8 117.5,156.3"/><polygon fill="#C0AC9D" stroke="#C0AC9D" stroke-width="0.5" points="65.5,124.8 81.3,156.3 73,113.5 65.5,124.8"/><polygon fill="#C0AC9D" stroke="#C0AC9D" stroke-width="0.5" points="117.5,156.3 134.9,124.8 105.7,113.5 117.5,156.3"/><polygon fill="#161616" stroke="#161616" stroke-width="0.5" points="76,186 81.5,155 48.9,155 76,186"/><polygon fill="#161616" stroke="#161616" stroke-width="0.5" points="117.3,155 122.9,186 150,155 117.3,155"/><polygon fill="#763D16" stroke="#763D16" stroke-width="0.5" points="134.9,124.8 117.3,155 150,155 134.9,124.8"/><polygon fill="#763D16" stroke="#763D16" stroke-width="0.5" points="48.9,155 81.5,155 65.5,124.8 48.9,155"/><polygon fill="#F5841F" stroke="#F5841F" stroke-width="0.5" points="65.5,124.8 116.8,127.1 117.5,156.3 65.5,124.8"/><polygon fill="#F5841F" stroke="#F5841F" stroke-width="0.5" points="81.3,156.3 83.6,127.1 134.9,124.8 81.3,156.3"/></g></svg>`,
+
+    // Phantom — official purple ghost icon
+    'phantom': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="${WS}"><defs><linearGradient id="ph-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#534BB1"/><stop offset="100%" stop-color="#551BF9"/></linearGradient></defs><rect width="128" height="128" rx="26" fill="url(#ph-grad)"/><path d="M110.6 64.8C110.6 43.1 93.3 25.5 72 25.5c-23 0-40 18.8-40 42.3 0 7.6 2 14.7 5.6 20.8 1.3 2.2 3.7 3.5 6.2 3.5h55.8c2.2 0 4.2-.9 5.7-2.5 3.5-3.8 5.3-8.5 5.3-24.8z" fill="white"/><ellipse cx="52" cy="65" rx="6" ry="9" fill="#534BB1"/><ellipse cx="76" cy="65" rx="6" ry="9" fill="#534BB1"/><circle cx="55" cy="63" r="2.5" fill="white"/><circle cx="79" cy="63" r="2.5" fill="white"/><path d="M60 80c2 2.5 6 2.5 8 0" stroke="#534BB1" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M34 86c0 3.3 2.7 6 6 6s6-2.7 6-6v-8H34v8z" fill="white"/><path d="M48 86c0 3.3 2.7 6 6 6s6-2.7 6-6v-8H48v8z" fill="#E8E8E8"/></svg>`,
+
+    // Backpack — official red backpack logo (Coral/xNFT wallet)
+    'backpack': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="${WS}"><rect width="128" height="128" rx="26" fill="#E33E3F"/><path d="M64 22c-10 0-18 8-18 18v2H38c-3.3 0-6 2.7-6 6v38c0 3.3 2.7 6 6 6h52c3.3 0 6-2.7 6-6V48c0-3.3-2.7-6-6-6H82v-2c0-10-8-18-18-18zm0 8c5.5 0 10 4.5 10 10v2H54v-2c0-5.5 4.5-10 10-10z" fill="white" fill-rule="evenodd"/><rect x="58" y="60" width="12" height="3" rx="1.5" fill="#E33E3F"/><rect x="58" y="60" width="12" height="3" rx="1.5" fill="none" stroke="#E33E3F" stroke-width="0"/><path d="M58 62a6 6 0 0012 0" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="64" cy="74" r="5" fill="#C42B2C"/><circle cx="64" cy="74" r="3" fill="white"/></svg>`,
+
+    // Brave Wallet — official lion/shield logo  
+    'brave': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="${WS}"><defs><linearGradient id="brave-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF7654"/><stop offset="100%" stop-color="#FF3000"/></linearGradient></defs><rect width="128" height="128" rx="26" fill="url(#brave-grad)"/><path d="M64 16L98 30l-5 48-29 26-29-26-5-48L64 16z" fill="#FB5422"/><path d="M64 16L98 30l-5 48-29 26-29-26-5-48L64 16z" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="2"/><path d="M64 22L93 34l-4.5 44L64 100 39.5 78 35 34 64 22z" fill="#F3866D"/><path d="M52 55c0 0 1 5 4 8s8 5 8 5 5-2 8-5 4-8 4-8" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"/><path d="M47 44l5 6m29-6l-5 6" stroke="rgba(255,255,255,0.6)" stroke-width="2.5" stroke-linecap="round"/><path d="M55 47a3 3 0 106 0 3 3 0 00-6 0zm12 0a3 3 0 106 0 3 3 0 00-6 0z" fill="white"/></svg>`,
+
+    // StarKey — official dark star/key icon
+    'starkey': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="${WS}"><defs><linearGradient id="sk-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0A0A1A"/><stop offset="100%" stop-color="#1a1040"/></linearGradient><linearGradient id="sk-star" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#00E5FF"/><stop offset="50%" stop-color="#7B2FFF"/><stop offset="100%" stop-color="#00E5FF"/></linearGradient></defs><rect width="128" height="128" rx="26" fill="url(#sk-grad)"/><path d="M64 22l7.5 15.5 17 2.5-12.3 12 2.9 17-15.1-8-15.1 8 2.9-17L39.5 40l17-2.5L64 22z" fill="url(#sk-star)"/><rect x="54" y="76" width="20" height="12" rx="4" fill="url(#sk-star)" opacity="0.9"/><circle cx="64" cy="95" r="5" fill="none" stroke="url(#sk-star)" stroke-width="2.5"/><line x1="64" y1="100" x2="64" y2="108" stroke="url(#sk-star)" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+
+    // Rabby — rabbit head icon  
+    'rabby': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="${WS}"><rect width="128" height="128" rx="26" fill="#1A1A2E"/><ellipse cx="52" cy="42" rx="8" ry="16" fill="#7084FF"/><ellipse cx="76" cy="42" rx="8" ry="16" fill="#7084FF"/><ellipse cx="52" cy="44" rx="5" ry="12" fill="#FFB3C6" opacity="0.7"/><ellipse cx="76" cy="44" rx="5" ry="12" fill="#FFB3C6" opacity="0.7"/><ellipse cx="64" cy="82" rx="26" ry="24" fill="#7084FF"/><circle cx="55" cy="76" r="5" fill="white"/><circle cx="73" cy="76" r="5" fill="white"/><circle cx="56.5" cy="75" r="2.5" fill="#1A1A2E"/><circle cx="74.5" cy="75" r="2.5" fill="#1A1A2E"/><ellipse cx="64" cy="87" rx="7" ry="4" fill="#FFB3C6" opacity="0.8"/><circle cx="64" cy="85" r="2" fill="#FF6B9D"/></svg>`,
+
+    // Coinbase — official blue C logo
+    'coinbase': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="${WS}"><rect width="128" height="128" rx="26" fill="#0052FF"/><circle cx="64" cy="64" r="38" fill="white"/><path d="M64 36c-15.5 0-28 12.5-28 28s12.5 28 28 28c10.8 0 20.2-6.1 24.9-15H74.7c-3.2 4.1-8.1 6.8-13.7 6.8C50.2 83.8 43 76 43 66.5S50.2 49.2 61 49.2c5.6 0 10.5 2.7 13.7 6.8H89c-4.7-9-14.1-15-25-15h.0z" fill="#0052FF"/></svg>`,
+
+    // OKX — black grid logo
+    'okx': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="${WS}"><rect width="128" height="128" rx="26" fill="#000000"/><rect x="32" y="32" width="24" height="24" rx="4" fill="white"/><rect x="72" y="32" width="24" height="24" rx="4" fill="white"/><rect x="32" y="72" width="24" height="24" rx="4" fill="white"/><rect x="72" y="72" width="24" height="24" rx="4" fill="white"/></svg>`,
+
+    // Keplr — K letter gradient
+    'keplr': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="${WS}"><rect width="128" height="128" rx="26" fill="#1C1C2E"/><defs><linearGradient id="kg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6B7BF7"/><stop offset="100%" stop-color="#A855F7"/></linearGradient></defs><path d="M38 30h16v26l22-26h20L70 64l26 34H76L54 72v26H38V30z" fill="url(#kg2)"/></svg>`,
+
+    // Default fallback
+    'default': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="${WS}"><rect width="128" height="128" rx="26" fill="#1e2d3d"/><path d="M28 52a8 8 0 018-8h56a8 8 0 018 8v36a8 8 0 01-8 8H36a8 8 0 01-8-8V52zm64 0H36v36h56V52zm-10 18a4 4 0 110 8 4 4 0 010-8z" fill="#7b9cc0"/><path d="M28 60h72" stroke="#7b9cc0" stroke-width="4"/></svg>`,
   };
 
   // ── Map rdns/name → logo key ─────────────────────────────────────────────────

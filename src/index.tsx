@@ -4068,7 +4068,7 @@ app.get('/', (c) => {
     </div>
   </footer>
 
-  <script src="/static/wallet.js?v=20250322"></script>
+  <script src="/static/wallet.js?v=20260327a"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.js?v=20250323"></script>
   <script src="/static/receipt-viewer.js?v=20250323b"></script>
