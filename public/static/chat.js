@@ -244,6 +244,63 @@ const CHAT_EXPAND_MIN_PX = 650;
     .chat-action-btn-success   { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.25); color:#4ade80; }
     .chat-action-btn-success:hover { background: rgba(34,197,94,0.2); }
 
+    /* ── Blockchain Action Card (LLM structured actions) ── */
+    .arc-blockchain-action-card {
+      background: linear-gradient(135deg, rgba(17,24,39,0.95), rgba(30,20,60,0.92));
+      border: 1px solid rgba(109,40,217,0.35);
+      border-radius: 12px; padding: 12px 14px; margin-top: 6px;
+      width: 100%; max-width: 320px;
+      box-shadow: 0 4px 20px rgba(109,40,217,0.12);
+    }
+    .arc-action-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .arc-action-type-badge {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+      color: #c4b5fd; background: rgba(109,40,217,0.15);
+      border: 1px solid rgba(109,40,217,0.3);
+      padding: 3px 8px; border-radius: 6px;
+    }
+    .arc-action-status {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.03em;
+    }
+    .arc-action-params {
+      display: flex; flex-direction: column; gap: 5px;
+      margin-bottom: 10px;
+    }
+    .arc-action-param {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px; padding: 4px 8px;
+      background: rgba(255,255,255,0.04); border-radius: 6px;
+    }
+    .arc-action-param span { color: #6b7280; }
+    .arc-action-param b   { color: #e2e8f0; font-weight: 600; }
+    .arc-action-cta {
+      width: 100%; padding: 7px 12px; border-radius: 8px;
+      font-size: 11px; font-weight: 700; cursor: pointer; border: none;
+      transition: all 0.18s; letter-spacing: 0.03em;
+    }
+    .arc-action-cta-execute {
+      background: linear-gradient(135deg,#6d28d9,#3b82f6); color:#fff;
+    }
+    .arc-action-cta-execute:hover { opacity:0.88; transform:translateY(-1px); }
+    .arc-action-cta-wallet {
+      background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.35);
+      color: #fbbf24;
+    }
+    .arc-action-cta-wallet:hover { background: rgba(245,158,11,0.2); }
+
+    /* Light mode overrides for action cards */
+    body.light-mode .arc-blockchain-action-card {
+      background: linear-gradient(135deg, #f8faff, #f3f0ff);
+      border-color: rgba(109,40,217,0.25);
+    }
+    body.light-mode .arc-action-type-badge { color: #5b21b6; background: rgba(109,40,217,0.08); }
+    body.light-mode .arc-action-param { background: rgba(0,0,0,0.03); }
+    body.light-mode .arc-action-param span { color: #6b7280; }
+    body.light-mode .arc-action-param b { color: #1e293b; }
+
     /* Executing badge */
     .chat-exec-badge {
       display: inline-flex; align-items: center; gap: 5px; font-size: 10px;
@@ -1045,6 +1102,13 @@ async function sendChatMessage() {
     if (res.data.success) {
       const reply = res.data.message;
       appendChatMessage('assistant', reply.content, reply.module);
+
+      // ── Render action card if LLM returned a blockchain action ─────────────
+      const action = res.data.action || reply.action;
+      if (action && action.type && action.type !== 'none') {
+        renderBlockchainActionCard(action, res.data.walletConnected);
+      }
+
       if (!chatOpen) {
         unreadCount++;
         const badge = document.getElementById('chat-unread');
@@ -1903,6 +1967,210 @@ function appendActionCard(buttons) {
   container.appendChild(div);
   scrollChatToBottom();
 }
+
+// ── Blockchain Action Card — renders structured action from LLM ────────────────
+function renderBlockchainActionCard(action, walletConnected) {
+  const container = document.getElementById('chat-messages');
+  if (!container || !action || !action.type) return;
+
+  const typeIcons = {
+    transfer: '💳', swap: '🔄', multisend: '📤',
+    contract_deploy: '📋', contract_call: '🔍', automation: '🤖',
+  };
+  const typeLabels = {
+    transfer: 'Transfer', swap: 'Swap', multisend: 'Multisend',
+    contract_deploy: 'Deploy Contract', contract_call: 'Contract Call', automation: 'Automation',
+  };
+
+  const icon  = typeIcons[action.type]  || '⚡';
+  const label = typeLabels[action.type] || action.type;
+  const d     = action.data || {};
+
+  // Build params display
+  let paramsHtml = '';
+  if (action.type === 'transfer') {
+    paramsHtml = `
+      <div class="arc-action-param"><span>Token</span><b>${d.token || '—'}</b></div>
+      <div class="arc-action-param"><span>Amount</span><b>${d.amount || '—'} ${d.token || ''}</b></div>
+      <div class="arc-action-param"><span>To</span><b class="font-mono text-xs">${d.to ? d.to.slice(0,10)+'…'+d.to.slice(-6) : '—'}</b></div>`;
+  } else if (action.type === 'swap') {
+    paramsHtml = `
+      <div class="arc-action-param"><span>From</span><b>${d.amount || '—'} ${d.fromToken || '—'}</b></div>
+      <div class="arc-action-param"><span>To</span><b>${d.toToken || '—'}</b></div>`;
+  } else if (action.type === 'multisend') {
+    const count = Array.isArray(d.receivers) ? d.receivers.length : '?';
+    const total = Array.isArray(d.receivers)
+      ? d.receivers.reduce((s, r) => s + parseFloat(r.amount || 0), 0).toFixed(2)
+      : '?';
+    paramsHtml = `
+      <div class="arc-action-param"><span>Token</span><b>${d.token || 'USDC'}</b></div>
+      <div class="arc-action-param"><span>Recipients</span><b>${count} wallets</b></div>
+      <div class="arc-action-param"><span>Total</span><b>${total} ${d.token || 'USDC'}</b></div>`;
+  } else if (action.type === 'contract_deploy') {
+    paramsHtml = `
+      <div class="arc-action-param"><span>Type</span><b>${d.contractType || 'escrow'}</b></div>
+      <div class="arc-action-param"><span>Value</span><b>${d.totalValue || '—'} ${d.token || 'USDC'}</b></div>
+      ${d.milestones ? `<div class="arc-action-param"><span>Milestones</span><b>${d.milestones}</b></div>` : ''}`;
+  } else if (action.type === 'contract_call') {
+    paramsHtml = `
+      <div class="arc-action-param"><span>Method</span><b>${d.method || '—'}</b></div>
+      ${Array.isArray(d.params) ? `<div class="arc-action-param"><span>Params</span><b class="font-mono text-xs">${d.params.join(', ')}</b></div>` : ''}`;
+  } else if (action.type === 'automation') {
+    paramsHtml = `
+      <div class="arc-action-param"><span>Trigger</span><b>${d.trigger || '—'}</b></div>
+      <div class="arc-action-param"><span>Action</span><b>${d.action || '—'}</b></div>
+      ${d.amount ? `<div class="arc-action-param"><span>Amount</span><b>${d.amount} ${d.token || 'USDC'}</b></div>` : ''}
+      ${d.to ? `<div class="arc-action-param"><span>To</span><b class="font-mono text-xs">${d.to.slice(0,10)+'…'+d.to.slice(-6)}</b></div>` : ''}`;
+  }
+
+  // Store action data for execute handler
+  const actionId = 'arc-act-' + Date.now();
+
+  // CTA button
+  let ctaHtml = '';
+  const needsWallet = !walletConnected || action.status === 'requires_wallet';
+  if (needsWallet) {
+    ctaHtml = `<button onclick="openWalletModal()" class="arc-action-cta arc-action-cta-wallet">
+      🔗 Conectar Wallet para Executar
+    </button>`;
+  } else {
+    ctaHtml = `<button onclick="arcExecuteAction('${actionId}')" class="arc-action-cta arc-action-cta-execute">
+      ⚡ Executar ${label} →
+    </button>`;
+  }
+
+  const statusColor = needsWallet ? '#f59e0b' : '#22c55e';
+  const statusText  = needsWallet ? 'Wallet necessária' : 'Pronto para executar';
+
+  const card = document.createElement('div');
+  card.className = 'flex justify-start pl-7 mb-2';
+  card.id = actionId + '-card';
+  card.innerHTML = `
+    <div class="arc-blockchain-action-card">
+      <div class="arc-action-header">
+        <span class="arc-action-type-badge">${icon} ${label}</span>
+        <span class="arc-action-status" style="color:${statusColor}">● ${statusText}</span>
+      </div>
+      <div class="arc-action-params">${paramsHtml}</div>
+      ${ctaHtml}
+    </div>`;
+
+  // Store action payload on the DOM element for later retrieval
+  card._arcAction = action;
+
+  // Register in global map
+  if (!window._arcPendingActions) window._arcPendingActions = {};
+  window._arcPendingActions[actionId] = action;
+
+  container.appendChild(card);
+  scrollChatToBottom();
+}
+
+// ── Execute Action: fill form + navigate to correct tab ────────────────────────
+function arcExecuteAction(actionId) {
+  const action = window._arcPendingActions && window._arcPendingActions[actionId];
+  if (!action) return;
+
+  const d = action.data || {};
+
+  // Helper: set field value and trigger input event
+  function fillField(id, value) {
+    const el = document.getElementById(id);
+    if (!el || value === undefined || value === null) return;
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  switch (action.type) {
+
+    case 'transfer': {
+      // Navigate to payments tab + fill form
+      if (typeof switchTab === 'function') switchTab('payments');
+      setTimeout(() => {
+        fillField('pay-recipient', d.to || '');
+        fillField('pay-amount', d.amount || '');
+        // Select token
+        if (d.token && typeof selectPayToken === 'function') selectPayToken(d.token);
+        if (typeof updatePayPreview === 'function') updatePayPreview();
+        if (typeof payValidateForm === 'function') payValidateForm();
+        // Close chat after short delay
+        setTimeout(() => { if (typeof toggleChat === 'function') toggleChat(); }, 300);
+      }, 400);
+      break;
+    }
+
+    case 'swap': {
+      // Navigate to DEX tab + fill form
+      if (typeof switchTab === 'function') switchTab('dex');
+      setTimeout(() => {
+        fillField('swap-amount-in', d.amount || '');
+        // Try to set token selects if available
+        const fromSel = document.getElementById('swap-token-in');
+        const toSel   = document.getElementById('swap-token-out');
+        if (fromSel && d.fromToken) { fromSel.value = d.fromToken; fromSel.dispatchEvent(new Event('change')); }
+        if (toSel && d.toToken)     { toSel.value   = d.toToken;   toSel.dispatchEvent(new Event('change')); }
+        setTimeout(() => { if (typeof toggleChat === 'function') toggleChat(); }, 300);
+      }, 400);
+      break;
+    }
+
+    case 'multisend': {
+      // Navigate to multisend tab
+      if (typeof switchTab === 'function') switchTab('multisend');
+      setTimeout(() => {
+        // Try to populate multisend recipients if function exists
+        if (typeof window.arcPopulateMultisend === 'function' && Array.isArray(d.receivers)) {
+          window.arcPopulateMultisend(d.receivers, d.token || 'USDC');
+        }
+        setTimeout(() => { if (typeof toggleChat === 'function') toggleChat(); }, 300);
+      }, 400);
+      break;
+    }
+
+    case 'contract_deploy': {
+      // Navigate to contracts tab + fill form
+      if (typeof switchTab === 'function') switchTab('contracts');
+      setTimeout(() => {
+        fillField('cf-value', d.totalValue || '');
+        if (d.token && typeof window.cfSelectToken === 'function') window.cfSelectToken(d.token);
+        if (d.milestones) fillField('cf-milestones', String(d.milestones));
+        if (d.title) fillField('cf-title', d.title);
+        if (d.contractor) fillField('cf-contractor', d.contractor);
+        if (typeof cfUpdateFeePreview === 'function') cfUpdateFeePreview();
+        setTimeout(() => { if (typeof toggleChat === 'function') toggleChat(); }, 300);
+      }, 400);
+      break;
+    }
+
+    case 'contract_call': {
+      if (typeof switchTab === 'function') switchTab('contracts');
+      setTimeout(() => { if (typeof toggleChat === 'function') toggleChat(); }, 600);
+      break;
+    }
+
+    case 'automation': {
+      if (typeof switchTab === 'function') switchTab('agents');
+      setTimeout(() => { if (typeof toggleChat === 'function') toggleChat(); }, 600);
+      break;
+    }
+
+    default:
+      if (typeof toggleChat === 'function') toggleChat();
+  }
+
+  // Visual feedback: mark card as executed
+  const cardEl = document.getElementById(actionId + '-card');
+  if (cardEl) {
+    const btn = cardEl.querySelector('.arc-action-cta-execute');
+    if (btn) {
+      btn.textContent = '✅ Redirecionando...';
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+    }
+  }
+}
+
 
 // ── Typing indicator ───────────────────────────────────────────────────────────
 function showTypingIndicator() {

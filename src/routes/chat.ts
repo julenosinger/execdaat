@@ -1,23 +1,42 @@
-// Rota API para o Chatbot IA integrado com todos os módulos
+// ============================================================
+// ARC AI AGENT — Chat Route v2
+// LLM: OpenAI (gpt-5-mini) via Cloudflare Worker
+// Role: ACTION EXECUTION AGENT for ARC Network blockchain
+// System Prompt: Full Web3 agent with JSON action format
+// Fallback: Rule-based engine if LLM unavailable
+// ============================================================
 
 import { Hono } from 'hono';
 import {
   clampString,
   isValidSessionId,
-  sanitizeForLog,
   stripTags,
 } from '../middleware/security';
 
-const chatRouter = new Hono();
+// ─── Cloudflare env bindings ─────────────────────────────────────────────────
+type Bindings = {
+  OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+};
 
-// ─── Histórico de conversas (in-memory, sessão) ──────────────────────────────
+const chatRouter = new Hono<{ Bindings: Bindings }>();
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
-  module?: string; // 'payments' | 'vaults' | 'swap' | 'contracts' | 'agents' | 'general'
-  data?: unknown;   // dados estruturados opcionais
+  module?: string;
+  action?: BlockchainAction | null;
+  data?: unknown;
+}
+
+interface BlockchainAction {
+  type: 'transfer' | 'swap' | 'multisend' | 'contract_deploy' | 'contract_call' | 'automation' | 'none';
+  status: 'pending' | 'success' | 'failed' | 'requires_wallet';
+  data: Record<string, unknown>;
+  message: string;
 }
 
 interface ChatSession {
@@ -25,6 +44,7 @@ interface ChatSession {
   messages: ChatMessage[];
   createdAt: string;
   lastActivity: string;
+  walletAddress?: string;
 }
 
 const sessions: Map<string, ChatSession> = new Map();
@@ -43,348 +63,383 @@ function getOrCreateSession(sessionId: string): ChatSession {
   return s;
 }
 
-// ─── Motor de IA Local (sem API externa) ─────────────────────────────────────
-// Engine rule-based + contextual para responder perguntas sobre o sistema
+// ─── ARC NETWORK CONSTANTS ──────────────────────────────────────────────────
+const ARC_CONSTANTS = {
+  chainId: 5042002,
+  chainName: 'Arc Testnet',
+  rpc: 'https://rpc.testnet.arc.network',
+  explorer: 'https://testnet.arcscan.app',
+  faucet: 'https://faucet.circle.com',
+  gasToken: 'USDC',
+  gasCost: '~$0.009 per tx',
+  finality: 'Sub-second',
+  tokens: {
+    USDC: '0x3600000000000000000000000000000000000000',
+    EURC: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
+  },
+  contracts: {
+    factory: '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A',
+    amm: '0x3148E2807F172D1cC354F35fB4fC4104e8b6b561',
+    multicall3: '0xcA11bde05977b3631167028862bE2a173976CA11',
+  },
+};
 
-interface ModuleData {
-  payments?: { queue: number; processed: number; volume: number };
-  vaults?: { usdc: { balance: number; apy: number }; eurc: { balance: number; apy: number } };
-  swap?: { usdcToEurc: number; eurcToUsdc: number };
-  contracts?: { active: number; pending: number; total: number };
+// ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
+function buildSystemPrompt(walletConnected: boolean, walletAddress?: string): string {
+  return `You are an advanced Web3 AI Agent integrated into the ARC Network dApp.
+
+Your role is NOT just to chat — you MUST interpret user intent and convert it into REAL executable blockchain actions.
+
+-----------------------------------
+🎯 CORE BEHAVIOR
+-----------------------------------
+
+1. Always analyze the user message and detect if it contains an actionable intent:
+   - transfer (payments)
+   - swap
+   - multisend
+   - contract creation
+   - contract interaction
+
+2. If an action is detected:
+   - Extract parameters
+   - Validate inputs
+   - Generate a structured action object
+   - Execute the action using the connected wallet or internal wallet
+
+3. Always return:
+   - A human-readable explanation
+   - + the structured JSON action
+   - + execution status
+
+-----------------------------------
+⚙️ ACTION FORMAT (STRICT)
+-----------------------------------
+
+All actions MUST follow this JSON format. ALWAYS wrap in triple backticks with json:
+
+\`\`\`json
+{
+  "type": "transfer | swap | multisend | contract_deploy | contract_call | automation",
+  "status": "${walletConnected ? 'pending' : 'requires_wallet'}",
+  "data": { ... },
+  "message": "human readable explanation"
+}
+\`\`\`
+
+-----------------------------------
+💸 PAYMENTS (TRANSFER)
+-----------------------------------
+
+If user says: "send 10 USDC to 0xabc..."
+
+\`\`\`json
+{
+  "type": "transfer",
+  "status": "${walletConnected ? 'pending' : 'requires_wallet'}",
+  "data": {
+    "token": "USDC",
+    "amount": "10",
+    "to": "0xabc...",
+    "tokenAddress": "${ARC_CONSTANTS.tokens.USDC}"
+  },
+  "message": "Preparing to send 10 USDC to 0xabc..."
+}
+\`\`\`
+
+Then trigger: tokenContract.transfer(to, amount)
+
+-----------------------------------
+🔄 SWAP
+-----------------------------------
+
+If user says: "swap 1 USDC to EURC"
+
+\`\`\`json
+{
+  "type": "swap",
+  "status": "${walletConnected ? 'pending' : 'requires_wallet'}",
+  "data": {
+    "fromToken": "USDC",
+    "toToken": "EURC",
+    "amount": "1",
+    "ammAddress": "${ARC_CONSTANTS.contracts.amm}"
+  },
+  "message": "Swapping 1 USDC to EURC via ARC AMM"
+}
+\`\`\`
+
+-----------------------------------
+📤 MULTISEND
+-----------------------------------
+
+If user says: "send 1 USDC to 3 wallets: [addresses]"
+
+\`\`\`json
+{
+  "type": "multisend",
+  "status": "${walletConnected ? 'pending' : 'requires_wallet'}",
+  "data": {
+    "token": "USDC",
+    "receivers": [
+      {"address": "0x1...", "amount": "1"},
+      {"address": "0x2...", "amount": "1"}
+    ],
+    "multicall3": "${ARC_CONSTANTS.contracts.multicall3}"
+  },
+  "message": "Sending USDC to multiple wallets"
+}
+\`\`\`
+
+-----------------------------------
+📜 CONTRACT DEPLOY
+-----------------------------------
+
+If user says: "create a contract for 1000 USDC with 2 milestones"
+
+\`\`\`json
+{
+  "type": "contract_deploy",
+  "status": "${walletConnected ? 'pending' : 'requires_wallet'}",
+  "data": {
+    "contractType": "escrow",
+    "totalValue": "1000",
+    "token": "USDC",
+    "milestones": 2,
+    "factoryAddress": "${ARC_CONSTANTS.contracts.factory}"
+  },
+  "message": "Creating escrow contract for 1000 USDC with 2 milestones"
+}
+\`\`\`
+
+-----------------------------------
+🔍 CONTRACT INTERACTION
+-----------------------------------
+
+If user says: "check balance of 0xabc in contract X"
+
+\`\`\`json
+{
+  "type": "contract_call",
+  "status": "${walletConnected ? 'pending' : 'requires_wallet'}",
+  "data": {
+    "method": "balanceOf",
+    "params": ["0xabc..."]
+  },
+  "message": "Fetching balance"
+}
+\`\`\`
+
+-----------------------------------
+🤖 AUTONOMOUS MODE
+-----------------------------------
+
+If user requests automation — e.g.: "pay rent every month" or "send 10 USDC every week to 0xabc..."
+
+\`\`\`json
+{
+  "type": "automation",
+  "status": "pending",
+  "data": {
+    "trigger": "weekly | monthly | daily | price_condition",
+    "action": "transfer | swap",
+    "token": "USDC",
+    "amount": "10",
+    "to": "0xabc...",
+    "description": "Weekly payment of 10 USDC"
+  },
+  "message": "Setting up automation"
+}
+\`\`\`
+
+-----------------------------------
+🔐 SECURITY RULES
+-----------------------------------
+
+- NEVER execute without valid parameters
+- ALWAYS confirm before high-value transactions (> 1000 USDC)
+- Detect invalid addresses (must be 0x + 40 hex chars)
+- Prevent duplicate transactions
+- Respect user wallet permissions
+- NEVER invent transaction hashes or fake confirmations
+
+-----------------------------------
+🧠 MEMORY
+-----------------------------------
+
+- Store user wallet address
+- Store preferred tokens
+- Store past transactions context
+${walletConnected && walletAddress ? `\nCurrent wallet: ${walletAddress}` : ''}
+
+-----------------------------------
+⚡ EXECUTION RULE
+-----------------------------------
+
+${walletConnected
+  ? `✅ Wallet connected: ${walletAddress || 'unknown'}
+→ Actions can be executed IMMEDIATELY via the dApp interface
+→ Use status: "pending" in the JSON
+→ Tell the user to click the action button to confirm`
+  : `⚠️ No wallet connected
+→ Use status: "requires_wallet" in the JSON
+→ Ask user to connect wallet before executing`}
+
+-----------------------------------
+🌐 ARC NETWORK INFO
+-----------------------------------
+
+- Chain ID: ${ARC_CONSTANTS.chainId} (Arc Testnet)
+- Gas token: USDC (no ETH needed!)
+- Gas cost: ${ARC_CONSTANTS.gasCost}
+- Finality: ${ARC_CONSTANTS.finality}
+- USDC address: ${ARC_CONSTANTS.tokens.USDC}
+- EURC address: ${ARC_CONSTANTS.tokens.EURC}
+- Explorer: ${ARC_CONSTANTS.explorer}
+- Faucet: ${ARC_CONSTANTS.faucet}
+- AMM: ${ARC_CONSTANTS.contracts.amm}
+- Contract Factory: ${ARC_CONSTANTS.contracts.factory}
+- Multicall3: ${ARC_CONSTANTS.contracts.multicall3}
+
+-----------------------------------
+🗣️ LANGUAGE RULE
+-----------------------------------
+
+- Detect the user's language from their message
+- Respond in the SAME language (pt-BR if Portuguese, EN if English)
+- Action JSON keys remain in English always
+- Be concise and action-oriented
+
+-----------------------------------
+🚨 IF NO ACTION DETECTED
+-----------------------------------
+
+If the message is informational only:
+- Answer helpfully with relevant ARC Network data
+- Do NOT generate a JSON action block
+- Suggest related actions the user can take
+
+-----------------------------------
+🚨 IMPORTANT
+-----------------------------------
+
+You are NOT a chatbot. You are an ACTION EXECUTION AGENT.
+
+Every actionable message MUST result in:
+1. Human-readable explanation
+2. JSON action block (wrapped in \`\`\`json ... \`\`\`)
+3. Execution guidance for the user`;
 }
 
-function detectIntent(text: string): { intent: string; module: string; entities: Record<string, string> } {
-  const lower = text.toLowerCase();
-
-  // Guardian / Compliance / KYC intents
-  if (/guardian|kyc|compliance|aml|sanction|bloqueio|risco|risk score|verificar|verify|complian/.test(lower)) {
-    if (/kyc|verific|identific|document/.test(lower)) return { intent: 'guardian_kyc', module: 'guardian', entities: {} };
-    if (/sanction|sanctioned|bloqueado|blocked/.test(lower)) return { intent: 'guardian_sanction', module: 'guardian', entities: {} };
-    return { intent: 'guardian_status', module: 'guardian', entities: {} };
+// ─── Parse action from LLM response ──────────────────────────────────────────
+function parseActionFromResponse(content: string): BlockchainAction | null {
+  try {
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)```/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[1].trim());
+    if (!parsed.type || !parsed.status || !parsed.data) return null;
+    return parsed as BlockchainAction;
+  } catch {
+    return null;
   }
-
-  // Yield Optimizer intents
-  if (/yield optim|otimizador|otimizar|rebalance|rebalanc|pool|melhor apy|best apy|posicao|position/.test(lower)) {
-    if (/pool|pools|melhores?.pool/.test(lower)) return { intent: 'yield_pools', module: 'yield', entities: {} };
-    if (/position|posicao/.test(lower)) return { intent: 'yield_positions', module: 'yield', entities: {} };
-    return { intent: 'yield_status', module: 'yield', entities: {} };
-  }
-
-  // Intents de pagamentos
-  if (/pagamento|payment|pagar|send|enviar|transfer/.test(lower)) {
-    if (/anali[sz]|risk|risco|check/.test(lower)) return { intent: 'analyze_payment', module: 'payments', entities: {} };
-    if (/fila|queue|pending/.test(lower)) return { intent: 'payment_queue', module: 'payments', entities: {} };
-    if (/histori|history|recent/.test(lower)) return { intent: 'payment_history', module: 'payments', entities: {} };
-    return { intent: 'payment_info', module: 'payments', entities: {} };
-  }
-
-  // Intents de vault
-  if (/vault|cofre|deposi|yield|rendimento|apy|sac|withdraw/.test(lower)) {
-    if (/eurc|euro/.test(lower)) return { intent: 'vault_eurc', module: 'vaults', entities: { token: 'EURC' } };
-    if (/usdc/.test(lower)) return { intent: 'vault_usdc', module: 'vaults', entities: { token: 'USDC' } };
-    return { intent: 'vault_info', module: 'vaults', entities: {} };
-  }
-
-  // Intents de swap
-  if (/swap|trocar|convert|cambio|câmbio|taxa|rate|eurc|usdc.*(para|to|→)/.test(lower)) {
-    return { intent: 'swap_info', module: 'swap', entities: {} };
-  }
-
-  // Intents de contratos
-  if (/contrat|contract|milestone|escrow|assinar|sign/.test(lower)) {
-    if (/ativo|active/.test(lower)) return { intent: 'contracts_active', module: 'contracts', entities: {} };
-    if (/milestone|etapa/.test(lower)) return { intent: 'contracts_milestone', module: 'contracts', entities: {} };
-    return { intent: 'contract_info', module: 'contracts', entities: {} };
-  }
-
-  // Intents de agentes
-  if (/agent|ia|ai|bot|autonom|aprova/.test(lower)) {
-    return { intent: 'agents_status', module: 'agents', entities: {} };
-  }
-
-  // Rede
-  if (/arc|testnet|rede|network|chain|rpc|usdc address/.test(lower)) {
-    return { intent: 'network_info', module: 'network', entities: {} };
-  }
-
-  // Ajuda
-  if (/help|ajuda|como|how|what|o que|comandos/.test(lower)) {
-    return { intent: 'help', module: 'general', entities: {} };
-  }
-
-  // Saudações
-  if (/^(oi|olá|ola|hey|hi|hello|bom dia|boa tarde|boa noite)/i.test(lower)) {
-    return { intent: 'greeting', module: 'general', entities: {} };
-  }
-
-  return { intent: 'general', module: 'general', entities: {} };
 }
 
-async function generateResponse(
-  userMsg: string,
-  intent: string,
-  module: string,
-  _entities: Record<string, string>,
-  context: ChatMessage[]
-): Promise<{ content: string; data?: unknown; module: string }> {
+// ─── Call OpenAI LLM ─────────────────────────────────────────────────────────
+async function callLLM(
+  messages: Array<{ role: string; content: string }>,
+  apiKey: string,
+  baseUrl: string
+): Promise<string> {
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-5-mini',
+      messages,
+      max_tokens: 1024,
+      temperature: 0.3,  // lower = more deterministic for actions
+    }),
+  });
 
-  // Faz chamadas internas para as APIs do sistema
-  const baseUrl = 'http://localhost:3000';
+  if (!response.ok) {
+    const err = await response.text().catch(() => '');
+    throw new Error(`LLM API error ${response.status}: ${err.slice(0, 200)}`);
+  }
 
-  const fetchApi = async (path: string) => {
-    try {
-      const res = await fetch(`${baseUrl}${path}`);
-      return await res.json();
-    } catch {
-      return null;
-    }
+  const data = await response.json() as {
+    choices?: Array<{ message?: { content?: string } }>;
   };
+  return data?.choices?.[0]?.message?.content || '';
+}
 
+// ─── Rule-based fallback (if LLM unavailable) ────────────────────────────────
+function ruleFallback(userMsg: string): { content: string; action: BlockchainAction | null; module: string } {
   const lower = userMsg.toLowerCase();
 
-  switch (intent) {
-    case 'greeting': {
-      const greetings = [
-        "Hello! I'm **ARC AI Assistant** 🤖. I can help you with:\n\n• 💳 **Payments** — queue, analysis, batch processing\n• 🏦 **Vaults** — USDC & EURC deposits and yield\n• 🔄 **Swap** — exchange USDC ↔ EURC\n• 📋 **Contracts** — status and milestones\n• 🛡️ **Guardian** — compliance, KYC, AML\n• 🌱 **Yield Optimizer** — best APY, pool rebalancing\n• 🧠 **AI Agents** — all 4 agents status\n\nWhat would you like to do?",
-        "Hi! I'm your **ARC AI Assistant** 👋. I'm integrated with all 4 AI agents.\n\nTry asking:\n- *\"Show vault APY\"*\n- *\"What's the USDC → EURC rate?\"*\n- *\"Guardian status\"*\n- *\"Best yield pools\"*\n- *\"How many pending payments?\"*",
-      ];
-      return { content: greetings[Math.floor(Math.random() * greetings.length)], module: 'general' };
-    }
-
-    case 'help': {
-      return {
-        content: `## Available Commands 🤖\n\n**💳 Payments**\n- *"Show payment queue"*\n- *"Pending payments"*\n\n**🏦 Vaults**\n- *"USDC vault APY"*\n- *"EURC vault balance"*\n\n**🔄 Swap**\n- *"USDC to EURC rate"*\n- *"Swap 100 USDC"*\n\n**📋 Contracts**\n- *"Active contracts"*\n\n**🛡️ Guardian (Compliance/KYC)**\n- *"Guardian status"*\n- *"KYC tiers"*\n- *"Compliance check"*\n\n**🌱 Yield Optimizer**\n- *"Best yield pools"*\n- *"Yield positions"*\n- *"Yield optimizer status"*\n\n**🧠 AI Agents**\n- *"Agent status"*\n\n**🌐 Network**\n- *"Arc testnet info"*`,
-        module: 'general',
-      };
-    }
-
-    case 'payment_queue':
-    case 'payment_info': {
-      const data = await fetchApi('/api/payments/queue');
-      if (!data || !data.success) {
-        return { content: 'I couldn\'t retrieve the payment queue. Please try again.', module: 'payments' };
-      }
-      const pending = data.pending?.length || 0;
-      const processed = data.processed?.length || 0;
-      const totalVol = (data.processed || []).reduce((s: number, p: { amount: number }) => s + (p.amount || 0) / 1e6, 0);
-
-      return {
-        content: `## 💳 Payment Queue\n\n- **Pending:** ${pending} payment${pending !== 1 ? 's' : ''} awaiting processing\n- **Processed:** ${processed} payment${processed !== 1 ? 's' : ''}\n- **Total Volume:** $${totalVol.toFixed(2)} USDC\n\n${pending > 0 ? `⚡ There are **${pending} pending** payments. Click **Process Queue** in the Payments tab to execute them.` : '✅ Queue is clear!'}`,
-        data: { pending, processed },
-        module: 'payments',
-      };
-    }
-
-    case 'vault_info':
-    case 'vault_usdc':
-    case 'vault_eurc': {
-      const token = intent === 'vault_eurc' ? 'eurc' : intent === 'vault_usdc' ? 'usdc' : null;
-      const data = token ? await fetchApi(`/api/vaults/${token}`) : await fetchApi('/api/vaults');
-
-      if (!data || !data.success) {
-        return { content: 'Unable to fetch vault data at this moment.', module: 'vaults' };
-      }
-
-      if (token && data.vault) {
-        const v = data.vault;
-        return {
-          content: `## 🏦 ${v.name}\n\n| Metric | Value |\n|--------|-------|\n| **Balance** | ${v.currentBalance.toLocaleString()} ${v.token} |\n| **APY** | ${v.apy}% |\n| **Yield Accrued** | ${v.accrued.toFixed(4)} ${v.token} |\n| **Total Deposited** | ${v.totalDeposited.toLocaleString()} ${v.token} |\n| **Participants** | ${v.participants} |\n| **Contract** | \`${v.contractAddress.slice(0, 10)}...\` |\n\n${v.description}\n\n*To deposit or withdraw, go to the **Vaults** tab.*`,
-          data: v,
-          module: 'vaults',
-        };
-      }
-
-      const vaultList = data.vaults || [];
-      const lines = vaultList.map((v: { name: string; currentBalance: number; token: string; apy: number; accrued: number }) =>
-        `**${v.name}**: ${v.currentBalance.toLocaleString()} ${v.token} | APY: **${v.apy}%** | Yield: ${v.accrued.toFixed(2)} ${v.token}`
-      );
-
-      return {
-        content: `## 🏦 Vaults Overview\n\n${lines.join('\n\n')}\n\n*Ask about a specific vault: "USDC vault" or "EURC vault"*`,
-        data: vaultList,
-        module: 'vaults',
-      };
-    }
-
-    case 'swap_info': {
-      const data = await fetchApi('/api/swap/rates');
-      if (!data || !data.success) {
-        return { content: 'Unable to fetch swap rates.', module: 'swap' };
-      }
-
-      // Check if user wants a specific amount
-      const amountMatch = userMsg.match(/(\d+(?:\.\d+)?)\s*(usdc|eurc)/i);
-      if (amountMatch) {
-        const amount = parseFloat(amountMatch[1]);
-        const fromToken = amountMatch[2].toUpperCase();
-        const toToken = fromToken === 'USDC' ? 'EURC' : 'USDC';
-        const rate = fromToken === 'USDC' ? data.rates.USDC_TO_EURC : data.rates.EURC_TO_USDC;
-        const gross = amount * rate;
-        const fee = gross * 0.003;
-        const out = gross - fee;
-
-        return {
-          content: `## 🔄 Swap Quote\n\n**${amount} ${fromToken} → ${out.toFixed(4)} ${toToken}**\n\n| | |\n|---|---|\n| Rate | 1 ${fromToken} = ${rate} ${toToken} |\n| Fee (0.3%) | ${fee.toFixed(4)} ${toToken} |\n| You receive | **${out.toFixed(4)} ${toToken}** |\n\n*Go to the **Swap** tab to execute this transaction.*`,
-          data: { amount, fromToken, toToken, out },
-          module: 'swap',
-        };
-      }
-
-      const r = data.rates;
-      const pool = data.pool;
-      return {
-        content: `## 🔄 Current Swap Rates\n\n| Pair | Rate |\n|------|------|\n| USDC → EURC | **${r.USDC_TO_EURC}** |\n| EURC → USDC | **${r.EURC_TO_USDC}** |\n\n**Pool Stats:**\n- USDC Reserve: ${pool.usdcReserve.toLocaleString()}\n- EURC Reserve: ${pool.eurcReserve.toLocaleString()}\n- Fee: ${pool.fee}\n- Total Swaps: ${pool.totalSwaps}\n\n*Try: "swap 100 USDC" to get a quote*`,
-        data: r,
-        module: 'swap',
-      };
-    }
-
-    case 'contracts_active':
-    case 'contract_info': {
-      const data = await fetchApi('/api/contracts');
-      if (!data || !data.success) {
-        return { content: 'Unable to fetch contracts.', module: 'contracts' };
-      }
-
-      const contracts = data.contracts || [];
-      const active = contracts.filter((c: { status: string }) => c.status === 'Active');
-      const draft = contracts.filter((c: { status: string }) => c.status === 'Draft');
-
-      const lines = contracts.slice(0, 5).map((c: { title: string; status: string; totalValue: number; milestones: Array<{ status: string }> }) => {
-        const statusEmoji = c.status === 'Active' ? '🟢' : c.status === 'Draft' ? '🟡' : c.status === 'Completed' ? '✅' : '🔴';
-        const completed = (c.milestones || []).filter((m: { status: string }) => m.status === 'Completed').length;
-        const total = (c.milestones || []).length;
-        return `${statusEmoji} **${c.title}** — $${(c.totalValue / 1e6).toLocaleString()} USDC (${completed}/${total} milestones)`;
-      });
-
-      return {
-        content: `## 📋 Contracts Overview\n\n- **Active:** ${active.length}\n- **Draft:** ${draft.length}\n- **Total:** ${contracts.length}\n\n${lines.join('\n')}\n\n*Go to the **Contracts** tab to manage them.*`,
-        data: { active: active.length, draft: draft.length, total: contracts.length },
-        module: 'contracts',
-      };
-    }
-
-    case 'agents_status': {
-      const payData = await fetchApi('/api/payments/agent');
-      const conData = await fetchApi('/api/contracts/agent');
-      const guardData = await fetchApi('/api/guardian/status');
-      const yieldData = await fetchApi('/api/yield/status');
-
-      const payStats = payData?.stats || {};
-      const conStats = conData?.stats || {};
-      const gStats = guardData?.stats || {};
-      const yStats = yieldData?.stats || {};
-
-      return {
-        content: `## 🧠 AI Agents Status\n\n**ArcPay Agent v1.0** 🟢\n- Approved: ${payStats.approved || 0} | Rejected: ${payStats.rejected || 0} | Pending: ${payStats.pending || 0}\n- Volume: $${((payStats.totalAmount || 0) / 1e6).toFixed(2)} USDC\n\n**ArcContract Agent v1.0** 🟢\n- Active: ${conStats.active || 0} | Completed: ${conStats.completed || 0}\n\n**Guardian Agent v1.0** 🛡️\n- Total Checks: ${gStats.totalChecks || 0} | Approved: ${gStats.approved || 0} | Blocked: ${gStats.blocked || 0}\n- KYC Verified: ${gStats.kycVerified || 0} | Avg Risk: ${(gStats.averageRiskScore || 0).toFixed(1)}/100\n\n**Yield Optimizer v1.0** 🌱\n- Best APY: ${yStats.bestApy || 0}% | Active Pools: ${yStats.totalPools || 0} | Positions: ${yStats.activePositions || 0}\n\nAll 4 agents are online monitoring Arc Testnet.`,
-        module: 'agents',
-      };
-    }
-
-    case 'guardian_status':
-    case 'guardian_sanction': {
-      const data = await fetchApi('/api/guardian/status');
-      if (!data?.success) return { content: 'Unable to fetch Guardian status.', module: 'guardian' };
-      const s = data.stats;
-      return {
-        content: `## 🛡️ Guardian Agent — Compliance & KYC\n\n**Status:** ${data.agent?.status?.toUpperCase() || 'ACTIVE'}\n\n| Metric | Value |\n|--------|-------|\n| Total Checks | ${s.totalChecks} |\n| Approved | ✅ ${s.approved} |\n| Blocked | 🚫 ${s.blocked} |\n| Flagged | ⚠️ ${s.flagged} |\n| KYC Verified | 🔐 ${s.kycVerified} |\n| KYC Pending | ⏳ ${s.kycPending} |\n| Avg Risk Score | ${(s.averageRiskScore || 0).toFixed(1)}/100 |\n\n**Capabilities:**\n- 🔍 OFAC/Sanction screening\n- 🆔 KYC/AML verification (Tier 0–3)\n- 🌍 Jurisdiction risk check\n- 📊 Structuring detection\n- 🔒 On-chain compliance signatures\n\nTo check compliance for a transaction, go to **AI Agents** tab → Guardian card.`,
-        module: 'guardian',
-      };
-    }
-
-    case 'guardian_kyc': {
-      return {
-        content: `## 🆔 KYC Tiers\n\n| Tier | Label | Max per Tx | Daily Limit |\n|------|-------|-----------|-------------|\n| 0 | No KYC | $100 | $200 |\n| 1 | Basic | $1,000 | $5,000 |\n| 2 | Standard | $10,000 | $50,000 |\n| 3 | Full | $500,000 | $1,000,000 |\n\nTo submit KYC:\n1. Go to **AI Agents** → **Guardian Agent** card\n2. Click **Submit KYC Application**\n3. Enter your wallet address and select tier\n4. Auto-verification in ~15 seconds (testnet)\n\nHigher KYC tier = higher transaction limits on Arc Testnet!`,
-        module: 'guardian',
-      };
-    }
-
-    case 'yield_status': {
-      const data = await fetchApi('/api/yield/status');
-      if (!data?.success) return { content: 'Unable to fetch Yield Optimizer status.', module: 'yield' };
-      const s = data.stats;
-      return {
-        content: `## 🌱 Yield Optimizer Agent\n\n**Status:** ${s.agentStatus?.toUpperCase() || 'IDLE'}\n\n| Metric | Value |\n|--------|-------|\n| Best APY | ${s.bestApy || 0}% |\n| Active Pools | ${s.totalPools || 0} |\n| Active Positions | ${s.activePositions || 0} |\n| Rebalances | ${s.rebalances || 0} |\n| Avg APY | ${s.averageApy || 0}% |\n\n**Strategies:**\n- 🏦 Conservative — Low risk, stable yield\n- ⚖️ Balanced — Mix of stability and yield\n- 🚀 Aggressive — Maximum yield, higher risk\n\nTo open a yield position, go to **AI Agents** tab → Yield Optimizer card.`,
-        module: 'yield',
-      };
-    }
-
-    case 'yield_pools': {
-      const data = await fetchApi('/api/yield/pools');
-      if (!data?.success) return { content: 'Unable to fetch yield pools.', module: 'yield' };
-      const pools = (data.pools || []).slice(0, 6);
-      const lines = pools.map((p: { name: string; token: string; apy: number; risk: string; tvl: number }) =>
-        `| ${p.token === 'USDC' ? '💵' : '💶'} ${p.name} | ${p.token} | **${p.apy}%** | ${p.risk} | $${(p.tvl / 1000).toFixed(0)}k |`
-      );
-      return {
-        content: `## 🏊 Yield Pools\n\n| Pool | Token | APY | Risk | TVL |\n|------|-------|-----|------|-----|\n${lines.join('\n')}\n\n*Best USDC pool: ${data.bestUsdc?.name || '—'} at **${data.bestUsdc?.apy || 0}% APY***\n*Best EURC pool: ${data.bestEurc?.name || '—'} at **${data.bestEurc?.apy || 0}% APY***\n\nOpen a position in **AI Agents** → **Yield Optimizer** card!`,
-        module: 'yield',
-      };
-    }
-
-    case 'yield_positions': {
-      const data = await fetchApi('/api/yield/positions');
-      if (!data?.success) return { content: 'Unable to fetch positions.', module: 'yield' };
-      const positions = data.positions || [];
-      if (!positions.length) {
-        return {
-          content: `## 📊 Yield Positions\n\nNo active positions found.\n\nTo open one:\n1. Go to **AI Agents** → **Yield Optimizer** card\n2. Select a pool and amount\n3. Click **Open Position (Sign on Arc)**\n4. Confirm the transaction in your wallet`,
-          module: 'yield',
-        };
-      }
-      const lines = positions.map((p: { poolId: string; deposited: number; token: string; entryApy: number; yieldEarned: number }) =>
-        `- **${p.poolId}**: ${(p.deposited / 1e6).toFixed(2)} ${p.token} @ ${p.entryApy}% APY | Earned: +${(p.yieldEarned / 1e6).toFixed(4)}`
-      );
-      return {
-        content: `## 📊 Active Yield Positions\n\n${lines.join('\n')}\n\n*Total: ${positions.length} position${positions.length !== 1 ? 's' : ''}*`,
-        module: 'yield',
-      };
-    }
-
-    case 'network_info': {
-      return {
-        content: `## 🌐 Arc Testnet\n\n| Property | Value |\n|----------|-------|\n| **Chain ID** | 5042002 |\n| **RPC Primário** | https://rpc.testnet.arc.network |\n| **RPC Blockdaemon** | https://rpc.blockdaemon.testnet.arc.network |\n| **RPC dRPC** | https://rpc.drpc.testnet.arc.network |\n| **RPC QuickNode** | https://rpc.quicknode.testnet.arc.network |\n| **WebSocket** | wss://rpc.testnet.arc.network |\n| **Explorer** | testnet.arcscan.app |\n| **Faucet** | faucet.circle.com |\n| **Gas Token** | USDC |\n| **Gas Cost** | ~$0.009 per tx |\n| **Finality** | Sub-second |\n| **USDC Address** | 0x3600000000000000000000000000000000000000 |\n| **EURC Address** | 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a |\n\nNative gas token is **USDC** — no need for ETH! Use any RPC endpoint above.`,
-        module: 'network',
-      };
-    }
-
-    default: {
-      // Tenta identificar perguntas numéricas sobre valores
-      if (/quanto|how much|how many|quantos|quantas/.test(lower)) {
-        const data = await fetchApi('/api/payments/queue');
-        const vData = await fetchApi('/api/vaults');
-        const pending = data?.pending?.length || 0;
-        const usdcBal = vData?.vaults?.find((v: { token: string }) => v.token === 'USDC')?.currentBalance || 0;
-        return {
-          content: `Here's a quick overview:\n\n- 💳 **${pending}** pending payments in queue\n- 🏦 **${usdcBal.toLocaleString()} USDC** in USDC vault\n\nAsk me something more specific! E.g.:\n- *"Show EURC vault"*\n- *"Current swap rate"*\n- *"Contracts overview"*`,
-          module: 'general',
-        };
-      }
-
-      // Resposta contextual baseada no histórico
-      const recentModules = context.slice(-4)
-        .filter(m => m.module && m.module !== 'general')
-        .map(m => m.module);
-
-      if (recentModules.length > 0) {
-        const lastModule = recentModules[recentModules.length - 1];
-        return {
-          content: `I noticed we were talking about **${lastModule}**. Could you be more specific?\n\nFor example:\n- *"Show ${lastModule} details"*\n- *"${lastModule} status"*\n\nOr type **"help"** to see all available commands.`,
-          module: lastModule || 'general',
-        };
-      }
-
-      return {
-        content: `I'm not sure I understood that. 🤔\n\nI can help you with:\n- 💳 **Payments** — *"payment queue"*, *"pending payments"*\n- 🏦 **Vaults** — *"USDC vault"*, *"EURC APY"*\n- 🔄 **Swap** — *"swap rate"*, *"swap 100 USDC"*\n- 📋 **Contracts** — *"active contracts"*\n- 🧠 **Agents** — *"agent status"*\n\nType **"help"** for full command list.`,
-        module: 'general',
-      };
-    }
+  // Transfer intent
+  const transferMatch = userMsg.match(/(?:send|enviar|transfer)\s+([\d.,]+)\s*(USDC|EURC)\s+(?:to|para)\s+(0x[0-9a-fA-F]{40})/i);
+  if (transferMatch) {
+    const [, amount, token, to] = transferMatch;
+    const action: BlockchainAction = {
+      type: 'transfer',
+      status: 'requires_wallet',
+      data: { token: token.toUpperCase(), amount, to },
+      message: `Send ${amount} ${token.toUpperCase()} to ${to}`,
+    };
+    return {
+      content: `💳 **Transfer detected**\n\nPreparing to send **${amount} ${token.toUpperCase()}** to \`${to}\`\n\nPlease connect your wallet to execute this transaction.`,
+      action,
+      module: 'payments',
+    };
   }
+
+  // Swap intent
+  const swapMatch = userMsg.match(/swap\s+([\d.,]+)\s*(USDC|EURC)/i);
+  if (swapMatch) {
+    const [, amount, fromToken] = swapMatch;
+    const toToken = fromToken.toUpperCase() === 'USDC' ? 'EURC' : 'USDC';
+    const action: BlockchainAction = {
+      type: 'swap',
+      status: 'requires_wallet',
+      data: { fromToken: fromToken.toUpperCase(), toToken, amount },
+      message: `Swap ${amount} ${fromToken.toUpperCase()} to ${toToken}`,
+    };
+    return {
+      content: `🔄 **Swap detected**\n\nReady to swap **${amount} ${fromToken.toUpperCase()} → ${toToken}** via ARC AMM.\n\nConnect your wallet to proceed.`,
+      action,
+      module: 'swap',
+    };
+  }
+
+  // Network info
+  if (/arc|testnet|chain|rpc|network/.test(lower)) {
+    return {
+      content: `## 🌐 Arc Testnet\n\n| Property | Value |\n|----------|-------|\n| **Chain ID** | ${ARC_CONSTANTS.chainId} |\n| **RPC** | ${ARC_CONSTANTS.rpc} |\n| **Explorer** | ${ARC_CONSTANTS.explorer} |\n| **Gas Token** | ${ARC_CONSTANTS.gasToken} |\n| **USDC** | \`${ARC_CONSTANTS.tokens.USDC}\` |\n| **EURC** | \`${ARC_CONSTANTS.tokens.EURC}\` |`,
+      action: null,
+      module: 'network',
+    };
+  }
+
+  // Help
+  if (/help|ajuda|commands/.test(lower)) {
+    return {
+      content: `## 🤖 ARC AI Agent\n\nI can execute blockchain actions:\n\n- 💳 **"send 10 USDC to 0x..."** — Transfer tokens\n- 🔄 **"swap 50 USDC to EURC"** — Swap on ARC AMM\n- 📤 **"send 5 USDC to 0x1... and 0x2..."** — Multisend\n- 📋 **"create contract for 1000 USDC"** — Deploy escrow\n- ℹ️ **"Arc testnet info"** — Network details\n\nConnect your wallet to execute transactions!`,
+      action: null,
+      module: 'general',
+    };
+  }
+
+  return {
+    content: `I'm your **ARC Network AI Agent** 🤖\n\nI can help you:\n- 💳 Send USDC/EURC payments\n- 🔄 Swap tokens\n- 📋 Create contracts\n- 📤 Batch multisend\n\nTry: *"send 10 USDC to 0x..."* or *"swap 50 USDC to EURC"*`,
+    action: null,
+    module: 'general',
+  };
 }
 
-// ─── Endpoints ────────────────────────────────────────────────────────────────
-
-// POST /api/chat/message - Enviar mensagem
+// ─── POST /api/chat/message ───────────────────────────────────────────────────
 chatRouter.post('/message', async (c) => {
   try {
     const body = await c.req.json().catch(() => null);
@@ -392,28 +447,30 @@ chatRouter.post('/message', async (c) => {
       return c.json({ success: false, error: 'Invalid request body' }, 400);
     }
 
-    // ── Input validation & sanitization ─────────────────────────────────────
-    const rawMessage   = body.message;
-    const rawSessionId = body.sessionId;
+    const rawMessage    = body.message;
+    const rawSessionId  = body.sessionId;
+    const walletAddress = body.walletAddress || undefined;
+    const walletConnected = !!walletAddress && /^0x[0-9a-fA-F]{40}$/.test(String(walletAddress));
 
     if (!rawMessage || typeof rawMessage !== 'string') {
       return c.json({ success: false, error: 'Campo "message" é obrigatório' }, 400);
     }
 
-    // Sanitize: strip HTML tags, control chars, clamp length
-    const message   = clampString(stripTags(rawMessage.trim()), 500);
+    const message = clampString(stripTags(rawMessage.trim()), 800);
     if (!message) {
-      return c.json({ success: false, error: 'Message cannot be empty after sanitization' }, 400);
+      return c.json({ success: false, error: 'Message cannot be empty' }, 400);
     }
 
-    // Session ID: alphanumeric only, 8-128 chars, default to 'default'
     const sessionId = rawSessionId && typeof rawSessionId === 'string' && isValidSessionId(rawSessionId)
       ? clampString(rawSessionId, 128)
       : 'default';
 
     const session = getOrCreateSession(sessionId);
+    if (walletAddress && walletConnected) {
+      session.walletAddress = String(walletAddress);
+    }
 
-    // Salvar mensagem do usuário
+    // Store user message
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}-u`,
       role: 'user',
@@ -422,22 +479,70 @@ chatRouter.post('/message', async (c) => {
     };
     session.messages.push(userMsg);
 
-    // Detectar intenção e gerar resposta
-    const { intent, module, entities } = detectIntent(message);
-    const context = session.messages.slice(-10);
-    const response = await generateResponse(message, intent, module, entities, context);
+    // ── Try LLM first ──────────────────────────────────────────────────────
+    const apiKey = c.env?.OPENAI_API_KEY;
+    const baseUrl = c.env?.OPENAI_BASE_URL || 'https://www.genspark.ai/api/llm_proxy/v1';
 
+    let responseContent = '';
+    let action: BlockchainAction | null = null;
+    let module = 'general';
+    let usedLLM = false;
+
+    if (apiKey) {
+      try {
+        // Build message history for LLM (last 10 turns)
+        const systemPrompt = buildSystemPrompt(walletConnected, session.walletAddress);
+        const historyForLLM = session.messages
+          .slice(-10)
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+        // Remove the last user message (we'll add it fresh)
+        const historyWithoutLast = historyForLLM.slice(0, -1);
+
+        const llmMessages = [
+          { role: 'system', content: systemPrompt },
+          ...historyWithoutLast,
+          { role: 'user', content: message },
+        ];
+
+        responseContent = await callLLM(llmMessages, apiKey, baseUrl);
+        action = parseActionFromResponse(responseContent);
+        usedLLM = true;
+
+        // Infer module from action type
+        if (action) {
+          const moduleMap: Record<string, string> = {
+            transfer: 'payments', swap: 'swap', multisend: 'multisend',
+            contract_deploy: 'contracts', contract_call: 'contracts', automation: 'agents',
+          };
+          module = moduleMap[action.type] || 'general';
+        }
+      } catch (llmErr) {
+        console.error('[CHAT] LLM error, falling back to rule engine:', String(llmErr).slice(0, 100));
+      }
+    }
+
+    // ── Fallback to rule-based if LLM failed or not available ─────────────
+    if (!responseContent) {
+      const fb = ruleFallback(message);
+      responseContent = fb.content;
+      action = fb.action;
+      module = fb.module;
+    }
+
+    // Store assistant message
     const assistantMsg: ChatMessage = {
       id: `msg-${Date.now()}-a`,
       role: 'assistant',
-      content: response.content,
+      content: responseContent,
       timestamp: new Date().toISOString(),
-      module: response.module,
-      data: response.data,
+      module,
+      action,
     };
     session.messages.push(assistantMsg);
 
-    // Manter histórico máximo de 100 mensagens
+    // Keep max 100 messages
     if (session.messages.length > 100) {
       session.messages = session.messages.slice(-80);
     }
@@ -445,24 +550,25 @@ chatRouter.post('/message', async (c) => {
     return c.json({
       success: true,
       message: assistantMsg,
-      intent,
+      action,
       module,
       sessionId,
+      usedLLM,
+      walletConnected,
     });
+
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
 
-// GET /api/chat/history/:sessionId - Histórico da sessão
+// ─── GET /api/chat/history/:sessionId ────────────────────────────────────────
 chatRouter.get('/history/:sessionId', (c) => {
   const sessionId = c.req.param('sessionId');
   const session = sessions.get(sessionId);
-
   if (!session) {
     return c.json({ success: true, messages: [], sessionId });
   }
-
   return c.json({
     success: true,
     messages: session.messages,
@@ -473,20 +579,21 @@ chatRouter.get('/history/:sessionId', (c) => {
   });
 });
 
-// DELETE /api/chat/history/:sessionId - Limpar histórico
+// ─── DELETE /api/chat/history/:sessionId ────────────────────────────────────
 chatRouter.delete('/history/:sessionId', (c) => {
   const sessionId = c.req.param('sessionId');
   sessions.delete(sessionId);
   return c.json({ success: true, message: 'Histórico limpo com sucesso' });
 });
 
-// GET /api/chat/sessions - Listar sessões ativas
+// ─── GET /api/chat/sessions ──────────────────────────────────────────────────
 chatRouter.get('/sessions', (c) => {
   const list = Array.from(sessions.values()).map(s => ({
     id: s.id,
     messageCount: s.messages.length,
     createdAt: s.createdAt,
     lastActivity: s.lastActivity,
+    hasWallet: !!s.walletAddress,
   }));
   return c.json({ success: true, sessions: list });
 });
