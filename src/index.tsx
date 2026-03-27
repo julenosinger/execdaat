@@ -3605,12 +3605,8 @@ app.get('/', (c) => {
 
       <!-- Tab bar -->
       <div class="flex border-b border-gray-700/60 px-6">
-        <button onclick="switchSettingsTab('circle')" id="stab-circle"
-          class="settings-tab active-stab px-4 py-3 text-sm font-medium border-b-2 border-purple-500 text-purple-400 -mb-px transition-all">
-          <i class="fas fa-circle-notch mr-2"></i>Circle API
-        </button>
         <button onclick="switchSettingsTab('appconfig')" id="stab-appconfig"
-          class="settings-tab px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 -mb-px transition-all">
+          class="settings-tab active-stab px-4 py-3 text-sm font-medium border-b-2 border-purple-500 text-purple-400 -mb-px transition-all">
           <i class="fas fa-sliders-h mr-2"></i>App Config
         </button>
         <button onclick="switchSettingsTab('security')" id="stab-security"
@@ -3622,86 +3618,8 @@ app.get('/', (c) => {
       <!-- Content (scrollable) -->
       <div class="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
-        <!-- ── CIRCLE API TAB ── -->
-        <div id="stab-content-circle" class="settings-tab-content space-y-5">
-
-          <!-- Status banner -->
-          <div id="circle-status-banner" class="hidden rounded-xl px-4 py-3 flex items-center gap-3 text-sm"></div>
-
-          <!-- Documentação rápida -->
-          <div class="bg-blue-900/20 border border-blue-700/30 rounded-xl p-4">
-            <div class="flex items-start gap-3">
-              <i class="fas fa-info-circle text-blue-400 mt-0.5 flex-shrink-0"></i>
-              <div class="text-xs text-blue-300 space-y-1">
-                <p class="font-semibold text-blue-200">Circle API Integration</p>
-                <p>Connect to Circle's Web3 Services to enable programmable wallets, USDC transfers, and cross-chain operations.</p>
-                <a href="https://console.circle.com" target="_blank" class="inline-flex items-center gap-1 text-blue-400 hover:underline font-medium mt-1">
-                  <i class="fas fa-external-link-alt text-xs"></i> Get your API key at console.circle.com
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <!-- Formulário Circle -->
-          <div class="space-y-4">
-            <div>
-              <label class="text-xs text-gray-400 uppercase tracking-wider mb-2 block">Environment</label>
-              <div class="flex gap-3">
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="circle-env" value="sandbox" id="circle-env-sandbox" checked
-                    class="w-4 h-4 text-purple-500 bg-gray-800 border-gray-600">
-                  <span class="text-sm text-gray-300">Sandbox <span class="text-xs text-yellow-400">(testing)</span></span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="circle-env" value="production" id="circle-env-prod"
-                    class="w-4 h-4 text-purple-500 bg-gray-800 border-gray-600">
-                  <span class="text-sm text-gray-300">Production <span class="text-xs text-green-400">(live)</span></span>
-                </label>
-              </div>
-            </div>
-
-            <!-- API Key & Webhook — hidden from UI, managed server-side -->
-            <input type="hidden" id="circle-api-key" value="">
-            <input type="hidden" id="circle-webhook-secret" value="">
-
-            <!-- Ações Circle -->
-            <div class="flex gap-3 pt-1">
-              <button onclick="saveCircleConfig()"
-                class="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-all">
-                <i class="fas fa-save"></i> Save
-              </button>
-              <button onclick="testCircleConnection()"
-                id="circle-test-btn"
-                class="flex items-center gap-2 bg-blue-700 hover:bg-blue-600 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-all">
-                <i class="fas fa-plug"></i> Test Connection
-              </button>
-              <button onclick="removeCircleConfig()"
-                class="flex items-center gap-2 bg-gray-800 hover:bg-red-900/40 text-gray-400 hover:text-red-400 border border-gray-700 hover:border-red-700/40 rounded-xl px-4 py-2.5 text-sm transition-all ml-auto">
-                <i class="fas fa-trash text-xs"></i> Remove
-              </button>
-            </div>
-
-            <!-- Resultado do teste -->
-            <div id="circle-test-result" class="hidden rounded-xl p-3 text-sm"></div>
-          </div>
-
-          <!-- Balances (quando conectado) -->
-          <div id="circle-balances" class="hidden">
-            <div class="flex items-center justify-between mb-3">
-              <h4 class="text-sm text-white font-semibold flex items-center gap-2">
-                <i class="fas fa-wallet text-blue-400"></i> Circle Account Balance
-              </h4>
-              <button onclick="loadCircleBalance()"
-                class="text-xs text-blue-400 hover:text-blue-300">
-                <i class="fas fa-sync mr-1"></i>Refresh
-              </button>
-            </div>
-            <div id="circle-balance-data" class="bg-gray-800/60 rounded-xl p-4 text-sm text-gray-300"></div>
-          </div>
-        </div>
-
         <!-- ── APP CONFIG TAB ── -->
-        <div id="stab-content-appconfig" class="settings-tab-content hidden space-y-5">
+        <div id="stab-content-appconfig" class="settings-tab-content space-y-5">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
             <!-- Light / Dark Mode Toggle -->
@@ -3914,9 +3832,6 @@ app.get('/', (c) => {
         <div class="border-t border-gray-700/50 pt-4">
           <p class="text-xs text-gray-500 uppercase tracking-wider mb-3">Integrations Status</p>
           <div class="flex flex-wrap gap-2" id="profile-integrations">
-            <span class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-800 border border-gray-700 text-xs text-gray-400">
-              <i class="fas fa-circle text-gray-600" style="font-size:6px"></i> Circle API: Not connected
-            </span>
             <span class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-800 border border-gray-700 text-xs text-gray-400" id="prof-wallet-badge">
               <i class="fas fa-circle text-gray-600" style="font-size:6px"></i> Wallet: Not connected
             </span>
