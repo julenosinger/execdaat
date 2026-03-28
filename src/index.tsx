@@ -3572,8 +3572,8 @@ app.get('/', (c) => {
   <!-- Floating Action Button -->
   <button id="chat-fab"
     onclick="toggleChat()"
-    class="fixed bottom-5 right-5 z-[110] flex items-center gap-2 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 px-4 py-3 transition-all hover:scale-105 active:scale-95"
-    style="bottom:20px;right:20px;">
+    class="fixed bottom-5 right-5 z-[9998] flex items-center gap-2 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 px-4 py-3 transition-all hover:scale-105 active:scale-95"
+    style="bottom:20px;right:20px;position:fixed;">
     <i class="fas fa-robot text-white text-base" id="chat-fab-icon"></i>
     <span id="chat-fab-label" class="text-white text-sm font-medium">Ask me</span>
     <span id="chat-unread" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs font-bold flex items-center justify-center leading-none"></span>
@@ -3581,9 +3581,10 @@ app.get('/', (c) => {
 
   <!-- Chat Panel — pointer-events:none when hidden to never block underlying UI -->
   <div id="chat-widget"
-    class="hidden fixed z-[110] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60"
+    class="hidden fixed z-[9999] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60"
     data-size="medium"
-    style="width:380px;height:580px;bottom:70px;right:20px;max-width:calc(100vw - 16px);pointer-events:none;position:relative;">
+    style="width:380px;height:580px;bottom:70px;right:20px;max-width:calc(100vw - 16px);pointer-events:none;position:fixed;transition:opacity 0.2s ease,transform 0.2s ease;opacity:0;transform:translateY(8px) scale(0.98);"
+    aria-modal="true" role="dialog" aria-label="ARC AI Assistant Chat">
 
     <!-- Header (drag handle) -->
     <div id="chat-header" class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 rounded-t-2xl flex-shrink-0" style="cursor:grab;user-select:none;">

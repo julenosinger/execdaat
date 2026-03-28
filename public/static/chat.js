@@ -50,6 +50,33 @@ let chatWidthExpanded = false; // width-only toggle state
 let arcPaySession   = null;   // { wallet, sig, sessionHash, expiry, authorized }
 let authInProgress  = false;  // prevent double-click on authorize
 
+// ── Ensure chat elements are direct children of <body> (portal pattern) ────────
+// This guarantees position:fixed works correctly regardless of any ancestor
+// element that has transform, perspective, filter, or will-change applied.
+(function ensureChatPortal() {
+  function moveToBodPortal() {
+    const widgetIds = ['chat-fab', 'chat-widget'];
+    widgetIds.forEach(function(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      // If already a direct child of <body>, nothing to do
+      if (el.parentElement === document.body) return;
+      // Move to body — preserves all event listeners and inline styles
+      document.body.appendChild(el);
+    });
+    // Force fixed positioning on both elements after move
+    const fab = document.getElementById('chat-fab');
+    const widget = document.getElementById('chat-widget');
+    if (fab) { fab.style.position = 'fixed'; fab.style.zIndex = '9998'; }
+    if (widget) { widget.style.position = 'fixed'; }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', moveToBodPortal);
+  } else {
+    moveToBodPortal();
+  }
+})();
+
 // ── Session helpers ────────────────────────────────────────────────────────────
 function loadSession() {
   try {
@@ -107,7 +134,10 @@ const CHAT_EXPAND_MIN_PX = 650;
   const s = document.createElement('style');
   s.id = 'chat-styles-v3';
   s.textContent = `
+    /* CRITICAL: force fixed positioning so the widget floats above ALL page content
+       and is never affected by parent overflow / transform / position rules */
     #chat-widget {
+      position: fixed !important;
       display: flex; flex-direction: column;
       transition: width 0.35s cubic-bezier(.4,0,.2,1),
                   height 0.3s cubic-bezier(.4,0,.2,1),
@@ -116,6 +146,11 @@ const CHAT_EXPAND_MIN_PX = 650;
                   bottom 0.3s ease,
                   border-radius 0.3s ease,
                   opacity 0.25s ease, transform 0.25s ease;
+    }
+    /* FAB button must also be fixed and always on top */
+    #chat-fab {
+      position: fixed !important;
+      z-index: 9998 !important;
     }
     /* CRITICAL: When hidden, ensure zero interaction — no click blocking */
     #chat-widget.hidden,
@@ -342,6 +377,9 @@ function toggleChat() {
   if (chatOpen) {
     // ── OPEN: restore interaction FIRST, before any visual change ──
     widget.removeAttribute('data-chat-closing');
+    // Force fixed positioning — overrides any inherited/inline styles
+    widget.style.position   = 'fixed';
+    widget.style.zIndex     = '9999';
     widget.style.pointerEvents = 'auto';
     widget.style.userSelect    = 'auto';
     widget.style.visibility    = 'visible';
@@ -373,8 +411,9 @@ function toggleChat() {
     setTimeout(() => {
       widget.classList.add('hidden');
       widget.removeAttribute('data-chat-closing');
-      // Ensure z-index is neutralised when fully hidden
-      widget.style.zIndex = '';
+      // Keep position:fixed but use very low z-index when hidden so it never blocks clicks
+      widget.style.position = 'fixed';
+      widget.style.zIndex   = '-1';
     }, 260);
     if (fabIcon) fabIcon.className = 'fas fa-robot text-white text-base';
     if (fabLbl)  { fabLbl.classList.remove('hidden'); fabLbl.textContent = 'Ask me'; }

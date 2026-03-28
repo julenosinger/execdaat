@@ -1,6 +1,23 @@
 /* ARC AI Agents - Estilos customizados | build: 20250326d */
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   CHAT WIDGET — Floating overlay rules
+   position:fixed !important ensures the panel always floats above ALL page
+   content as a true overlay, regardless of any ancestor's transform, overflow,
+   perspective or will-change properties.
+   ───────────────────────────────────────────────────────────────────────────── */
+#chat-widget,
+#chat-fab {
+  position: fixed !important;
+}
+#chat-widget {
+  z-index: 9999 !important;
+}
+#chat-fab {
+  z-index: 9998 !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    CHAT WIDGET — Interaction safety rules
    The chat panel must NEVER block underlying UI when closed.
    pointer-events:none is the primary guard; display:none (Tailwind .hidden) is
