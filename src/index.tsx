@@ -107,6 +107,70 @@ app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
 
+// ── CSV Validation API ────────────────────────────────────────────────────────
+// POST /api/csv/validate — validates a parsed CSV payload server-side
+// Body: { rows: [{address, amount, token}], token?: string }
+app.post('/api/csv/validate', async (c) => {
+  try {
+    const body = await c.req.json<{
+      rows: Array<{ address?: string; amount?: string | number; token?: string; note?: string }>;
+      token?: string;
+    }>()
+    const rows    = Array.isArray(body?.rows) ? body.rows : []
+    const defTok  = (body?.token || 'USDC').toUpperCase()
+    const MAX_ROWS    = 1000
+    const MAX_AMT     = 10000
+    const VALID_TOKS  = ['USDC', 'EURC']
+
+    if (rows.length === 0) {
+      return c.json({ success: false, error: 'No rows provided' }, 400)
+    }
+    if (rows.length > MAX_ROWS) {
+      return c.json({ success: false, error: `Too many rows (max ${MAX_ROWS})` }, 400)
+    }
+
+    const valid:   Array<{ address: string; amount: number; token: string; note: string }> = []
+    const invalid: Array<{ index: number; errs: string[] }> = []
+    const seen   = new Set<string>()
+
+    rows.forEach((row, idx) => {
+      const errs: string[] = []
+      const addr  = String(row.address || '').trim()
+      const rawAmt = String(row.amount  || '').replace(',', '.')
+      const tok   = VALID_TOKS.includes((row.token || defTok).toUpperCase())
+        ? (row.token || defTok).toUpperCase()
+        : 'USDC'
+
+      if (!addr)                              errs.push('address missing')
+      else if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) errs.push('invalid EVM address')
+      else if (seen.has(addr.toLowerCase())) errs.push('duplicate address')
+      else seen.add(addr.toLowerCase())
+
+      const amt = parseFloat(rawAmt)
+      if (rawAmt === '')          errs.push('amount missing')
+      else if (isNaN(amt)||amt<=0) errs.push('invalid amount')
+      else if (amt > MAX_AMT)     errs.push(`amount exceeds ${MAX_AMT}`)
+
+      if (errs.length) invalid.push({ index: idx + 2, errs })
+      else valid.push({ address: addr, amount: amt, token: tok, note: String(row.note || '') })
+    })
+
+    const total = valid.reduce((s, r) => s + r.amount, 0)
+    return c.json({
+      success: true,
+      valid:   valid.length,
+      invalid: invalid.length,
+      total:   Math.round(total * 1e6) / 1e6,
+      token:   defTok,
+      errors:  invalid.slice(0, 10),
+      preview: valid.slice(0, 5).map(r => ({ address: r.address.slice(0, 10) + '…', amount: r.amount, token: r.token })),
+    })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return c.json({ success: false, error: 'Validation error: ' + msg }, 500)
+  }
+})
+
 // ─── Legal / Trust Pages ──────────────────────────────────────────────────────
 const LEGAL_STYLE = `
   <style>
@@ -3519,7 +3583,7 @@ app.get('/', (c) => {
   <div id="chat-widget"
     class="hidden fixed z-[110] flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-2xl shadow-black/60"
     data-size="medium"
-    style="width:380px;height:580px;bottom:70px;right:20px;max-width:calc(100vw - 16px);pointer-events:none;">
+    style="width:380px;height:580px;bottom:70px;right:20px;max-width:calc(100vw - 16px);pointer-events:none;position:relative;">
 
     <!-- Header (drag handle) -->
     <div id="chat-header" class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 rounded-t-2xl flex-shrink-0" style="cursor:grab;user-select:none;">
@@ -3599,20 +3663,57 @@ app.get('/', (c) => {
       <button onclick="sendQuickMessage('approve arcpay')"   class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🤖 ArcPay</button>
       <button onclick="sendQuickMessage('guardian')"         class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🛡️ Guardian</button>
       <button onclick="sendQuickMessage('dashboard')"        class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">📊 Stats</button>
+      <button onclick="document.getElementById('chat-csv-file-input').click()"
+        class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-purple-900/30 hover:bg-purple-800/40 text-purple-400 hover:text-purple-300 rounded-full border border-purple-700/50">📎 CSV Batch</button>
+    </div>
+
+    <!-- CSV Drag-and-Drop Overlay (shown while dragging over chat widget) -->
+    <div id="chat-csv-drop-overlay"
+      class="absolute inset-0 z-20 hidden flex-col items-center justify-center rounded-2xl pointer-events-none"
+      style="background:rgba(88,28,135,0.85);backdrop-filter:blur(4px);border:2px dashed #a855f7;">
+      <i class="fas fa-file-csv text-purple-300 text-4xl mb-3"></i>
+      <p class="text-white font-semibold text-sm">Drop your CSV here</p>
+      <p class="text-purple-300 text-xs mt-1">address, amount [, token]</p>
+    </div>
+
+    <!-- CSV Preview Banner (shows after upload, dismissible) -->
+    <div id="chat-csv-banner" class="hidden mx-2 mb-1 flex-shrink-0">
+      <div class="flex items-center gap-2 bg-purple-900/30 border border-purple-700/40 rounded-lg px-3 py-1.5">
+        <i class="fas fa-file-csv text-purple-400 text-xs flex-shrink-0"></i>
+        <span id="chat-csv-banner-text" class="text-xs text-purple-200 flex-1 truncate"></span>
+        <button onclick="window.csvCancelUpload()" class="text-purple-400 hover:text-white transition-colors flex-shrink-0" title="Clear CSV">
+          <i class="fas fa-times text-xs"></i>
+        </button>
+      </div>
     </div>
 
     <!-- Input -->
     <div class="px-2 pb-2.5 flex-shrink-0">
-      <div class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500 transition-all">
-        <input id="chat-input" type="text" placeholder="Ask anything or: send 10 USDC to 0x…"
+      <!-- Hidden CSV file input -->
+      <input id="chat-csv-file-input" type="file" accept=".csv" class="hidden"
+        onchange="window.chatHandleCSVInput(this)">
+
+      <div id="chat-input-row" class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500 transition-all">
+        <!-- CSV Upload button -->
+        <button id="chat-csv-btn" title="Upload CSV for batch payment (drag & drop supported)"
+          onclick="document.getElementById('chat-csv-file-input').click()"
+          class="w-6 h-6 flex items-center justify-center rounded-md text-gray-500 hover:text-purple-400 hover:bg-purple-900/30 transition-all flex-shrink-0 group relative">
+          <i class="fas fa-plus text-xs"></i>
+          <span class="absolute bottom-7 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 text-gray-300 text-[10px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+            Upload CSV (.csv)
+          </span>
+        </button>
+
+        <input id="chat-input" type="text" placeholder="Ask anything · send · upload CSV…"
           class="flex-1 bg-transparent text-xs text-white placeholder-gray-600 focus:outline-none min-w-0"
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}">
+
         <button onclick="sendChatMessage()" id="chat-send-btn"
           class="w-7 h-7 bg-purple-600 hover:bg-purple-500 rounded-lg flex items-center justify-center text-white transition-all flex-shrink-0">
           <i class="fas fa-paper-plane text-xs"></i>
         </button>
       </div>
-      <p class="text-center text-gray-700 text-[10px] mt-1">Ctrl+/ · ESC to close · 🛡️ Guardian-protected</p>
+      <p class="text-center text-gray-700 text-[10px] mt-1">Ctrl+/ · ESC · 📎 CSV batch · 🛡️ Guardian</p>
     </div>
   </div>
 
@@ -4073,7 +4174,8 @@ app.get('/', (c) => {
   <script src="/static/user-profile.js?v=20250326d"></script>
   <script src="/static/smart-autofill.js?v=20260327a"></script>
   <script src="/static/permit2-chat.js?v=20250326a"></script>
-  <script src="/static/chat.js?v=20260327a"></script>
+  <script src="/static/chat-csv.js?v=20260328a"></script>
+  <script src="/static/chat.js?v=20260328b"></script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
     function cfUpdateModeUI(mode) {
@@ -4186,3 +4288,4 @@ app.get('/', (c) => {
 })
 
 export default app
+

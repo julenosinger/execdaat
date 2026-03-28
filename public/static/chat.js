@@ -2211,12 +2211,14 @@ function scrollChatToBottom() {
 function getModuleColor(m) {
   return { payments:'text-blue-400', vaults:'text-green-400', swap:'text-purple-400',
            contracts:'text-orange-400', agents:'text-red-400', network:'text-cyan-400',
-           general:'text-gray-400', error:'text-red-400', permit2:'text-yellow-400' }[m] || 'text-gray-400';
+           general:'text-gray-400', error:'text-red-400', permit2:'text-yellow-400',
+           csv:'text-purple-300' }[m] || 'text-gray-400';
 }
 function getModuleIcon(m) {
   return { payments:'fa-dollar-sign', vaults:'fa-vault', swap:'fa-exchange-alt',
            contracts:'fa-file-contract', agents:'fa-brain', network:'fa-network-wired',
-           general:'fa-robot', error:'fa-exclamation-triangle', permit2:'fa-key' }[m] || 'fa-robot';
+           general:'fa-robot', error:'fa-exclamation-triangle', permit2:'fa-key',
+           csv:'fa-file-csv' }[m] || 'fa-robot';
 }
 function escapeHtml(t) {
   return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -2292,6 +2294,243 @@ window.isAgentActive            = isAgentActive;
 // Legacy compat
 window.executeArcPayApproval = executeArcPayAuthorization;
 window.revokeArcPay          = revokeArcPaySession;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CSV UPLOAD INTEGRATION — chat.js bridge
+// Wires the hidden file input, drag-and-drop, banner, and handleLocalCommand
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── File input handler (called by onchange on #chat-csv-file-input) ────────────
+window.chatHandleCSVInput = function(inputEl) {
+  const file = inputEl?.files?.[0];
+  if (!file) return;
+  inputEl.value = ''; // reset so same file can be re-uploaded
+  if (typeof handleChatCSVFile !== 'function') {
+    showToast('❌ CSV module not loaded', 'error');
+    return;
+  }
+  showTypingIndicator();
+  setTimeout(() => handleChatCSVFile(file), 50);
+  updateCSVBanner();
+};
+
+// ── Update the CSV status banner inside the chat widget ────────────────────────
+function updateCSVBanner() {
+  const banner = document.getElementById('chat-csv-banner');
+  const text   = document.getElementById('chat-csv-banner-text');
+  const state  = window.chatCSVState;
+  if (!banner || !text || !state) return;
+  if (state.loaded && state.rows.length > 0) {
+    const total = state.rows.reduce((s, r) => s + r.amount, 0);
+    text.textContent = `📊 ${state.fileName} · ${state.rows.length} recipients · ${total.toFixed(2)} ${state.token}`;
+    banner.classList.remove('hidden');
+    // Pulse the CSV button to indicate loaded state
+    const csvBtn = document.getElementById('chat-csv-btn');
+    if (csvBtn) {
+      csvBtn.classList.add('text-purple-400');
+      csvBtn.classList.remove('text-gray-500');
+    }
+  } else {
+    banner.classList.add('hidden');
+    const csvBtn = document.getElementById('chat-csv-btn');
+    if (csvBtn) {
+      csvBtn.classList.remove('text-purple-400');
+      csvBtn.classList.add('text-gray-500');
+    }
+  }
+}
+
+// ── Drag-and-drop on the chat widget ──────────────────────────────────────────
+(function initChatDragDrop() {
+  function getWidget() { return document.getElementById('chat-widget'); }
+  function getOverlay(){ return document.getElementById('chat-csv-drop-overlay'); }
+
+  function showOverlay() {
+    const ov = getOverlay();
+    if (ov) { ov.classList.remove('hidden'); ov.classList.add('flex'); }
+  }
+  function hideOverlay() {
+    const ov = getOverlay();
+    if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
+  }
+
+  // We attach drag listeners when chat widget is opened, or on DOMContentLoaded
+  function attachDragListeners() {
+    const w = getWidget();
+    if (!w || w._csvDragAttached) return;
+    w._csvDragAttached = true;
+
+    let dragCounter = 0;
+
+    w.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      const hasFiles = [...(e.dataTransfer?.items || [])].some(i => i.kind === 'file');
+      if (!hasFiles) return;
+      dragCounter++;
+      showOverlay();
+    });
+    w.addEventListener('dragleave', (e) => {
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; hideOverlay(); }
+    });
+    w.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    w.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      hideOverlay();
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      if (typeof handleChatCSVFile !== 'function') return;
+      showTypingIndicator();
+      setTimeout(() => handleChatCSVFile(file), 50);
+      setTimeout(updateCSVBanner, 800);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', attachDragListeners);
+  // Also try attaching after a delay (chat widget may be hidden on load)
+  setTimeout(attachDragListeners, 1500);
+})();
+
+// ── Periodic banner sync ───────────────────────────────────────────────────────
+setInterval(updateCSVBanner, 5000);
+
+// ── Extend handleLocalCommand to intercept CSV-related prompts ─────────────────
+const _origHandleLocalCommand = handleLocalCommand;
+async function handleLocalCommandWithCSV(msg) {
+  const lower = msg.toLowerCase().trim();
+
+  // "reuse last csv" / "use last csv"
+  if (/reuse.*csv|use.*last.*csv|last.*csv/i.test(lower)) {
+    hideTypingIndicator();
+    if (typeof window.csvReuseLastCSV === 'function') window.csvReuseLastCSV();
+    return true;
+  }
+
+  // If CSV has loaded rows, intercept "send" commands
+  if (window.chatCSVState?.loaded && window.chatCSVState?.rows?.length > 0) {
+    if (typeof handleCSVSendCommand === 'function') {
+      const handled = handleCSVSendCommand(msg);
+      if (handled) {
+        hideTypingIndicator();
+        setTimeout(updateCSVBanner, 500);
+        return true;
+      }
+    }
+  }
+
+  // If waiting for user to provide amount for Format B CSV
+  if (window.chatCSVState?.pendingAmountRequest) {
+    if (typeof handleCSVAmountReply === 'function') {
+      const handled = handleCSVAmountReply(msg);
+      if (handled) {
+        hideTypingIndicator();
+        setTimeout(updateCSVBanner, 500);
+        return true;
+      }
+    }
+  }
+
+  // CSV-specific help
+  if (/^(csv help|help csv|csv format|csv usage|como usar csv|batch help)$/i.test(lower)) {
+    hideTypingIndicator();
+    appendChatMessage('assistant',
+      '📊 **CSV Batch Payments — Guide**\n\n' +
+      '**How to use:**\n' +
+      '1. Click the **📎** button (or drag & drop a `.csv` file)\n' +
+      '2. The agent parses and validates your file\n' +
+      '3. Type `send` to execute, or `edit` to open in Multisend\n\n' +
+      '**Supported CSV formats:**\n\n' +
+      '`Format A` — Address + Amount:\n' +
+      '```\naddress,amount\n0x1234…,10\n0x5678…,5\n```\n\n' +
+      '`Format B` — Address only (agent asks for amount):\n' +
+      '```\naddress\n0x1234…\n0x5678…\n```\n\n' +
+      '`Format C` — Address + Amount + Token:\n' +
+      '```\naddress,amount,token\n0x1234…,10,USDC\n0x5678…,5,EURC\n```\n\n' +
+      '**Commands:**\n' +
+      '• `send` — execute loaded CSV\n' +
+      '• `send 20 USDC` — override amount for all rows\n' +
+      '• `reuse last csv` — reload previous session\'s CSV\n' +
+      '• `edit` — open in Multisend for manual review\n\n' +
+      '**Limits:** max 1,000 rows per file · up to $10,000 per address\n' +
+      '**Chunking:** batches >100 rows auto-split into chunks',
+      'payments'
+    );
+    return true;
+  }
+
+  return _origHandleLocalCommand(msg);
+}
+
+// Override global handleLocalCommand
+// (re-bind so sendChatMessage picks it up)
+window._handleLocalCommandCSV = handleLocalCommandWithCSV;
+
+// Patch sendChatMessage to use our extended handler
+const _origSendChatMessage = sendChatMessage;
+window.sendChatMessage = async function() {
+  const input   = document.getElementById('chat-input');
+  const msg     = input?.value?.trim();
+  if (!msg || isTyping) return;
+
+  input.value = '';
+  appendChatMessage('user', msg);
+  showTypingIndicator();
+  isTyping = true;
+  const sendBtn = document.getElementById('chat-send-btn');
+  if (sendBtn) sendBtn.disabled = true;
+
+  try {
+    const handled = await handleLocalCommandWithCSV(msg);
+    if (handled) { hideTypingIndicator(); return; }
+
+    // Send to AI backend
+    const csvLoaded = window.chatCSVState?.loaded && window.chatCSVState?.rows?.length > 0;
+    const res = await axios.post('/api/chat/message', {
+      message:        msg,
+      sessionId:      CHAT_SESSION_ID,
+      walletAddress:  window.walletState?.address || null,
+      arcPayActive:   isAgentActive(),
+      csvContext:     csvLoaded ? {
+        loaded:     true,
+        fileName:   window.chatCSVState.fileName,
+        rowCount:   window.chatCSVState.rows.length,
+        token:      window.chatCSVState.token,
+        totalAmount: window.chatCSVState.rows.reduce((s, r) => s + r.amount, 0),
+      } : null,
+    });
+    hideTypingIndicator();
+    if (res.data.success) {
+      const reply = res.data.message;
+      appendChatMessage('assistant', reply.content, reply.module);
+      const action = res.data.action || reply.action;
+      if (action && action.type && action.type !== 'none') {
+        renderBlockchainActionCard(action, res.data.walletConnected);
+      }
+      if (!chatOpen) {
+        unreadCount++;
+        const badge = document.getElementById('chat-unread');
+        if (badge) { badge.textContent = unreadCount > 9 ? '9+' : String(unreadCount); badge.classList.remove('hidden'); }
+      }
+    } else {
+      appendChatMessage('assistant', '❌ ' + (res.data.error || 'Something went wrong.'), 'error');
+    }
+  } catch (e) {
+    hideTypingIndicator();
+    appendChatMessage('assistant', '❌ Network error. Please try again.', 'error');
+  } finally {
+    isTyping = false;
+    if (sendBtn) sendBtn.disabled = false;
+    input?.focus();
+    setTimeout(updateCSVBanner, 300);
+  }
+};
+
+// Also export updateCSVBanner for external use
+window.updateCSVBanner = updateCSVBanner;
 
 const _active = isAgentActive();
 console.log('%c[CHAT v3]', 'color:#a78bfa;font-weight:bold',
