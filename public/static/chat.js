@@ -1218,6 +1218,99 @@ async function handleLocalCommand(msg) {
     await cmdShowDashboard(); return true;
   }
 
+  // ── Transaction history / receipts ────────────────────────────────────────
+  if (/my transactions?|tx history|receipt|transferências|histórico/i.test(lower)) {
+    if (typeof Permit2Engine !== 'undefined' && Permit2Engine.formatReceiptHistory) {
+      hideTypingIndicator();
+      appendChatMessage('assistant', Permit2Engine.formatReceiptHistory(15), 'general');
+    } else {
+      hideTypingIndicator();
+      appendChatMessage('assistant', '📭 No transaction history yet. Send a transfer to see it here.', 'general');
+    }
+    return true;
+  }
+
+  // ── Token balance check ───────────────────────────────────────────────────
+  if (/check balance|token balance|usdc balance|eurc balance|ver saldo|quanto tenho/i.test(lower)) {
+    const wallet = window.walletState?.address;
+    if (!wallet) {
+      hideTypingIndicator();
+      appendChatMessage('assistant', '⚠️ Connect your wallet to check balances.', 'permit2');
+      appendActionCard([{ label: '🔗 Connect Wallet', action: 'openWalletModal()', primary: true }]);
+      return true;
+    }
+    if (typeof Permit2Engine !== 'undefined') {
+      try {
+        const [usdcBal, eurcBal] = await Promise.all([
+          Permit2Engine.getTokenBalance(wallet, 'USDC'),
+          Permit2Engine.getTokenBalance(wallet, 'EURC'),
+        ]);
+        hideTypingIndicator();
+        appendChatMessage('assistant',
+          `💰 **Token Balances**\n\n` +
+          `| Token | Balance |\n|---|---|\n` +
+          `| USDC | **${usdcBal.formatted.toFixed(4)} USDC** |\n` +
+          `| EURC | **${eurcBal.formatted.toFixed(4)} EURC** |\n\n` +
+          `*Wallet: \`${wallet.slice(0, 10)}…\`*`,
+          'general');
+      } catch(e) {
+        hideTypingIndicator();
+        appendChatMessage('assistant', `❌ Balance check failed: ${e.message}`, 'error');
+      }
+    } else {
+      await cmdShowWallet();
+    }
+    return true;
+  }
+
+  // ── Permit2 preflight / simulate ─────────────────────────────────────────
+  if (/simulate|preflight|pre-?flight|preview transfer|test send/i.test(lower)) {
+    const simMatch = msg.match(/([\d.]+)\s*(usdc|eurc)?\s+(?:to|para)\s+(0x[0-9a-fA-F]{40})/i);
+    if (simMatch && typeof Permit2Engine !== 'undefined') {
+      const wallet = window.walletState?.address;
+      if (!wallet) {
+        hideTypingIndicator();
+        appendChatMessage('assistant', '⚠️ Connect wallet to simulate.', 'permit2');
+        return true;
+      }
+      try {
+        const amount = simMatch[1];
+        const token  = (simMatch[2] || 'USDC').toUpperCase();
+        const to     = simMatch[3];
+        const [sim, gasInfo, bal] = await Promise.all([
+          Permit2Engine.simulateTransfer(token, wallet, to, amount),
+          Permit2Engine.estimateGas(token, to, amount),
+          Permit2Engine.getTokenBalance(wallet, token),
+        ]);
+        hideTypingIndicator();
+        appendChatMessage('assistant',
+          `🔬 **Simulation Result**\n\n` +
+          `| Field | Value |\n|---|---|\n` +
+          `| Token | ${token} |\n` +
+          `| Amount | ${amount} ${token} |\n` +
+          `| To | \`${to.slice(0,10)}…\` |\n` +
+          `| Balance | ${bal.formatted.toFixed(4)} ${token} |\n` +
+          `| Simulation | ${sim.success !== false ? '✅ Passed' : '❌ Would fail'} |\n` +
+          `| Gas | ${gasInfo?.note || gasInfo?.gasUnits + ' units'} |`,
+          'general');
+      } catch(e) {
+        hideTypingIndicator();
+        appendChatMessage('assistant', `❌ Simulation failed: ${e.message}`, 'error');
+      }
+      return true;
+    }
+  }
+
+  // ── ERC-20 approve ────────────────────────────────────────────────────────
+  if (/approve\s+([\d.]+)\s*(usdc|eurc)?\s+(?:for|to)\s+(0x[0-9a-fA-F]{40})/i.test(msg)) {
+    const m = msg.match(/approve\s+([\d.]+)\s*(usdc|eurc)?\s+(?:for|to)\s+(0x[0-9a-fA-F]{40})/i);
+    if (m && typeof erc20ApproveFromChat === 'function') {
+      hideTypingIndicator();
+      await erc20ApproveFromChat((m[2] || 'USDC').toUpperCase(), m[3], m[1]);
+      return true;
+    }
+  }
+
   // ── Profile commands ──────────────────────────────────────────────────────
   if (/^(my profile|edit profile|meu perfil|editar perfil|profile)$/i.test(lower)) {
     await cmdShowProfile(); return true;
@@ -1429,43 +1522,43 @@ async function cmdClearProfile() {
 
 async function cmdHelp() {
   hideTypingIndicator();
-  const active = isAgentActive();
+  const active  = isAgentActive();
+  const hasP2E  = typeof Permit2Engine !== 'undefined';
   appendChatMessage('assistant',
     `🤖 **ARC AI Assistant — Commands**\n\n` +
-    `${active ? '✅ ArcPay Agent Active' : '⚠️ ArcPay not authorized — some commands need authorization'}\n\n` +
+    `${active ? '✅ ArcPay Agent Active' : '⚠️ ArcPay not authorized — some commands need authorization'}\n` +
+    `${hasP2E ? '⚡ Permit2Engine: Loaded' : ''}\n\n` +
     `**💳 Payments**\n` +
-    `- \`send 10 USDC to 0x...\`\n` +
+    `- \`send 10 USDC to 0x...\` — single transfer with preflight\n` +
     `- \`send 10 USDC to last\` — use last recipient\n` +
-    `- \`pay 0xA:10, 0xB:20\` (batch)\n\n` +
+    `- \`pay 0xA:10, 0xB:20\` — inline batch payment\n` +
+    `- \`simulate 10 USDC to 0x...\` — dry-run without executing\n\n` +
+    `**🔐 Permit2 — Spending Limits**\n` +
+    `- \`allow 100 USDC for 24 hours\` — create signed permit\n` +
+    `- \`allow 100 USDC and EURC for 3 days\` — batch permits\n` +
+    `- \`give permission for swaps up to 50 EURC today\`\n` +
+    `- \`show my permissions\` — list active permits + timers\n` +
+    `- \`revoke USDC permit\` / \`revoke all permits\`\n` +
+    `- \`approve 100 USDC for 0x...\` — ERC-20 on-chain approve\n\n` +
+    `**📦 Batch / CSV**\n` +
+    `- Upload CSV in chat → batch send to 1000+ addresses\n` +
+    `- \`send 10 USDC\` + CSV → override amounts\n\n` +
     `**🔄 Swap**\n` +
     `- \`swap 5 USDC to EURC\`\n\n` +
     `**📋 Contracts**\n` +
     `- \`show my contracts\`\n` +
-    `- \`create contract with 0x... for 100 USDC\`\n` +
-    `- \`deposit 50 USDC to contract #3\`\n` +
-    `- \`release milestone on contract #3\`\n\n` +
-    `**🔐 Permit2 — Spending Limits**\n` +
-    `- \`allow the agent to spend 100 USDC for 24 hours\`\n` +
-    `- \`give permission for swaps up to 50 USDC today\`\n` +
-    `- \`authorize payments of 200 USDC for 3 days\`\n` +
-    `- \`show my permissions\` — list active permits\n` +
-    `- \`revoke USDC permit\` — revoke specific permit\n` +
-    `- \`revoke all permits\` — remove all permits\n\n` +
-    `**👤 Profile & Smart Fill**\n` +
-    `- \`my profile\` — view saved name, email & addresses\n` +
-    `- \`edit profile\` — update name/email & preferences\n` +
-    `- \`my email\` — pre-fill email in Payments form\n` +
-    `- \`last address\` — pre-fill last recipient in Payments\n` +
-    `- \`recent amounts\` — show saved amounts\n` +
-    `- \`clear profile\` — erase all saved data\n\n` +
-    `**📊 Info**\n` +
-    `- \`my wallet\` — balance & status\n` +
-    `- \`network status\` — RPC & block\n` +
+    `- \`create contract with 0x... for 100 USDC\`\n\n` +
+    `**💰 Balances & History**\n` +
+    `- \`check balance\` — USDC + EURC balances live\n` +
+    `- \`my transactions\` — receipt history (last 15)\n` +
+    `- \`my wallet\` — wallet info + balances\n` +
+    `- \`network status\` — RPC latency + gas price\n` +
     `- \`dashboard\` — platform stats\n` +
     `- \`guardian\` — Guardian Agent status\n\n` +
+    `**👤 Profile**\n` +
+    `- \`my profile\`, \`my email\`, \`last address\`\n\n` +
     `**🤖 Agent**\n` +
-    `- \`authorize arcpay\` — enable agent\n` +
-    `- \`revoke arcpay\` — disable agent`,
+    `- \`authorize arcpay\` · \`revoke arcpay\``,
     'general'
   );
 }
@@ -1666,18 +1759,52 @@ async function cmdSendPayment(amount, token, recipient) {
     appendChatMessage('assistant', `🛡️ **Guardian blocked:** ${guardianResult.reason}`, 'agents'); return;
   }
 
+  // ── Permit2Engine: preflight check + reuse suggestion ─────────────────────
+  let previewNote = '';
+  let balanceNote = '';
+  let reuseNote   = '';
+  let gasNote     = '⛽ Gas: ~$0.009 USDC';
+
+  if (typeof Permit2Engine !== 'undefined') {
+    try {
+      const [bal, gasInfo] = await Promise.all([
+        Permit2Engine.getTokenBalance(wallet, token),
+        Permit2Engine.estimateGas(token, recipient, numAmount),
+      ]);
+      balanceNote = `\nBalance: **${bal.formatted.toFixed(4)} ${token}**`;
+      if (bal.formatted < numAmount) {
+        appendChatMessage('assistant',
+          `❌ **Insufficient balance**\n\nYou have **${bal.formatted.toFixed(4)} ${token}** but need **${amount} ${token}**.`,
+          'error');
+        return;
+      }
+      if (gasInfo?.note) gasNote = '⛽ ' + gasInfo.note;
+
+      // Check reuse
+      const reuse = typeof p2SuggestReuse === 'function'
+        ? p2SuggestReuse(wallet, token, numAmount, 'payments')
+        : null;
+      if (reuse) reuseNote = '\n\n💡 ' + reuse.message;
+    } catch(e) {
+      // Non-fatal — continue with preview
+    }
+  }
+
   appendChatMessage('assistant',
     `💳 **Payment Preview**\n\n` +
-    `Amount: **${amount} ${token}**\n` +
-    `To: \`${recipient.slice(0,10)}…${recipient.slice(-8)}\`\n` +
-    `Fee: ~$0.009 USDC\n` +
-    `🛡️ Guardian: ✅ Approved\n\n` +
-    `🤖 ArcPay Agent will pre-fill the form and navigate to Payments.`,
+    `| Field | Value |\n|---|---|\n` +
+    `| Token | **${token}** |\n` +
+    `| Amount | **${amount} ${token}** |\n` +
+    `| To | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n` +
+    `| ${gasNote.replace('⛽ ','')} | |\n` +
+    `| 🛡️ Guardian | ✅ Approved |` +
+    balanceNote + reuseNote +
+    `\n\n🤖 *Confirm to proceed with the transfer.*`,
     'payments'
   );
   appendActionCard([
-    { label: `✅ Confirm & Go`, action: `chatExecutePayment('${amount}','${token}','${recipient}')`, primary: true },
-    { label: '❌ Cancel',       action: `appendChatMessage('assistant','❌ Payment cancelled.','payments')`, primary: false },
+    { label: `✅ Confirm & Send`, action: `chatExecutePayment('${amount}','${token}','${recipient}')`, primary: true },
+    { label: '❌ Cancel',          action: `appendChatMessage('assistant','❌ Payment cancelled.','payments')`, primary: false },
   ]);
 }
 
@@ -1706,19 +1833,42 @@ async function cmdBatchPayment(entries) {
   }
 
   const total = parsed.reduce((s, r) => s + r.amount, 0);
-  const rows  = parsed.map((r, i) => `${i+1}. \`${r.address.slice(0,10)}…\` — **$${r.amount.toFixed(2)} USDC**`).join('\n');
+  // Show sample rows (max 3) + total
+  const sampleRows = parsed.slice(0, 3).map((r, i) =>
+    `${i+1}. \`${r.address.slice(0,10)}…\` — **${r.amount.toFixed(2)} USDC**`
+  ).join('\n');
+  const moreNote = parsed.length > 3 ? `\n…and ${parsed.length - 3} more recipients` : '';
+
+  // Permit2Engine preflight
+  let balNote = '';
+  let reuseNote = '';
+  if (typeof Permit2Engine !== 'undefined') {
+    try {
+      const bal   = await Permit2Engine.getTokenBalance(wallet, 'USDC');
+      balNote     = `\n\n💰 Balance: **${bal.formatted.toFixed(4)} USDC**`;
+      const reuse = typeof p2SuggestReuse === 'function' ? p2SuggestReuse(wallet, 'USDC', total, 'multisend') : null;
+      if (reuse) reuseNote = '\n♻️ ' + reuse.message;
+      if (bal.formatted < total) {
+        balNote += ` ⚠️ *(need ${total.toFixed(2)}, have ${bal.formatted.toFixed(4)})*`;
+      }
+    } catch(e) { /* non-fatal */ }
+  }
 
   appendChatMessage('assistant',
     `🚀 **Batch Payment Preview**\n\n` +
-    `${rows}\n\n` +
-    `Total: **$${total.toFixed(2)} USDC** to ${parsed.length} recipients\n` +
-    `Method: Multicall3 (single tx)\n` +
-    `🛡️ Guardian: ✅ Approved`,
+    `${sampleRows}${moreNote}\n\n` +
+    `| Field | Value |\n|---|---|\n` +
+    `| Total | **${total.toFixed(2)} USDC** |\n` +
+    `| Recipients | **${parsed.length}** |\n` +
+    `| Method | Permit2 Batch / ERC-20 Multi |\n` +
+    `| 🛡️ Guardian | ✅ Approved |` +
+    balNote + reuseNote,
     'payments'
   );
   appendActionCard([
     { label: '🚀 Open Multisend', action: `chatOpenMultisend(${JSON.stringify(parsed)})`, primary: true },
-    { label: '❌ Cancel',         action: `appendChatMessage('assistant','❌ Cancelled.','payments')`, primary: false },
+    { label: '⚡ Direct Batch',   action: `_chatExecuteBatch(${JSON.stringify(parsed)},'USDC')`, primary: false },
+    { label: '❌ Cancel',          action: `appendChatMessage('assistant','❌ Cancelled.','payments')`, primary: false },
   ]);
 }
 
@@ -1875,7 +2025,122 @@ async function runGuardianValidation(params) {
 async function chatExecutePayment(amount, token, recipient) {
   const wallet = window.walletState?.address;
   if (!wallet) { appendChatMessage('assistant', '⚠️ Wallet disconnected.', 'error'); return; }
-  appendChatMessage('assistant', `💳 Pre-filling payment form…`, 'payments');
+
+  showTypingIndicator();
+
+  try {
+    // ── Permit2Engine preflight + simulation ──────────────────────────────────
+    if (typeof Permit2Engine !== 'undefined') {
+      const prep = await Permit2Engine.prepareTransfer({
+        wallet, token, amount, recipient,
+      });
+
+      hideTypingIndicator();
+
+      // Check for reuse suggestion
+      const reuse = typeof p2SuggestReuse === 'function'
+        ? p2SuggestReuse(wallet, token, parseFloat(amount), 'payments')
+        : null;
+
+      if (!prep.ok && prep.preview.errors.length > 0) {
+        appendChatMessage('assistant',
+          '❌ **Cannot execute transfer:**\n\n' +
+          prep.preview.errors.map(e => '- ' + e).join('\n'),
+          'error');
+        return;
+      }
+
+      const reuseNote = reuse ? '\n\n' + reuse.message : '';
+      const gasNote   = prep.gasInfo?.note ? '\n⛽ ' + prep.gasInfo.note : '';
+      const simNote   = prep.sim?.success === false
+        ? '\n⚠️ *Simulation warning — proceed with caution*'
+        : '\n✅ *Simulation passed*';
+
+      appendChatMessage('assistant',
+        `💸 **Payment Preview**\n\n` +
+        `| Field | Value |\n|---|---|\n` +
+        `| Token | **${token}** |\n` +
+        `| Amount | **${amount} ${token}** |\n` +
+        `| To | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n` +
+        `| Balance | ${prep.preview.balance?.formatted?.toFixed(4)} ${token} |\n` +
+        `| Method | Direct ERC-20 transfer |\n` +
+        `| 🛡️ Guardian | ✅ Approved |` +
+        gasNote + simNote + reuseNote +
+        '\n\n**Confirm to execute?**',
+        'payments'
+      );
+      appendActionCard([
+        { label: `✅ Confirm & Send`, action: `_chatDirectTransfer('${amount}','${token}','${recipient}')`, primary: true },
+        { label: '📝 Pre-fill Form',  action: `_chatPrefillPaymentForm('${amount}','${token}','${recipient}')`, primary: false },
+        { label: '❌ Cancel',          action: `appendChatMessage('assistant','❌ Payment cancelled.','payments')`, primary: false },
+      ]);
+    } else {
+      // Fallback: pre-fill form as before
+      hideTypingIndicator();
+      appendChatMessage('assistant', `💳 Pre-filling payment form…`, 'payments');
+      await _chatPrefillPaymentForm(amount, token, recipient);
+    }
+  } catch(e) {
+    hideTypingIndicator();
+    appendChatMessage('assistant', `❌ Preflight check failed: ${e.message}`, 'error');
+  }
+}
+
+// ── Direct transfer execution (with Permit2Engine) ────────────────────────────
+async function _chatDirectTransfer(amount, token, recipient) {
+  const wallet = window.walletState?.address;
+  if (!wallet) { appendChatMessage('assistant', '⚠️ Wallet disconnected.', 'error'); return; }
+  if (typeof Permit2Engine === 'undefined') {
+    appendChatMessage('assistant', '⚠️ Permit2Engine not loaded. Please refresh.', 'error'); return;
+  }
+
+  showTypingIndicator();
+  appendChatMessage('assistant', `⏳ Executing transfer…`, 'payments');
+
+  try {
+    const result = await Permit2Engine.executeTransfer({ token, amount: parseFloat(amount), recipient });
+    hideTypingIndicator();
+    appendChatMessage('assistant',
+      `✅ **Transfer Complete!**\n\n` +
+      `| Field | Value |\n|---|---|\n` +
+      `| Token | ${token} |\n` +
+      `| Amount | **${amount} ${token}** |\n` +
+      `| To | \`${recipient.slice(0,10)}…\` |\n` +
+      `| Block | #${result.blockNumber} |\n` +
+      `| TX | [\`${result.txHash.slice(0,14)}…\`](${result.explorerUrl}) |`,
+      'payments'
+    );
+    appendActionCard([
+      { label: '🔍 View on Explorer', action: `window.open('${result.explorerUrl}','_blank')`, primary: true },
+      { label: '📜 Transaction History', action: `sendQuickMessage('my transactions')`, primary: false },
+    ]);
+    if (typeof showToast === 'function') showToast('✅ Transfer sent: ' + amount + ' ' + token, 'success');
+    // Update permit usage
+    const reuse = typeof p2SuggestReuse === 'function'
+      ? p2SuggestReuse(wallet, token, parseFloat(amount), 'payments')
+      : null;
+    if (reuse && typeof p2RecordUsage === 'function') {
+      p2RecordUsage(reuse.permit.id, parseFloat(amount));
+    }
+  } catch(e) {
+    hideTypingIndicator();
+    if (e.message === 'CANCELLED' || /cancel|reject/i.test(e.message)) {
+      appendChatMessage('assistant', '↩️ Transaction cancelled by user.', 'payments');
+    } else {
+      appendChatMessage('assistant',
+        `❌ **Transfer failed:**\n\n${e.message}\n\n` +
+        `*Try pre-filling the payments form instead.*`,
+        'error');
+      appendActionCard([
+        { label: '📝 Pre-fill Form', action: `_chatPrefillPaymentForm('${amount}','${token}','${recipient}')`, primary: true },
+      ]);
+    }
+  }
+}
+window._chatDirectTransfer = _chatDirectTransfer;
+
+// ── Pre-fill form (original behaviour as fallback) ────────────────────────────
+async function _chatPrefillPaymentForm(amount, token, recipient) {
   switchTab('payments');
   await new Promise(r => setTimeout(r, 300));
   const addrEl = document.getElementById('pay-recipient');
@@ -1893,6 +2158,7 @@ async function chatExecutePayment(amount, token, recipient) {
   );
   appendActionCard([{ label: '💳 Go to Payments Tab', action: `switchTab('payments')`, primary: true }]);
 }
+window._chatPrefillPaymentForm = _chatPrefillPaymentForm;
 
 function chatOpenSwap(amount, fromToken, toToken) {
   switchTab('dex');
@@ -2251,13 +2517,13 @@ function getModuleColor(m) {
   return { payments:'text-blue-400', vaults:'text-green-400', swap:'text-purple-400',
            contracts:'text-orange-400', agents:'text-red-400', network:'text-cyan-400',
            general:'text-gray-400', error:'text-red-400', permit2:'text-yellow-400',
-           csv:'text-purple-300' }[m] || 'text-gray-400';
+           csv:'text-purple-300', batch:'text-indigo-400', receipt:'text-teal-400' }[m] || 'text-gray-400';
 }
 function getModuleIcon(m) {
   return { payments:'fa-dollar-sign', vaults:'fa-vault', swap:'fa-exchange-alt',
            contracts:'fa-file-contract', agents:'fa-brain', network:'fa-network-wired',
            general:'fa-robot', error:'fa-exclamation-triangle', permit2:'fa-key',
-           csv:'fa-file-csv' }[m] || 'fa-robot';
+           csv:'fa-file-csv', batch:'fa-layer-group', receipt:'fa-receipt' }[m] || 'fa-robot';
 }
 function escapeHtml(t) {
   return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -2329,6 +2595,48 @@ window.chatOpenMultisend        = chatOpenMultisend;
 window.chatOpenContractForm     = chatOpenContractForm;
 window.appendChatMessage        = appendChatMessage;
 window.isAgentActive            = isAgentActive;
+
+// ── Direct batch execution via Permit2Engine ────────────────────────────────
+async function _chatExecuteBatch(recipients, token) {
+  const wallet = window.walletState?.address;
+  if (!wallet) { appendChatMessage('assistant', '⚠️ Wallet disconnected.', 'error'); return; }
+  if (typeof Permit2Engine === 'undefined') {
+    appendChatMessage('assistant', '⚠️ Permit2Engine not loaded. Use Multisend instead.', 'error'); return;
+  }
+
+  appendChatMessage('assistant',
+    `⏳ **Starting batch transfer…**\n\n${recipients.length} recipients · ${token}`,
+    'payments');
+
+  let progressMsg = null;
+  let lastUpdate  = Date.now();
+
+  try {
+    const result = await Permit2Engine.executeBatchTransfer(
+      { token, recipients },
+      function(done, total, txHash) {
+        if (Date.now() - lastUpdate > 2000) {
+          lastUpdate = Date.now();
+          if (typeof showToast === 'function') {
+            showToast(`⏳ Batch: ${done}/${total} sent…`, 'info');
+          }
+        }
+      }
+    );
+
+    const summary = Permit2Engine.formatBatchResult(result);
+    appendChatMessage('assistant', summary, 'payments');
+    appendActionCard([
+      { label: '📜 View History', action: `sendQuickMessage('my transactions')`, primary: true },
+    ]);
+    if (typeof showToast === 'function') {
+      showToast(`✅ Batch: ${result.success}/${result.total} transfers complete`, 'success');
+    }
+  } catch(e) {
+    appendChatMessage('assistant', `❌ **Batch failed:** ${e.message}`, 'error');
+  }
+}
+window._chatExecuteBatch = _chatExecuteBatch;
 
 // Legacy compat
 window.executeArcPayApproval = executeArcPayAuthorization;

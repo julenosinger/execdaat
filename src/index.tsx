@@ -4174,9 +4174,10 @@ app.get('/', (c) => {
   <script src="/static/hide-history.js?v=20250326a"></script>
   <script src="/static/user-profile.js?v=20250326d"></script>
   <script src="/static/smart-autofill.js?v=20260327a"></script>
-  <script src="/static/permit2-chat.js?v=20250326a"></script>
+  <script src="/static/permit2-engine.js?v=20260328a"></script>
+  <script src="/static/permit2-chat.js?v=20260328b"></script>
   <script src="/static/chat-csv.js?v=20260328a"></script>
-  <script src="/static/chat.js?v=20260328b"></script>
+  <script src="/static/chat.js?v=20260328c"></script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
     function cfUpdateModeUI(mode) {

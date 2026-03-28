@@ -629,4 +629,260 @@ setInterval(function() {
 
 console.log('[Permit2] Module loaded — Arc Testnet 5042002 | Max ' + MAX_PERMIT_DAYS + ' days | EIP-712 off-chain');
 
+// ── ADVANCED: Batch Permit creation ──────────────────────────────────────────
+// Creates permits for multiple tokens in one session
+async function createBatchPermitsFromChat(tokenList, amount, durationHours, scope) {
+  var wallet = window.walletState && window.walletState.address;
+  if (!wallet) throw new Error('No wallet connected');
+  var results = [];
+  for (var i = 0; i < tokenList.length; i++) {
+    try {
+      var permit = await createPermitFromChat({
+        token: tokenList[i],
+        amount: amount,
+        durationHours: durationHours,
+        scope: scope,
+        wallet: wallet,
+      });
+      results.push({ token: tokenList[i], permit: permit, ok: true });
+    } catch (e) {
+      results.push({ token: tokenList[i], error: e.message, ok: false });
+    }
+  }
+  return results;
+}
+
+// ── ADVANCED: Reuse check with Engine integration ────────────────────────────
+function p2SuggestReuse(wallet, token, amount, scope) {
+  // First check off-chain permits
+  var suggestion = null;
+  if (typeof Permit2Engine !== 'undefined' && Permit2Engine.suggestReusePermit) {
+    suggestion = Permit2Engine.suggestReusePermit(wallet, token, amount, scope);
+  } else {
+    var active = p2GetActive(wallet);
+    var match  = active.find(function(p) {
+      return p.token.toUpperCase() === (token || 'USDC').toUpperCase() &&
+             (p.scope === 'all' || p.scope === scope) &&
+             (p.amount - (p.amountUsed || 0)) >= (amount || 0) &&
+             p.expiry > Date.now();
+    });
+    if (match) {
+      suggestion = {
+        permit: match,
+        message: '♻️ You already have an active permit for **' + (match.amount - (match.amountUsed || 0)).toFixed(2) +
+                 ' ' + match.token + '** (expires ' + p2FormatExpiry(match.expiry) + '). Reuse it?',
+      };
+    }
+  }
+  return suggestion;
+}
+
+// ── ADVANCED: ERC-20 Fallback approve via chat ────────────────────────────────
+async function erc20ApproveFromChat(tokenSymbol, spenderAddr, amount) {
+  var _append = function(role, txt, mod) { if (typeof appendChatMessage === 'function') appendChatMessage(role, txt, mod); };
+  var _toast  = function(msg, t) { if (typeof showToast === 'function') showToast(msg, t); };
+  if (typeof Permit2Engine === 'undefined') {
+    _append('assistant', '❌ Permit2Engine not loaded. Refresh the page.', 'error');
+    return;
+  }
+  try {
+    if (typeof showTypingIndicator === 'function') showTypingIndicator();
+    var tx = await Permit2Engine.erc20Approve(tokenSymbol, spenderAddr, amount);
+    _append('assistant',
+      '✅ **ERC-20 Approval sent!**\n\n' +
+      '| Field | Value |\n|---|---|\n' +
+      '| Token | ' + tokenSymbol + ' |\n' +
+      '| Spender | `' + spenderAddr.slice(0, 14) + '…` |\n' +
+      '| Amount | ' + amount + ' ' + tokenSymbol + ' |\n' +
+      '| TX | waiting confirmation… |\n\n' +
+      '*Waiting for on-chain confirmation…*',
+      'permit2');
+    var receipt = await tx.wait(1);
+    _append('assistant',
+      '✅ **Approval confirmed on-chain!**\n\n' +
+      'Block: #' + receipt.blockNumber + '\n' +
+      'TX: [`' + tx.hash.slice(0, 14) + '…`](https://testnet.arcscan.app/tx/' + tx.hash + ')',
+      'permit2');
+    _toast('ERC-20 approval confirmed!', 'success');
+  } catch(e) {
+    if (typeof hideTypingIndicator === 'function') hideTypingIndicator();
+    _append('assistant', '❌ **Approval failed:** ' + e.message, 'error');
+  } finally {
+    if (typeof hideTypingIndicator === 'function') hideTypingIndicator();
+  }
+}
+
+// ── ADVANCED: Handle "history" and "receipts" intent ─────────────────────────
+function p2HandleHistoryIntent(msg) {
+  var lower = msg.toLowerCase();
+  if (!/history|receipt|transaction|tx list|my tx|my transfers?|sent to/i.test(lower)) return false;
+  var _append = function(role, txt, mod) { if (typeof appendChatMessage === 'function') appendChatMessage(role, txt, mod); };
+  if (typeof Permit2Engine !== 'undefined' && Permit2Engine.formatReceiptHistory) {
+    var formatted = Permit2Engine.formatReceiptHistory(15);
+    _append('assistant', formatted, 'general');
+  } else {
+    _append('assistant', '📭 Transaction history not available. Use the History tab for full records.', 'general');
+  }
+  return true;
+}
+
+// ── ADVANCED: Handle "check balance" / "check allowance" intent ───────────────
+async function p2HandleCheckIntent(msg) {
+  var lower = msg.toLowerCase();
+  if (!/check.*balance|my.*balance|balance.*usdc|balance.*eurc|check.*allowance|my.*allowance/i.test(lower)) return false;
+
+  var _append = function(role, txt, mod) { if (typeof appendChatMessage === 'function') appendChatMessage(role, txt, mod); };
+  var _hide   = function() { if (typeof hideTypingIndicator === 'function') hideTypingIndicator(); };
+  var wallet  = window.walletState && window.walletState.address;
+
+  if (!wallet) {
+    _append('assistant', '⚠️ Connect your wallet to check balances.', 'permit2');
+    return true;
+  }
+  if (typeof Permit2Engine === 'undefined') return false;
+
+  try {
+    if (typeof showTypingIndicator === 'function') showTypingIndicator();
+    var usdcBal = await Permit2Engine.getTokenBalance(wallet, 'USDC');
+    var eurcBal = await Permit2Engine.getTokenBalance(wallet, 'EURC');
+    _hide();
+    _append('assistant',
+      '💰 **Token Balances**\n\n' +
+      '| Token | Balance |\n|---|---|\n' +
+      '| USDC | **' + usdcBal.formatted.toFixed(4) + ' USDC** |\n' +
+      '| EURC | **' + eurcBal.formatted.toFixed(4) + ' EURC** |\n\n' +
+      '*Wallet: `' + wallet.slice(0, 10) + '…`*',
+      'general');
+  } catch(e) {
+    _hide();
+    _append('assistant', '❌ Balance check failed: ' + e.message, 'error');
+  }
+  return true;
+}
+
+// ── ADVANCED: Expiry timer — warn user about expiring permits ─────────────────
+function p2CheckExpiringPermits(wallet) {
+  if (!wallet) return;
+  var active = p2GetActive(wallet);
+  var now    = Date.now();
+  var twoHrs = 2 * 3600 * 1000;
+  var soon   = active.filter(function(p) { return (p.expiry - now) < twoHrs; });
+  if (!soon.length) return;
+  if (typeof showToast === 'function') {
+    showToast('⏰ ' + soon.length + ' permit(s) expire in < 2 hours!', 'warning');
+  }
+  if (typeof appendChatMessage === 'function') {
+    var lines = soon.map(function(p) {
+      var mins = Math.max(0, Math.round((p.expiry - now) / 60000));
+      return '• **' + p.amount + ' ' + p.token + '** — expires in ' + mins + ' min';
+    }).join('\n');
+    appendChatMessage('assistant',
+      '⏰ **Permits expiring soon!**\n\n' + lines +
+      '\n\nRenew with: `allow 100 USDC for 24 hours`',
+      'permit2');
+  }
+}
+
+// Extend handlePermitIntent to also handle advanced intents
+var _origHandlePermitIntent = handlePermitIntent;
+window.handlePermitIntent = async function(msg) {
+  // Try history
+  if (p2HandleHistoryIntent(msg)) return true;
+  // Try balance/allowance check
+  var balHandled = await p2HandleCheckIntent(msg);
+  if (balHandled) return true;
+  // Try batch create: "allow 100 USDC and EURC for 24 hours"
+  var lower = msg.toLowerCase();
+  if (/allow|authorize|permit/.test(lower) && /usdc.*eurc|eurc.*usdc|both tokens?/.test(lower)) {
+    var amtM = msg.match(/(\d+(?:\.\d+)?)/);
+    if (amtM) {
+      var amount = parseFloat(amtM[1]);
+      var durM   = msg.match(/(\d+)\s*(hour|hr|h|day|d)/i);
+      var hrs    = durM ? ((/d/i.test(durM[2]) ? 24 : 1) * parseInt(durM[1])) : 24;
+      var wallet = window.walletState && window.walletState.address;
+      if (!wallet) {
+        if (typeof appendChatMessage === 'function') appendChatMessage('assistant', '⚠️ Connect wallet first.', 'permit2');
+        return true;
+      }
+      // Check reuse for both
+      var reuseU = p2SuggestReuse(wallet, 'USDC', amount, 'all');
+      var reuseE = p2SuggestReuse(wallet, 'EURC', amount, 'all');
+      if (reuseU && reuseE) {
+        if (typeof appendChatMessage === 'function') {
+          appendChatMessage('assistant',
+            '♻️ **Both permits already active!**\n\n' +
+            '- ' + reuseU.message + '\n- ' + reuseE.message +
+            '\n\nYour permits are still valid. No new signature needed.',
+            'permit2');
+        }
+        return true;
+      }
+      if (typeof appendChatMessage === 'function') {
+        appendChatMessage('assistant',
+          '🔐 **Batch Permit Request**\n\n' +
+          'Allow agent to spend **' + amount + ' USDC** and **' + amount + ' EURC** for **' + p2FormatDuration(hrs) + '**.\n\n' +
+          '⚠️ *This will request 2 signatures from your wallet.*\n\n' +
+          '**Confirm to proceed?**',
+          'permit2');
+      }
+      window._pendingBatchPermit = { tokenList: ['USDC', 'EURC'], amount: amount, durationHours: hrs, scope: 'all', wallet: wallet };
+      if (typeof appendActionCard === 'function') {
+        appendActionCard([
+          { label: '✅ Sign Both',  action: 'window._confirmBatchPermitFromChat()', primary: true, success: true },
+          { label: '✕ Cancel',     action: 'window._cancelPermitFromChat()', danger: false },
+        ]);
+      }
+      return true;
+    }
+  }
+  // Default: original handler
+  return _origHandlePermitIntent(msg);
+};
+
+// Batch permit confirm
+window._confirmBatchPermitFromChat = async function() {
+  var params = window._pendingBatchPermit;
+  window._pendingBatchPermit = null;
+  if (!params) return;
+  if (typeof showTypingIndicator === 'function') showTypingIndicator();
+  try {
+    var results = await createBatchPermitsFromChat(params.tokenList, params.amount, params.durationHours, params.scope);
+    if (typeof hideTypingIndicator === 'function') hideTypingIndicator();
+    var lines = results.map(function(r) {
+      return r.ok
+        ? '✅ **' + r.token + '** — ' + r.permit.amount + ' ' + r.token + ' authorized (' + p2FormatDuration(params.durationHours) + ')'
+        : '❌ **' + r.token + '** — ' + r.error;
+    });
+    if (typeof appendChatMessage === 'function') {
+      appendChatMessage('assistant',
+        '🔐 **Batch Permit Results**\n\n' + lines.join('\n') +
+        '\n\nThe AI agent can now use these tokens within defined limits.',
+        'permit2');
+    }
+    p2RefreshUI();
+    if (typeof showToast === 'function') showToast('Batch permits created!', 'success');
+  } catch(e) {
+    if (typeof hideTypingIndicator === 'function') hideTypingIndicator();
+    if (typeof appendChatMessage === 'function') appendChatMessage('assistant', '❌ Batch permit failed: ' + e.message, 'error');
+  }
+};
+
+// ── Expose new globals ────────────────────────────────────────────────────────
+window.createBatchPermitsFromChat = createBatchPermitsFromChat;
+window.p2SuggestReuse             = p2SuggestReuse;
+window.erc20ApproveFromChat       = erc20ApproveFromChat;
+window.p2HandleHistoryIntent      = p2HandleHistoryIntent;
+window.p2HandleCheckIntent        = p2HandleCheckIntent;
+window.p2CheckExpiringPermits     = p2CheckExpiringPermits;
+
+// ── Check expiring permits when wallet connects ───────────────────────────────
+window.addEventListener('walletConnected', function() {
+  setTimeout(function() {
+    var wallet = window.walletState && window.walletState.address;
+    if (wallet) p2CheckExpiringPermits(wallet);
+  }, 2000);
+});
+
+console.log('[Permit2] Module loaded — Arc Testnet 5042002 | Max ' + MAX_PERMIT_DAYS + ' days | EIP-712 off-chain');
+
 })(); // end IIFE
