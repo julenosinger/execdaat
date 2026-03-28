@@ -37,7 +37,16 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Load settings from server ─────────────────────────────
 async function loadSettingsFromServer() {
   try {
-    const res = await axios.get('/api/settings');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/settings');
+   try {
+     var _r = await fetch('/api/settings', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/settings', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/settings', _ex.message); throw _ex; }
+ }());
     settingsData = res.data.settings;
     applySettingsToUI();
     updateProfileButton();
@@ -185,7 +194,16 @@ async function verifyPIN() {
   const pin = document.getElementById('pin-input')?.value;
   if (!pin) return;
   try {
-    const res = await axios.post('/api/settings/verify-pin', { pin });
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/settings/verify-pin');
+   try {
+     var _r = await fetch('/api/settings/verify-pin', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ pin })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/settings/verify-pin', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/settings/verify-pin', _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       settingsUnlocked = true;
       closePINModal();
@@ -250,7 +268,15 @@ async function saveCircleConfig() {
   const environment    = document.querySelector('input[name="circle-env"]:checked')?.value || 'sandbox';
 
   try {
-    const res = await axios.put('/api/settings/circle', { apiKey, webhookSecret, environment });
+    const res = await (async function() {
+   console.log('[fetch] PUT', '/api/settings/circle');
+   try {
+     var _r = await fetch('/api/settings/circle', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ apiKey, webhookSecret, environment })});
+     if (!_r.ok) { var _e = new Error('PUT failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] PUT ERR', '/api/settings/circle', _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       settingsData.circle = { ...settingsData.circle, ...res.data.circle };
       updateCircleStatusBanner(settingsData.circle);
@@ -270,7 +296,9 @@ async function testCircleConnection() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Testing...'; }
 
   try {
-    const res = await axios.post('/api/settings/circle/test');
+    const _r299 = await fetch('/api/settings/circle/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    if (!_r299.ok) { const _e = new Error('POST failed: ' + _r299.status); _e.response = { status: _r299.status }; throw _e; }
+    const res = { data: await _r299.json().catch(() => ({})) };
     const data = res.data;
     if (data.success) {
       if (resultEl) {
@@ -304,7 +332,16 @@ async function loadCircleBalance() {
   const el = document.getElementById('circle-balance-data');
   if (!el) return;
   try {
-    const res = await axios.get('/api/settings/circle/balance');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/settings/circle/balance');
+   try {
+     var _r = await fetch('/api/settings/circle/balance', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/settings/circle/balance', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/settings/circle/balance', _ex.message); throw _ex; }
+ }());
     const data = res.data;
     if (data.success && data.data?.data?.available) {
       const balances = data.data.data.available;
@@ -323,7 +360,15 @@ async function loadCircleBalance() {
 async function removeCircleConfig() {
   if (!confirm('Remove Circle API configuration? This cannot be undone.')) return;
   try {
-    await axios.delete('/api/settings/circle');
+    await (async function() {
+      console.log('[fetch] DELETE', '/api/settings/circle');
+      try {
+        var _r = await fetch('/api/settings/circle', {method:'DELETE',headers:{'Content-Type':'application/json'}});
+        if (!_r.ok) { var _e = new Error('DELETE failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+        var _d = await _r.json().catch(function(){return null;});
+        return {data:_d, status:_r.status};
+      } catch(_ex) { console.error('[fetch] DELETE ERR', '/api/settings/circle', _ex.message); throw _ex; }
+    }());
     setVal('circle-api-key', '');
     setVal('circle-webhook-secret', '');
     const banner = document.getElementById('circle-status-banner');
@@ -351,7 +396,15 @@ async function saveAppConfig() {
   const notifications  = document.getElementById('cfg-notifications')?.checked;
 
   try {
-    const res = await axios.put('/api/settings/app', { theme, language, autoRefresh, refreshInterval, notifications });
+    const res = await (async function() {
+   console.log('[fetch] PUT', '/api/settings/app');
+   try {
+     var _r = await fetch('/api/settings/app', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ theme, language, autoRefresh, refreshInterval, notifications })});
+     if (!_r.ok) { var _e = new Error('PUT failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] PUT ERR', '/api/settings/app', _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       if (typeof showToast === 'function') showToast('✅ App settings saved!', 'success');
       if (typeof addLog === 'function') addLog('[SETTINGS] App configuration saved', 'system');
@@ -379,7 +432,15 @@ async function savePIN() {
   }
 
   try {
-    const res = await axios.put('/api/settings/app', { accessPin: newPin || '', currentPin });
+    const res = await (async function() {
+   console.log('[fetch] PUT', '/api/settings/app');
+   try {
+     var _r = await fetch('/api/settings/app', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ accessPin: newPin || '', currentPin })});
+     if (!_r.ok) { var _e = new Error('PUT failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] PUT ERR', '/api/settings/app', _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       settingsUnlocked = true; // já está autenticado
       if (settingsData) settingsData.app.hasPIN = !!newPin;
@@ -474,7 +535,15 @@ async function saveProfile() {
   }
 
   try {
-    const res = await axios.put('/api/settings/profile', { name, email, role, company, walletAddress });
+    const res = await (async function() {
+   console.log('[fetch] PUT', '/api/settings/profile');
+   try {
+     var _r = await fetch('/api/settings/profile', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ name, email, role, company, walletAddress })});
+     if (!_r.ok) { var _e = new Error('PUT failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] PUT ERR', '/api/settings/profile', _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       settingsData = settingsData || {};
       settingsData.profile = res.data.profile;

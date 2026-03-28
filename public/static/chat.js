@@ -1062,7 +1062,16 @@ function revokeArcPaySession() {
 async function initChatSession() {
   arcPaySession = loadSession();
   try {
-    const res = await axios.get(`/api/chat/history/${CHAT_SESSION_ID}`);
+    const res = await (async function() {
+   console.log('[fetch] GET', `/api/chat/history/${CHAT_SESSION_ID}`);
+   try {
+     var _r = await fetch(`/api/chat/history/${CHAT_SESSION_ID}`, {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', `/api/chat/history/${CHAT_SESSION_ID}`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', `/api/chat/history/${CHAT_SESSION_ID}`, _ex.message); throw _ex; }
+ }());
     const messages = res.data.messages || [];
     if (messages.length === 0) {
       showWelcomeMessage();
@@ -1131,12 +1140,21 @@ async function sendChatMessage() {
     if (handled) { hideTypingIndicator(); return; }
 
     // Send to AI backend
-    const res = await axios.post('/api/chat/message', {
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/chat/message');
+   try {
+     var _r = await fetch('/api/chat/message', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       message: msg,
       sessionId: CHAT_SESSION_ID,
       walletAddress:  window.walletState?.address || null,
       arcPayActive:   isAgentActive(),
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/chat/message', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/chat/message', _ex.message); throw _ex; }
+ }());
     hideTypingIndicator();
     if (res.data.success) {
       const reply = res.data.message;
@@ -2501,7 +2519,15 @@ function showTypingIndicator() {
 function hideTypingIndicator() { document.getElementById('chat-typing')?.remove(); }
 
 async function clearChatHistory() {
-  try { await axios.delete(`/api/chat/history/${CHAT_SESSION_ID}`); } catch { }
+  try { await (async function() {
+   console.log('[fetch] DELETE', `/api/chat/history/${CHAT_SESSION_ID}`);
+   try {
+     var _r = await fetch(`/api/chat/history/${CHAT_SESSION_ID}`, {method:'DELETE',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('DELETE failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] DELETE ERR', `/api/chat/history/${CHAT_SESSION_ID}`, _ex.message); throw _ex; }
+ }()); } catch { }
   const container = document.getElementById('chat-messages');
   if (container) container.innerHTML = '';
   chatInitialized = false;
@@ -2836,7 +2862,7 @@ window.sendChatMessage = async function() {
 
     // Send to AI backend
     const csvLoaded = window.chatCSVState?.loaded && window.chatCSVState?.rows?.length > 0;
-    const res = await axios.post('/api/chat/message', {
+    const _chatPayload = {
       message:        msg,
       sessionId:      CHAT_SESSION_ID,
       walletAddress:  window.walletState?.address || null,
@@ -2848,7 +2874,11 @@ window.sendChatMessage = async function() {
         token:      window.chatCSVState.token,
         totalAmount: window.chatCSVState.rows.reduce((s, r) => s + r.amount, 0),
       } : null,
-    });
+    };
+    console.log('[fetch] POST /api/chat/message');
+    const _chatR = await fetch('/api/chat/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_chatPayload) });
+    if (!_chatR.ok) { const _e = new Error('POST failed: ' + _chatR.status); _e.response = { status: _chatR.status }; throw _e; }
+    const res = { data: await _chatR.json().catch(() => ({})) };
     hideTypingIndicator();
     if (res.data.success) {
       const reply = res.data.message;

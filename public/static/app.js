@@ -5,13 +5,27 @@ const API = {
   base: '',
   
   async get(path) {
-    const res = await axios.get(this.base + path);
-    return res.data;
+    const url = this.base + path;
+    console.log('[fetch] GET', url);
+    try {
+      const _r = await fetch(url);
+      if (!_r.ok) { const _e = new Error('GET failed: ' + _r.status); _e.response = { data: await _r.json().catch(() => null), status: _r.status }; throw _e; }
+      const _d = await _r.json().catch(() => null);
+      console.log('[fetch] GET OK', url, _r.status);
+      return _d;
+    } catch (_ex) { console.error('[fetch] GET ERR', url, _ex.message); throw _ex; }
   },
   
   async post(path, data) {
-    const res = await axios.post(this.base + path, data);
-    return res.data;
+    const url = this.base + path;
+    console.log('[fetch] POST', url);
+    try {
+      const _r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      if (!_r.ok) { const _e = new Error('POST failed: ' + _r.status); _e.response = { data: await _r.json().catch(() => null), status: _r.status }; throw _e; }
+      const _d = await _r.json().catch(() => null);
+      console.log('[fetch] POST OK', url, _r.status);
+      return _d;
+    } catch (_ex) { console.error('[fetch] POST ERR', url, _ex.message); throw _ex; }
   }
 };
 

@@ -130,7 +130,16 @@ function _closeStepPanel(token) {
 // ─── Carregar overview dos vaults ────────────────────────────────────────────
 async function loadVaults() {
   try {
-    const res = await axios.get('/api/vaults');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/vaults');
+   try {
+     var _r = await fetch('/api/vaults', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/vaults', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/vaults', _ex.message); throw _ex; }
+ }());
     if (!res.data.success) return;
 
     res.data.vaults.forEach(v => {
@@ -155,7 +164,16 @@ async function loadVaults() {
 // ─── Posição da wallet no vault ───────────────────────────────────────────────
 async function loadWalletVaultPosition(token, walletAddress) {
   try {
-    const res = await axios.get(`/api/vaults/${token}/position?wallet=${walletAddress}`);
+    const res = await (async function() {
+   console.log('[fetch] GET', `/api/vaults/${token}/position?wallet=${walletAddress}`);
+   try {
+     var _r = await fetch(`/api/vaults/${token}/position?wallet=${walletAddress}`, {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', `/api/vaults/${token}/position?wallet=${walletAddress}`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', `/api/vaults/${token}/position?wallet=${walletAddress}`, _ex.message); throw _ex; }
+ }());
     const data = res.data;
     walletVaultPositions[token] = data;
 
@@ -305,9 +323,18 @@ async function submitVaultAction(token) {
 
       setBtn('<i class="fas fa-shield-alt fa-spin mr-2"></i>Verificando compliance...', true);
       try {
-        const gcRes = await axios.post('/api/guardian/check', {
+        const gcRes = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
           txType: 'vault_withdraw', fromAddress: walletAddress, amount, token: tokenSymbol,
-        });
+        })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
         if (!gcRes.data.approved) {
           showToast(`🚫 Guardian bloqueou: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance falhou'}`, 'error');
           return;
@@ -315,7 +342,16 @@ async function submitVaultAction(token) {
       } catch (_) {}
 
       setBtn('<i class="fas fa-spinner fa-spin mr-2"></i>Processando saque...', true);
-      const res = await axios.post(`/api/vaults/${token}/withdraw`, { walletAddress, amount, includeYield });
+      const res = await (async function() {
+   console.log('[fetch] POST', `/api/vaults/${token}/withdraw`);
+   try {
+     var _r = await fetch(`/api/vaults/${token}/withdraw`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ walletAddress, amount, includeYield })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', `/api/vaults/${token}/withdraw`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', `/api/vaults/${token}/withdraw`, _ex.message); throw _ex; }
+ }());
       if (res.data.success) {
         const w = res.data.withdrawal;
         showToast(`✅ Saque de ${amount} ${tokenSymbol}${includeYield && w.yieldClaimed > 0 ? ` + ${w.yieldClaimed.toFixed(4)} yield` : ''} registrado!`, 'success');
@@ -368,9 +404,18 @@ async function submitVaultAction(token) {
 
     setBtn('<i class="fas fa-shield-alt fa-spin mr-2"></i>Verificando compliance...', true);
     try {
-      const gcRes = await axios.post('/api/guardian/check', {
+      const gcRes = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         txType: 'vault_deposit', fromAddress: walletAddress, amount, token: tokenSymbol,
-      });
+      })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
       if (!gcRes.data.approved) {
         showToast(`🚫 Guardian bloqueou: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance falhou'}`, 'error');
         return;
@@ -441,11 +486,9 @@ async function submitVaultAction(token) {
       _updateStep(token, 3, 'active');
       setBtn('<i class="fas fa-robot fa-spin mr-2"></i>Ativando agente IA...', true);
 
-      const depRes = await axios.post(`/api/vaults/${token}/deposit`, {
-        walletAddress, amount, txHash, strategy,
-        note: `Depósito USDC nativo · TX: ${txHash?.slice(0,12)}`,
-        txType: 'native',
-      });
+      const _vR1 = await fetch(`/api/vaults/${token}/deposit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ walletAddress, amount, txHash, strategy, note: `Depósito USDC nativo · TX: ${txHash?.slice(0,12)}`, txType: 'native' }) });
+      if (!_vR1.ok) { const _e = new Error('POST failed: ' + _vR1.status); throw _e; }
+      const depRes = { data: await _vR1.json().catch(() => ({})) };
 
       if (depRes.data.success) {
         _updateStep(token, 3, 'done');
@@ -567,12 +610,9 @@ async function submitVaultAction(token) {
       _updateStep(token, 4, 'active');
       setBtn('<i class="fas fa-robot fa-spin mr-2"></i>Ativando agente IA...', true);
 
-      const depRes = await axios.post(`/api/vaults/${token}/deposit`, {
-        walletAddress, amount, txHash, strategy,
-        note: `Depósito EURC ERC-20 · approve: ${approveTxHash?.slice(0,12)} · transfer: ${txHash?.slice(0,12)}`,
-        txType: 'erc20',
-        approveTxHash,
-      });
+      const _vR2 = await fetch(`/api/vaults/${token}/deposit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ walletAddress, amount, txHash, strategy, note: `Depósito EURC ERC-20 · approve: ${approveTxHash?.slice(0,12)} · transfer: ${txHash?.slice(0,12)}`, txType: 'erc20', approveTxHash }) });
+      if (!_vR2.ok) { const _e = new Error('POST failed: ' + _vR2.status); throw _e; }
+      const depRes = { data: await _vR2.json().catch(() => ({})) };
 
       if (depRes.data.success) {
         _updateStep(token, 4, 'done');
@@ -668,7 +708,16 @@ async function loadVaultHistory(token = 'usdc', walletAddress = null) {
   try {
     const addr = walletAddress || window.walletState?.address;
     const walletParam = addr ? `&wallet=${addr}` : '';
-    const res = await axios.get(`/api/vaults/${token}/history?limit=20${walletParam}`);
+    const res = await (async function() {
+   console.log('[fetch] GET', `/api/vaults/${token}/history?limit=20${walletParam}`);
+   try {
+     var _r = await fetch(`/api/vaults/${token}/history?limit=20${walletParam}`, {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', `/api/vaults/${token}/history?limit=20${walletParam}`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', `/api/vaults/${token}/history?limit=20${walletParam}`, _ex.message); throw _ex; }
+ }());
     const container = document.getElementById('vault-history-list');
     if (!container) return;
 
@@ -735,7 +784,16 @@ async function loadVaultHistory(token = 'usdc', walletAddress = null) {
 async function loadVaultAgentOps(token = null) {
   try {
     const param = token ? `?token=${token.toUpperCase()}` : '';
-    const res = await axios.get(`/api/vaults/agent/ops${param}`);
+    const res = await (async function() {
+   console.log('[fetch] GET', `/api/vaults/agent/ops${param}`);
+   try {
+     var _r = await fetch(`/api/vaults/agent/ops${param}`, {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', `/api/vaults/agent/ops${param}`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', `/api/vaults/agent/ops${param}`, _ex.message); throw _ex; }
+ }());
     const container = document.getElementById('vault-agent-ops');
     if (!container) return;
 
@@ -784,7 +842,9 @@ async function loadVaultAgentOps(token = null) {
 // ─── Forçar ciclo do agente ───────────────────────────────────────────────────
 async function runVaultAgent(token = null) {
   try {
-    const res = await axios.post('/api/vaults/agent/run', token ? { token } : {});
+    const _vaR = await fetch('/api/vaults/agent/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(token ? { token } : {}) });
+    if (!_vaR.ok) { const _e = new Error('POST failed: ' + _vaR.status); throw _e; }
+    const res = { data: await _vaR.json().catch(() => ({})) };
     if (res.data.success) {
       showToast(`🤖 Agent ran ${res.data.operations?.length || 0} operations`, 'info');
       await loadVaultAgentOps(token);

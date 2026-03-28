@@ -9,7 +9,16 @@ let guardianState = {
 // ─── Load Guardian Status ─────────────────────────────────────────────────────
 async function loadGuardianStatus() {
   try {
-    const res = await axios.get('/api/guardian/status');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/guardian/status');
+   try {
+     var _r = await fetch('/api/guardian/status', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/guardian/status', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/guardian/status', _ex.message); throw _ex; }
+ }());
     if (!res.data.success) return;
 
     const stats = res.data.stats;
@@ -29,7 +38,16 @@ async function loadGuardianStatus() {
 // ─── Load Compliance Log ──────────────────────────────────────────────────────
 async function loadComplianceLog() {
   try {
-    const res = await axios.get('/api/guardian/log?limit=10');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/guardian/log?limit=10');
+   try {
+     var _r = await fetch('/api/guardian/log?limit=10', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/guardian/log?limit=10', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/guardian/log?limit=10', _ex.message); throw _ex; }
+ }());
     const container = document.getElementById('compliance-log-list');
     if (!container) return;
 
@@ -79,7 +97,16 @@ async function runComplianceCheck() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Checking...'; }
 
   try {
-    const res = await axios.post('/api/guardian/check', { txType, fromAddress: fromAddr, toAddress: toAddr || undefined, amount, token });
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ txType, fromAddress: fromAddr, toAddress: toAddr || undefined, amount, token })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       displayComplianceResult(res.data);
       guardianState.lastCheck = res.data;
@@ -177,7 +204,16 @@ async function submitKYC() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...'; }
 
   try {
-    const res = await axios.post('/api/guardian/kyc/submit', { address, tier, country, name, signature });
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/kyc/submit');
+   try {
+     var _r = await fetch('/api/guardian/kyc/submit', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ address, tier, country, name, signature })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/kyc/submit', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/kyc/submit', _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       showToast(`✅ KYC submitted for tier ${tier}. Auto-verification in progress...`, 'success');
       loadKYCStatus(address);
@@ -199,7 +235,16 @@ async function loadKYCStatus(address) {
   if (!address) return;
 
   try {
-    const res = await axios.get(`/api/guardian/kyc/${address}`);
+    const res = await (async function() {
+   console.log('[fetch] GET', `/api/guardian/kyc/${address}`);
+   try {
+     var _r = await fetch(`/api/guardian/kyc/${address}`, {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', `/api/guardian/kyc/${address}`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', `/api/guardian/kyc/${address}`, _ex.message); throw _ex; }
+ }());
     const container = document.getElementById('kyc-status-display');
     if (!container) return;
 
@@ -292,12 +337,21 @@ window.runGuardianCheck = async function() {
   }
 
   try {
-    const res = await axios.post('/api/guardian/check', {
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       txType: 'payment',
       fromAddress: addr,
       amount: amount,
       token,
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
     if (res.data.success && resultDiv) {
       const r = res.data.check.result;
       const approved = r.approved;
@@ -339,7 +393,16 @@ window.submitKYC = async function() {
   }
 
   try {
-    const res = await axios.post('/api/guardian/kyc/submit', { address, tier, country });
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/kyc/submit');
+   try {
+     var _r = await fetch('/api/guardian/kyc/submit', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ address, tier, country })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/kyc/submit', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/kyc/submit', _ex.message); throw _ex; }
+ }());
     if (res.data.success && resultDiv) {
       resultDiv.innerHTML = `
         <div class="bg-green-900/20 border border-green-700/40 rounded-xl p-3">

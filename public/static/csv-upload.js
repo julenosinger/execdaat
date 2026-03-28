@@ -150,7 +150,16 @@ async function analyzeMultisend() {
   try {
     // Analisar primeira linha como prévia
     const r = rows[0];
-    const res = await axios.post('/api/payments/analyze', { from: r.from || from, to: r.to, amount: r.amount, description: r.description, priority: r.priority });
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/payments/analyze');
+   try {
+     var _r = await fetch('/api/payments/analyze', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ from: r.from || from, to: r.to, amount: r.amount, description: r.description, priority: r.priority })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/payments/analyze', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/payments/analyze', _ex.message); throw _ex; }
+ }());
     const d = res.data;
     const colors = { low: 'green', medium: 'yellow', high: 'orange', critical: 'red' };
     const c = colors[d.decision.riskLevel] || 'gray';
@@ -193,9 +202,18 @@ async function submitMultisend() {
     if (from && !from.startsWith('0xDemo')) {
       if (btn) btn.innerHTML = '<i class="fas fa-shield-alt fa-spin mr-2"></i> Compliance check...';
       try {
-        const gcRes = await axios.post('/api/guardian/check', {
+        const gcRes = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
           txType: 'payment', fromAddress: from, amount: totalAmount, token: 'USDC',
-        });
+        })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
         if (!gcRes.data.approved) {
           showToast(`🚫 Guardian blocked: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance check failed'}`, 'error');
           return;
@@ -227,7 +245,16 @@ async function submitMultisend() {
     // ── 3. Submit to backend ───────────────────────────────────────────────────
     if (btn) btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>${t('toast_loading')}`;
     const paymentsWithTx = payments.map(p => ({ ...p, batchTxHash }));
-    const res = await axios.post('/api/payments/batch', { payments: paymentsWithTx, fileName: 'multisend' });
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/payments/batch');
+   try {
+     var _r = await fetch('/api/payments/batch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ payments: paymentsWithTx, fileName: 'multisend' })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/payments/batch', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/payments/batch', _ex.message); throw _ex; }
+ }());
     const d = res.data;
     showToast(`✅ ${d.submitted} ${t('toast_batch_ok')} — $${Number(d.totalAmount).toFixed(2)} USDC${batchTxHash ? ' (signed)' : ''}`, 'success');
     addLog(`[MULTI-SEND] ${d.submitted} payments sent | $${Number(d.totalAmount).toFixed(2)} USDC | batchId: ${d.batchId}${batchTxHash ? ' | signed' : ''}`, 'success');

@@ -320,7 +320,16 @@ async function submitExcelBatch() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting…'; }
 
   try {
-    const res = await axios.post('/api/payments/batch', { payments, fileName });
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/payments/batch');
+   try {
+     var _r = await fetch('/api/payments/batch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ payments, fileName })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/payments/batch', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/payments/batch', _ex.message); throw _ex; }
+ }());
     const data = res.data;
 
     showToast(`✅ ${data.submitted} payments queued for AI analysis!`, 'success');

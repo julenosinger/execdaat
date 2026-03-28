@@ -498,10 +498,19 @@ window.csvExecuteBatch = async function() {
   _append('🛡️ Running Guardian compliance check…', 'agents');
   _showTyping();
   try {
-    var gcRes = await axios.post('/api/guardian/check', {
+    var gcRes = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       txType: 'payment', fromAddress: wallet,
       amount: total, token: token,
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
     _hideTyping();
     if (!gcRes.data.approved) {
       _append(
@@ -569,11 +578,20 @@ window.csvExecuteBatch = async function() {
         };
       });
 
-      var res = await axios.post('/api/payments/batch', {
+      var res = await (async function() {
+   console.log('[fetch] POST', '/api/payments/batch');
+   try {
+     var _r = await fetch('/api/payments/batch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         payments: payments,
         fileName: csvState.fileName,
         csvBatch: true,
-      });
+      })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/payments/batch', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/payments/batch', _ex.message); throw _ex; }
+ }());
       var d = res.data;
       totalSubmitted += (d.submitted || chunk.length);
       if (d.batchId) batchIds.push(d.batchId);
@@ -717,10 +735,19 @@ window.csvDownloadTemplate = function(format) {
 window.csvServerValidate = async function() {
   if (!csvState.rows.length) return;
   try {
-    var res = await axios.post('/api/csv/validate', {
+    var res = await (async function() {
+   console.log('[fetch] POST', '/api/csv/validate');
+   try {
+     var _r = await fetch('/api/csv/validate', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       rows:  csvState.rows,
       token: csvState.token,
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/csv/validate', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/csv/validate', _ex.message); throw _ex; }
+ }());
     var d = res.data;
     _append(
       '🔍 **Server validation result:**\n\n' +

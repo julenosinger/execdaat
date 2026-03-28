@@ -209,7 +209,16 @@ async function loadSwapRates() {
   try {
     const icon = _swapEl('swap-rate-spinner');
     if (icon) icon.classList.add('fa-spin');
-    const res = await axios.get('/api/swap/rates');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/swap/rates');
+   try {
+     var _r = await fetch('/api/swap/rates', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/swap/rates', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/swap/rates', _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       swapState.rates = res.data.rates;
       const key  = `${swapState.fromToken}_TO_${swapState.toToken}`;
@@ -258,9 +267,10 @@ async function fetchSwapQuote() {
   }
 
   try {
-    const res = await axios.get('/api/swap/quote', {
-      params: { from: fromToken, to: toToken, amount },
-    });
+    const _swapQuoteUrl = '/api/swap/quote?' + new URLSearchParams({ from: fromToken, to: toToken, amount }).toString();
+    const _swapR = await fetch(_swapQuoteUrl);
+    if (!_swapR.ok) { const _e = new Error('GET failed: ' + _swapR.status); _e.response = { status: _swapR.status }; throw _e; }
+    const res = { data: await _swapR.json().catch(() => ({})) };
     if (res.data.success) {
       const q = res.data.quote;
       swapState.quote = q;
@@ -452,9 +462,18 @@ async function executeSwap() {
     _showSwapStep(2, 'active');
     _setSwapBtn('<i class="fas fa-shield-alt fa-spin mr-2"></i>Compliance check…', true);
     try {
-      const gcRes = await axios.post('/api/guardian/check', {
+      const gcRes = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         txType: 'swap', fromAddress: walletAddress, amount, token: fromToken,
-      });
+      })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
       if (!gcRes.data.approved) {
         showToast(`🚫 Guardian: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance falhou'}`, 'error');
         _showSwapStep(2, 'error'); return;
@@ -574,13 +593,22 @@ async function executeSwap() {
 
     // ── Registrar no backend ───────────────────────────────────────────────
     _setSwapBtn('<i class="fas fa-check fa-spin mr-2"></i>Finalizando…', true);
-    const res = await axios.post('/api/swap/execute', {
+    const res = await (async function() {
+   console.log('[fetch] POST', '/api/swap/execute');
+   try {
+     var _r = await fetch('/api/swap/execute', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       fromToken, toToken,
       amountIn: amount,
       walletAddress,
       slippageTolerance: swapState.slippage,
       txHash: swapTxHash,
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/swap/execute', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/swap/execute', _ex.message); throw _ex; }
+ }());
 
     if (res.data.success) {
       const swap = res.data.swap;
@@ -619,7 +647,16 @@ async function executeSwap() {
 // ─── Histórico ────────────────────────────────────────────────────────────────
 async function loadSwapHistory() {
   try {
-    const res = await axios.get('/api/swap/history?limit=15');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/swap/history?limit=15');
+   try {
+     var _r = await fetch('/api/swap/history?limit=15', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/swap/history?limit=15', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/swap/history?limit=15', _ex.message); throw _ex; }
+ }());
     const container = _swapEl('swap-history-list');
     if (!container) return;
 

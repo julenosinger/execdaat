@@ -234,9 +234,18 @@ async function paySendSingle() {
     _payUpdateStep(2, 'active');
     setBtn('<i class="fas fa-shield-alt fa-spin mr-2"></i>Compliance check…');
     try {
-      const gc = await axios.post('/api/guardian/check', {
+      const gc = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         txType: 'payment', fromAddress: from, amount, token,
-      });
+      })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
       if (!gc.data.approved) {
         showToast(`🚫 Guardian: ${gc.data.check?.result?.reasons?.[0] || 'Compliance falhou'}`, 'error');
         _payUpdateStep(2, 'error'); return;
@@ -330,13 +339,31 @@ async function paySendSingle() {
     };
 
     try {
-      await axios.post('/api/payments/register', payloadReceipt);
-      await axios.post('/api/payments/submit', {
+      await (async function() {
+        console.log('[fetch] POST', '/api/payments/register');
+        try {
+          var _r = await fetch('/api/payments/register', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payloadReceipt)});
+          if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+          var _d = await _r.json().catch(function(){return null;});
+          console.log('[fetch] POST OK', '/api/payments/register', _r.status);
+          return {data:_d, status:_r.status};
+        } catch(_ex) { console.error('[fetch] POST ERR', '/api/payments/register', _ex.message); throw _ex; }
+      }());
+      await (async function() {
+        console.log('[fetch] POST', '/api/payments/submit');
+        try {
+          var _r = await fetch('/api/payments/submit', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         from, to, amount,
         description: desc,
         priority: _el('pay-priority')?.value || 'medium',
         txHash,
-      });
+      })});
+          if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+          var _d = await _r.json().catch(function(){return null;});
+          console.log('[fetch] POST OK', '/api/payments/submit', _r.status);
+          return {data:_d, status:_r.status};
+        } catch(_ex) { console.error('[fetch] POST ERR', '/api/payments/submit', _ex.message); throw _ex; }
+      }());
     } catch (_) { /* backend pode estar offline */ }
 
     window.payEVM.lastReceipt = payloadReceipt;
@@ -495,7 +522,16 @@ async function paySignContract(contractId, role) {
   // Obter dados do contrato
   let contractData;
   try {
-    const res = await axios.get(`/api/contracts/${contractId}`);
+    const res = await (async function() {
+   console.log('[fetch] GET', `/api/contracts/${contractId}`);
+   try {
+     var _r = await fetch(`/api/contracts/${contractId}`, {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', `/api/contracts/${contractId}`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', `/api/contracts/${contractId}`, _ex.message); throw _ex; }
+ }());
     contractData = res.data.contract;
   } catch (e) {
     showToast('Erro ao carregar contrato', 'error'); return;
@@ -541,11 +577,20 @@ async function paySignContract(contractId, role) {
 
   // Registrar assinatura no backend
   try {
-    const res = await axios.post(`/api/contracts/${contractId}/sign`, {
+    const res = await (async function() {
+   console.log('[fetch] POST', `/api/contracts/${contractId}/sign`);
+   try {
+     var _r = await fetch(`/api/contracts/${contractId}/sign`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       signer: from,
       role,
       signature: sigHash,
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', `/api/contracts/${contractId}/sign`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', `/api/contracts/${contractId}/sign`, _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       const msg = res.data.bothSigned
         ? `🎉 Ambas as partes assinaram! Contrato #${contractId} pronto para ativar.`
@@ -576,7 +621,16 @@ async function payActivateContractEVM(contractId) {
 
   let contractData;
   try {
-    const res = await axios.get(`/api/contracts/${contractId}`);
+    const res = await (async function() {
+   console.log('[fetch] GET', `/api/contracts/${contractId}`);
+   try {
+     var _r = await fetch(`/api/contracts/${contractId}`, {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', `/api/contracts/${contractId}`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', `/api/contracts/${contractId}`, _ex.message); throw _ex; }
+ }());
     contractData = res.data.contract;
   } catch (e) { showToast('Erro ao carregar contrato', 'error'); return; }
 
@@ -618,7 +672,16 @@ async function payActivateContractEVM(contractId) {
 
   // Ativar contrato no backend
   try {
-    const res = await axios.post(`/api/contracts/${contractId}/activate`, { txHash, from });
+    const res = await (async function() {
+   console.log('[fetch] POST', `/api/contracts/${contractId}/activate`);
+   try {
+     var _r = await fetch(`/api/contracts/${contractId}/activate`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ txHash, from })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', `/api/contracts/${contractId}/activate`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', `/api/contracts/${contractId}/activate`, _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       showToast(`🎉 Contrato #${contractId} ativado! Escrow de ${totalUSDC} USDC depositado.`, 'success');
       if (typeof loadContracts === 'function') await loadContracts();
@@ -670,9 +733,18 @@ async function payCompleteMilestoneEVM(contractId, milestoneId, evidence) {
 
   // Registrar no backend
   try {
-    const res = await axios.post(`/api/contracts/${contractId}/milestone/${milestoneId}/complete`, {
+    const res = await (async function() {
+   console.log('[fetch] POST', `/api/contracts/${contractId}/milestone/${milestoneId}/complete`);
+   try {
+     var _r = await fetch(`/api/contracts/${contractId}/milestone/${milestoneId}/complete`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       evidence, signature: sigHash, signer: from,
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', `/api/contracts/${contractId}/milestone/${milestoneId}/complete`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', `/api/contracts/${contractId}/milestone/${milestoneId}/complete`, _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       showToast(res.data.message || `Milestone #${milestoneId} verificado com sucesso!`, 'success');
       if (typeof loadContracts === 'function') await loadContracts();

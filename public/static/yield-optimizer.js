@@ -16,7 +16,16 @@ async function loadYieldData() {
 // ─── Load Pools ───────────────────────────────────────────────────────────────
 async function loadYieldPools() {
   try {
-    const res = await axios.get('/api/yield/pools');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/yield/pools');
+   try {
+     var _r = await fetch('/api/yield/pools', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/yield/pools', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/yield/pools', _ex.message); throw _ex; }
+ }());
     if (!res.data.success) return;
     yieldState.pools = res.data.pools;
     renderYieldPools(res.data.pools, res.data.bestUsdc, res.data.bestEurc);
@@ -109,7 +118,9 @@ async function loadYieldPositions() {
   const wallet = window.walletState?.address;
   try {
     const url = wallet ? `/api/yield/positions?wallet=${wallet}` : '/api/yield/positions';
-    const res = await axios.get(url);
+    const _yR1 = await fetch(url);
+    if (!_yR1.ok) { console.error('Positions error HTTP:', _yR1.status); return; }
+    const res = { data: await _yR1.json().catch(() => ({})) };
     if (!res.data.success) return;
     yieldState.positions = res.data.positions;
     renderYieldPositions(res.data.positions);
@@ -178,7 +189,16 @@ function renderYieldPositions(positions) {
 // ─── Load Stats ───────────────────────────────────────────────────────────────
 async function loadYieldStats() {
   try {
-    const res = await axios.get('/api/yield/status');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/yield/status');
+   try {
+     var _r = await fetch('/api/yield/status', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/yield/status', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/yield/status', _ex.message); throw _ex; }
+ }());
     if (!res.data.success) return;
     const s = res.data.stats;
     setYieldEl('yield-total-positions', s.activePositions);
@@ -212,10 +232,19 @@ async function openYieldPosition() {
   try {
     // 1. Guardian compliance check
     showToast('🛡️ Running Guardian compliance check...', 'info');
-    const gcRes = await axios.post('/api/guardian/check', {
+    const gcRes = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       txType: 'vault_deposit', fromAddress: window.walletState.address,
       amount, token: pool.token,
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
     if (!gcRes.data.approved) {
       showToast(`🚫 Guardian blocked: ${gcRes.data.check.result.reasons[0]}`, 'error');
       return;
@@ -231,13 +260,22 @@ async function openYieldPosition() {
     );
 
     // 3. Register position in optimizer
-    const posRes = await axios.post('/api/yield/positions/open', {
+    const posRes = await (async function() {
+   console.log('[fetch] POST', '/api/yield/positions/open');
+   try {
+     var _r = await fetch('/api/yield/positions/open', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       walletAddress: window.walletState.address,
       poolId: yieldState.selectedPool,
       amount,
       strategy: yieldState.selectedStrategy,
       txHash: result.txHash,
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/yield/positions/open', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/yield/positions/open', _ex.message); throw _ex; }
+ }());
 
     if (posRes.data.success) {
       showTXConfirmationBadge(result.txHash, `Opened yield position: ${amount} ${pool.token} at ${pool.apy}% APY`);
@@ -258,7 +296,9 @@ async function openYieldPosition() {
 async function rebalancePosition(posId) {
   try {
     showToast('🔄 Analyzing rebalance opportunity...', 'info');
-    const res = await axios.post(`/api/yield/positions/${posId}/rebalance`);
+    const _yrR = await fetch(`/api/yield/positions/${posId}/rebalance`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    if (!_yrR.ok) { const _e = new Error('POST failed: ' + _yrR.status); _e.response = { data: await _yrR.json().catch(() => ({})), status: _yrR.status }; throw _e; }
+    const res = { data: await _yrR.json().catch(() => ({})) };
     if (res.data.success) {
       const reb = res.data.rebalance;
       if (reb.status === 'executed') {
@@ -290,7 +330,16 @@ async function closeYieldPosition(posId) {
       `Withdraw from ${pos.poolId}`
     );
 
-    const res = await axios.post(`/api/yield/positions/${posId}/close`, { txHash: result.txHash });
+    const res = await (async function() {
+   console.log('[fetch] POST', `/api/yield/positions/${posId}/close`);
+   try {
+     var _r = await fetch(`/api/yield/positions/${posId}/close`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ txHash: result.txHash })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', `/api/yield/positions/${posId}/close`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', `/api/yield/positions/${posId}/close`, _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       showTXConfirmationBadge(result.txHash, `Closed position — received ${res.data.totalReceived} ${pos.token}`);
       showToast(`✅ Position closed. Yield earned: ${res.data.yieldEarned} ${pos.token}`, 'success');
@@ -308,7 +357,16 @@ async function loadYieldProjection() {
   const strategy = yieldState.selectedStrategy;
 
   try {
-    const res = await axios.get(`/api/yield/project?amount=${amount}&token=${token}&strategy=${strategy}`);
+    const res = await (async function() {
+   console.log('[fetch] GET', `/api/yield/project?amount=${amount}&token=${token}&strategy=${strategy}`);
+   try {
+     var _r = await fetch(`/api/yield/project?amount=${amount}&token=${token}&strategy=${strategy}`, {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', `/api/yield/project?amount=${amount}&token=${token}&strategy=${strategy}`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', `/api/yield/project?amount=${amount}&token=${token}&strategy=${strategy}`, _ex.message); throw _ex; }
+ }());
     if (!res.data.success) return;
 
     const container = document.getElementById('yield-projections');
@@ -348,7 +406,16 @@ window.loadYieldData = loadYieldData;
 // Load Yield Stats for the agent card
 async function loadYieldStats() {
   try {
-    const res = await axios.get('/api/yield/status');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/yield/status');
+   try {
+     var _r = await fetch('/api/yield/status', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/yield/status', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/yield/status', _ex.message); throw _ex; }
+ }());
     if (!res.data.success) return;
     const stats = res.data.stats;
     setYieldEl('yield-best-apy', `${stats.bestApy ?? '--'}%`);
@@ -367,7 +434,16 @@ window.calcYieldProjection = async function() {
 
   resultDiv.textContent = 'Calculating...';
   try {
-    const res = await axios.get(`/api/yield/project?amount=${amount}&token=${token}&strategy=balanced`);
+    const res = await (async function() {
+   console.log('[fetch] GET', `/api/yield/project?amount=${amount}&token=${token}&strategy=balanced`);
+   try {
+     var _r = await fetch(`/api/yield/project?amount=${amount}&token=${token}&strategy=balanced`, {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', `/api/yield/project?amount=${amount}&token=${token}&strategy=balanced`, _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', `/api/yield/project?amount=${amount}&token=${token}&strategy=balanced`, _ex.message); throw _ex; }
+ }());
     if (res.data.success) {
       const p = res.data.projections;
       const apy = res.data.apy;
@@ -387,7 +463,16 @@ window.calcYieldProjection = async function() {
 // Populate the pool selector and load stats for agent card
 async function populateYieldPoolSelector() {
   try {
-    const res = await axios.get('/api/yield/pools');
+    const res = await (async function() {
+   console.log('[fetch] GET', '/api/yield/pools');
+   try {
+     var _r = await fetch('/api/yield/pools', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/yield/pools', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/yield/pools', _ex.message); throw _ex; }
+ }());
     if (!res.data.success) return;
     const sel = document.getElementById('yield-open-pool');
     if (sel && res.data.pools) {
@@ -417,11 +502,20 @@ window.openYieldPosition = async function() {
     let guardianOk = true;
     if (window.walletState?.address) {
       try {
-        const gcRes = await axios.post('/api/guardian/check', {
+        const gcRes = await (async function() {
+   console.log('[fetch] POST', '/api/guardian/check');
+   try {
+     var _r = await fetch('/api/guardian/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
           txType: 'vault_deposit',
           fromAddress: window.walletState.address,
           amount, token: 'USDC',
-        });
+        })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/guardian/check', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/guardian/check', _ex.message); throw _ex; }
+ }());
         guardianOk = gcRes.data.approved;
         if (!guardianOk && resultDiv) {
           resultDiv.innerHTML = `<div class="bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-xs text-red-400">🚫 Guardian blocked: ${gcRes.data.check?.result?.reasons[0] || 'Compliance check failed'}</div>`;
@@ -436,7 +530,16 @@ window.openYieldPosition = async function() {
       try {
         if (resultDiv) resultDiv.innerHTML = '<div class="text-center py-3 text-yellow-400 text-sm"><i class="fas fa-pen-fancy mr-2"></i>Sign transaction in wallet...</div>';
         // Get pool token
-        const poolsRes = await axios.get('/api/yield/pools');
+        const poolsRes = await (async function() {
+   console.log('[fetch] GET', '/api/yield/pools');
+   try {
+     var _r = await fetch('/api/yield/pools', {method:'GET',headers:{'Content-Type':'application/json'}});
+     if (!_r.ok) { var _e = new Error('GET failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] GET OK', '/api/yield/pools', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] GET ERR', '/api/yield/pools', _ex.message); throw _ex; }
+ }());
         const pool = poolsRes.data.pools?.find(p => p.id === poolId);
         const token = pool?.token || 'USDC';
         const result = await evmTransferToken(pool?.contractAddress || USDC_ADDRESS, amount, token, `Deposit ${amount} ${token} → yield pool`);
@@ -450,10 +553,19 @@ window.openYieldPosition = async function() {
     }
 
     // Register position
-    const posRes = await axios.post('/api/yield/positions/open', {
+    const posRes = await (async function() {
+   console.log('[fetch] POST', '/api/yield/positions/open');
+   try {
+     var _r = await fetch('/api/yield/positions/open', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       walletAddress: window.walletState?.address || '0x0000000000000000000000000000000000000000',
       poolId, amount, strategy: 'balanced', txHash,
-    });
+    })});
+     if (!_r.ok) { var _e = new Error('POST failed: '+_r.status); _e.response={data:await _r.json().catch(function(){return null;}),status:_r.status}; throw _e; }
+     var _d = await _r.json().catch(function(){return null;});
+     console.log('[fetch] POST OK', '/api/yield/positions/open', _r.status);
+     return {data:_d, status:_r.status};
+   } catch(_ex) { console.error('[fetch] POST ERR', '/api/yield/positions/open', _ex.message); throw _ex; }
+ }());
 
     if (posRes.data.success && resultDiv) {
       const pos = posRes.data.position;
@@ -486,7 +598,9 @@ async function loadYieldPositionsForCard() {
   try {
     const wallet = window.walletState?.address;
     const url = wallet ? `/api/yield/positions?wallet=${wallet}` : '/api/yield/positions';
-    const res = await axios.get(url);
+    const _ypR = await fetch(url);
+    if (!_ypR.ok) { container.innerHTML = '<div class="text-center text-gray-600 text-xs py-3">Failed to load positions.</div>'; return; }
+    const res = { data: await _ypR.json().catch(() => ({})) };
     if (!res.data.positions?.length) {
       container.innerHTML = '<div class="text-center text-gray-600 text-xs py-3">No open positions. Open one above.</div>';
       setYieldEl('yield-positions', '0');
