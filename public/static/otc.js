@@ -516,8 +516,6 @@ async function _otcVerifyTx(contract, txHash, expectedAmount, token) {
   }
 }
 
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // ON-CHAIN ESCROW FUNCTIONS (OTCEscrow.sol integration)
 // All functions are isolated to the OTC Contracts tab.
