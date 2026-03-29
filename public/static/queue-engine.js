@@ -750,3 +750,130 @@ if (document.readyState === 'loading') {
 } else {
   _qeInit();
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CHAT → EXECUTION BRIDGE
+// Escuta eventos disparados pelo chatbot (Brain) e adiciona itens à fila.
+// A wallet NUNCA é aberta aqui — apenas a fila é atualizada e o botão
+// "Execute Payments" é exibido no chat para que o usuário clique.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── Evento: transfer único adicionado pelo chatbot ───────────────────────────
+window.addEventListener('arcPayQueue:add', function(e) {
+  const d = e.detail;
+  if (!d || !d.recipient || !d.amount) return;
+
+  const entry = {
+    id:      `q-chat-${Date.now()}`,
+    address: d.recipient,
+    amount:  parseFloat(d.amount),
+    token:   (d.token || 'USDC').toUpperCase(),
+    note:    'Via chatbot',
+    status:  'pending',
+    txHash:  null,
+    error:   null,
+  };
+
+  _qeQueue.push(entry);
+  qeSaveQueue();
+
+  // Re-renderiza painel se estiver aberto
+  const panel = document.getElementById('qe-panel');
+  if (panel) { qeRenderPanel(); _qeUpdateExecBtn(); }
+
+  // Mostra botão flutuante "Execute Payments" no chat
+  _qeShowChatExecuteButton();
+
+  _qeLog(`Chat → fila: ${entry.amount} ${entry.token} → ${entry.address.slice(0,10)}…`);
+});
+
+// ─── Evento: lote adicionado pelo chatbot ─────────────────────────────────────
+window.addEventListener('arcPayQueue:addBatch', function(e) {
+  const d = e.detail;
+  if (!d || !Array.isArray(d.recipients) || !d.recipients.length) return;
+
+  const token = (d.token || 'USDC').toUpperCase();
+  let added = 0;
+
+  d.recipients.forEach((r, idx) => {
+    const addr = String(r.address || r.to || r.wallet || '').trim();
+    const amt  = parseFloat(r.amount || 0);
+    if (!_qeIsAddr(addr) || isNaN(amt) || amt <= 0) return;
+    _qeQueue.push({
+      id:      `q-chat-batch-${Date.now()}-${idx}`,
+      address: addr,
+      amount:  amt,
+      token,
+      note:    'Via chatbot (lote)',
+      status:  'pending',
+      txHash:  null,
+      error:   null,
+    });
+    added++;
+  });
+
+  if (added) {
+    qeSaveQueue();
+    const panel = document.getElementById('qe-panel');
+    if (panel) { qeRenderPanel(); _qeUpdateExecBtn(); }
+    _qeShowChatExecuteButton();
+    _qeLog(`Chat → fila (lote): ${added} entradas, token ${token}`);
+  }
+});
+
+// ─── Botão flutuante "Execute Payments" no chat ───────────────────────────────
+// Aparece dentro da janela do chat quando há itens na fila.
+// Clicar nele abre a aba Multisend e executa a fila (ação explícita do usuário).
+function _qeShowChatExecuteButton() {
+  // Evitar duplicação
+  if (document.getElementById('chat-exec-queue-btn')) return;
+
+  const msgContainer = document.getElementById('chat-messages');
+  if (!msgContainer) return;
+
+  const pending = _qeQueue.filter(r => r.status === 'pending').length;
+  if (!pending) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'chat-exec-queue-btn';
+  wrapper.className = 'flex justify-center my-3 px-4';
+  wrapper.innerHTML = `
+    <button
+      onclick="_qeHandleChatExecute()"
+      class="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold
+             bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500
+             text-white shadow-lg shadow-purple-900/40 transition-all active:scale-95">
+      <i class="fas fa-rocket text-sm"></i>
+      ⚡ Execute Payments
+      <span class="bg-white/20 rounded-full px-2 py-0.5 text-xs font-semibold">${pending}</span>
+    </button>`;
+
+  msgContainer.appendChild(wrapper);
+
+  // Scroll para o botão
+  wrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ─── Handler: clique no botão Execute Payments dentro do chat ─────────────────
+window._qeHandleChatExecute = function() {
+  // Remove o botão do chat (ação única)
+  const btn = document.getElementById('chat-exec-queue-btn');
+  if (btn) btn.remove();
+
+  // Fecha o chat e abre a aba multisend
+  if (typeof switchTab === 'function') switchTab('multisend');
+  if (typeof toggleChat === 'function') toggleChat();
+
+  // Injeta o painel de queue se ainda não estiver
+  setTimeout(() => {
+    if (typeof qeInjectPanel === 'function') qeInjectPanel();
+    // Rolar até o painel
+    const panel = document.getElementById('qe-panel');
+    if (panel) panel.scrollIntoView({ behavior: 'smooth' });
+
+    // Exibir toast de orientação
+    if (typeof _qeToast === 'function') {
+      _qeToast('⚡ Clique em "Execute Queue" para assinar e enviar.', 'info');
+    }
+  }, 400);
+};

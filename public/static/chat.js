@@ -1,6 +1,24 @@
 // ============================================================
-// CHAT MODULE v3 — ARC AI Assistant | build: 20250326d
+// CHAT MODULE v3 — ARC AI Assistant | build: 20260329c
 // ArcPay Agent v1.0 — Full Platform Integration
+//
+// ╔══════════════════════════════════════════════════════════╗
+// ║  ARCHITECTURE: Brain / Execution Separation             ║
+// ║                                                          ║
+// ║  🧠 BRAIN (this file — chatbot):                        ║
+// ║    • Interpreta linguagem natural                        ║
+// ║    • Monta dados estruturados (JSON)                     ║
+// ║    • Dispara eventos arcPayQueue:add / arcPayQueue:addBatch║
+// ║    • NUNCA chama signPermit2(), executeQueue(),          ║
+// ║      Permit2Engine.executeTransfer(), ni abre wallet     ║
+// ║                                                          ║
+// ║  ⚡ EXECUTION (queue-engine.js — UI):                   ║
+// ║    • Escuta eventos arcPayQueue:add / addBatch           ║
+// ║    • Armazena fila de pagamentos                         ║
+// ║    • Mostra botão "Execute Payments"                     ║
+// ║    • Executa signPermit2() + executeBatch() SOMENTE      ║
+// ║      após clique explícito do usuário                    ║
+// ╚══════════════════════════════════════════════════════════╝
 //
 // Authorization Flow:
 //   1. User clicks "Authorize ArcPay Agent" button
@@ -11,9 +29,9 @@
 //   5. Agent is now active — all platform ops via chat prompt
 //
 // Supported commands (post-authorization):
-//   payments  : "send 10 USDC to 0x..."
-//   multisend : "pay [addr]:10, [addr]:20"
-//   swap      : "swap 5 USDC to EURC"
+//   payments  : "send 10 USDC to 0x..."  → queues, shows Execute btn
+//   multisend : "pay [addr]:10, [addr]:20" → queues batch
+//   swap      : "swap 5 USDC to EURC"    → opens DEX tab
 //   contracts : "create contract / show contracts / deposit / release"
 //   dashboard : "show dashboard / my balance / network status"
 //   guardian  : "guardian / validate / security check"
@@ -1320,11 +1338,24 @@ async function handleLocalCommand(msg) {
   }
 
   // ── ERC-20 approve ────────────────────────────────────────────────────────
+  // BRAIN ONLY: informa o usuário que aprovações devem ser feitas via UI (Payments tab)
   if (/approve\s+([\d.]+)\s*(usdc|eurc)?\s+(?:for|to)\s+(0x[0-9a-fA-F]{40})/i.test(msg)) {
     const m = msg.match(/approve\s+([\d.]+)\s*(usdc|eurc)?\s+(?:for|to)\s+(0x[0-9a-fA-F]{40})/i);
-    if (m && typeof erc20ApproveFromChat === 'function') {
+    if (m) {
       hideTypingIndicator();
-      await erc20ApproveFromChat((m[2] || 'USDC').toUpperCase(), m[3], m[1]);
+      const token     = (m[2] || 'USDC').toUpperCase();
+      const spender   = m[3];
+      const amount    = m[1];
+      appendChatMessage('assistant',
+        `🔐 **ERC-20 Approval**\n\n` +
+        `Para aprovar **${amount} ${token}** para \`${spender.slice(0,10)}…\`, ` +
+        `vá até a aba **Payments** e use o botão de aprovação.\n\n` +
+        `Aprovações abrem a wallet apenas com interação explícita do usuário.`,
+        'payments'
+      );
+      appendActionCard([
+        { label: '💳 Ir para Payments', action: `switchTab('payments');toggleChat()`, primary: true },
+      ]);
       return true;
     }
   }
@@ -1820,9 +1851,11 @@ async function cmdSendPayment(amount, token, recipient) {
     `\n\n🤖 *Confirm to proceed with the transfer.*`,
     'payments'
   );
+  // BRAIN → UI: queue the transfer (no Permit2, no wallet popup)
   appendActionCard([
-    { label: `✅ Confirm & Send`, action: `chatExecutePayment('${amount}','${token}','${recipient}')`, primary: true },
-    { label: '❌ Cancel',          action: `appendChatMessage('assistant','❌ Payment cancelled.','payments')`, primary: false },
+    { label: `📥 Adicionar à Fila`, action: `_chatQueueTransfer('${amount}','${token}','${recipient}')`, primary: true },
+    { label: '📝 Pré-preencher Formulário', action: `_chatPrefillPaymentForm('${amount}','${token}','${recipient}')`, primary: false },
+    { label: '❌ Cancelar', action: `appendChatMessage('assistant','❌ Pagamento cancelado.','payments')`, primary: false },
   ]);
 }
 
@@ -1884,9 +1917,9 @@ async function cmdBatchPayment(entries) {
     'payments'
   );
   appendActionCard([
-    { label: '🚀 Open Multisend', action: `chatOpenMultisend(${JSON.stringify(parsed)})`, primary: true },
-    { label: '⚡ Direct Batch',   action: `_chatExecuteBatch(${JSON.stringify(parsed)},'USDC')`, primary: false },
-    { label: '❌ Cancel',          action: `appendChatMessage('assistant','❌ Cancelled.','payments')`, primary: false },
+    { label: '🚀 Abrir Multisend', action: `chatOpenMultisend(${JSON.stringify(parsed)})`, primary: true },
+    { label: '📥 Adicionar Lote à Fila', action: `_chatQueueBatch(${JSON.stringify(parsed)},'USDC')`, primary: false },
+    { label: '❌ Cancelar',         action: `appendChatMessage('assistant','❌ Cancelado.','payments')`, primary: false },
   ]);
 }
 
@@ -2040,122 +2073,44 @@ async function runGuardianValidation(params) {
 }
 
 // ── Chat-triggered platform actions ───────────────────────────────────────────
+// BRAIN ONLY: chatbot never executes blockchain transactions.
+// It only prepares structured payment data and dispatches a 'arcPayQueue:add' event.
+// The UI (queue-engine.js) listens to this event and shows the Execute button.
 async function chatExecutePayment(amount, token, recipient) {
-  const wallet = window.walletState?.address;
-  if (!wallet) { appendChatMessage('assistant', '⚠️ Wallet disconnected.', 'error'); return; }
-
-  showTypingIndicator();
-
-  try {
-    // ── Permit2Engine preflight + simulation ──────────────────────────────────
-    if (typeof Permit2Engine !== 'undefined') {
-      const prep = await Permit2Engine.prepareTransfer({
-        wallet, token, amount, recipient,
-      });
-
-      hideTypingIndicator();
-
-      // Check for reuse suggestion
-      const reuse = typeof p2SuggestReuse === 'function'
-        ? p2SuggestReuse(wallet, token, parseFloat(amount), 'payments')
-        : null;
-
-      if (!prep.ok && prep.preview.errors.length > 0) {
-        appendChatMessage('assistant',
-          '❌ **Cannot execute transfer:**\n\n' +
-          prep.preview.errors.map(e => '- ' + e).join('\n'),
-          'error');
-        return;
-      }
-
-      const reuseNote = reuse ? '\n\n' + reuse.message : '';
-      const gasNote   = prep.gasInfo?.note ? '\n⛽ ' + prep.gasInfo.note : '';
-      const simNote   = prep.sim?.success === false
-        ? '\n⚠️ *Simulation warning — proceed with caution*'
-        : '\n✅ *Simulation passed*';
-
-      appendChatMessage('assistant',
-        `💸 **Payment Preview**\n\n` +
-        `| Field | Value |\n|---|---|\n` +
-        `| Token | **${token}** |\n` +
-        `| Amount | **${amount} ${token}** |\n` +
-        `| To | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n` +
-        `| Balance | ${prep.preview.balance?.formatted?.toFixed(4)} ${token} |\n` +
-        `| Method | Direct ERC-20 transfer |\n` +
-        `| 🛡️ Guardian | ✅ Approved |` +
-        gasNote + simNote + reuseNote +
-        '\n\n**Confirm to execute?**',
-        'payments'
-      );
-      appendActionCard([
-        { label: `✅ Confirm & Send`, action: `_chatDirectTransfer('${amount}','${token}','${recipient}')`, primary: true },
-        { label: '📝 Pre-fill Form',  action: `_chatPrefillPaymentForm('${amount}','${token}','${recipient}')`, primary: false },
-        { label: '❌ Cancel',          action: `appendChatMessage('assistant','❌ Payment cancelled.','payments')`, primary: false },
-      ]);
-    } else {
-      // Fallback: pre-fill form as before
-      hideTypingIndicator();
-      appendChatMessage('assistant', `💳 Pre-filling payment form…`, 'payments');
-      await _chatPrefillPaymentForm(amount, token, recipient);
-    }
-  } catch(e) {
-    hideTypingIndicator();
-    appendChatMessage('assistant', `❌ Preflight check failed: ${e.message}`, 'error');
-  }
+  // Queue a single transfer — no Permit2, no wallet popup, no execution
+  _chatQueueTransfer(amount, token, recipient);
 }
 
-// ── Direct transfer execution (with Permit2Engine) ────────────────────────────
-async function _chatDirectTransfer(amount, token, recipient) {
-  const wallet = window.walletState?.address;
-  if (!wallet) { appendChatMessage('assistant', '⚠️ Wallet disconnected.', 'error'); return; }
-  if (typeof Permit2Engine === 'undefined') {
-    appendChatMessage('assistant', '⚠️ Permit2Engine not loaded. Please refresh.', 'error'); return;
-  }
+// ── _chatQueueTransfer: enqueue a single transfer (Brain → UI, no execution) ──
+// Dispatches 'arcPayQueue:add' event. The UI (queue-engine) picks it up and
+// shows the Execute button. Wallet popup NEVER opened from here.
+function _chatQueueTransfer(amount, token, recipient) {
+  const payload = {
+    type: 'transfer',
+    token: token || 'USDC',
+    amount: parseFloat(amount),
+    recipient,
+  };
 
-  showTypingIndicator();
-  appendChatMessage('assistant', `⏳ Executing transfer…`, 'payments');
+  // Dispatch event so queue-engine.js (or any UI listener) can pick it up
+  window.dispatchEvent(new CustomEvent('arcPayQueue:add', { detail: payload }));
 
-  try {
-    const result = await Permit2Engine.executeTransfer({ token, amount: parseFloat(amount), recipient });
-    hideTypingIndicator();
-    appendChatMessage('assistant',
-      `✅ **Transfer Complete!**\n\n` +
-      `| Field | Value |\n|---|---|\n` +
-      `| Token | ${token} |\n` +
-      `| Amount | **${amount} ${token}** |\n` +
-      `| To | \`${recipient.slice(0,10)}…\` |\n` +
-      `| Block | #${result.blockNumber} |\n` +
-      `| TX | [\`${result.txHash.slice(0,14)}…\`](${result.explorerUrl}) |`,
-      'payments'
-    );
-    appendActionCard([
-      { label: '🔍 View on Explorer', action: `window.open('${result.explorerUrl}','_blank')`, primary: true },
-      { label: '📜 Transaction History', action: `sendQuickMessage('my transactions')`, primary: false },
-    ]);
-    if (typeof showToast === 'function') showToast('✅ Transfer sent: ' + amount + ' ' + token, 'success');
-    // Update permit usage
-    const reuse = typeof p2SuggestReuse === 'function'
-      ? p2SuggestReuse(wallet, token, parseFloat(amount), 'payments')
-      : null;
-    if (reuse && typeof p2RecordUsage === 'function') {
-      p2RecordUsage(reuse.permit.id, parseFloat(amount));
-    }
-  } catch(e) {
-    hideTypingIndicator();
-    if (e.message === 'CANCELLED' || /cancel|reject/i.test(e.message)) {
-      appendChatMessage('assistant', '↩️ Transaction cancelled by user.', 'payments');
-    } else {
-      appendChatMessage('assistant',
-        `❌ **Transfer failed:**\n\n${e.message}\n\n` +
-        `*Try pre-filling the payments form instead.*`,
-        'error');
-      appendActionCard([
-        { label: '📝 Pre-fill Form', action: `_chatPrefillPaymentForm('${amount}','${token}','${recipient}')`, primary: true },
-      ]);
-    }
-  }
+  appendChatMessage('assistant',
+    `📥 **Transferência adicionada à fila!**\n\n` +
+    `| Campo | Valor |\n|---|---|\n` +
+    `| Token | **${payload.token}** |\n` +
+    `| Valor | **${payload.amount} ${payload.token}** |\n` +
+    `| Para | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n\n` +
+    `👆 Clique em **Execute Payments** para assinar e enviar.`,
+    'payments'
+  );
 }
-window._chatDirectTransfer = _chatDirectTransfer;
+window._chatQueueTransfer = _chatQueueTransfer;
+
+// Kept as alias for backward compat — does NOT execute, only queues
+window._chatDirectTransfer = function(amount, token, recipient) {
+  _chatQueueTransfer(amount, token, recipient);
+};
 
 // ── Pre-fill form (original behaviour as fallback) ────────────────────────────
 async function _chatPrefillPaymentForm(amount, token, recipient) {
@@ -2615,6 +2570,7 @@ window.updateArcPayBar          = updateArcPayBar;
 window.executeArcPayAuthorization = executeArcPayAuthorization;
 window.cancelArcPayAuth         = cancelArcPayAuth;
 window.revokeArcPaySession      = revokeArcPaySession;
+// chatExecutePayment agora apenas enfileira (não executa blockchain)
 window.chatExecutePayment       = chatExecutePayment;
 window.chatOpenSwap             = chatOpenSwap;
 window.chatOpenMultisend        = chatOpenMultisend;
@@ -2622,47 +2578,36 @@ window.chatOpenContractForm     = chatOpenContractForm;
 window.appendChatMessage        = appendChatMessage;
 window.isAgentActive            = isAgentActive;
 
-// ── Direct batch execution via Permit2Engine ────────────────────────────────
-async function _chatExecuteBatch(recipients, token) {
-  const wallet = window.walletState?.address;
-  if (!wallet) { appendChatMessage('assistant', '⚠️ Wallet disconnected.', 'error'); return; }
-  if (typeof Permit2Engine === 'undefined') {
-    appendChatMessage('assistant', '⚠️ Permit2Engine not loaded. Use Multisend instead.', 'error'); return;
-  }
+// ── _chatQueueBatch: enqueue a batch transfer (Brain → UI, no execution) ────
+// Dispatches 'arcPayQueue:addBatch'. The UI shows the Execute button.
+function _chatQueueBatch(recipients, token) {
+  const payload = {
+    type: 'batch',
+    token: token || 'USDC',
+    recipients: recipients, // [{address, amount}]
+  };
+
+  window.dispatchEvent(new CustomEvent('arcPayQueue:addBatch', { detail: payload }));
+
+  const total = recipients.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const sample = recipients.slice(0, 3).map((r, i) =>
+    `${i+1}. \`${r.address.slice(0,10)}…\` — **${parseFloat(r.amount).toFixed(2)} ${token || 'USDC'}**`
+  ).join('\n');
+  const more = recipients.length > 3 ? `\n…e mais ${recipients.length - 3}` : '';
 
   appendChatMessage('assistant',
-    `⏳ **Starting batch transfer…**\n\n${recipients.length} recipients · ${token}`,
-    'payments');
-
-  let progressMsg = null;
-  let lastUpdate  = Date.now();
-
-  try {
-    const result = await Permit2Engine.executeBatchTransfer(
-      { token, recipients },
-      function(done, total, txHash) {
-        if (Date.now() - lastUpdate > 2000) {
-          lastUpdate = Date.now();
-          if (typeof showToast === 'function') {
-            showToast(`⏳ Batch: ${done}/${total} sent…`, 'info');
-          }
-        }
-      }
-    );
-
-    const summary = Permit2Engine.formatBatchResult(result);
-    appendChatMessage('assistant', summary, 'payments');
-    appendActionCard([
-      { label: '📜 View History', action: `sendQuickMessage('my transactions')`, primary: true },
-    ]);
-    if (typeof showToast === 'function') {
-      showToast(`✅ Batch: ${result.success}/${result.total} transfers complete`, 'success');
-    }
-  } catch(e) {
-    appendChatMessage('assistant', `❌ **Batch failed:** ${e.message}`, 'error');
-  }
+    `📥 **Lote adicionado à fila!**\n\n` +
+    `${sample}${more}\n\n` +
+    `| Campo | Valor |\n|---|---|\n` +
+    `| Token | **${token || 'USDC'}** |\n` +
+    `| Total | **${total.toFixed(2)} ${token || 'USDC'}** |\n` +
+    `| Destinatários | **${recipients.length}** |\n\n` +
+    `👆 Clique em **Execute Payments** para assinar e enviar.`,
+    'payments'
+  );
 }
-window._chatExecuteBatch = _chatExecuteBatch;
+window._chatQueueBatch  = _chatQueueBatch;
+window._chatExecuteBatch = function(recipients, token) { _chatQueueBatch(recipients, token); };
 
 // Legacy compat
 window.executeArcPayApproval = executeArcPayAuthorization;
@@ -2910,8 +2855,9 @@ window.sendChatMessage = async function() {
 window.updateCSVBanner = updateCSVBanner;
 
 const _active = isAgentActive();
-console.log('%c[CHAT v3]', 'color:#a78bfa;font-weight:bold',
+console.log('%c[CHAT v3 — Brain/Execution Split]', 'color:#a78bfa;font-weight:bold',
   'ArcPay Agent:', _active ? '✅ Active' : '⚠️ Not authorized',
   '| Session:', _active ? arcPaySession?.sessionHash?.slice(0,12)+'…' : 'none',
-  '| Size:', chatSize
+  '| Size:', chatSize,
+  '| 🧠 Brain-only mode: chatbot nunca executa blockchain'
 );
