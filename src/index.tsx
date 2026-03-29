@@ -2157,6 +2157,36 @@ app.get('/', (c) => {
           </div>
         </div>
 
+        <!-- ══ QUICK EXECUTE QUEUE BANNER ══ -->
+        <!-- Shown when chatCSVState is loaded or queue has pending rows -->
+        <div id="ms-queue-banner" class="hidden mb-5 bg-gradient-to-r from-green-950/60 to-emerald-950/60 border border-green-700/40 rounded-2xl p-4">
+          <div class="flex items-center justify-between gap-4 flex-wrap">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-green-900/40 border border-green-700/40 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-list-check text-green-400 text-base"></i>
+              </div>
+              <div>
+                <div class="text-white font-semibold text-sm flex items-center gap-2">
+                  Queue Ready
+                  <span class="text-[10px] bg-green-900/50 border border-green-700/40 text-green-400 px-2 py-0.5 rounded-full" id="ms-qb-count">0 rows</span>
+                </div>
+                <div class="text-gray-400 text-xs mt-0.5" id="ms-qb-info">Import CSV in chat to populate the queue</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <button onclick="qeSyncFromChatCSV(); document.getElementById('qe-panel')?.scrollIntoView({behavior:'smooth'})"
+                class="flex items-center gap-2 text-xs px-3 py-2 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700 text-gray-400 hover:text-cyan-400 rounded-xl transition">
+                <i class="fas fa-sync text-[10px]"></i>Sync CSV
+              </button>
+              <button id="ms-qb-exec-btn"
+                onclick="qeInjectPanel(); setTimeout(()=>{ document.getElementById('qe-panel')?.scrollIntoView({behavior:'smooth'}); executeQueue(); }, 100)"
+                class="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 text-white shadow-lg shadow-green-900/40 hover:shadow-green-900/60 hover:scale-[1.02] active:scale-[0.98]">
+                <i class="fas fa-rocket"></i>🚀 Execute Queue
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- 3-Step Progress Bar -->
         <div class="flex items-center justify-between mb-8 px-2" id="ms-steps-bar">
           <div class="flex flex-col items-center gap-1.5 flex-1" id="ms-bar-step1">
@@ -4181,6 +4211,45 @@ app.get('/', (c) => {
   <script src="/static/permit2-chat.js?v=20260328b"></script>
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260328c"></script>
+  <script src="/static/queue-engine.js?v=20260329a"></script>
+  <script>
+    // ── Queue Banner auto-update ───────────────────────────────────────────────
+    // Polls chatCSVState and queue to show/hide the quick-execute banner
+    (function _initQueueBanner() {
+      function _updateQueueBanner() {
+        const banner  = document.getElementById('ms-queue-banner');
+        if (!banner) return;
+        const csv     = window.chatCSVState;
+        const qCount  = (window._qeQueue || []).filter(r => r.status === 'pending').length;
+        const csvRows = csv?.loaded && csv?.rows?.length ? csv.rows.length : 0;
+        const total   = qCount || csvRows;
+        if (total > 0) {
+          banner.classList.remove('hidden');
+          const countEl = document.getElementById('ms-qb-count');
+          const infoEl  = document.getElementById('ms-qb-info');
+          const execBtn = document.getElementById('ms-qb-exec-btn');
+          if (countEl) countEl.textContent = total + ' row' + (total !== 1 ? 's' : '');
+          if (infoEl) {
+            const walletOk = !!window.walletState?.connected;
+            if (!walletOk)  infoEl.textContent = 'Connect wallet to execute';
+            else if (qCount > 0) infoEl.textContent = qCount + ' pending • total $' + ((window._qeQueue||[]).filter(r=>r.status==='pending').reduce((s,r)=>s+r.amount,0)).toFixed(2) + ' USDC';
+            else infoEl.textContent = csvRows + ' rows from CSV ready to import';
+          }
+          if (execBtn) {
+            const walletOk = !!window.walletState?.connected;
+            execBtn.disabled = !walletOk || (!qCount && !csvRows);
+            execBtn.className = (!walletOk || (!qCount && !csvRows))
+              ? 'flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold bg-gray-700 text-gray-500 cursor-not-allowed opacity-60'
+              : 'flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 text-white shadow-lg shadow-green-900/40 hover:scale-[1.02] active:scale-[0.98]';
+          }
+        } else {
+          banner.classList.add('hidden');
+        }
+      }
+      setInterval(_updateQueueBanner, 2000);
+      document.addEventListener('DOMContentLoaded', function() { setTimeout(_updateQueueBanner, 1500); });
+    })();
+  </script>
   <script>
     // ── Contract Mode UI updater (inline, loads before contracts.js) ─────────────
     function cfUpdateModeUI(mode) {
