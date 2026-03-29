@@ -2999,3 +2999,133 @@ body.light-mode .hist-offline-bar { background: rgba(217,119,6,0.05); border-col
   border-color: #8b3030;
   background: #3d1a1a;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   AUTONOMA PAGE — 2-column layout: Permit2 (left) + Chat (right)
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Grid layout */
+.autonoma-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+/* Column header bar */
+.autonoma-col-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Sticky right column */
+.autonoma-col-right {
+  position: sticky;
+  top: 20px;
+}
+
+.autonoma-col-left {
+  /* normal flow */
+}
+
+/* Quick action buttons in inline chat */
+.autonoma-quick-btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #9ca3af;
+  border-radius: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.autonoma-quick-btn:hover {
+  background: rgba(109,40,217,0.25);
+  color: #c4b5fd;
+  border-color: rgba(109,40,217,0.4);
+}
+
+/* Permit mirror rows */
+.autonoma-permit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(234,179,8,0.06);
+  border: 1px solid rgba(234,179,8,0.15);
+  border-radius: 10px;
+  gap: 8px;
+}
+.autonoma-permit-row-info {
+  flex: 1;
+  min-width: 0;
+}
+.autonoma-permit-row-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fde68a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.autonoma-permit-row-meta {
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+.autonoma-permit-row-bar {
+  width: 80px;
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.autonoma-permit-row-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Responsive: single column on mobile */
+@media (max-width: 768px) {
+  .autonoma-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .autonoma-col-right {
+    position: static;
+  }
+  #autonoma-chat-widget {
+    height: 420px !important;
+    min-height: 380px !important;
+  }
+}
+
+/* Light mode overrides */
+body.light-mode .autonoma-quick-btn {
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.1);
+  color: #4b5563;
+}
+body.light-mode .autonoma-quick-btn:hover {
+  background: rgba(109,40,217,0.08);
+  color: #6d28d9;
+}
+body.light-mode #autonoma-chat-widget {
+  background: #f9fafb;
+  border-color: rgba(109,40,217,0.3);
+}
+body.light-mode #autonoma-chat-messages {
+  background: #f9fafb;
+}
+body.light-mode #autonoma-chat-input {
+  color: #111827;
+}

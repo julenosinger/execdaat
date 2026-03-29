@@ -524,7 +524,7 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20250326c" rel="stylesheet">
+  <link href="/static/styles.css?v=20260329c" rel="stylesheet">
   <script src="/static/i18n.js?v=20260327b"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
@@ -2749,6 +2749,24 @@ app.get('/', (c) => {
     <!-- AGENTS TAB -->
     <div id="tab-content-agents" class="tab-content hidden">
 
+      <!-- Sub-navigation: Autonoma shortcut -->
+      <div class="flex items-center gap-3 mb-6">
+        <div class="flex-1">
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <i class="fas fa-brain text-purple-400"></i> AI Agents
+          </h2>
+          <p class="text-gray-500 text-xs mt-0.5">Gerenciamento de agentes autônomos e permissões</p>
+        </div>
+        <button onclick="switchTab('autonoma')"
+          class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold
+                 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500
+                 text-white shadow-md shadow-purple-900/40 transition-all hover:scale-105 active:scale-95">
+          <i class="fas fa-robot text-sm"></i>
+          Autonoma
+          <i class="fas fa-arrow-right text-xs opacity-70"></i>
+        </button>
+      </div>
+
       <!-- Wallet Panel (topo) -->
       <div class="bg-gray-900/60 border border-purple-700/40 rounded-xl p-5 mb-6">
         <div class="flex items-center justify-between mb-4">
@@ -3210,7 +3228,231 @@ app.get('/', (c) => {
         </div>
       </div>
 
-    </div>
+    </div><!-- /tab-content-agents -->
+
+
+
+    <!-- ══════════════════════════════════════════════════════════════
+         AUTONOMA SUBPAGE — /agents/autonoma
+         2-column layout: Permit2 (left) + Embedded Chatbot (right)
+    ═══════════════════════════════════════════════════════════════ -->
+    <div id="tab-content-autonoma" class="tab-content hidden">
+
+      <!-- Page header -->
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+          <button onclick="switchTab('agents')"
+            class="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all">
+            <i class="fas fa-arrow-left text-sm"></i>
+          </button>
+          <div>
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+              <span class="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-robot text-white text-sm"></i>
+              </span>
+              Autonoma
+            </h2>
+            <p class="text-gray-500 text-xs mt-0.5 ml-11">Operações autônomas · Permit2 + Assistente IA</p>
+          </div>
+        </div>
+        <!-- Status dot -->
+        <div class="flex items-center gap-1.5 text-xs text-green-400">
+          <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+          Arc Testnet · Online
+        </div>
+      </div>
+
+      <!-- 2-column grid layout -->
+      <div class="autonoma-grid">
+
+        <!-- ═══ LEFT COLUMN — Spending Permissions (Permit2) ═══ -->
+        <div class="autonoma-col-left">
+          <div class="autonoma-col-header">
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-key text-white text-sm"></i>
+            </div>
+            <div>
+              <h3 class="text-white font-semibold text-sm">Spending Permissions (Permit2)</h3>
+              <p class="text-yellow-400 text-xs">Limites autônomos · off-chain EIP-712 · sem gas</p>
+            </div>
+          </div>
+
+          <!-- Permit2 section (full content) -->
+          <div class="bg-gray-900/60 border border-yellow-500/30 rounded-xl p-5" id="autonoma-permit2-section">
+
+            <!-- Top actions -->
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-2">
+                <span id="autonoma-permit2-badge" class="hidden bg-yellow-500 text-black text-xs font-bold rounded-full px-2 py-0.5">0 ativos</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="if(window.renderPermit2Panel) renderPermit2Panel(); if(window.p2RefreshUI) p2RefreshUI();"
+                  class="text-xs text-yellow-400 hover:text-yellow-300 bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-3 py-1.5 transition-colors">
+                  <i class="fas fa-sync mr-1"></i> Refresh
+                </button>
+                <button onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
+                  class="text-xs text-white bg-yellow-600 hover:bg-yellow-500 border border-yellow-500/50 rounded-lg px-3 py-1.5 transition-colors font-semibold">
+                  <i class="fas fa-plus mr-1"></i> New Permit
+                </button>
+              </div>
+            </div>
+
+            <!-- Mirror of permit2-active-panel (synced via JS) -->
+            <div id="autonoma-permit2-mirror" class="space-y-2 mb-4">
+              <div class="text-center text-gray-600 text-sm py-6">
+                <i class="fas fa-lock text-gray-700 text-2xl mb-2 block"></i>
+                Conecte a wallet para ver os permits
+              </div>
+            </div>
+
+            <!-- Quick permit commands (send to autonoma chat) -->
+            <div class="bg-gray-800/50 rounded-lg p-4">
+              <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3">
+                <i class="fas fa-terminal mr-1"></i> Comandos Rápidos
+              </h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
+                  class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
+                  <div class="text-xs text-yellow-400 font-medium mb-0.5">Permit USDC (24h)</div>
+                  <div class="text-[11px] text-gray-500 font-mono">allow 100 USDC for 24 hours</div>
+                </button>
+                <button onclick="autonomaSendChat('give permission for swaps up to 50 EURC for 3 days')"
+                  class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
+                  <div class="text-xs text-yellow-400 font-medium mb-0.5">Permit Swap EURC (3d)</div>
+                  <div class="text-[11px] text-gray-500 font-mono">swap 50 EURC for 3 days</div>
+                </button>
+                <button onclick="autonomaSendChat('authorize payments of 200 USDC for 7 days')"
+                  class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
+                  <div class="text-xs text-yellow-400 font-medium mb-0.5">Pagamentos (7 dias)</div>
+                  <div class="text-[11px] text-gray-500 font-mono">200 USDC payments, 7 days</div>
+                </button>
+                <button onclick="autonomaSendChat('revoke all permits')"
+                  class="text-left bg-red-900/20 border border-red-700/20 rounded-lg p-2.5 hover:border-red-500/40 transition-colors">
+                  <div class="text-xs text-red-400 font-medium mb-0.5">Revogar Tudo</div>
+                  <div class="text-[11px] text-gray-500 font-mono">revoke all permits</div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Info -->
+            <div class="mt-3 p-3 bg-yellow-900/10 border border-yellow-700/20 rounded-lg">
+              <p class="text-xs text-yellow-400/80">
+                <i class="fas fa-info-circle mr-1"></i>
+                <strong>Como funciona:</strong> Permits concedem ao agente IA direitos de gasto autônomo dentro do seu limite.
+                Requerem sua assinatura EIP-712 — <strong>sem custo de gas</strong>.
+                Duração máxima: <strong>7 dias</strong>.
+              </p>
+            </div>
+          </div>
+
+          <!-- Usage summary card -->
+          <div id="autonoma-usage-card" class="mt-4 bg-gray-900/40 border border-gray-700/40 rounded-xl p-4 hidden">
+            <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <i class="fas fa-chart-bar text-purple-400"></i> Uso de Permits
+            </h4>
+            <div id="autonoma-usage-bars" class="space-y-2"></div>
+          </div>
+        </div>
+
+        <!-- ═══ RIGHT COLUMN — AI Execution Assistant (inline chat) ═══ -->
+        <div class="autonoma-col-right">
+          <div class="autonoma-col-header">
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-robot text-white text-sm"></i>
+            </div>
+            <div>
+              <h3 class="text-white font-semibold text-sm">AI Execution Assistant</h3>
+              <p class="text-purple-400 text-xs">Assistente de operações autônomas · Brain-only mode</p>
+            </div>
+          </div>
+
+          <!-- Inline chat widget -->
+          <div id="autonoma-chat-widget"
+            class="flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-xl shadow-purple-900/20 overflow-hidden"
+            style="height: calc(100vh - 260px); min-height: 480px; max-height: 800px;">
+
+            <!-- Chat header -->
+            <div class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 flex-shrink-0">
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
+                  <i class="fas fa-robot text-white text-xs"></i>
+                </div>
+                <div class="min-w-0">
+                  <p class="text-white font-semibold text-xs leading-tight">ARC AI Assistant</p>
+                  <div class="flex items-center gap-1">
+                    <div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
+                    <p class="text-[10px] text-green-400 leading-tight">Online · Arc Testnet · Brain Mode</p>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1">
+                <button onclick="autonomaClearChat()" title="Limpar conversa"
+                  class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
+                  <i class="fas fa-trash text-xs"></i>
+                </button>
+                <button onclick="if(typeof toggleChat==='function')toggleChat()" title="Abrir chat flutuante"
+                  class="text-gray-500 hover:text-purple-400 p-1 rounded hover:bg-gray-800 transition-all" title="Pop-out">
+                  <i class="fas fa-external-link-alt text-xs"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- ArcPay status bar -->
+            <div class="px-3 py-2 border-b border-gray-800/60 flex-shrink-0 bg-gray-950/30">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[10px] flex items-center gap-1.5 flex-1 min-w-0 truncate text-gray-400">
+                  <i class="fas fa-robot text-purple-400 text-[9px]"></i>
+                  <span id="autonoma-arcpay-status-text">ArcPay Agent · verificando...</span>
+                </span>
+                <button id="autonoma-arcpay-auth-btn"
+                  onclick="if(typeof executeArcPayAuthorization==='function')executeArcPayAuthorization()"
+                  class="flex-shrink-0 text-[11px] font-bold text-white px-2.5 py-0.5 rounded-lg border border-purple-500/40 transition-all hidden"
+                  style="background:linear-gradient(135deg,#6d28d9,#3b82f6);">
+                  <i class="fas fa-shield-alt mr-1"></i>Autorizar
+                </button>
+              </div>
+            </div>
+
+            <!-- Messages area -->
+            <div id="autonoma-chat-messages" class="flex-1 overflow-y-auto px-3 py-2 space-y-2 scroll-smooth"></div>
+
+            <!-- Quick actions -->
+            <div class="px-2 pb-1 flex gap-1.5 overflow-x-auto flex-shrink-0 border-t border-gray-800/40 pt-1.5" style="scrollbar-width:none">
+              <button onclick="autonomaSendChat('my wallet')"       class="autonoma-quick-btn">💳 Wallet</button>
+              <button onclick="autonomaSendChat('check balance')"   class="autonoma-quick-btn">💰 Saldo</button>
+              <button onclick="autonomaSendChat('show my permissions')" class="autonoma-quick-btn">🔐 Permits</button>
+              <button onclick="autonomaSendChat('guardian')"        class="autonoma-quick-btn">🛡️ Guardian</button>
+              <button onclick="autonomaSendChat('network status')"  class="autonoma-quick-btn">⛓️ Rede</button>
+              <button onclick="autonomaSendChat('my transactions')" class="autonoma-quick-btn">📜 Histórico</button>
+            </div>
+
+            <!-- CSV banner (hidden by default) -->
+            <div id="autonoma-csv-banner" class="hidden mx-2 mb-1 flex-shrink-0">
+              <div class="flex items-center gap-2 bg-purple-900/30 border border-purple-700/40 rounded-lg px-3 py-1.5">
+                <i class="fas fa-file-csv text-purple-400 text-xs flex-shrink-0"></i>
+                <span id="autonoma-csv-banner-text" class="text-xs text-purple-200 flex-1 truncate"></span>
+              </div>
+            </div>
+
+            <!-- Input area -->
+            <div class="px-2 pb-2.5 flex-shrink-0">
+              <div class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500 transition-all">
+                <input id="autonoma-chat-input" type="text"
+                  placeholder="Pergunte algo · permissões · enviar · analisar…"
+                  class="flex-1 bg-transparent text-xs text-white placeholder-gray-600 focus:outline-none min-w-0"
+                  onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();autonomaSendMessage();}">
+                <button onclick="autonomaSendMessage()" id="autonoma-send-btn"
+                  class="w-7 h-7 bg-purple-600 hover:bg-purple-500 rounded-lg flex items-center justify-center text-white transition-all flex-shrink-0">
+                  <i class="fas fa-paper-plane text-xs"></i>
+                </button>
+              </div>
+              <p class="text-center text-gray-700 text-[10px] mt-1">Enter para enviar · 🧠 Brain-only · wallet só com clique</p>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /autonoma-grid -->
+    </div><!-- /tab-content-autonoma -->
 
 
 
@@ -4513,6 +4755,7 @@ app.get('/', (c) => {
   <script src="/static/queue-engine.js?v=20260329b"></script>
   <script src="/static/otc-escrow-abi.js?v=20260329b"></script>
   <script src="/static/otc.js?v=20260401a"></script>
+  <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner

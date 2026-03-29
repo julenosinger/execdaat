@@ -2562,6 +2562,7 @@ window.addEventListener('walletDisconnected', () => {
 // ── Global exports ─────────────────────────────────────────────────────────────
 window.toggleChat               = toggleChat;
 window.sendChatMessage          = sendChatMessage;
+window.renderBlockchainActionCard = renderBlockchainActionCard;
 window.sendQuickMessage         = sendQuickMessage;
 window.clearChatHistory         = clearChatHistory;
 window.setChatSize              = setChatSize;
