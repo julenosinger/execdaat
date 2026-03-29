@@ -985,6 +985,7 @@ function cfContractCard(c, wallet) {
           ${p.committed ? `<span style="font-size:9px;color:#34d399;flex-shrink:0;"><i class="fas fa-lock mr-1"></i>Committed</span>` : `<span style="font-size:9px;color:#fbbf24;flex-shrink:0;"><i class="fas fa-clock mr-1"></i>Pending</span>`}
           <button onclick="cfViewProof(${c.id},${pi})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:6px;cursor:pointer;flex-shrink:0;"><i class="fas fa-eye mr-1"></i>Ver</button>
           ${p.hash ? `<span style="font-size:9px;color:#3a4870;font-family:monospace;" title="SHA-256: ${p.hash}">${p.hash.slice(0,8)}…</span>` : ''}
+          ${isContr && !p.committed ? `<button onclick="cfDeleteProof(${c.id},${pi})" title="Delete proof" style="font-size:10px;color:#f87171;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.22);padding:2px 7px;border-radius:6px;cursor:pointer;flex-shrink:0;"><i class="fas fa-trash-alt"></i></button>` : ''}
         </div>`).join('')
         : `<p style="font-size:11px;color:#252a40;font-style:italic;padding:4px 0;">${t("cf_no_proof_submitted_yet")}</p>`}
       ${proofs.length > 0 && !isCommitted && isClient ? `
@@ -1931,6 +1932,89 @@ window.cfViewOnChainProofs = async function(contractId) {
       </div>`;
   }
 };
+
+// ─── Delete Proof (contractor action) ─────────────────────────────────────────
+// Allows the contractor (uploader) to delete a pending (uncommitted) proof.
+// Shows a confirmation modal before deletion.
+// Committed proofs are protected and cannot be deleted.
+function cfDeleteProof(contractId, proofIndex) {
+  const meta   = cfGetMeta(contractId);
+  const proofs = meta.proofs || [];
+  const proof  = proofs[proofIndex];
+
+  if (!proof) { showToast('Proof not found.', 'error'); return; }
+  if (proof.committed) {
+    showToast('Committed proofs cannot be deleted.', 'warning');
+    return;
+  }
+
+  // ── Confirmation modal ──────────────────────────────────────────────────────
+  document.getElementById('cf-delete-proof-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'cf-delete-proof-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,0.82);backdrop-filter:blur(4px);';
+  modal.innerHTML = `
+  <div style="background:#0a0c18;border:1px solid rgba(239,68,68,0.35);border-radius:20px;width:100%;max-width:420px;padding:26px;box-shadow:0 0 40px rgba(239,68,68,0.12);">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <div style="width:38px;height:38px;border-radius:10px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-trash-alt" style="color:#f87171;font-size:15px;"></i>
+      </div>
+      <div>
+        <h3 style="color:#f1f5f9;font-size:15px;font-weight:800;margin:0 0 2px;">Delete Proof?</h3>
+        <p style="color:#6b7280;font-size:11px;margin:0;">This action cannot be undone.</p>
+      </div>
+    </div>
+    <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);border-radius:10px;padding:10px 14px;margin-bottom:18px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <i class="fas fa-file" style="color:#f87171;font-size:13px;flex-shrink:0;"></i>
+        <span style="font-size:12px;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${proof.name}</span>
+      </div>
+      <div style="font-size:10px;color:#6b7280;margin-top:4px;font-family:monospace;">SHA-256: ${proof.hash ? proof.hash.slice(0,16) + '…' : 'n/a'}</div>
+    </div>
+    <p style="font-size:12px;color:#9ca3af;margin-bottom:20px;line-height:1.5;">
+      Are you sure you want to delete this proof?<br>
+      <span style="color:#fbbf24;">Only pending (uncommitted) proofs can be deleted.</span>
+    </p>
+    <div style="display:flex;gap:10px;">
+      <button onclick="cfConfirmDeleteProof(${contractId},${proofIndex})"
+        style="flex:1;background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+        <i class="fas fa-trash-alt"></i>Yes, Delete Proof
+      </button>
+      <button onclick="document.getElementById('cf-delete-proof-modal').remove()"
+        style="padding:11px 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280;border-radius:12px;cursor:pointer;font-size:13px;font-weight:600;">
+        Cancel
+      </button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+
+  // Close on backdrop click
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+// Execute the actual deletion after confirmation
+function cfConfirmDeleteProof(contractId, proofIndex) {
+  document.getElementById('cf-delete-proof-modal')?.remove();
+
+  const meta   = cfGetMeta(contractId);
+  const proofs = meta.proofs || [];
+  const proof  = proofs[proofIndex];
+
+  if (!proof) { showToast('Proof not found.', 'error'); return; }
+  if (proof.committed) { showToast('Cannot delete a committed proof.', 'warning'); return; }
+
+  const proofName = proof.name;
+
+  // Remove from array and save
+  proofs.splice(proofIndex, 1);
+  cfSetMeta(contractId, { proofs });
+
+  showToast(`✅ Proof "${proofName}" deleted successfully.`, 'success');
+  cfLog(`Proof deleted: contract #${contractId}, index ${proofIndex}, file: ${proofName}`);
+
+  // Refresh contracts view
+  cfLoadContracts({ force: true });
+}
 
 // ─── Commit Proof (client action) ─────────────────────────────────────────────
 // Locks all uploaded proofs, marking them as committed.

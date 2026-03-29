@@ -764,7 +764,7 @@ app.get('/', (c) => {
 
         <!-- Title -->
         <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white mb-5 leading-tight tracking-tight">
-          ARC <span class="bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">AI Agents</span>
+          Exec<span class="bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">Daat</span>
         </h1>
 
         <!-- Subtitle -->
@@ -901,7 +901,7 @@ app.get('/', (c) => {
             <div class="w-10 h-10 rounded-xl bg-blue-900/40 border border-blue-700/30 flex items-center justify-center mb-3">
               <i class="fas fa-exchange-alt text-blue-400"></i>
             </div>
-            <h3 class="text-white font-semibold mb-1.5 text-sm">DEX / Token Swap</h3>
+            <h3 class="text-white font-semibold mb-1.5 text-sm">Swap / Token Exchange</h3>
             <p class="text-gray-500 text-xs leading-relaxed">Swap USDC ↔ EURC using the on-chain AMM (x·y=k formula, 0.3% fee). Real liquidity pool deployed on Arc Testnet.</p>
           </div>
 
@@ -1028,11 +1028,11 @@ app.get('/', (c) => {
           <span class="absolute top-2 right-1 text-[8px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">NEW</span>
           <span id="otc-alert-badge" class="hidden absolute top-2 left-1 text-[8px] bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold leading-none"></span>
         </button>
-        <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-exchange-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">DEX</span><span class="sm:hidden text-xs">DEX</span>
-        </button>
         <button onclick="switchTab('multisend')" id="tab-multisend" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
           <i class="fas fa-paper-plane mr-1 sm:mr-2"></i><span class="hidden sm:inline">MultiSend</span><span class="sm:hidden text-xs">Multi</span>
+        </button>
+        <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
+          <i class="fas fa-exchange-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">Swap</span><span class="sm:hidden text-xs">Swap</span>
         </button>
         <button onclick="switchTab('history')" id="tab-history" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-blue-400 transition-all">
           <i class="fas fa-history mr-1 sm:mr-2"></i><span class="hidden sm:inline">History</span><span class="sm:hidden text-xs">Hist</span>
@@ -3321,7 +3321,7 @@ app.get('/', (c) => {
       </div>
     </div>
 
-    <!-- ══════════════════════════ DEX TAB — ARC Swap ══════════════════════════ -->
+    <!-- ══════════════════════════ SWAP TAB — ARC Swap ══════════════════════════ -->
     <div id="tab-content-dex" class="tab-content hidden">
 
       <!-- DEX animation styles -->
