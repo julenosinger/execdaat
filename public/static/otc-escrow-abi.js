@@ -14,7 +14,7 @@
 // Deployed contract address on ARC Testnet
 // Replace with actual address after deployment:
 //   npx hardhat run scripts/deploy_otc.js --network arc_testnet
-const OTC_ESCROW_ADDRESS = '0x0000000000000000000000000000000000000000'; // ← REPLACE AFTER DEPLOY
+const OTC_ESCROW_ADDRESS = '0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d'; // ARC Testnet — deployed 2026-03-29
 
 // Whether the escrow contract is available (non-zero address)
 const OTC_ESCROW_DEPLOYED = OTC_ESCROW_ADDRESS !== '0x0000000000000000000000000000000000000000';
