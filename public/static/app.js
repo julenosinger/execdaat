@@ -85,7 +85,19 @@ function switchTab(tab) {
     if (tabBtn) {
       tabBtn.classList.add('active');
       tabBtn.classList.remove('border-transparent', 'text-gray-400');
-      tabBtn.classList.add('border-purple-500', 'text-purple-400');
+      // Per-tab accent color
+      const tabColors = {
+        agents:    ['border-purple-500', 'text-purple-400'],
+        payments:  ['border-green-500',  'text-green-400'],
+        contracts: ['border-blue-500',   'text-blue-400'],
+        otc:       ['border-indigo-500', 'text-indigo-400'],
+        dex:       ['border-yellow-500', 'text-yellow-400'],
+        multisend: ['border-cyan-500',   'text-cyan-400'],
+        history:   ['border-blue-500',   'text-blue-400'],
+        dashboard: ['border-indigo-500', 'text-indigo-400'],
+      };
+      const [bc, tc] = tabColors[tab] || ['border-purple-500', 'text-purple-400'];
+      tabBtn.classList.add(bc, tc);
     }
 
     currentTab = tab;
@@ -129,6 +141,14 @@ function switchTab(tab) {
     }
     if (tab === 'history') {
       if (window.historyInit) window.historyInit();
+    }
+    if (tab === 'otc') {
+      // Auto-fill wallet and re-render
+      setTimeout(() => {
+        if (typeof otcSwitchSub === 'function') otcSwitchSub(window._otcSubTab || 'create');
+        if (typeof _otcAutoFillWallet === 'function') _otcAutoFillWallet();
+        if (typeof _otcCheckAlerts === 'function') _otcCheckAlerts();
+      }, 50);
     }
   }, prevContent && !prevContent.classList.contains('hidden') ? 150 : 0);
 }

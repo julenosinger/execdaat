@@ -1023,6 +1023,11 @@ app.get('/', (c) => {
         <button onclick="switchTab('contracts')" id="tab-contracts" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-file-contract mr-1 sm:mr-2"></i><span data-i18n="tab_contracts" class="hidden xs:inline sm:inline">Contracts</span>
         </button>
+        <button onclick="switchTab('otc')" id="tab-otc" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all relative">
+          <i class="fas fa-handshake mr-1 sm:mr-2"></i><span class="hidden sm:inline">OTC Contracts</span><span class="sm:hidden text-xs">OTC</span>
+          <span class="absolute top-2 right-1 text-[8px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">NEW</span>
+          <span id="otc-alert-badge" class="hidden absolute top-2 left-1 text-[8px] bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold leading-none"></span>
+        </button>
         <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-exchange-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">DEX</span><span class="sm:hidden text-xs">DEX</span>
         </button>
@@ -2122,6 +2127,301 @@ app.get('/', (c) => {
         </div>
       </div>
     </div>
+
+    <!-- ══════════════════════════ OTC CONTRACTS TAB ══════════════════════════ -->
+    <div id="tab-content-otc" class="tab-content hidden">
+      <div class="max-w-5xl mx-auto">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h2 class="text-2xl font-bold text-white flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
+                <i class="fas fa-handshake text-white text-base"></i>
+              </div>
+              OTC Contracts
+              <span class="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full font-semibold">NEW</span>
+            </h2>
+            <p class="text-gray-400 text-sm mt-1">Create, sign and execute Over-The-Counter deals with on-chain verification</p>
+          </div>
+          <div class="flex items-center gap-2 bg-amber-900/20 border border-amber-700/30 rounded-xl px-3 py-2">
+            <i class="fas fa-flask text-amber-400 text-xs"></i>
+            <span class="text-xs text-amber-400 font-medium">Arc Testnet</span>
+          </div>
+        </div>
+
+        <!-- Sub-tab nav -->
+        <div class="flex items-center gap-2 mb-6 p-1 bg-gray-900/60 border border-gray-800/60 rounded-2xl w-fit">
+          <button id="otc-sub-create" onclick="otcSwitchSub('create')"
+            class="otc-sub-btn px-5 py-2.5 rounded-xl text-sm font-semibold transition-all bg-indigo-600 text-white shadow-md">
+            <i class="fas fa-plus mr-2"></i>Create Deal
+          </button>
+          <button id="otc-sub-my" onclick="otcSwitchSub('my')"
+            class="otc-sub-btn px-5 py-2.5 rounded-xl text-sm font-medium transition-all text-gray-400 hover:text-white hover:bg-gray-800/60">
+            <i class="fas fa-list-alt mr-2"></i>My Contracts
+          </button>
+          <button id="otc-sub-market" onclick="otcSwitchSub('market')"
+            class="otc-sub-btn px-5 py-2.5 rounded-xl text-sm font-medium transition-all text-gray-400 hover:text-white hover:bg-gray-800/60">
+            <i class="fas fa-store mr-2"></i>Marketplace
+          </button>
+        </div>
+
+        <!-- ═══ CREATE DEAL PANEL ═══ -->
+        <div id="otc-panel-create">
+
+          <!-- Wallet gate -->
+          <div id="otc-wallet-gate" class="mb-5 bg-gray-900/60 border border-indigo-700/30 rounded-2xl p-6 text-center hidden">
+            <i class="fas fa-wallet text-indigo-400 text-3xl mb-3 block"></i>
+            <h3 class="text-white font-semibold mb-1">Connect Wallet</h3>
+            <p class="text-gray-500 text-sm mb-4">Connect to auto-fill your address and sign contracts</p>
+            <button onclick="openWalletModal()"
+              class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl px-5 py-2.5 transition-all">
+              <i class="fas fa-plug"></i>Connect Wallet
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+            <!-- Form -->
+            <div class="lg:col-span-3 bg-gray-900/70 border border-gray-700/50 rounded-2xl overflow-hidden">
+              <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-800/60">
+                <div class="w-8 h-8 rounded-lg bg-indigo-900/40 border border-indigo-700/30 flex items-center justify-center">
+                  <i class="fas fa-plus text-indigo-400 text-sm"></i>
+                </div>
+                <div>
+                  <h3 class="text-white font-bold text-sm">New OTC Deal</h3>
+                  <p class="text-gray-600 text-xs">Both parties must agree on the same TGE schedule</p>
+                </div>
+              </div>
+
+              <div class="p-5 space-y-4">
+                <!-- Buyer / Seller -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs text-gray-400 font-medium mb-1.5">
+                      <i class="fas fa-user-circle mr-1 text-indigo-400"></i>Buyer Wallet
+                    </label>
+                    <input id="otc-buyer" type="text" placeholder="0x… (auto-filled if connected)"
+                      class="w-full bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono placeholder-gray-600 outline-none transition">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-400 font-medium mb-1.5">
+                      <i class="fas fa-store mr-1 text-purple-400"></i>Seller Wallet
+                    </label>
+                    <input id="otc-seller" type="text" placeholder="0x… (counterparty address)"
+                      class="w-full bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono placeholder-gray-600 outline-none transition">
+                  </div>
+                </div>
+
+                <!-- Asset + Amount -->
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs text-gray-400 font-medium mb-1.5">
+                      <i class="fas fa-coins mr-1 text-yellow-400"></i>Token / Asset
+                    </label>
+                    <select id="otc-asset"
+                      class="w-full bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition">
+                      <option value="">Select token…</option>
+                      <option value="USDC">USDC</option>
+                      <option value="EURC">EURC</option>
+                      <option value="ETH">ETH (native)</option>
+                      <option value="TOKEN">Custom Token</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-400 font-medium mb-1.5">
+                      <i class="fas fa-dollar-sign mr-1 text-green-400"></i>Amount
+                    </label>
+                    <input id="otc-amount" type="number" min="0" step="any" placeholder="0.00"
+                      class="w-full bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-600 outline-none transition">
+                  </div>
+                </div>
+
+                <!-- TGE Date / Time / Timezone -->
+                <div>
+                  <label class="block text-xs text-gray-400 font-medium mb-1.5">
+                    <i class="fas fa-calendar-alt mr-1 text-cyan-400"></i>TGE / Event Schedule
+                    <span class="ml-2 text-yellow-500 text-[10px]">⚠ Both parties must agree on the same date & time</span>
+                  </label>
+                  <div class="grid grid-cols-3 gap-3">
+                    <input id="otc-tge-date" type="date"
+                      class="bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-white outline-none transition">
+                    <input id="otc-tge-time" type="time"
+                      class="bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-white outline-none transition">
+                    <input id="otc-tge-tz" type="text" placeholder="Timezone (auto)"
+                      class="bg-gray-800/60 border border-gray-700/60 rounded-xl px-3 py-2.5 text-xs text-gray-400 outline-none" readonly>
+                  </div>
+                </div>
+
+                <!-- Description -->
+                <div>
+                  <label class="block text-xs text-gray-400 font-medium mb-1.5">
+                    <i class="fas fa-align-left mr-1 text-gray-400"></i>Description (optional)
+                  </label>
+                  <textarea id="otc-description" rows="2" placeholder="e.g. 1000 tokens from XYZ TGE vesting allocation…"
+                    class="w-full bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-600 outline-none transition resize-none"></textarea>
+                </div>
+
+                <!-- Error -->
+                <div id="otc-form-error" class="hidden bg-red-900/30 border border-red-700/50 rounded-xl p-3 text-xs text-red-400 flex items-start gap-2">
+                  <i class="fas fa-exclamation-triangle mt-0.5 flex-shrink-0"></i>
+                  <span></span>
+                </div>
+
+                <!-- Submit -->
+                <button id="otc-create-btn" onclick="otcCreateDeal()"
+                  class="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-900/30">
+                  <i class="fas fa-handshake mr-1"></i>Create OTC Deal
+                </button>
+              </div>
+            </div>
+
+            <!-- Info sidebar -->
+            <div class="lg:col-span-2 space-y-4">
+
+              <!-- How it works -->
+              <div class="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-5">
+                <h4 class="text-white font-semibold text-sm mb-4 flex items-center gap-2">
+                  <i class="fas fa-route text-indigo-400"></i>How It Works
+                </h4>
+                <div class="space-y-3">
+                  ${[
+                    ['1','Create Deal','Fill the form, generate Contract ID & hash','indigo'],
+                    ['2','Match Schedule','Seller must confirm same TGE date & time','yellow'],
+                    ['3','Both Sign','Both parties sign via EIP-191 wallet signature','purple'],
+                    ['4','TGE Arrives','Contract becomes EXECUTABLE at TGE time','cyan'],
+                    ['5','Submit Proof','Buyer submits TX hash for on-chain verification','green'],
+                    ['6','Completed','Receipt generated for both parties','emerald'],
+                  ].map(([n,title,desc,color]) => `
+                    <div class="flex items-start gap-3">
+                      <div class="w-6 h-6 rounded-full bg-${color}-900/40 border border-${color}-700/40 flex items-center justify-center text-${color}-400 text-[10px] font-bold flex-shrink-0 mt-0.5">${n}</div>
+                      <div>
+                        <div class="text-white text-xs font-semibold">${title}</div>
+                        <div class="text-gray-600 text-[10px]">${desc}</div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+
+              <!-- Security rules -->
+              <div class="bg-gray-900/60 border border-gray-800/60 rounded-2xl p-5">
+                <h4 class="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+                  <i class="fas fa-shield-alt text-green-400"></i>Security Rules
+                </h4>
+                <ul class="space-y-2 text-xs text-gray-500">
+                  <li class="flex items-start gap-2"><i class="fas fa-lock text-green-400 mt-0.5 flex-shrink-0"></i>Contract locked until both parties sign</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-calendar-check text-yellow-400 mt-0.5 flex-shrink-0"></i>Schedule must match exactly between buyer & seller</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-link text-blue-400 mt-0.5 flex-shrink-0"></i>Payment verified directly on-chain via RPC</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-ban text-red-400 mt-0.5 flex-shrink-0"></i>Cannot cancel after both parties sign</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-signature text-purple-400 mt-0.5 flex-shrink-0"></i>EIP-191 signatures cryptographically bind parties</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ MY CONTRACTS PANEL ═══ -->
+        <div id="otc-panel-my" class="hidden">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-white font-semibold flex items-center gap-2">
+              <i class="fas fa-list-alt text-indigo-400"></i>My OTC Contracts
+            </h3>
+            <button onclick="otcRenderMyContracts()"
+              class="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-white rounded-xl transition">
+              <i class="fas fa-sync text-[10px]"></i>Refresh
+            </button>
+          </div>
+          <div id="otc-my-list">
+            <div class="flex flex-col items-center gap-3 py-16 text-center text-gray-600">
+              <i class="fas fa-handshake text-3xl"></i>
+              <p class="text-gray-500 text-sm">No contracts yet. Create your first deal!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ MARKETPLACE PANEL ═══ -->
+        <div id="otc-panel-market" class="hidden">
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Create Listing -->
+            <div class="bg-gray-900/70 border border-gray-700/50 rounded-2xl overflow-hidden">
+              <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-800/60">
+                <div class="w-8 h-8 rounded-lg bg-purple-900/40 border border-purple-700/30 flex items-center justify-center">
+                  <i class="fas fa-tag text-purple-400 text-sm"></i>
+                </div>
+                <div>
+                  <h3 class="text-white font-bold text-sm">Create Listing</h3>
+                  <p class="text-gray-600 text-xs">List your future token rights</p>
+                </div>
+              </div>
+              <div class="p-4 space-y-3">
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Description</label>
+                  <textarea id="mkt-description" rows="2" placeholder="e.g. 1000 XYZ tokens from TGE vesting…"
+                    class="w-full bg-gray-800/60 border border-gray-700/60 focus:border-purple-500 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 outline-none transition resize-none"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Token</label>
+                    <select id="mkt-token"
+                      class="w-full bg-gray-800/60 border border-gray-700/60 focus:border-purple-500 rounded-xl px-3 py-2 text-sm text-white outline-none">
+                      <option value="USDC">USDC</option>
+                      <option value="EURC">EURC</option>
+                      <option value="ETH">ETH</option>
+                      <option value="POINTS">Points/Rewards</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Amount</label>
+                    <input id="mkt-amount" type="number" step="any" placeholder="0"
+                      class="w-full bg-gray-800/60 border border-gray-700/60 focus:border-purple-500 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 outline-none transition">
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Asking Price ($)</label>
+                    <input id="mkt-price" type="number" step="any" placeholder="0.00"
+                      class="w-full bg-gray-800/60 border border-gray-700/60 focus:border-purple-500 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 outline-none transition">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">TGE Date</label>
+                    <input id="mkt-tge-date" type="date"
+                      class="w-full bg-gray-800/60 border border-gray-700/60 focus:border-purple-500 rounded-xl px-3 py-2 text-sm text-white outline-none transition">
+                  </div>
+                </div>
+                <button onclick="otcCreateListing()"
+                  class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white transition shadow-md">
+                  <i class="fas fa-plus"></i>Create Listing
+                </button>
+              </div>
+            </div>
+
+            <!-- Active Listings -->
+            <div class="lg:col-span-2">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-white font-semibold flex items-center gap-2">
+                  <i class="fas fa-store text-purple-400"></i>Active Listings
+                </h3>
+                <button onclick="otcRenderMarketplace()"
+                  class="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-white rounded-xl transition">
+                  <i class="fas fa-sync text-[10px]"></i>Refresh
+                </button>
+              </div>
+              <div id="otc-mkt-list">
+                <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-600">
+                  <i class="fas fa-store text-3xl"></i>
+                  <p class="text-gray-500 text-sm">No active listings yet.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <!-- ══ END OTC CONTRACTS TAB ══ -->
 
     <!-- MULTISEND TAB -->
     <div id="tab-content-multisend" class="tab-content hidden">
@@ -4212,6 +4512,7 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260328c"></script>
   <script src="/static/queue-engine.js?v=20260329a"></script>
+  <script src="/static/otc.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner
