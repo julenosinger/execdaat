@@ -1389,19 +1389,34 @@ async function handleLocalCommand(msg) {
     return true;
   }
 
-  // ── Send/Pay command: "send X USDC to 0x…" ───────────────────────────────
+  // ── Send/Pay command: "send X USDC to 0x…" (SINGLE recipient) ───────────
+  // Rule: exactly 1 address → cmdSendPayment → Payments tab
   const sendMatch = msg.match(/^(?:send|pay|enviar|pagar)\s+([\d.]+)\s*(usdc|eurc)?\s+(?:to|para)\s+(0x[0-9a-fA-F]{40})/i);
   if (sendMatch) {
-    await cmdSendPayment(sendMatch[1], (sendMatch[2] || 'USDC').toUpperCase(), sendMatch[3]);
-    return true;
+    // Verify it's a single-recipient message (no second address)
+    const allAddrs = msg.match(/0x[0-9a-fA-F]{40}/gi) || [];
+    const uniqueAddrs = [...new Set(allAddrs.map(a => a.toLowerCase()))];
+    if (uniqueAddrs.length === 1) {
+      await cmdSendPayment(sendMatch[1], (sendMatch[2] || 'USDC').toUpperCase(), sendMatch[3]);
+      return true;
+    }
+    // Multiple addresses in message → fall through to batchMatch
   }
 
-  // ── Batch multisend: "pay 0xA:10, 0xB:20" ────────────────────────────────
+  // ── Batch multisend: "pay 0xA:10, 0xB:20" (2+ recipients) ───────────────
+  // Rule: 2+ addresses → cmdBatchPayment → Multisend tab
   const batchMatch = msg.match(/^(?:pay|multisend|batch pay|enviar para|pagamento em lote)\s+(.+)/i);
   if (batchMatch) {
     const entries = batchMatch[1].match(/(0x[0-9a-fA-F]{40})\s*[:=]\s*([\d.]+)/g);
     if (entries && entries.length >= 2) {
       await cmdBatchPayment(entries); return true;
+    }
+    // Single entry: treat as single payment if address + amount available
+    if (entries && entries.length === 1) {
+      const m = entries[0].match(/(0x[0-9a-fA-F]{40})\s*[:=]\s*([\d.]+)/);
+      if (m) {
+        await cmdSendPayment(m[2], 'USDC', m[1]); return true;
+      }
     }
   }
 
@@ -2304,12 +2319,30 @@ function renderBlockchainActionCard(action, walletConnected) {
   // Store action data for execute handler
   const actionId = 'arc-act-' + Date.now();
 
-  // CTA button
+  // ── CTA button — route-aware ──────────────────────────────────────────────
+  // transfer  → queue via _chatQueueTransfer → Payments tab
+  // multisend → queue via _chatQueueBatch    → Multisend tab
+  // others    → arcExecuteAction (navigate + fill form)
   let ctaHtml = '';
   const needsWallet = !walletConnected || action.status === 'requires_wallet';
   if (needsWallet) {
     ctaHtml = `<button onclick="openWalletModal()" class="arc-action-cta arc-action-cta-wallet">
       🔗 Conectar Wallet para Executar
+    </button>`;
+  } else if (action.type === 'transfer' && d.to && d.amount) {
+    // Single transfer → queue to Payments (never multisend)
+    const safeAmt   = JSON.stringify(String(d.amount));
+    const safeTok   = JSON.stringify(String(d.token || 'USDC'));
+    const safeTo    = JSON.stringify(String(d.to));
+    ctaHtml = `<button onclick="_chatQueueTransfer(${safeAmt},${safeTok},${safeTo})" class="arc-action-cta arc-action-cta-execute">
+      📥 Adicionar à Fila → Payments
+    </button>`;
+  } else if (action.type === 'multisend' && Array.isArray(d.receivers) && d.receivers.length) {
+    // Batch → queue to Multisend
+    const safeRecs = JSON.stringify(d.receivers.map(r => ({ address: r.address || r.to || '', amount: r.amount || 0 })));
+    const safeTok  = JSON.stringify(String(d.token || 'USDC'));
+    ctaHtml = `<button onclick="_chatQueueBatch(${safeRecs},${safeTok})" class="arc-action-cta arc-action-cta-execute">
+      📥 Adicionar Lote → Multisend
     </button>`;
   } else {
     ctaHtml = `<button onclick="arcExecuteAction('${actionId}')" class="arc-action-cta arc-action-cta-execute">
@@ -2363,7 +2396,13 @@ function arcExecuteAction(actionId) {
   switch (action.type) {
 
     case 'transfer': {
-      // Navigate to payments tab + fill form
+      // Single recipient → Payments tab
+      // Queue the transfer so "Execute Payments" button appears in chat
+      if (d.to && d.amount) {
+        const token = d.token || 'USDC';
+        _chatQueueTransfer(String(d.amount), token, String(d.to));
+      }
+      // Also navigate to payments tab + pre-fill the form
       if (typeof switchTab === 'function') switchTab('payments');
       setTimeout(() => {
         fillField('pay-recipient', d.to || '');
@@ -2394,6 +2433,14 @@ function arcExecuteAction(actionId) {
     }
 
     case 'multisend': {
+      // Multiple recipients → Multisend tab
+      // Queue the batch so "Execute Payments" button appears
+      if (Array.isArray(d.receivers) && d.receivers.length >= 1) {
+        _chatQueueBatch(
+          d.receivers.map(r => ({ address: r.address || r.to || '', amount: r.amount || 0 })),
+          d.token || 'USDC'
+        );
+      }
       // Navigate to multisend tab
       if (typeof switchTab === 'function') switchTab('multisend');
       setTimeout(() => {

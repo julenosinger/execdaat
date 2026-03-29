@@ -84,6 +84,58 @@ const ARC_CONSTANTS = {
   },
 };
 
+// ─── Recipient count classifier ──────────────────────────────────────────────
+// Pure server-side pre-check: count distinct 0x addresses in the user message.
+// This lets us correct the action.type before sending to the LLM or after parsing.
+function countRecipients(msg: string): number {
+  const matches = msg.match(/0x[0-9a-fA-F]{40}/gi);
+  if (!matches) return 0;
+  return new Set(matches.map(a => a.toLowerCase())).size;
+}
+
+// ─── Post-parse routing correction ──────────────────────────────────────────
+// Enforces: 1 recipient → "transfer", ≥2 recipients → "multisend".
+// Prevents LLM hallucinating the wrong type.
+function correctActionType(action: BlockchainAction | null, recipientCount: number): BlockchainAction | null {
+  if (!action) return null;
+
+  // Single recipient: must be "transfer"
+  if (recipientCount === 1 && action.type === 'multisend') {
+    const d = action.data as Record<string, unknown>;
+    // Extract first receiver if present
+    const receivers = Array.isArray(d.receivers) ? d.receivers as Array<{address?: string; amount?: string}> : [];
+    const first = receivers[0] || {};
+    return {
+      ...action,
+      type: 'transfer',
+      data: {
+        token:        d.token || 'USDC',
+        amount:       first.amount ?? d.amount ?? '',
+        to:           first.address ?? d.to ?? '',
+        tokenAddress: ARC_CONSTANTS.tokens.USDC,
+      },
+      message: action.message.replace(/multisend|batch|lote/gi, 'transfer'),
+    };
+  }
+
+  // Multiple recipients: must be "multisend" (not "transfer")
+  if (recipientCount >= 2 && action.type === 'transfer') {
+    const d = action.data as Record<string, unknown>;
+    return {
+      ...action,
+      type: 'multisend',
+      data: {
+        token:     d.token || 'USDC',
+        receivers: [{ address: d.to, amount: d.amount }],
+        multicall3: ARC_CONSTANTS.contracts.multicall3,
+      },
+      message: action.message,
+    };
+  }
+
+  return action;
+}
+
 // ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
 function buildSystemPrompt(walletConnected: boolean, walletAddress?: string): string {
   return `You are an advanced Web3 AI Agent integrated into the ARC Network dApp.
@@ -95,9 +147,9 @@ Your role is NOT just to chat — you MUST interpret user intent and convert it 
 -----------------------------------
 
 1. Always analyze the user message and detect if it contains an actionable intent:
-   - transfer (payments)
+   - transfer (payments) — ONLY for a SINGLE recipient address
    - swap
-   - multisend
+   - multisend — ONLY for MULTIPLE recipient addresses (2 or more)
    - contract creation
    - contract interaction
 
@@ -111,6 +163,25 @@ Your role is NOT just to chat — you MUST interpret user intent and convert it 
    - A human-readable explanation
    - + the structured JSON action
    - + execution status
+
+-----------------------------------
+🚨 CRITICAL ROUTING RULE (NEVER VIOLATE)
+-----------------------------------
+
+COUNT the number of recipient addresses in the user message:
+
+  - EXACTLY 1 address → use "type": "transfer"   (→ Payments tab)
+  - 2 OR MORE addresses → use "type": "multisend" (→ Multisend tab)
+
+EXAMPLES:
+  "send 10 USDC to 0xabc..."              → type: "transfer"   ✅
+  "pay 5 EURC to 0x123..."               → type: "transfer"   ✅
+  "send 10 to 0xabc and 20 to 0xdef"    → type: "multisend"  ✅
+  "batch pay [0xabc:10, 0xdef:20]"       → type: "multisend"  ✅
+  CSV upload with multiple addresses      → type: "multisend"  ✅
+
+NEVER output "multisend" for a single address.
+NEVER output "transfer" for multiple addresses.
 
 -----------------------------------
 ⚙️ ACTION FORMAT (STRICT)
@@ -128,7 +199,7 @@ All actions MUST follow this JSON format. ALWAYS wrap in triple backticks with j
 \`\`\`
 
 -----------------------------------
-💸 PAYMENTS (TRANSFER)
+💸 PAYMENTS (TRANSFER) — 1 RECIPIENT ONLY
 -----------------------------------
 
 If user says: "send 10 USDC to 0xabc..."
@@ -147,7 +218,8 @@ If user says: "send 10 USDC to 0xabc..."
 }
 \`\`\`
 
-Then trigger: tokenContract.transfer(to, amount)
+→ Routes to: Payments tab
+→ Trigger: tokenContract.transfer(to, amount)
 
 -----------------------------------
 🔄 SWAP
@@ -170,7 +242,7 @@ If user says: "swap 1 USDC to EURC"
 \`\`\`
 
 -----------------------------------
-📤 MULTISEND
+📤 MULTISEND — 2+ RECIPIENTS ONLY
 -----------------------------------
 
 If user says: "send 1 USDC to 3 wallets: [addresses]"
@@ -190,6 +262,8 @@ If user says: "send 1 USDC to 3 wallets: [addresses]"
   "message": "Sending USDC to multiple wallets"
 }
 \`\`\`
+
+→ Routes to: Multisend tab
 
 -----------------------------------
 📜 CONTRACT DEPLOY
@@ -328,7 +402,12 @@ You are NOT a chatbot. You are an ACTION EXECUTION AGENT.
 Every actionable message MUST result in:
 1. Human-readable explanation
 2. JSON action block (wrapped in \`\`\`json ... \`\`\`)
-3. Execution guidance for the user`;
+3. Execution guidance for the user
+
+FINAL REMINDER:
+- 1 recipient address in message → "type": "transfer" → Payments tab
+- 2+ recipient addresses → "type": "multisend" → Multisend tab
+- This rule is ABSOLUTE and cannot be overridden.`;
 }
 
 // ─── Parse action from LLM response ──────────────────────────────────────────
@@ -508,9 +587,14 @@ chatRouter.post('/message', async (c) => {
 
         responseContent = await callLLM(llmMessages, apiKey, baseUrl);
         action = parseActionFromResponse(responseContent);
+
+        // ── Enforce routing: 1 recipient → transfer, 2+ → multisend ──────
+        const recipientCount = countRecipients(message);
+        action = correctActionType(action, recipientCount);
+
         usedLLM = true;
 
-        // Infer module from action type
+        // Infer module from action type (use corrected action)
         if (action) {
           const moduleMap: Record<string, string> = {
             transfer: 'payments', swap: 'swap', multisend: 'multisend',
@@ -527,7 +611,9 @@ chatRouter.post('/message', async (c) => {
     if (!responseContent) {
       const fb = ruleFallback(message);
       responseContent = fb.content;
-      action = fb.action;
+      // Apply routing correction to fallback results too
+      const recipientCount = countRecipients(message);
+      action = correctActionType(fb.action, recipientCount);
       module = fb.module;
     }
 

@@ -19,7 +19,7 @@
 'use strict';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const QE_VERSION       = '20260329a';
+const QE_VERSION       = '20260402a';
 const QE_STORAGE_KEY   = 'execDaat_queue';
 const QE_HISTORY_KEY   = 'execDaat_queueHistory';
 const QE_USDC_ADDR     = '0x3600000000000000000000000000000000000000';
@@ -823,10 +823,12 @@ window.addEventListener('arcPayQueue:addBatch', function(e) {
 
 // ─── Botão flutuante "Execute Payments" no chat ───────────────────────────────
 // Aparece dentro da janela do chat quando há itens na fila.
-// Clicar nele abre a aba Multisend e executa a fila (ação explícita do usuário).
+// Single item  → routes to Payments tab (fills form)
+// Multiple items → routes to Multisend tab (queue panel)
 function _qeShowChatExecuteButton() {
-  // Evitar duplicação
-  if (document.getElementById('chat-exec-queue-btn')) return;
+  // Remove existing button so we can refresh the count/label
+  const existing = document.getElementById('chat-exec-queue-btn');
+  if (existing) existing.remove();
 
   const msgContainer = document.getElementById('chat-messages');
   if (!msgContainer) return;
@@ -834,17 +836,26 @@ function _qeShowChatExecuteButton() {
   const pending = _qeQueue.filter(r => r.status === 'pending').length;
   if (!pending) return;
 
+  // Context-aware label
+  const isSingle   = pending === 1;
+  const btnIcon    = isSingle ? 'fa-credit-card' : 'fa-rocket';
+  const btnLabel   = isSingle ? '💳 Ir para Payments' : '⚡ Execute Payments';
+  const btnTooltip = isSingle
+    ? 'Abre o formulário de Payments com dados preenchidos'
+    : `Executa ${pending} pagamentos em lote via Multisend`;
+
   const wrapper = document.createElement('div');
   wrapper.id = 'chat-exec-queue-btn';
   wrapper.className = 'flex justify-center my-3 px-4';
   wrapper.innerHTML = `
     <button
       onclick="_qeHandleChatExecute()"
+      title="${btnTooltip}"
       class="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold
              bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500
              text-white shadow-lg shadow-purple-900/40 transition-all active:scale-95">
-      <i class="fas fa-rocket text-sm"></i>
-      ⚡ Execute Payments
+      <i class="fas ${btnIcon} text-sm"></i>
+      ${btnLabel}
       <span class="bg-white/20 rounded-full px-2 py-0.5 text-xs font-semibold">${pending}</span>
     </button>`;
 
@@ -860,20 +871,40 @@ window._qeHandleChatExecute = function() {
   const btn = document.getElementById('chat-exec-queue-btn');
   if (btn) btn.remove();
 
-  // Fecha o chat e abre a aba multisend
-  if (typeof switchTab === 'function') switchTab('multisend');
+  // ── Routing logic: 1 item → Payments tab, 2+ → Multisend tab ─────────────
+  // Count pending items in the queue
+  const pendingItems = _qeQueue.filter(r => r.status === 'pending');
+  const isSingle     = pendingItems.length === 1;
+
   if (typeof toggleChat === 'function') toggleChat();
 
-  // Injeta o painel de queue se ainda não estiver
-  setTimeout(() => {
-    if (typeof qeInjectPanel === 'function') qeInjectPanel();
-    // Rolar até o painel
-    const panel = document.getElementById('qe-panel');
-    if (panel) panel.scrollIntoView({ behavior: 'smooth' });
-
-    // Exibir toast de orientação
-    if (typeof _qeToast === 'function') {
-      _qeToast('⚡ Clique em "Execute Queue" para assinar e enviar.', 'info');
-    }
-  }, 400);
+  if (isSingle) {
+    // Single payment → route to Payments tab, pre-fill form
+    const item = pendingItems[0];
+    if (typeof switchTab === 'function') switchTab('payments');
+    setTimeout(() => {
+      const addrEl = document.getElementById('pay-recipient');
+      const amtEl  = document.getElementById('pay-amount');
+      if (addrEl) { addrEl.value = item.address; addrEl.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (amtEl)  { amtEl.value  = String(item.amount); amtEl.dispatchEvent(new Event('input', { bubbles: true })); }
+      // Select token if function available
+      if (typeof selectPayToken === 'function') selectPayToken(item.token || 'USDC');
+      if (typeof updatePayPreview === 'function') updatePayPreview();
+      if (typeof payValidateForm === 'function') payValidateForm();
+      if (typeof _qeToast === 'function') {
+        _qeToast('💳 Single payment pre-filled — review and click Sign & Send.', 'info');
+      }
+    }, 400);
+  } else {
+    // Multiple payments → route to Multisend tab with queue panel
+    if (typeof switchTab === 'function') switchTab('multisend');
+    setTimeout(() => {
+      if (typeof qeInjectPanel === 'function') qeInjectPanel();
+      const panel = document.getElementById('qe-panel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth' });
+      if (typeof _qeToast === 'function') {
+        _qeToast(`⚡ ${pendingItems.length} pagamentos na fila — clique em "Execute Queue" para enviar.`, 'info');
+      }
+    }, 400);
+  }
 };
