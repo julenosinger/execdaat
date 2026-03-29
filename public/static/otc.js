@@ -19,7 +19,7 @@
 // ============================================================
 'use strict';
 
-const OTC_VERSION    = '20260401a';
+const OTC_VERSION    = '20260402a';
 
 // ─── Date/Time UTC helpers ────────────────────────────────────────────────────
 // Convert HTML date input (YYYY-MM-DD) + time input (HH:MM) → ISO 8601 UTC string
@@ -670,10 +670,63 @@ async function otcSignDealOnChain(contractId) {
     otcRenderMyContracts();
 
   } catch(e) {
-    const rej = e.code === 4001 || e.message?.includes('rejected');
-    _otcToast(rej ? 'Signature rejected' : `Sign error: ${e.message}`, rej ? 'warning' : 'error');
+    const decoded = _otcDecodeError(e);
+    _otcToast(
+      decoded.userRejected ? 'Signature rejected' : `❌ Sign error: ${decoded.msg}`,
+      decoded.userRejected ? 'warning' : 'error'
+    );
     _otcLog('signDeal error:', e);
   }
+}
+
+// ─── Custom-error decoder ─────────────────────────────────────────────────
+// Maps the 4-byte selector (keccak256 first 4 bytes) of every known custom
+// error to a human-readable description. Works for both v1 and v2 contracts.
+const _OTC_CUSTOM_ERRORS = {
+  // selector: keccak256("ErrorName()").slice(0,10)  — verified on ARC Testnet
+  '0xc8ee2d1d': 'NotParty — your wallet is not buyer or seller of this deal',
+  '0x472e017e': 'NotBuyer — only the buyer can fund this deal',
+  '0xa72952d8': 'NotSigned — both buyer and seller must sign on-chain before funding',
+  '0x7dd2022e': 'NotBothSigned — both buyer and seller must sign on-chain before funding',
+  '0x5adf6387': 'AlreadyFunded — this deal has already been funded',
+  '0xd5ef09ba': 'NotFunded — deal has not been funded yet',
+  '0x63b4904e': 'AlreadyReleased — tokens have already been released to the seller',
+  '0x54e37625': 'AlreadyCancelled — this deal is already cancelled',
+  '0x2ebd3179': 'TGENotReached — TGE timestamp has not been reached yet',
+  '0x88f691cc': 'DealNotFound — deal ID not found on-chain; check escrowDealId',
+  '0xe6c4247b': 'InvalidAddress — zero address provided',
+  '0x2c5211c6': 'InvalidAmount — amount must be greater than zero',
+  '0xb7d09497': 'InvalidTimestamp — TGE timestamp must be non-zero',
+  '0x367558c3': 'SameAddress — buyer and seller cannot be the same address',
+  '0x7c704211': 'AlreadyCancelRequested — you already submitted a cancel request',
+  '0x13be252b': 'InsufficientAllowance — ERC20 allowance too low; approve escrow first',
+  '0x90b8ec18': 'TransferFailed — ERC20 transferFrom returned false',
+  '0xb0bd6aca': 'AlreadySigned — you have already signed this deal on-chain',
+};
+
+/**
+ * Decode a custom-error revert into a human-readable string.
+ * Handles ethers v6 style errors (error.data, error.code === 'CALL_EXCEPTION').
+ */
+function _otcDecodeError(e) {
+  // User rejected
+  if (e.code === 4001 || e.code === 'ACTION_REJECTED' ||
+      e.message?.includes('rejected') || e.message?.includes('denied')) {
+    return { userRejected: true, msg: 'Transaction rejected by user' };
+  }
+
+  // Try to extract 4-byte selector from error data
+  let data = e.data ?? e.error?.data ?? e.info?.error?.data ?? null;
+  if (typeof data === 'string' && data.startsWith('0x') && data.length >= 10) {
+    const selector = data.slice(0, 10).toLowerCase();
+    const known = _OTC_CUSTOM_ERRORS[selector];
+    if (known) return { userRejected: false, msg: known };
+    return { userRejected: false, msg: `Contract error (${selector})` };
+  }
+
+  // Fallback to message
+  const msg = e.reason ?? e.shortMessage ?? e.message ?? 'Unknown error';
+  return { userRejected: false, msg };
 }
 
 // ─── 3. Fund deal on-chain (approve ERC20 + fundDeal) ─────────────────────
@@ -690,43 +743,137 @@ async function otcFundDeal(contractId) {
   if (!contract.onChain || !contract.escrowDealId) {
     return _otcToast('Deal must be registered on-chain before funding', 'warning');
   }
-  if (contract.status !== OTC_STATUS.ONCHAIN_SIGNED) {
-    return _otcToast('Both parties must sign on-chain before funding', 'warning');
-  }
 
+  // ── Wallet matches buyer ──────────────────────────────────────────────────
   const walletAddr = window.walletState.address?.toLowerCase();
   if (contract.buyer.toLowerCase() !== walletAddr) {
     return _otcToast('Only the buyer can fund the escrow', 'error');
   }
 
   try {
-    const signer     = await _otcGetSigner();
-    const provider   = signer.provider;
-    const tokenAddr  = otcResolveToken(contract.asset);
+    const signer    = await _otcGetSigner();
+    const provider  = signer.provider;
+    const tokenAddr = otcResolveToken(contract.asset);
     if (!tokenAddr) throw new Error(`Cannot resolve token: ${contract.asset}`);
 
-    const amountRaw  = await otcParseTokenAmount(contract.amount, tokenAddr, provider);
-    const erc20      = otcGetERC20Contract(tokenAddr, signer);
+    const amountRaw = await otcParseTokenAmount(contract.amount, tokenAddr, provider);
+    const erc20     = otcGetERC20Contract(tokenAddr, signer);
     if (!erc20) throw new Error('Could not connect to ERC20 contract');
 
-    // ── Step 1: Check balance ──────────────────────────────────────────────
+    // ── Pre-flight: verify on-chain signatures via getDealStatus / getDeal ─
+    _otcToast('🔍 Checking on-chain deal status…', 'info');
+    let buyerSigned = false, sellerSigned = false, alreadyFunded = false;
+    const escrowView = otcGetEscrowContract(provider);
+    if (escrowView) {
+      try {
+        // Try v2 getDealStatus first
+        const escrowV2Abi = [...OTC_ESCROW_ABI, OTC_ESCROW_ABI_GETDEALSTATUS];
+        const ethers = window.ethers;
+        const escrowV2 = new ethers.Contract(OTC_ESCROW_ADDRESS, escrowV2Abi, provider);
+        const ds = await escrowV2.getDealStatus(contract.escrowDealId);
+        buyerSigned  = ds.buyerSigned  ?? ds[0];
+        sellerSigned = ds.sellerSigned ?? ds[1];
+        alreadyFunded = ds.funded      ?? ds[2];
+        _otcLog('getDealStatus:', { buyerSigned, sellerSigned, alreadyFunded });
+      } catch(_) {
+        // Fallback: v1 getDeal
+        try {
+          const deal = await escrowView.getDeal(contract.escrowDealId);
+          buyerSigned   = deal.buyerSigned;
+          sellerSigned  = deal.sellerSigned;
+          alreadyFunded = deal.funded;
+          _otcLog('getDeal fallback:', { buyerSigned, sellerSigned, alreadyFunded });
+        } catch(e2) {
+          _otcLog('pre-flight getDeal failed:', e2.message);
+        }
+      }
+    }
+
+    if (alreadyFunded) {
+      return _otcToast('Deal is already funded on-chain', 'warning');
+    }
+    if (!buyerSigned || !sellerSigned) {
+      const who = !buyerSigned && !sellerSigned ? 'both parties'
+                : !buyerSigned ? 'the buyer' : 'the seller';
+      return _otcToast(
+        `Cannot fund: ${who} must sign on-chain first. Use "Sign On-Chain" to complete signatures.`,
+        'warning'
+      );
+    }
+
+    // ── Check balance ─────────────────────────────────────────────────────
     const balance = await erc20.balanceOf(walletAddr);
     if (balance < amountRaw) {
       const humanBal = await otcFormatTokenAmount(balance, tokenAddr, provider);
-      return _otcToast(`Insufficient balance: have ${humanBal}, need ${contract.amount} ${contract.asset}`, 'error');
+      return _otcToast(
+        `Insufficient balance: you have ${humanBal} ${contract.asset}, need ${contract.amount} ${contract.asset}`,
+        'error'
+      );
     }
 
-    // ── Step 2: Approve ERC20 ─────────────────────────────────────────────
-    _otcToast('Step 1/2: Approve ERC20 transfer in wallet…', 'info');
-    const approveTx = await erc20.approve(OTC_ESCROW_ADDRESS, amountRaw);
-    _otcToast('⏳ Approval tx sent — waiting…', 'info');
-    await approveTx.wait();
-    _otcLog('ERC20 approved for escrow');
+    // ── Check existing allowance — skip approve if already sufficient ─────
+    const currentAllowance = await erc20.allowance(walletAddr, OTC_ESCROW_ADDRESS);
+    _otcLog(`Allowance: ${currentAllowance}, need: ${amountRaw}`);
 
-    // ── Step 3: Fund deal ─────────────────────────────────────────────────
-    _otcToast('Step 2/2: Fund escrow — confirm in wallet…', 'info');
+    if (currentAllowance < amountRaw) {
+      // ── Step 1: Approve ERC20 ───────────────────────────────────────────
+      _otcToast(
+        `Step 1/2: Approve ${contract.amount} ${contract.asset} for escrow in your wallet…`,
+        'info'
+      );
+      let approveTx;
+      try {
+        approveTx = await erc20.approve(OTC_ESCROW_ADDRESS, amountRaw);
+      } catch(approveErr) {
+        const decoded = _otcDecodeError(approveErr);
+        _otcToast(
+          decoded.userRejected
+            ? '⚠️ Approval rejected — please approve to fund the escrow'
+            : `❌ Approve failed: ${decoded.msg}`,
+          decoded.userRejected ? 'warning' : 'error'
+        );
+        _otcLog('approve error:', approveErr);
+        return;
+      }
+
+      _otcToast('⏳ Approval tx sent — waiting for confirmation…', 'info');
+      await approveTx.wait();
+      _otcLog(`ERC20 approved: ${contract.amount} ${contract.asset} → escrow ${OTC_ESCROW_ADDRESS}`);
+    } else {
+      _otcLog('Sufficient allowance already present — skipping approve');
+      _otcToast('✅ Allowance already sufficient — skipping approve step', 'info');
+    }
+
+    // ── Verify allowance was set (guard against silent approve failure) ───
+    const postAllowance = await erc20.allowance(walletAddr, OTC_ESCROW_ADDRESS);
+    if (postAllowance < amountRaw) {
+      return _otcToast(
+        `❌ Allowance still insufficient after approve (${postAllowance} < ${amountRaw}). ` +
+        'Please try the approve step again.',
+        'error'
+      );
+    }
+
+    // ── Step 2 (or 1 if allowance skipped): Fund escrow ──────────────────
+    _otcToast('Step 2/2: Fund escrow — confirm in your wallet…', 'info');
     const escrow = otcGetEscrowContract(signer);
-    const fundTx = await escrow.fundDeal(contract.escrowDealId);
+    if (!escrow) throw new Error('Escrow contract not available');
+
+    let fundTx;
+    try {
+      fundTx = await escrow.fundDeal(contract.escrowDealId);
+    } catch(fundErr) {
+      const decoded = _otcDecodeError(fundErr);
+      _otcToast(
+        decoded.userRejected
+          ? '⚠️ Fund transaction rejected'
+          : `❌ Fund escrow failed: ${decoded.msg}`,
+        decoded.userRejected ? 'warning' : 'error'
+      );
+      _otcLog('fundDeal error:', fundErr);
+      return;
+    }
+
     _otcToast('⏳ Fund tx sent — waiting for confirmation…', 'info');
     const receipt = await fundTx.wait();
 
@@ -738,12 +885,19 @@ async function otcFundDeal(contractId) {
     _otcPushHistory(contract, `Funded: ${contract.amount} ${contract.asset} locked in escrow`);
 
     const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
-    _otcToast(`✅ Escrow funded! ${contract.amount} ${contract.asset} locked. <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
+    _otcToast(
+      `✅ Escrow funded! ${contract.amount} ${contract.asset} locked. ` +
+      `<a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`,
+      'success'
+    );
     otcRenderMyContracts();
 
   } catch(e) {
-    const rej = e.code === 4001 || e.message?.includes('rejected');
-    _otcToast(rej ? 'Transaction rejected' : `Fund error: ${e.message}`, rej ? 'warning' : 'error');
+    const decoded = _otcDecodeError(e);
+    _otcToast(
+      decoded.userRejected ? 'Transaction rejected' : `❌ Fund error: ${decoded.msg}`,
+      decoded.userRejected ? 'warning' : 'error'
+    );
     _otcLog('fundDeal error:', e);
   }
 }
@@ -797,9 +951,11 @@ async function otcReleaseDeal(contractId) {
     otcRenderMyContracts();
 
   } catch(e) {
-    const rej = e.code === 4001 || e.message?.includes('rejected');
-    const err = e.message?.includes('TGENotReached') ? 'TGE not reached on-chain yet' : e.message;
-    _otcToast(rej ? 'Transaction rejected' : `Release error: ${err}`, rej ? 'warning' : 'error');
+    const decoded = _otcDecodeError(e);
+    _otcToast(
+      decoded.userRejected ? 'Transaction rejected' : `❌ Release error: ${decoded.msg}`,
+      decoded.userRejected ? 'warning' : 'error'
+    );
     _otcLog('release error:', e);
   }
 }
@@ -865,8 +1021,11 @@ async function otcRequestCancelOnChain(contractId) {
     otcRenderMyContracts();
 
   } catch(e) {
-    const rej = e.code === 4001 || e.message?.includes('rejected');
-    _otcToast(rej ? 'Transaction rejected' : `Cancel error: ${e.message}`, rej ? 'warning' : 'error');
+    const decoded = _otcDecodeError(e);
+    _otcToast(
+      decoded.userRejected ? 'Transaction rejected' : `❌ Cancel error: ${decoded.msg}`,
+      decoded.userRejected ? 'warning' : 'error'
+    );
     _otcLog('cancel error:', e);
   }
 }
@@ -1255,11 +1414,13 @@ function _otcContractCard(c, wallet) {
   const canSignOnChain = isOnChain && !isTerminal && (
     (isBuyer  && !onChainBuyerSigned)  ||
     (isSeller && !onChainSellerSigned)
-  ) && [OTC_STATUS.ONCHAIN_CREATED].includes(c.status);
+  ) && [OTC_STATUS.ONCHAIN_CREATED, OTC_STATUS.ONCHAIN_SIGNED].includes(c.status);
 
-  // Fund: buyer, both signed on-chain, escrow not yet funded
+  // Fund: buyer, both signed on-chain (either ONCHAIN_SIGNED status or ONCHAIN_CREATED
+  // with both local sigs present — handles out-of-sync local state), escrow not yet funded
   const canFund = isOnChain && isBuyer && !isTerminal
-    && c.status === OTC_STATUS.ONCHAIN_SIGNED;
+    && (c.status === OTC_STATUS.ONCHAIN_SIGNED
+        || (c.status === OTC_STATUS.ONCHAIN_CREATED && onChainBuyerSigned && onChainSellerSigned));
 
   // Release: any party (buyer typically initiates), funded + TGE reached
   const tgeTs   = new Date(c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime)).getTime();

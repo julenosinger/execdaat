@@ -12,9 +12,10 @@
 // ============================================================
 
 // Deployed contract address on ARC Testnet
-// Replace with actual address after deployment:
-//   npx hardhat run scripts/deploy_otc.js --network arc_testnet
-const OTC_ESCROW_ADDRESS = '0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d'; // ARC Testnet — deployed 2026-03-29
+// v1 (original):  0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d  — deployed 2026-03-29
+// v2 (with NotBuyer/NotSigned/InsufficientAllowance/TransferFailed/getDealStatus):
+//   Run: node contracts/script/deployOTCEscrow.cjs <PRIVATE_KEY>
+const OTC_ESCROW_ADDRESS = '0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d'; // ARC Testnet — v1
 
 // Whether the escrow contract is available (non-zero address)
 const OTC_ESCROW_DEPLOYED = OTC_ESCROW_ADDRESS !== '0x0000000000000000000000000000000000000000';
@@ -238,21 +239,42 @@ const OTC_ESCROW_ABI = [
   },
 
   // ─── ERRORS ──────────────────────────────────────────────────────────────────
-  { "type": "error", "name": "NotParty",             "inputs": [] },
-  { "type": "error", "name": "AlreadySigned",        "inputs": [] },
-  { "type": "error", "name": "NotBothSigned",        "inputs": [] },
-  { "type": "error", "name": "AlreadyFunded",        "inputs": [] },
-  { "type": "error", "name": "NotFunded",            "inputs": [] },
-  { "type": "error", "name": "AlreadyReleased",      "inputs": [] },
-  { "type": "error", "name": "AlreadyCancelled",     "inputs": [] },
-  { "type": "error", "name": "TGENotReached",        "inputs": [] },
-  { "type": "error", "name": "DealNotFound",         "inputs": [] },
-  { "type": "error", "name": "InvalidAddress",       "inputs": [] },
-  { "type": "error", "name": "InvalidAmount",        "inputs": [] },
-  { "type": "error", "name": "InvalidTimestamp",     "inputs": [] },
-  { "type": "error", "name": "SameAddress",          "inputs": [] },
-  { "type": "error", "name": "AlreadyCancelRequested", "inputs": [] }
+  { "type": "error", "name": "NotParty",               "inputs": [] },
+  { "type": "error", "name": "NotBuyer",               "inputs": [] },
+  { "type": "error", "name": "AlreadySigned",          "inputs": [] },
+  { "type": "error", "name": "NotSigned",              "inputs": [] },
+  { "type": "error", "name": "NotBothSigned",          "inputs": [] },
+  { "type": "error", "name": "AlreadyFunded",          "inputs": [] },
+  { "type": "error", "name": "NotFunded",              "inputs": [] },
+  { "type": "error", "name": "AlreadyReleased",        "inputs": [] },
+  { "type": "error", "name": "AlreadyCancelled",       "inputs": [] },
+  { "type": "error", "name": "TGENotReached",          "inputs": [] },
+  { "type": "error", "name": "DealNotFound",           "inputs": [] },
+  { "type": "error", "name": "InvalidAddress",         "inputs": [] },
+  { "type": "error", "name": "InvalidAmount",          "inputs": [] },
+  { "type": "error", "name": "InvalidTimestamp",       "inputs": [] },
+  { "type": "error", "name": "SameAddress",            "inputs": [] },
+  { "type": "error", "name": "AlreadyCancelRequested", "inputs": [] },
+  { "type": "error", "name": "InsufficientAllowance",  "inputs": [] },
+  { "type": "error", "name": "TransferFailed",         "inputs": [] }
 ];
+
+// ─── getDealStatus (v2 contract only) ────────────────────────────────────────
+// Appended separately so v1 contract ABI stays backward-compatible.
+// When OTCEscrow is redeployed with getDealStatus, merge this entry into OTC_ESCROW_ABI.
+const OTC_ESCROW_ABI_GETDEALSTATUS = {
+  "type": "function",
+  "name": "getDealStatus",
+  "stateMutability": "view",
+  "inputs": [
+    { "name": "dealId", "type": "bytes32" }
+  ],
+  "outputs": [
+    { "name": "buyerSigned",  "type": "bool" },
+    { "name": "sellerSigned", "type": "bool" },
+    { "name": "funded",       "type": "bool" }
+  ]
+};
 
 // ERC-20 minimal ABI for approvals
 const OTC_ERC20_APPROVE_ABI = [

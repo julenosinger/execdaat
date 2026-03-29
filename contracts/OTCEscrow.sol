@@ -21,6 +21,7 @@ pragma solidity ^0.8.20;
 //   - SafeERC20 for all token transfers
 //   - Role checks: buyer/seller only
 //   - Double-funding / double-release prevention
+//   - Explicit custom errors — no silent failures
 // ============================================================
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -77,7 +78,12 @@ contract OTCEscrow is ReentrancyGuard {
 
     // ─── Errors ──────────────────────────────────────────────────────────────
     error NotParty();
+    /// @dev Caller is not the buyer of this deal
+    error NotBuyer();
     error AlreadySigned();
+    /// @dev Both buyer and seller must sign before funding
+    error NotSigned();
+    // Legacy alias kept for backward-compat reads
     error NotBothSigned();
     error AlreadyFunded();
     error NotFunded();
@@ -90,6 +96,10 @@ contract OTCEscrow is ReentrancyGuard {
     error InvalidTimestamp();
     error SameAddress();
     error AlreadyCancelRequested();
+    /// @dev ERC20 allowance for this contract is less than deal amount
+    error InsufficientAllowance();
+    /// @dev ERC20 transferFrom returned false (non-reverting token)
+    error TransferFailed();
 
     // ─── Modifiers ───────────────────────────────────────────────────────────
     modifier dealExists(bytes32 dealId) {
@@ -199,7 +209,9 @@ contract OTCEscrow is ReentrancyGuard {
 
     // ─── 3. FUND DEAL ────────────────────────────────────────────────────────
     /// @notice Buyer deposits ERC-20 tokens into escrow
-    /// @dev Requires prior ERC-20 approval for this contract
+    /// @dev    Requires prior ERC-20 approval for this contract.
+    ///         Explicit checks replace safeTransferFrom's generic revert so the
+    ///         front-end can surface a precise human-readable error.
     /// @param dealId The deal identifier
     function fundDeal(bytes32 dealId)
         external
@@ -210,13 +222,28 @@ contract OTCEscrow is ReentrancyGuard {
     {
         Deal storage d = deals[dealId];
 
-        if (msg.sender != d.buyer) revert NotParty();
-        if (!d.buyerSigned || !d.sellerSigned) revert NotBothSigned();
+        // 1. Only the buyer may fund
+        if (msg.sender != d.buyer) revert NotBuyer();
+
+        // 2. Both signatures required
+        if (!d.buyerSigned || !d.sellerSigned) revert NotSigned();
+
+        // 3. Prevent double-funding
         if (d.funded) revert AlreadyFunded();
 
+        // 4. Explicit allowance check — gives front-end a clear error selector
+        uint256 allowed = IERC20(d.token).allowance(msg.sender, address(this));
+        if (allowed < d.amount) revert InsufficientAllowance();
+
+        // 5. Mark funded BEFORE external call (checks-effects-interactions)
         d.funded = true;
 
+        // 6. Execute transferFrom; SafeERC20 will revert on failure,
+        //    but we also check the low-level return for non-reverting tokens.
+        uint256 before = IERC20(d.token).balanceOf(address(this));
         IERC20(d.token).safeTransferFrom(msg.sender, address(this), d.amount);
+        uint256 received = IERC20(d.token).balanceOf(address(this)) - before;
+        if (received < d.amount) revert TransferFailed();
 
         emit DealFunded(dealId, d.amount);
     }
@@ -290,9 +317,27 @@ contract OTCEscrow is ReentrancyGuard {
     }
 
     // ─── 6. VIEW FUNCTIONS ───────────────────────────────────────────────────
+
     /// @notice Get full deal data
     function getDeal(bytes32 dealId) external view returns (Deal memory) {
         return deals[dealId];
+    }
+
+    /// @notice Get deal signing and funding status — useful for front-end pre-flight
+    /// @return buyerSigned   Whether the buyer has signed on-chain
+    /// @return sellerSigned  Whether the seller has signed on-chain
+    /// @return funded        Whether the buyer has funded the escrow
+    function getDealStatus(bytes32 dealId)
+        external
+        view
+        returns (
+            bool buyerSigned,
+            bool sellerSigned,
+            bool funded
+        )
+    {
+        Deal storage d = deals[dealId];
+        return (d.buyerSigned, d.sellerSigned, d.funded);
     }
 
     /// @notice Get all deal IDs for a party

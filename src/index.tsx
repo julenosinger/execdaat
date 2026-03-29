@@ -4753,8 +4753,8 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260329c"></script>
   <script src="/static/queue-engine.js?v=20260329b"></script>
-  <script src="/static/otc-escrow-abi.js?v=20260329b"></script>
-  <script src="/static/otc.js?v=20260401a"></script>
+  <script src="/static/otc-escrow-abi.js?v=20260402a"></script>
+  <script src="/static/otc.js?v=20260402a"></script>
   <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
