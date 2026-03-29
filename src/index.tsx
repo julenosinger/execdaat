@@ -2280,12 +2280,14 @@ app.get('/', (c) => {
                 </h4>
                 <div class="space-y-3">
                   ${[
-                    ['1','Create Deal','Fill the form, generate Contract ID & hash','indigo'],
-                    ['2','Match Schedule','Seller must confirm same TGE date & time','yellow'],
-                    ['3','Both Sign','Both parties sign via EIP-191 wallet signature','purple'],
-                    ['4','TGE Arrives','Contract becomes EXECUTABLE at TGE time','cyan'],
-                    ['5','Submit Proof','Buyer submits TX hash for on-chain verification','green'],
-                    ['6','Completed','Receipt generated for both parties','emerald'],
+                    ['1','Create Deal','Fill form → Contract ID + hash generated','indigo'],
+                    ['2','Agree Schedule','Seller confirms same TGE date & time (UTC)','yellow'],
+                    ['3','Sign Off-Chain','Both parties sign via EIP-191 wallet signature','purple'],
+                    ['4','Register On-Chain','Buyer calls createDeal() on OTCEscrow contract','violet'],
+                    ['5','Sign On-Chain','Buyer & seller each call signDeal() on-chain','violet'],
+                    ['6','Fund Escrow','Buyer approves ERC-20 + calls fundDeal() → tokens locked','teal'],
+                    ['7','TGE Arrives','At TGE timestamp, release becomes available on-chain','cyan'],
+                    ['8','Release','Anyone calls release() → tokens sent to seller','emerald'],
                   ].map(([n,title,desc,color]) => `
                     <div class="flex items-start gap-3">
                       <div class="w-6 h-6 rounded-full bg-${color}-900/40 border border-${color}-700/40 flex items-center justify-center text-${color}-400 text-[10px] font-bold flex-shrink-0 mt-0.5">${n}</div>
@@ -2304,11 +2306,13 @@ app.get('/', (c) => {
                   <i class="fas fa-shield-alt text-green-400"></i>Security Rules
                 </h4>
                 <ul class="space-y-2 text-xs text-gray-500">
-                  <li class="flex items-start gap-2"><i class="fas fa-lock text-green-400 mt-0.5 flex-shrink-0"></i>Contract locked until both parties sign</li>
-                  <li class="flex items-start gap-2"><i class="fas fa-calendar-check text-yellow-400 mt-0.5 flex-shrink-0"></i>Schedule must match exactly between buyer & seller</li>
-                  <li class="flex items-start gap-2"><i class="fas fa-link text-blue-400 mt-0.5 flex-shrink-0"></i>Payment verified directly on-chain via RPC</li>
-                  <li class="flex items-start gap-2"><i class="fas fa-ban text-red-400 mt-0.5 flex-shrink-0"></i>Cannot cancel after both parties sign</li>
-                  <li class="flex items-start gap-2"><i class="fas fa-signature text-purple-400 mt-0.5 flex-shrink-0"></i>EIP-191 signatures cryptographically bind parties</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-lock text-green-400 mt-0.5 flex-shrink-0"></i>ReentrancyGuard on all state-changing functions</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-coins text-teal-400 mt-0.5 flex-shrink-0"></i>SafeERC20 for all token transfers</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-user-shield text-blue-400 mt-0.5 flex-shrink-0"></i>Dual on-chain signatures before funding allowed</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-calendar-check text-yellow-400 mt-0.5 flex-shrink-0"></i>Release only after block.timestamp ≥ tgeTimestamp</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-handshake text-purple-400 mt-0.5 flex-shrink-0"></i>Funded deals require dual-consent cancel</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-ban text-red-400 mt-0.5 flex-shrink-0"></i>No double-fund or double-release possible</li>
+                  <li class="flex items-start gap-2"><i class="fas fa-link text-violet-400 mt-0.5 flex-shrink-0"></i>Contract hash anchors deal to on-chain escrow</li>
                 </ul>
               </div>
             </div>
@@ -4507,7 +4511,8 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260328c"></script>
   <script src="/static/queue-engine.js?v=20260329a"></script>
-  <script src="/static/otc.js?v=20260329a"></script>
+  <script src="/static/otc-escrow-abi.js?v=20260401a"></script>
+  <script src="/static/otc.js?v=20260401a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner

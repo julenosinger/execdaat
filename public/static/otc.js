@@ -19,7 +19,7 @@
 // ============================================================
 'use strict';
 
-const OTC_VERSION    = '20260329c';
+const OTC_VERSION    = '20260401a';
 
 // ─── Date/Time UTC helpers ────────────────────────────────────────────────────
 // Convert HTML date input (YYYY-MM-DD) + time input (HH:MM) → ISO 8601 UTC string
@@ -85,19 +85,31 @@ const OTC_STATUS = {
   COMPLETED:        'COMPLETED',
   CANCELLED:        'CANCELLED',
   DISPUTED:         'DISPUTED',
+  // On-chain escrow states
+  ONCHAIN_CREATED:  'ONCHAIN_CREATED',   // createDeal() called, both must signDeal()
+  ONCHAIN_SIGNED:   'ONCHAIN_SIGNED',    // both signed on-chain, ready to fund
+  FUNDED:           'FUNDED',            // fundDeal() called — tokens locked in escrow
+  RELEASED:         'RELEASED',          // release() called — tokens sent to seller
+  CANCEL_REQUESTED: 'CANCEL_REQUESTED',  // one party requested cancel (funded deal)
 };
 
 const OTC_STATUS_LABEL = {
-  PENDING_SCHEDULE: { label: 'Pending Schedule', color: 'text-yellow-400', bg: 'bg-yellow-900/30 border-yellow-700/40', icon: 'fa-clock' },
-  SCHEDULED:        { label: 'Scheduled',        color: 'text-blue-400',   bg: 'bg-blue-900/30 border-blue-700/40',   icon: 'fa-calendar-check' },
-  SIGNED:           { label: 'Signed',           color: 'text-purple-400', bg: 'bg-purple-900/30 border-purple-700/40', icon: 'fa-signature' },
-  LOCKED:           { label: 'Locked',           color: 'text-orange-400', bg: 'bg-orange-900/30 border-orange-700/40', icon: 'fa-lock' },
-  EXECUTABLE:       { label: 'Executable',       color: 'text-green-400',  bg: 'bg-green-900/30 border-green-700/40',  icon: 'fa-play-circle' },
-  AWAITING_PAYMENT: { label: 'Awaiting Payment', color: 'text-cyan-400',   bg: 'bg-cyan-900/30 border-cyan-700/40',   icon: 'fa-hourglass-half' },
-  VERIFYING:        { label: 'Verifying',        color: 'text-indigo-400', bg: 'bg-indigo-900/30 border-indigo-700/40', icon: 'fa-search' },
-  COMPLETED:        { label: 'Completed',        color: 'text-emerald-400',bg: 'bg-emerald-900/30 border-emerald-700/40','icon': 'fa-check-double' },
-  CANCELLED:        { label: 'Cancelled',        color: 'text-red-400',    bg: 'bg-red-900/30 border-red-700/40',    icon: 'fa-times-circle' },
-  DISPUTED:         { label: 'Disputed',         color: 'text-rose-400',   bg: 'bg-rose-900/30 border-rose-700/40',   icon: 'fa-exclamation-triangle' },
+  PENDING_SCHEDULE: { label: 'Pending Schedule',  color: 'text-yellow-400',  bg: 'bg-yellow-900/30 border-yellow-700/40',   icon: 'fa-clock' },
+  SCHEDULED:        { label: 'Scheduled',         color: 'text-blue-400',    bg: 'bg-blue-900/30 border-blue-700/40',       icon: 'fa-calendar-check' },
+  SIGNED:           { label: 'Signed (Off-Chain)', color: 'text-purple-400',  bg: 'bg-purple-900/30 border-purple-700/40',   icon: 'fa-signature' },
+  LOCKED:           { label: 'Locked',            color: 'text-orange-400',  bg: 'bg-orange-900/30 border-orange-700/40',   icon: 'fa-lock' },
+  EXECUTABLE:       { label: 'Executable',        color: 'text-green-400',   bg: 'bg-green-900/30 border-green-700/40',     icon: 'fa-play-circle' },
+  AWAITING_PAYMENT: { label: 'Awaiting Payment',  color: 'text-cyan-400',    bg: 'bg-cyan-900/30 border-cyan-700/40',       icon: 'fa-hourglass-half' },
+  VERIFYING:        { label: 'Verifying',         color: 'text-indigo-400',  bg: 'bg-indigo-900/30 border-indigo-700/40',   icon: 'fa-search' },
+  COMPLETED:        { label: 'Completed',         color: 'text-emerald-400', bg: 'bg-emerald-900/30 border-emerald-700/40', icon: 'fa-check-double' },
+  CANCELLED:        { label: 'Cancelled',         color: 'text-red-400',     bg: 'bg-red-900/30 border-red-700/40',         icon: 'fa-times-circle' },
+  DISPUTED:         { label: 'Disputed',          color: 'text-rose-400',    bg: 'bg-rose-900/30 border-rose-700/40',       icon: 'fa-exclamation-triangle' },
+  // On-chain escrow statuses
+  ONCHAIN_CREATED:  { label: 'On-Chain (Signing)', color: 'text-violet-400', bg: 'bg-violet-900/30 border-violet-700/40',  icon: 'fa-link' },
+  ONCHAIN_SIGNED:   { label: 'On-Chain Signed',   color: 'text-violet-300',  bg: 'bg-violet-900/30 border-violet-600/40',  icon: 'fa-file-signature' },
+  FUNDED:           { label: 'Funded (Escrow)',    color: 'text-teal-400',    bg: 'bg-teal-900/30 border-teal-700/40',       icon: 'fa-vault' },
+  RELEASED:         { label: 'Released',          color: 'text-emerald-300', bg: 'bg-emerald-900/30 border-emerald-600/40', icon: 'fa-paper-plane' },
+  CANCEL_REQUESTED: { label: 'Cancel Requested',  color: 'text-amber-400',   bg: 'bg-amber-900/30 border-amber-700/40',     icon: 'fa-undo' },
 };
 
 // ─── State ─────────────────────────────────────────────────────────────────────
@@ -206,6 +218,13 @@ async function otcCreateDeal() {
       sellerScheduleConfirmed: false,
       sellerTgeDate: null,
       sellerTgeTime: null,
+      // On-chain escrow fields (populated after on-chain createDeal tx)
+      escrowDealId:  null,   // bytes32 dealId from OTCEscrow contract
+      escrowTxHash:  null,   // tx hash of createDeal
+      fundTxHash:    null,   // tx hash of fundDeal
+      releaseTxHash: null,   // tx hash of release
+      cancelTxHash:  null,   // tx hash of cancel
+      onChain:       false,  // true once createDeal() executed on-chain
     };
 
     _otcContracts.unshift(contract);
@@ -214,7 +233,21 @@ async function otcCreateDeal() {
     // Push to global history
     _otcPushHistory(contract, 'Created');
 
-    _otcToast(`✅ OTC Contract created! ID: ${contractId}`, 'success');
+    // ── Try on-chain createDeal if escrow is deployed & wallet connected ───────
+    if (OTC_ESCROW_DEPLOYED && window.walletState?.connected) {
+      _otcToast('✅ OTC Deal created locally! Registering on-chain…', 'info');
+      // Non-blocking: try to push to chain in background
+      _otcCreateDealOnChain(contract).catch(e => {
+        _otcLog('On-chain createDeal failed (fallback to local):', e.message);
+        _otcToast('⚠️ On-chain registration failed. Deal saved locally.', 'warning');
+      });
+    } else {
+      const chainNote = !OTC_ESCROW_DEPLOYED
+        ? ' (Escrow contract not deployed yet — local mode)'
+        : ' (Connect wallet to register on-chain)';
+      _otcToast(`✅ OTC Contract created! ID: ${contractId}${chainNote}`, 'success');
+    }
+
     _otcLog('Contract created:', contract);
 
     // Reset form
@@ -483,6 +516,429 @@ async function _otcVerifyTx(contract, txHash, expectedAmount, token) {
   }
 }
 
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ON-CHAIN ESCROW FUNCTIONS (OTCEscrow.sol integration)
+// All functions are isolated to the OTC Contracts tab.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── Public wrapper: Register deal on-chain ─────────────────────────────────
+async function otcRegisterOnChain(contractId) {
+  if (!window.ethereum || !window.walletState?.connected) {
+    _otcToast('Connect your wallet to register on-chain', 'warning');
+    if (typeof openWalletModal === 'function') openWalletModal();
+    return;
+  }
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+  if (contract.onChain) return _otcToast('Already registered on-chain', 'info');
+
+  // Validate wallet is buyer
+  const walletAddr = window.walletState.address?.toLowerCase();
+  if (contract.buyer.toLowerCase() !== walletAddr) {
+    return _otcToast('Only the buyer can register the deal on-chain', 'error');
+  }
+
+  if (!OTC_ESCROW_DEPLOYED) {
+    return _otcToast('Escrow contract not deployed yet. Set OTC_ESCROW_ADDRESS in otc-escrow-abi.js', 'warning');
+  }
+
+  try {
+    await _otcCreateDealOnChain(contract);
+  } catch(e) {
+    const rej = e.code === 4001 || e.message?.includes('rejected');
+    _otcToast(rej ? 'Transaction rejected' : `Register error: ${e.message}`, rej ? 'warning' : 'error');
+    _otcLog('Register on-chain error:', e);
+  }
+}
+
+// ─── Helper: get ethers signer ─────────────────────────────────────────────
+async function _otcGetSigner() {
+  const ethers = window.ethers;
+  if (!ethers) throw new Error('ethers.js not loaded');
+  if (!window.ethereum) throw new Error('No wallet detected');
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  return provider.getSigner();
+}
+
+// ─── 1. Register deal on-chain (createDeal) ────────────────────────────────
+async function _otcCreateDealOnChain(contract) {
+  const signer  = await _otcGetSigner();
+  const escrow  = otcGetEscrowContract(signer);
+  if (!escrow) throw new Error('Escrow contract not available');
+
+  const tokenAddr = otcResolveToken(contract.asset);
+  if (!tokenAddr) throw new Error(`Cannot resolve token address for: ${contract.asset}`);
+
+  const provider  = signer.provider;
+  const amountRaw = await otcParseTokenAmount(contract.amount, tokenAddr, provider);
+  const tgeTs     = Math.floor(new Date(contract.timestamp_utc).getTime() / 1000);
+  const hashBytes = contract.contractHash.padEnd(66, '0').slice(0, 66); // bytes32
+
+  _otcLog(`createDeal on-chain: seller=${contract.seller} token=${tokenAddr} amount=${amountRaw} tge=${tgeTs}`);
+
+  const tx = await escrow.createDeal(
+    contract.seller,
+    tokenAddr,
+    amountRaw,
+    tgeTs,
+    hashBytes
+  );
+
+  _otcToast('⏳ createDeal tx sent — waiting for confirmation…', 'info');
+  const receipt = await tx.wait();
+  _otcLog('createDeal confirmed:', receipt.hash);
+
+  // Extract dealId from DealCreated event
+  const escrowIface = new (window.ethers.Interface)(OTC_ESCROW_ABI);
+  let dealId = null;
+  for (const log of receipt.logs) {
+    try {
+      const parsed = escrowIface.parseLog(log);
+      if (parsed?.name === 'DealCreated') {
+        dealId = parsed.args.dealId;
+        break;
+      }
+    } catch(e) {}
+  }
+
+  if (!dealId) throw new Error('Could not extract dealId from tx logs');
+
+  // Update local contract state
+  contract.onChain      = true;
+  contract.escrowDealId = dealId;
+  contract.escrowTxHash = receipt.hash;
+  contract.status       = OTC_STATUS.ONCHAIN_CREATED;
+  contract.updatedAt    = _otcNow();
+  otcSave();
+  _otcPushHistory(contract, `On-chain deal created (dealId: ${dealId.slice(0,10)}…)`);
+
+  const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+  _otcToast(`✅ Deal registered on-chain! <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
+  otcRenderMyContracts();
+  return dealId;
+}
+
+// ─── 2. Sign deal on-chain (signDeal) ─────────────────────────────────────
+async function otcSignDealOnChain(contractId) {
+  if (!window.ethereum || !window.walletState?.connected) {
+    _otcToast('Connect your wallet to sign on-chain', 'warning');
+    if (typeof openWalletModal === 'function') openWalletModal();
+    return;
+  }
+
+  const contract  = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+  if (!contract.onChain || !contract.escrowDealId) {
+    return _otcToast('Deal not registered on-chain yet', 'warning');
+  }
+
+  const walletAddr = window.walletState.address?.toLowerCase();
+  const isBuyer    = contract.buyer.toLowerCase()  === walletAddr;
+  const isSeller   = contract.seller.toLowerCase() === walletAddr;
+  if (!isBuyer && !isSeller) return _otcToast('Your wallet is not a party to this deal', 'error');
+
+  const role = isBuyer ? 'Buyer' : 'Seller';
+
+  try {
+    const signer  = await _otcGetSigner();
+    const escrow  = otcGetEscrowContract(signer);
+    if (!escrow) throw new Error('Escrow not available');
+
+    _otcToast(`Confirm signDeal (${role}) in wallet…`, 'info');
+    const tx = await escrow.signDeal(contract.escrowDealId);
+    _otcToast('⏳ Signing tx sent — waiting…', 'info');
+    const receipt = await tx.wait();
+
+    // Update local state
+    if (isBuyer) {
+      contract.buyerSig   = receipt.hash;
+      contract.buyerSigAt = _otcNow();
+    } else {
+      contract.sellerSig   = receipt.hash;
+      contract.sellerSigAt = _otcNow();
+    }
+
+    // Check if both now signed on-chain
+    const bothSigned = contract.buyerSig && contract.sellerSig;
+    contract.status  = bothSigned ? OTC_STATUS.ONCHAIN_SIGNED : OTC_STATUS.ONCHAIN_CREATED;
+    contract.updatedAt = _otcNow();
+    otcSave();
+    _otcPushHistory(contract, `${role} signed on-chain`);
+
+    const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+    _otcToast(`✅ ${role} signed on-chain! <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
+    otcRenderMyContracts();
+
+  } catch(e) {
+    const rej = e.code === 4001 || e.message?.includes('rejected');
+    _otcToast(rej ? 'Signature rejected' : `Sign error: ${e.message}`, rej ? 'warning' : 'error');
+    _otcLog('signDeal error:', e);
+  }
+}
+
+// ─── 3. Fund deal on-chain (approve ERC20 + fundDeal) ─────────────────────
+async function otcFundDeal(contractId) {
+  if (!window.ethereum || !window.walletState?.connected) {
+    _otcToast('Connect your wallet to fund', 'warning');
+    if (typeof openWalletModal === 'function') openWalletModal();
+    return;
+  }
+
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+
+  if (!contract.onChain || !contract.escrowDealId) {
+    return _otcToast('Deal must be registered on-chain before funding', 'warning');
+  }
+  if (contract.status !== OTC_STATUS.ONCHAIN_SIGNED) {
+    return _otcToast('Both parties must sign on-chain before funding', 'warning');
+  }
+
+  const walletAddr = window.walletState.address?.toLowerCase();
+  if (contract.buyer.toLowerCase() !== walletAddr) {
+    return _otcToast('Only the buyer can fund the escrow', 'error');
+  }
+
+  try {
+    const signer     = await _otcGetSigner();
+    const provider   = signer.provider;
+    const tokenAddr  = otcResolveToken(contract.asset);
+    if (!tokenAddr) throw new Error(`Cannot resolve token: ${contract.asset}`);
+
+    const amountRaw  = await otcParseTokenAmount(contract.amount, tokenAddr, provider);
+    const erc20      = otcGetERC20Contract(tokenAddr, signer);
+    if (!erc20) throw new Error('Could not connect to ERC20 contract');
+
+    // ── Step 1: Check balance ──────────────────────────────────────────────
+    const balance = await erc20.balanceOf(walletAddr);
+    if (balance < amountRaw) {
+      const humanBal = await otcFormatTokenAmount(balance, tokenAddr, provider);
+      return _otcToast(`Insufficient balance: have ${humanBal}, need ${contract.amount} ${contract.asset}`, 'error');
+    }
+
+    // ── Step 2: Approve ERC20 ─────────────────────────────────────────────
+    _otcToast('Step 1/2: Approve ERC20 transfer in wallet…', 'info');
+    const approveTx = await erc20.approve(OTC_ESCROW_ADDRESS, amountRaw);
+    _otcToast('⏳ Approval tx sent — waiting…', 'info');
+    await approveTx.wait();
+    _otcLog('ERC20 approved for escrow');
+
+    // ── Step 3: Fund deal ─────────────────────────────────────────────────
+    _otcToast('Step 2/2: Fund escrow — confirm in wallet…', 'info');
+    const escrow = otcGetEscrowContract(signer);
+    const fundTx = await escrow.fundDeal(contract.escrowDealId);
+    _otcToast('⏳ Fund tx sent — waiting for confirmation…', 'info');
+    const receipt = await fundTx.wait();
+
+    contract.funded     = true;
+    contract.fundTxHash = receipt.hash;
+    contract.status     = OTC_STATUS.FUNDED;
+    contract.updatedAt  = _otcNow();
+    otcSave();
+    _otcPushHistory(contract, `Funded: ${contract.amount} ${contract.asset} locked in escrow`);
+
+    const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+    _otcToast(`✅ Escrow funded! ${contract.amount} ${contract.asset} locked. <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
+    otcRenderMyContracts();
+
+  } catch(e) {
+    const rej = e.code === 4001 || e.message?.includes('rejected');
+    _otcToast(rej ? 'Transaction rejected' : `Fund error: ${e.message}`, rej ? 'warning' : 'error');
+    _otcLog('fundDeal error:', e);
+  }
+}
+
+// ─── 4. Release funds on-chain (release) ──────────────────────────────────
+async function otcReleaseDeal(contractId) {
+  if (!window.ethereum || !window.walletState?.connected) {
+    _otcToast('Connect your wallet to release', 'warning');
+    if (typeof openWalletModal === 'function') openWalletModal();
+    return;
+  }
+
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+
+  if (contract.status !== OTC_STATUS.FUNDED) {
+    return _otcToast('Deal must be funded before release', 'warning');
+  }
+
+  // Check TGE
+  const tgeMs = new Date(contract.timestamp_utc).getTime();
+  const now   = Date.now();
+  if (now < tgeMs) {
+    const diff  = tgeMs - now;
+    const h     = Math.floor(diff / 3600000);
+    const m     = Math.floor((diff % 3600000) / 60000);
+    return _otcToast(`TGE not reached yet. Releases in ${h}h ${m}m.`, 'warning');
+  }
+
+  if (!confirm(`Release ${contract.amount} ${contract.asset} to seller ${_otcShort(contract.seller)}?`)) return;
+
+  try {
+    const signer  = await _otcGetSigner();
+    const escrow  = otcGetEscrowContract(signer);
+    if (!escrow) throw new Error('Escrow not available');
+
+    _otcToast('Confirm release in wallet…', 'info');
+    const tx = await escrow.release(contract.escrowDealId);
+    _otcToast('⏳ Release tx sent — waiting…', 'info');
+    const receipt = await tx.wait();
+
+    contract.released      = true;
+    contract.releaseTxHash = receipt.hash;
+    contract.status        = OTC_STATUS.RELEASED;
+    contract.updatedAt     = _otcNow();
+    otcSave();
+    _otcPushHistory(contract, `Released: ${contract.amount} ${contract.asset} to seller`);
+
+    const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+    _otcToast(`✅ Funds released to seller! <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
+    otcRenderMyContracts();
+
+  } catch(e) {
+    const rej = e.code === 4001 || e.message?.includes('rejected');
+    const err = e.message?.includes('TGENotReached') ? 'TGE not reached on-chain yet' : e.message;
+    _otcToast(rej ? 'Transaction rejected' : `Release error: ${err}`, rej ? 'warning' : 'error');
+    _otcLog('release error:', e);
+  }
+}
+
+// ─── 5. Request cancel on-chain (cancel dual-consent for funded deals) ─────
+async function otcRequestCancelOnChain(contractId) {
+  if (!window.ethereum || !window.walletState?.connected) {
+    _otcToast('Connect wallet to request cancel', 'warning');
+    return;
+  }
+
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+
+  const walletAddr = window.walletState.address?.toLowerCase();
+  const isBuyer    = contract.buyer.toLowerCase()  === walletAddr;
+  const isSeller   = contract.seller.toLowerCase() === walletAddr;
+  if (!isBuyer && !isSeller) return _otcToast('Not a party to this deal', 'error');
+
+  if (!confirm(`Request cancel for deal ${contractId}?\nIf both parties consent, funds will be returned to buyer.`)) return;
+
+  try {
+    const signer  = await _otcGetSigner();
+    const escrow  = otcGetEscrowContract(signer);
+    if (!escrow) throw new Error('Escrow not available');
+
+    _otcToast('Confirm cancel request in wallet…', 'info');
+    const tx = await escrow.cancel(contract.escrowDealId);
+    _otcToast('⏳ Cancel request tx sent — waiting…', 'info');
+    const receipt = await tx.wait();
+
+    // Check if fully cancelled (DealCancelled event)
+    const iface   = new (window.ethers.Interface)(OTC_ESCROW_ABI);
+    let cancelled = false;
+    let refunded  = false;
+    for (const log of receipt.logs) {
+      try {
+        const parsed = iface.parseLog(log);
+        if (parsed?.name === 'DealCancelled') { cancelled = true; refunded = parsed.args.refunded; break; }
+      } catch(e) {}
+    }
+
+    if (cancelled) {
+      contract.cancelled    = true;
+      contract.cancelTxHash = receipt.hash;
+      contract.status       = OTC_STATUS.CANCELLED;
+      const refundMsg = refunded ? ` Funds refunded to buyer.` : '';
+      _otcToast(`✅ Deal cancelled.${refundMsg}`, 'success');
+    } else {
+      // Only one party requested
+      contract.status    = OTC_STATUS.CANCEL_REQUESTED;
+      const role = isBuyer ? 'Buyer' : 'Seller';
+      _otcToast(`⏳ Cancel requested by ${role}. Waiting for other party to confirm.`, 'info');
+    }
+
+    contract.cancelTxHash = receipt.hash;
+    contract.updatedAt    = _otcNow();
+    otcSave();
+    _otcPushHistory(contract, `Cancel requested (${isBuyer ? 'Buyer' : 'Seller'})`);
+
+    const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+    _otcToast(`<a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'info');
+    otcRenderMyContracts();
+
+  } catch(e) {
+    const rej = e.code === 4001 || e.message?.includes('rejected');
+    _otcToast(rej ? 'Transaction rejected' : `Cancel error: ${e.message}`, rej ? 'warning' : 'error');
+    _otcLog('cancel error:', e);
+  }
+}
+
+// ─── Internal cancel on-chain for unfunded deals ───────────────────────────
+async function _otcCancelOnChain(contract) {
+  try {
+    const signer  = await _otcGetSigner();
+    const escrow  = otcGetEscrowContract(signer);
+    if (!escrow) return true; // no escrow, just local cancel
+
+    _otcToast('Confirm cancel in wallet…', 'info');
+    const tx = await escrow.cancel(contract.escrowDealId);
+    await tx.wait();
+    contract.cancelTxHash = tx.hash;
+    return true;
+  } catch(e) {
+    const rej = e.code === 4001 || e.message?.includes('rejected');
+    _otcToast(rej ? 'Cancel rejected' : `Cancel error: ${e.message}`, rej ? 'warning' : 'error');
+    return false;
+  }
+}
+
+// ─── 6. Sync deal status from on-chain ────────────────────────────────────
+async function otcSyncDealStatus(contractId) {
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract || !contract.escrowDealId) return;
+
+  try {
+    const ethers   = window.ethers;
+    if (!ethers) return;
+    const provider = new ethers.JsonRpcProvider(OTC_RPC);
+    const escrow   = otcGetEscrowContract(provider);
+    if (!escrow) return;
+
+    const onChainStatus = await escrow.dealStatus(contract.escrowDealId);
+    _otcLog(`On-chain status for ${contractId}: ${onChainStatus}`);
+
+    const statusMap = {
+      'CREATED':          OTC_STATUS.ONCHAIN_CREATED,
+      'PARTIALLY_SIGNED': OTC_STATUS.ONCHAIN_CREATED,
+      'BOTH_SIGNED':      OTC_STATUS.ONCHAIN_SIGNED,
+      'FUNDED':           OTC_STATUS.FUNDED,
+      'EXECUTABLE':       OTC_STATUS.FUNDED,  // FUNDED + TGE passed
+      'RELEASED':         OTC_STATUS.RELEASED,
+      'CANCELLED':        OTC_STATUS.CANCELLED,
+    };
+
+    const newStatus = statusMap[onChainStatus];
+    if (newStatus && newStatus !== contract.status) {
+      contract.status    = newStatus;
+      contract.updatedAt = _otcNow();
+      otcSave();
+      otcRenderMyContracts();
+    }
+
+    // Also check if TGE passed for funded deal
+    if (contract.status === OTC_STATUS.FUNDED) {
+      const tgeMs = new Date(contract.timestamp_utc).getTime();
+      if (Date.now() >= tgeMs) {
+        // Still FUNDED but TGE passed — keep as FUNDED (release button becomes active)
+        otcRenderMyContracts();
+      }
+    }
+
+  } catch(e) {
+    _otcLog('syncDealStatus error:', e);
+  }
+}
+
 // ─── Status updater ───────────────────────────────────────────────────────────
 function _otcUpdateStatus(contract) {
   const hasBuyerSig    = !!contract.buyerSig;
@@ -490,7 +946,13 @@ function _otcUpdateStatus(contract) {
   const scheduleMatch  = contract.sellerScheduleConfirmed;
   const bothSigned     = hasBuyerSig && hasSellerSig;
 
-  if (contract.status === OTC_STATUS.COMPLETED || contract.status === OTC_STATUS.CANCELLED) return;
+  // Don't override terminal/on-chain states
+  const terminalStates = [
+    OTC_STATUS.COMPLETED, OTC_STATUS.CANCELLED, OTC_STATUS.RELEASED,
+    OTC_STATUS.FUNDED, OTC_STATUS.ONCHAIN_CREATED, OTC_STATUS.ONCHAIN_SIGNED,
+    OTC_STATUS.CANCEL_REQUESTED,
+  ];
+  if (terminalStates.includes(contract.status)) return;
 
   if (bothSigned && scheduleMatch) {
     contract.status = OTC_STATUS.EXECUTABLE;
@@ -506,7 +968,7 @@ function _otcUpdateStatus(contract) {
 
   // If executable and TGE has passed → AWAITING_PAYMENT
   if (contract.status === OTC_STATUS.EXECUTABLE) {
-    const tgeMs = new Date(contract.tgeDatetime).getTime();
+    const tgeMs = new Date(contract.tgeDatetime || contract.timestamp_utc).getTime();
     if (Date.now() >= tgeMs) {
       contract.status = OTC_STATUS.AWAITING_PAYMENT;
     }
@@ -514,14 +976,29 @@ function _otcUpdateStatus(contract) {
 }
 
 // ─── Cancel Contract ──────────────────────────────────────────────────────────
-function otcCancelContract(contractId) {
+async function otcCancelContract(contractId) {
   const contract = _otcContracts.find(c => c.contractId === contractId);
   if (!contract) return;
-  if ([OTC_STATUS.SIGNED, OTC_STATUS.EXECUTABLE, OTC_STATUS.COMPLETED].includes(contract.status)) {
-    return _otcToast('Cannot cancel a signed or completed contract', 'warning');
+  if ([OTC_STATUS.COMPLETED, OTC_STATUS.RELEASED, OTC_STATUS.CANCELLED].includes(contract.status)) {
+    return _otcToast('Cannot cancel a completed or already cancelled contract', 'warning');
   }
+
+  // For funded on-chain deals, we need both parties via cancel()
+  if (contract.onChain && contract.escrowDealId &&
+      [OTC_STATUS.FUNDED, OTC_STATUS.CANCEL_REQUESTED].includes(contract.status)) {
+    return otcRequestCancelOnChain(contractId);
+  }
+
   if (!confirm(`Cancel contract ${contractId}? This cannot be undone.`)) return;
-  contract.status = OTC_STATUS.CANCELLED;
+
+  // Try on-chain cancel if contract is registered on-chain
+  if (contract.onChain && contract.escrowDealId &&
+      [OTC_STATUS.ONCHAIN_CREATED, OTC_STATUS.ONCHAIN_SIGNED].includes(contract.status)) {
+    const ok = await _otcCancelOnChain(contract);
+    if (!ok) return; // error already toasted
+  }
+
+  contract.status    = OTC_STATUS.CANCELLED;
   contract.updatedAt = _otcNow();
   otcSave();
   _otcPushHistory(contract, 'Cancelled');
@@ -755,26 +1232,84 @@ function otcRenderMyContracts() {
 }
 
 function _otcContractCard(c, wallet) {
-  const st       = OTC_STATUS_LABEL[c.status] || OTC_STATUS_LABEL.PENDING_SCHEDULE;
-  const isBuyer  = wallet && c.buyer.toLowerCase() === wallet;
-  const isSeller = wallet && c.seller.toLowerCase() === wallet;
-  const canSign  = (isBuyer && !c.buyerSig) || (isSeller && !c.sellerSig);
-  const canCancel= [OTC_STATUS.PENDING_SCHEDULE, OTC_STATUS.SCHEDULED].includes(c.status);
-  const canProof = isBuyer && c.status === OTC_STATUS.AWAITING_PAYMENT;
-  const tgeTs    = new Date(c.tgeDatetime).getTime();
-  const tgeIn    = tgeTs - Date.now();
+  const st        = OTC_STATUS_LABEL[c.status] || OTC_STATUS_LABEL.PENDING_SCHEDULE;
+  const isBuyer   = wallet && c.buyer.toLowerCase() === wallet;
+  const isSeller  = wallet && c.seller.toLowerCase() === wallet;
+  const isParty   = isBuyer || isSeller;
+
+  // ── Derived state flags ────────────────────────────────────────────────────
+  const isTerminal = [OTC_STATUS.COMPLETED, OTC_STATUS.CANCELLED, OTC_STATUS.RELEASED].includes(c.status);
+  const isOnChain  = !!c.onChain && !!c.escrowDealId;
+
+  // Off-chain sign (EIP-191) — only while NOT yet on-chain
+  const canOffSign = !isOnChain && !isTerminal && (
+    (isBuyer && !c.buyerSig) || (isSeller && !c.sellerSig)
+  );
+
+  // Register on-chain: buyer, both off-chain signed, schedule confirmed, escrow deployed, not yet on-chain
+  const bothOffSigned = !!c.buyerSig && !!c.sellerSig;
+  const canRegister   = isBuyer && bothOffSigned && c.sellerScheduleConfirmed
+    && !isOnChain && !isTerminal && OTC_ESCROW_DEPLOYED;
+
+  // Sign on-chain
+  const onChainBuyerSigned  = isOnChain && !!c.buyerSig  && (c.buyerSig.startsWith('0x') && c.buyerSig.length === 66);
+  const onChainSellerSigned = isOnChain && !!c.sellerSig && (c.sellerSig.startsWith('0x') && c.sellerSig.length === 66);
+  const canSignOnChain = isOnChain && !isTerminal && (
+    (isBuyer  && !onChainBuyerSigned)  ||
+    (isSeller && !onChainSellerSigned)
+  ) && [OTC_STATUS.ONCHAIN_CREATED].includes(c.status);
+
+  // Fund: buyer, both signed on-chain, escrow not yet funded
+  const canFund = isOnChain && isBuyer && !isTerminal
+    && c.status === OTC_STATUS.ONCHAIN_SIGNED;
+
+  // Release: any party (buyer typically initiates), funded + TGE reached
+  const tgeTs   = new Date(c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime)).getTime();
+  const tgeIn   = tgeTs - Date.now();
+  const tgePast = tgeIn <= 0;
+  const canRelease = isOnChain && isParty && !isTerminal
+    && c.status === OTC_STATUS.FUNDED && tgePast;
+
+  // Cancel on-chain: party + not released + not already cancelled
+  const canCancelOnChain = isOnChain && isParty && !isTerminal
+    && [OTC_STATUS.ONCHAIN_CREATED, OTC_STATUS.ONCHAIN_SIGNED, OTC_STATUS.FUNDED, OTC_STATUS.CANCEL_REQUESTED].includes(c.status);
+
+  // Off-chain cancel: not on-chain, not terminal
+  const canCancelOffChain = !isOnChain && !isTerminal
+    && [OTC_STATUS.PENDING_SCHEDULE, OTC_STATUS.SCHEDULED, OTC_STATUS.SIGNED, OTC_STATUS.LOCKED, OTC_STATUS.EXECUTABLE, OTC_STATUS.AWAITING_PAYMENT].includes(c.status);
+
+  // Legacy TX proof (off-chain flow)
+  const canProof = !isOnChain && isBuyer && c.status === OTC_STATUS.AWAITING_PAYMENT;
+
   const tgeLabel = tgeIn > 0
     ? `in ${_otcFormatDuration(tgeIn)}`
     : `${_otcFormatDuration(-tgeIn)} ago`;
 
-  // Timeline steps
-  const steps = [
-    { label: 'Created',   done: true,                          active: false },
-    { label: 'Scheduled', done: c.sellerScheduleConfirmed,     active: !c.sellerScheduleConfirmed },
-    { label: 'Signed',    done: !!c.buyerSig && !!c.sellerSig, active: (!!c.buyerSig || !!c.sellerSig) && !(!!c.buyerSig && !!c.sellerSig) },
-    { label: 'Paid',      done: !!c.verifiedAt,                active: c.status === OTC_STATUS.AWAITING_PAYMENT },
-    { label: 'Done',      done: c.status === OTC_STATUS.COMPLETED, active: c.status === OTC_STATUS.VERIFYING },
-  ];
+  // ── Timeline steps — adapts to on-chain vs off-chain mode ────────────────
+  let steps;
+  if (isOnChain) {
+    steps = [
+      { label: 'Created',   done: true },
+      { label: 'Registered',done: isOnChain },
+      { label: 'Signed',    done: c.status === OTC_STATUS.ONCHAIN_SIGNED || c.status === OTC_STATUS.FUNDED || c.status === OTC_STATUS.RELEASED },
+      { label: 'Funded',    done: c.status === OTC_STATUS.FUNDED || c.status === OTC_STATUS.RELEASED },
+      { label: 'Released',  done: c.status === OTC_STATUS.RELEASED },
+    ];
+  } else {
+    steps = [
+      { label: 'Created',   done: true },
+      { label: 'Scheduled', done: c.sellerScheduleConfirmed },
+      { label: 'Signed',    done: bothOffSigned },
+      { label: 'Paid',      done: !!c.verifiedAt },
+      { label: 'Done',      done: c.status === OTC_STATUS.COMPLETED },
+    ];
+  }
+  // Mark active (the first undone step)
+  let foundActive = false;
+  steps = steps.map(s => {
+    if (!s.done && !foundActive && !isTerminal) { foundActive = true; return {...s, active: true}; }
+    return {...s, active: false};
+  });
 
   return `
   <div class="bg-gray-900/70 border border-gray-700/50 rounded-2xl overflow-hidden hover:border-indigo-700/40 transition-all mb-4">
@@ -782,16 +1317,25 @@ function _otcContractCard(c, wallet) {
     <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800/60">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-xl bg-indigo-900/40 border border-indigo-700/30 flex items-center justify-center">
-          <i class="fas fa-handshake text-indigo-400 text-sm"></i>
+          <i class="fas ${isOnChain ? 'fa-link' : 'fa-handshake'} text-${isOnChain ? 'violet' : 'indigo'}-400 text-sm"></i>
         </div>
         <div>
           <div class="text-white font-bold text-sm font-mono">${c.contractId}</div>
-          <div class="text-gray-500 text-xs">${_otcDisplayCreated(c.createdAt)} · ${c.asset} · $${_otcFmt(c.amount)}</div>
+          <div class="text-gray-500 text-xs">${_otcDisplayCreated(c.createdAt)} · ${c.asset} · ${_otcFmt(c.amount)} ${c.asset}
+            ${isOnChain ? '<span class="ml-1 text-[9px] text-violet-400 font-semibold bg-violet-900/30 px-1.5 py-0.5 rounded-full border border-violet-700/40">ON-CHAIN</span>' : ''}
+          </div>
         </div>
       </div>
-      <span class="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border ${st.bg} ${st.color} font-semibold">
-        <i class="fas ${st.icon} text-[10px]"></i>${st.label}
-      </span>
+      <div class="flex items-center gap-2">
+        ${isOnChain ? `
+        <button onclick="otcSyncDealStatus('${c.contractId}')" title="Sync status from blockchain"
+          class="text-gray-600 hover:text-violet-400 transition p-1.5 rounded-lg hover:bg-gray-800">
+          <i class="fas fa-sync text-[10px]"></i>
+        </button>` : ''}
+        <span class="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border ${st.bg} ${st.color} font-semibold">
+          <i class="fas ${st.icon} text-[10px]"></i>${st.label}
+        </span>
+      </div>
     </div>
 
     <!-- Timeline -->
@@ -815,7 +1359,7 @@ function _otcContractCard(c, wallet) {
         ['Buyer',  _otcShort(c.buyer)  + (isBuyer  ? ' <span class="text-indigo-400">(you)</span>' : '')],
         ['Seller', _otcShort(c.seller) + (isSeller ? ' <span class="text-indigo-400">(you)</span>' : '')],
         ['TGE (UTC)', _otcDisplayDT(c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime))],
-        ['TGE In', tgeLabel],
+        ['TGE', tgeLabel],
       ].map(([lbl,val]) => `
         <div class="px-4 py-3 border-r border-gray-800/40 last:border-0">
           <div class="text-gray-600 text-[10px]">${lbl}</div>
@@ -824,7 +1368,19 @@ function _otcContractCard(c, wallet) {
       `).join('')}
     </div>
 
-    <!-- Signature status -->
+    <!-- On-chain escrow info (if registered) -->
+    ${isOnChain ? `
+    <div class="px-5 py-3 bg-violet-950/20 border-b border-violet-800/20 text-xs flex flex-wrap items-center gap-x-4 gap-y-1">
+      <span class="text-violet-400 font-semibold"><i class="fas fa-link mr-1"></i>Escrow Contract Active</span>
+      <span class="text-gray-500 font-mono">Deal ID: ${_otcShort(c.escrowDealId)}</span>
+      ${c.escrowTxHash ? `<a href="${OTC_EXPLORER}/tx/${c.escrowTxHash}" target="_blank" class="text-violet-300 underline">Create TX ↗</a>` : ''}
+      ${c.fundTxHash   ? `<a href="${OTC_EXPLORER}/tx/${c.fundTxHash}"   target="_blank" class="text-teal-300 underline">Fund TX ↗</a>` : ''}
+      ${c.releaseTxHash? `<a href="${OTC_EXPLORER}/tx/${c.releaseTxHash}" target="_blank" class="text-emerald-300 underline">Release TX ↗</a>` : ''}
+      ${c.cancelTxHash ? `<a href="${OTC_EXPLORER}/tx/${c.cancelTxHash}" target="_blank" class="text-red-300 underline">Cancel TX ↗</a>` : ''}
+    </div>` : ''}
+
+    <!-- Signature status (off-chain) -->
+    ${!isOnChain ? `
     <div class="flex items-center gap-4 px-5 py-3 border-b border-gray-800/60 text-xs">
       <div class="flex items-center gap-1.5 ${c.buyerSig ? 'text-emerald-400' : 'text-gray-600'}">
         <i class="fas ${c.buyerSig ? 'fa-check-circle' : 'fa-circle'} text-[10px]"></i>
@@ -838,10 +1394,10 @@ function _otcContractCard(c, wallet) {
         <i class="fas ${c.sellerScheduleConfirmed ? 'fa-check-circle' : 'fa-clock'} text-[10px]"></i>
         Schedule ${c.sellerScheduleConfirmed ? 'matched' : 'unconfirmed'}
       </div>
-    </div>
+    </div>` : ''}
 
-    <!-- Seller schedule confirm (if not confirmed) -->
-    ${isSeller && !c.sellerScheduleConfirmed && c.status !== OTC_STATUS.CANCELLED ? `
+    <!-- Seller schedule confirm (if not confirmed, off-chain flow) -->
+    ${!isOnChain && isSeller && !c.sellerScheduleConfirmed && !isTerminal ? `
     <div class="px-5 py-3 bg-yellow-950/20 border-b border-yellow-800/20">
       <p class="text-yellow-400 text-xs font-semibold mb-2"><i class="fas fa-exclamation-triangle mr-1"></i>Confirm schedule to match buyer</p>
       <p class="text-gray-500 text-xs mb-2">Buyer set: <span class="text-white font-mono">${_otcDisplayDT(c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime))}</span></p>
@@ -858,7 +1414,51 @@ function _otcContractCard(c, wallet) {
       <p id="otc-sched-err-${c.contractId}" class="hidden text-red-400 text-[10px] mt-1"></p>
     </div>` : ''}
 
-    <!-- TX Proof (buyer) -->
+    <!-- On-chain Sign prompt (ONCHAIN_CREATED state) -->
+    ${isOnChain && canSignOnChain ? `
+    <div class="px-5 py-3 bg-violet-950/20 border-b border-violet-800/20">
+      <p class="text-violet-400 text-xs font-semibold mb-1.5"><i class="fas fa-file-signature mr-1"></i>Sign escrow on-chain</p>
+      <p class="text-gray-500 text-xs mb-2">
+        Buyer sign: <span class="${onChainBuyerSigned ? 'text-emerald-400' : 'text-yellow-400'}">${onChainBuyerSigned ? '✓ Signed' : 'Pending'}</span>
+        &nbsp;·&nbsp;
+        Seller sign: <span class="${onChainSellerSigned ? 'text-emerald-400' : 'text-yellow-400'}">${onChainSellerSigned ? '✓ Signed' : 'Pending'}</span>
+      </p>
+    </div>` : ''}
+
+    <!-- On-chain Fund prompt (ONCHAIN_SIGNED state) -->
+    ${isOnChain && c.status === OTC_STATUS.ONCHAIN_SIGNED && isBuyer ? `
+    <div class="px-5 py-3 bg-teal-950/20 border-b border-teal-800/20">
+      <p class="text-teal-400 text-xs font-semibold mb-1"><i class="fas fa-vault mr-1"></i>Ready to fund escrow</p>
+      <p class="text-gray-500 text-xs">Both parties signed on-chain. Approve ERC-20 and lock <strong class="text-white">${_otcFmt(c.amount)} ${c.asset}</strong> in escrow.</p>
+    </div>` : ''}
+
+    <!-- Funded info -->
+    ${isOnChain && c.status === OTC_STATUS.FUNDED ? `
+    <div class="px-5 py-3 bg-teal-950/20 border-b border-teal-800/20">
+      <p class="text-teal-400 text-xs font-semibold"><i class="fas fa-vault mr-1"></i>Tokens locked in escrow</p>
+      <p class="text-gray-500 text-xs mt-1">
+        <strong class="text-white">${_otcFmt(c.amount)} ${c.asset}</strong> locked until TGE.
+        ${tgePast ? '<span class="text-emerald-400 font-semibold ml-2">TGE reached — release available!</span>' : `Releases ${tgeLabel}.`}
+      </p>
+    </div>` : ''}
+
+    <!-- Cancel requested info -->
+    ${c.status === OTC_STATUS.CANCEL_REQUESTED ? `
+    <div class="px-5 py-3 bg-amber-950/20 border-b border-amber-800/20">
+      <p class="text-amber-400 text-xs font-semibold"><i class="fas fa-undo mr-1"></i>Cancel Requested</p>
+      <p class="text-gray-500 text-xs mt-1">Waiting for the other party to also call cancel. Both must consent to refund locked tokens.</p>
+    </div>` : ''}
+
+    <!-- Released / Completed -->
+    ${(c.status === OTC_STATUS.RELEASED || c.status === OTC_STATUS.COMPLETED) ? `
+    <div class="px-5 py-2 bg-emerald-950/20 border-b border-emerald-800/20 flex items-center gap-2 text-xs">
+      <i class="fas fa-check-double text-emerald-400"></i>
+      <span class="text-emerald-400 font-semibold">${c.status === OTC_STATUS.RELEASED ? 'Tokens released to seller' : 'Payment verified on-chain'}</span>
+      ${c.releaseTxHash ? `<a href="${OTC_EXPLORER}/tx/${c.releaseTxHash}" target="_blank" class="text-emerald-300 font-mono underline ml-2">${_otcShort(c.releaseTxHash)}</a>` : ''}
+      ${c.txProof?.txHash && !c.releaseTxHash ? `<a href="${OTC_EXPLORER}/tx/${c.txProof.txHash}" target="_blank" class="text-emerald-300 font-mono underline ml-2">${_otcShort(c.txProof.txHash)}</a>` : ''}
+    </div>` : ''}
+
+    <!-- TX Proof (legacy off-chain flow) -->
     ${canProof ? `
     <div class="px-5 py-3 bg-cyan-950/20 border-b border-cyan-800/20">
       <p class="text-cyan-400 text-xs font-semibold mb-2"><i class="fas fa-file-invoice-dollar mr-1"></i>Submit Payment Proof</p>
@@ -876,31 +1476,70 @@ function _otcContractCard(c, wallet) {
       </div>
     </div>` : ''}
 
-    <!-- TX Proof verified -->
-    ${c.txProof && c.status === OTC_STATUS.COMPLETED ? `
-    <div class="px-5 py-2 bg-emerald-950/20 border-b border-emerald-800/20 flex items-center gap-2 text-xs">
-      <i class="fas fa-check-double text-emerald-400"></i>
-      <span class="text-emerald-400 font-semibold">Payment verified on-chain</span>
-      <a href="${OTC_EXPLORER}/tx/${c.txProof.txHash}" target="_blank"
-        class="text-emerald-300 font-mono underline ml-2">${_otcShort(c.txProof.txHash)}</a>
-    </div>` : ''}
-
-    <!-- Actions -->
+    <!-- Actions bar -->
     <div class="flex items-center gap-2 px-5 py-3 flex-wrap">
-      ${canSign ? `
+
+      <!-- Off-chain EIP-191 sign -->
+      ${canOffSign ? `
       <button onclick="otcSignContract('${c.contractId}')"
         class="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition">
-        <i class="fas fa-signature"></i>Sign Contract
+        <i class="fas fa-signature"></i>Sign (EIP-191)
       </button>` : ''}
+
+      <!-- Register on-chain (createDeal) -->
+      ${canRegister ? `
+      <button onclick="otcRegisterOnChain('${c.contractId}')"
+        class="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-violet-900/30">
+        <i class="fas fa-link"></i>Register On-Chain
+      </button>` : ''}
+
+      <!-- Sign on-chain (signDeal) -->
+      ${canSignOnChain ? `
+      <button onclick="otcSignDealOnChain('${c.contractId}')"
+        class="flex items-center gap-1.5 px-4 py-2 bg-violet-700 hover:bg-violet-600 text-white rounded-xl text-xs font-semibold transition">
+        <i class="fas fa-file-signature"></i>Sign On-Chain
+      </button>` : ''}
+
+      <!-- Fund escrow (approve + fundDeal) -->
+      ${canFund ? `
+      <button onclick="otcFundDeal('${c.contractId}')"
+        class="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-teal-900/30">
+        <i class="fas fa-vault"></i>Fund Escrow
+      </button>` : ''}
+
+      <!-- Release funds (release) -->
+      ${canRelease ? `
+      <button onclick="otcReleaseDeal('${c.contractId}')"
+        class="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-emerald-900/30">
+        <i class="fas fa-paper-plane"></i>Release Funds
+      </button>` : ''}
+
+      <!-- Fund TGE countdown (funded but not yet releasable) -->
+      ${isOnChain && c.status === OTC_STATUS.FUNDED && !tgePast ? `
+      <span class="flex items-center gap-1.5 px-4 py-2 bg-gray-800 border border-teal-700/30 text-teal-400 rounded-xl text-xs">
+        <i class="fas fa-hourglass-half"></i>Release in ${tgeLabel}
+      </span>` : ''}
+
+      <!-- Receipt -->
       <button onclick="otcDownloadReceipt('${c.contractId}')"
         class="flex items-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-white rounded-xl text-xs transition">
         <i class="fas fa-download"></i>Receipt
       </button>
-      ${canCancel ? `
+
+      <!-- Cancel on-chain -->
+      ${canCancelOnChain ? `
+      <button onclick="otcRequestCancelOnChain('${c.contractId}')"
+        class="flex items-center gap-1.5 px-4 py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-800/40 text-red-400 hover:text-red-300 rounded-xl text-xs transition">
+        <i class="fas fa-times"></i>${c.status === OTC_STATUS.FUNDED || c.status === OTC_STATUS.CANCEL_REQUESTED ? 'Request Cancel' : 'Cancel Escrow'}
+      </button>` : ''}
+
+      <!-- Cancel off-chain -->
+      ${canCancelOffChain ? `
       <button onclick="otcCancelContract('${c.contractId}')"
         class="flex items-center gap-1.5 px-4 py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-800/40 text-red-400 hover:text-red-300 rounded-xl text-xs transition">
         <i class="fas fa-times"></i>Cancel
       </button>` : ''}
+
     </div>
   </div>`;
 }
@@ -1063,6 +1702,13 @@ function _otcInit() {
   window.otcEnterDeal      = otcEnterDeal;
   window.otcRenderMyContracts = otcRenderMyContracts;
   window.otcRenderMarketplace = otcRenderMarketplace;
+  // On-chain escrow actions
+  window.otcRegisterOnChain    = otcRegisterOnChain;
+  window.otcSignDealOnChain    = otcSignDealOnChain;
+  window.otcFundDeal           = otcFundDeal;
+  window.otcReleaseDeal        = otcReleaseDeal;
+  window.otcRequestCancelOnChain = otcRequestCancelOnChain;
+  window.otcSyncDealStatus     = otcSyncDealStatus;
 
   _otcLog(`Loaded | v${OTC_VERSION} | Chain ${OTC_CHAIN_ID}`);
 }
