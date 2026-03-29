@@ -19,7 +19,47 @@
 // ============================================================
 'use strict';
 
-const OTC_VERSION    = '20260329a';
+const OTC_VERSION    = '20260329c';
+
+// ─── Date/Time UTC helpers ────────────────────────────────────────────────────
+// Convert HTML date input (YYYY-MM-DD) + time input (HH:MM) → ISO 8601 UTC string
+function _otcToUTCIso(dateYMD, timeHHMM) {
+  // Inputs from <input type="date"> and <input type="time"> are already in the
+  // format YYYY-MM-DD and HH:MM — treating them as UTC directly.
+  return dateYMD + 'T' + timeHHMM + ':00Z';
+}
+// Parse ISO UTC string → { dateYMD: 'YYYY-MM-DD', timeHHMM: 'HH:MM' } (always UTC)
+function _otcFromUTCIso(isoStr) {
+  const d = new Date(isoStr);
+  if (isNaN(d)) return { dateYMD: '', timeHHMM: '' };
+  const pad = n => String(n).padStart(2, '0');
+  return {
+    dateYMD:  d.getUTCFullYear() + '-' + pad(d.getUTCMonth()+1) + '-' + pad(d.getUTCDate()),
+    timeHHMM: pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()),
+  };
+}
+// Format ISO UTC string → MM/DD/YYYY HH:MM UTC (display only)
+function _otcDisplayDT(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  if (isNaN(d)) return isoStr;
+  const pad = n => String(n).padStart(2, '0');
+  return pad(d.getUTCMonth()+1) + '/' + pad(d.getUTCDate()) + '/' + d.getUTCFullYear()
+    + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ' UTC';
+}
+// Format ISO UTC string → MM/DD/YYYY (date only, for marketplace)
+function _otcDisplayDate(isoStr) {
+  if (!isoStr) return '—';
+  // Accept both ISO strings and plain YYYY-MM-DD
+  const d = isoStr.includes('T') ? new Date(isoStr) : new Date(isoStr + 'T00:00:00Z');
+  if (isNaN(d)) return isoStr;
+  const pad = n => String(n).padStart(2, '0');
+  return pad(d.getUTCMonth()+1) + '/' + pad(d.getUTCDate()) + '/' + d.getUTCFullYear();
+}
+// Format createdAt ISO string → MM/DD/YYYY (for card headers)
+function _otcDisplayCreated(isoStr) {
+  return _otcDisplayDate(isoStr);
+}
 const OTC_RPC        = 'https://rpc.testnet.arc.network';
 const OTC_CHAIN_ID   = 5042002;
 const OTC_EXPLORER   = 'https://testnet.arcscan.app';
@@ -113,9 +153,10 @@ async function otcCreateDeal() {
   const seller     = _otcVal('otc-seller');
   const asset      = _otcVal('otc-asset');
   const amount     = parseFloat(_otcVal('otc-amount'));
-  const tgeDate    = _otcVal('otc-tge-date');
-  const tgeTime    = _otcVal('otc-tge-time');
-  const tgeTz      = _otcVal('otc-tge-tz') || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Inputs are YYYY-MM-DD and HH:MM — treated as UTC directly
+  const tgeDate    = _otcVal('otc-tge-date');  // YYYY-MM-DD (from <input type="date">)
+  const tgeTime    = _otcVal('otc-tge-time');  // HH:MM      (from <input type="time">)
+  const tgeTz      = 'UTC';
   const description= _otcVal('otc-description');
 
   // ── Validation ──────────────────────────────────────────────────────────────
@@ -139,10 +180,12 @@ async function otcCreateDeal() {
   if (createBtn) { createBtn.disabled = true; createBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating…'; }
 
   try {
-    const contractId = _otcId();
-    const tgeDatetime = `${tgeDate}T${tgeTime}:00`;
+    const contractId    = _otcId();
+    // Store as ISO 8601 UTC (e.g. 2026-03-25T18:00:00Z)
+    const timestamp_utc = _otcToUTCIso(tgeDate, tgeTime);
+    const tgeDatetime   = timestamp_utc; // alias for existing status checks
 
-    const contractData = { contractId, buyer, seller, asset, amount, tgeDate, tgeTime, tgeTz, tgeDatetime, description };
+    const contractData = { contractId, buyer, seller, asset, amount, tgeDate, tgeTime, tgeTz, tgeDatetime, timestamp_utc, description };
     const contractHash = await _otcHash(contractData);
 
     const contract = {
@@ -235,7 +278,8 @@ async function otcSignContract(contractId) {
       `Asset: ${contract.amount} ${contract.asset}`,
       `Buyer: ${contract.buyer}`,
       `Seller: ${contract.seller}`,
-      `TGE: ${contract.tgeDate} ${contract.tgeTime} (${contract.tgeTz})`,
+      `TGE: ${_otcDisplayDT(contract.timestamp_utc || _otcToUTCIso(contract.tgeDate, contract.tgeTime))}`,
+      `Stored UTC: ${contract.timestamp_utc || _otcToUTCIso(contract.tgeDate, contract.tgeTime)}`,
       `I agree to the terms of this OTC contract and authorize execution upon completion of all conditions.`,
     ].join('\n');
 
@@ -275,10 +319,16 @@ function otcConfirmSchedule(contractId) {
 
   if (!date || !time) return _otcToast('Enter TGE date and time', 'warning');
 
-  if (date !== contract.tgeDate || time !== contract.tgeTime) {
-    _otcToast('❌ Schedule mismatch between parties. Both must agree on same date and time.', 'error');
+  // Compare normalized UTC ISO strings
+  const buyerUTC  = contract.timestamp_utc || _otcToUTCIso(contract.tgeDate, contract.tgeTime);
+  const sellerUTC = _otcToUTCIso(date, time);
+  if (buyerUTC !== sellerUTC) {
+    _otcToast('❌ Schedule mismatch between parties. Both must agree on same date and time (UTC).', 'error');
     const errEl = _otcEl(`otc-sched-err-${contractId}`);
-    if (errEl) { errEl.textContent = 'Mismatch: buyer set ' + contract.tgeDate + ' ' + contract.tgeTime + ', you entered ' + date + ' ' + time; errEl.classList.remove('hidden'); }
+    if (errEl) {
+      errEl.textContent = 'Mismatch: buyer set ' + _otcDisplayDT(buyerUTC) + ', you entered ' + _otcDisplayDT(sellerUTC);
+      errEl.classList.remove('hidden');
+    }
     return;
   }
 
@@ -491,7 +541,8 @@ function otcDownloadReceipt(contractId) {
     seller:      contract.seller,
     asset:       contract.asset,
     amount:      contract.amount,
-    tge:         `${contract.tgeDate} ${contract.tgeTime} (${contract.tgeTz})`,
+    tge:         _otcDisplayDT(contract.timestamp_utc || _otcToUTCIso(contract.tgeDate, contract.tgeTime)),
+    timestamp_utc: contract.timestamp_utc || _otcToUTCIso(contract.tgeDate, contract.tgeTime),
     createdAt:   contract.createdAt,
     completedAt: contract.verifiedAt || '—',
     txHash:      contract.txProof?.txHash || '—',
@@ -524,8 +575,9 @@ function otcDownloadReceipt(contractId) {
     add('TGE:',           receipt.tge);
     add('TX Hash:',       receipt.txHash);
     add('Contract Hash:', receipt.contractHash);
-    add('Created At:',    receipt.createdAt);
-    add('Completed At:',  receipt.completedAt);
+    add('Created At:',    _otcDisplayDT(receipt.createdAt));
+    add('Completed At:',  receipt.completedAt !== '—' ? _otcDisplayDT(receipt.completedAt) : '—');
+    add('TGE (UTC):',     receipt.tge || _otcDisplayDT(receipt.timestamp_utc));
     doc.save(`OTC-${contractId}.pdf`);
   } else {
     const blob = new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' });
@@ -555,6 +607,9 @@ function otcCreateListing() {
   if (!price  || isNaN(price)  || price  <= 0) return _otcToast('Enter asking price', 'warning');
   if (!tgeDate) return _otcToast('TGE date required', 'warning');
 
+  // Convert tgeDate (YYYY-MM-DD from <input type="date">) to ISO UTC (midnight UTC)
+  const tgeDateUTC = tgeDate ? tgeDate + 'T00:00:00Z' : '';
+
   const listing = {
     id:          'LST-' + Date.now().toString(36).toUpperCase(),
     seller:      wallet,
@@ -562,7 +617,7 @@ function otcCreateListing() {
     token,
     amount,
     price,
-    tgeDate,
+    tgeDate:     tgeDateUTC,   // stored as ISO 8601 UTC
     status:      'OPEN', // OPEN | NEGOTIATING | CLOSED
     createdAt:   _otcNow(),
     updatedAt:   _otcNow(),
@@ -603,7 +658,11 @@ function otcEnterDeal(listingId) {
     if (sellerEl) sellerEl.value = listing.seller;
     if (assetEl)  assetEl.value  = listing.token;
     if (amountEl) amountEl.value = listing.amount;
-    if (dateEl)   dateEl.value   = listing.tgeDate;
+    if (dateEl) {
+      // listing.tgeDate is stored as ISO UTC; extract YYYY-MM-DD for the date input
+      const { dateYMD } = listing.tgeDate ? _otcFromUTCIso(listing.tgeDate) : { dateYMD: '' };
+      dateEl.value = dateYMD || listing.tgeDate;
+    }
     if (descEl)   descEl.value   = `OTC Deal from marketplace listing ${listingId}: ${listing.description}`;
 
     listing.status = 'NEGOTIATING';
@@ -727,7 +786,7 @@ function _otcContractCard(c, wallet) {
         </div>
         <div>
           <div class="text-white font-bold text-sm font-mono">${c.contractId}</div>
-          <div class="text-gray-500 text-xs">${new Date(c.createdAt).toLocaleDateString()} · ${c.asset} · $${_otcFmt(c.amount)}</div>
+          <div class="text-gray-500 text-xs">${_otcDisplayCreated(c.createdAt)} · ${c.asset} · $${_otcFmt(c.amount)}</div>
         </div>
       </div>
       <span class="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border ${st.bg} ${st.color} font-semibold">
@@ -755,7 +814,7 @@ function _otcContractCard(c, wallet) {
       ${[
         ['Buyer',  _otcShort(c.buyer)  + (isBuyer  ? ' <span class="text-indigo-400">(you)</span>' : '')],
         ['Seller', _otcShort(c.seller) + (isSeller ? ' <span class="text-indigo-400">(you)</span>' : '')],
-        ['TGE',    c.tgeDate + ' ' + c.tgeTime],
+        ['TGE (UTC)', _otcDisplayDT(c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime))],
         ['TGE In', tgeLabel],
       ].map(([lbl,val]) => `
         <div class="px-4 py-3 border-r border-gray-800/40 last:border-0">
@@ -785,7 +844,7 @@ function _otcContractCard(c, wallet) {
     ${isSeller && !c.sellerScheduleConfirmed && c.status !== OTC_STATUS.CANCELLED ? `
     <div class="px-5 py-3 bg-yellow-950/20 border-b border-yellow-800/20">
       <p class="text-yellow-400 text-xs font-semibold mb-2"><i class="fas fa-exclamation-triangle mr-1"></i>Confirm schedule to match buyer</p>
-      <p class="text-gray-500 text-xs mb-2">Buyer set: <span class="text-white font-mono">${c.tgeDate} ${c.tgeTime} (${c.tgeTz})</span></p>
+      <p class="text-gray-500 text-xs mb-2">Buyer set: <span class="text-white font-mono">${_otcDisplayDT(c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime))}</span></p>
       <div class="flex items-center gap-2 flex-wrap">
         <input type="date" id="otc-seller-date-${c.contractId}" value="${c.tgeDate}"
           class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white">
@@ -896,7 +955,7 @@ function otcRenderMarketplace() {
         </div>
         <div class="bg-gray-800/40 rounded-xl p-2.5 text-center">
           <div class="text-gray-600 text-[10px]">TGE Date</div>
-          <div class="text-white font-bold">${l.tgeDate}</div>
+          <div class="text-white font-bold">${_otcDisplayDate(l.tgeDate)}</div>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -906,7 +965,7 @@ function otcRenderMarketplace() {
           <i class="fas fa-handshake"></i>Enter Deal
         </button>` : ''}
         ${isOwn ? `<span class="text-xs text-gray-500 italic">${l.interestedBuyers.length} interested buyer(s)</span>` : ''}
-        <span class="text-xs text-gray-600 ml-auto">${new Date(l.createdAt).toLocaleDateString()}</span>
+        <span class="text-xs text-gray-600 ml-auto">${_otcDisplayCreated(l.createdAt)}</span>
       </div>
     </div>`;
   }).join('');
@@ -915,7 +974,10 @@ function otcRenderMarketplace() {
 // ─── Form helpers ─────────────────────────────────────────────────────────────
 function _otcShowFormError(msg) {
   const el = _otcEl('otc-form-error');
-  if (el) { el.textContent = msg; el.classList.remove('hidden'); }
+  if (!el) return;
+  const span = el.querySelector('span');
+  if (span) span.textContent = msg; else el.textContent = msg;
+  el.classList.remove('hidden');
 }
 function _otcHideFormError() {
   const el = _otcEl('otc-form-error');
@@ -972,9 +1034,7 @@ function _otcInit() {
 
   // Auto-fill timezone
   const tzEl = _otcEl('otc-tge-tz');
-  if (tzEl && !tzEl.value) {
-    tzEl.value = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  }
+  if (tzEl) tzEl.value = 'UTC';
 
   // Watch wallet for auto-fill
   let lastWallet = null;

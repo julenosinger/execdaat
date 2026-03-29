@@ -2237,20 +2237,33 @@ app.get('/', (c) => {
                   </div>
                 </div>
 
-                <!-- TGE Date / Time / Timezone -->
+                <!-- TGE Date / Time / Timezone (UTC) -->
                 <div>
                   <label class="block text-xs text-gray-400 font-medium mb-1.5">
                     <i class="fas fa-calendar-alt mr-1 text-cyan-400"></i>TGE / Event Schedule
-                    <span class="ml-2 text-yellow-500 text-[10px]">⚠ Both parties must agree on the same date & time</span>
+                    <span class="ml-2 text-yellow-500 text-[10px]">⚠ Both parties must agree on same date &amp; time (UTC)</span>
                   </label>
                   <div class="grid grid-cols-3 gap-3">
-                    <input id="otc-tge-date" type="date"
-                      class="bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-white outline-none transition">
-                    <input id="otc-tge-time" type="time"
-                      class="bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-white outline-none transition">
-                    <input id="otc-tge-tz" type="text" placeholder="Timezone (auto)"
-                      class="bg-gray-800/60 border border-gray-700/60 rounded-xl px-3 py-2.5 text-xs text-gray-400 outline-none" readonly>
+                    <div class="flex flex-col gap-1">
+                      <input id="otc-tge-date" type="date"
+                        class="bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-white outline-none transition">
+                      <span class="text-[10px] text-gray-600">MM/DD/YYYY</span>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <input id="otc-tge-time" type="time"
+                        class="bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-white outline-none transition">
+                      <span class="text-[10px] text-gray-600">TGE Time (UTC)</span>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <input id="otc-tge-tz" type="text" value="UTC"
+                        class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-3 py-2.5 text-xs text-cyan-400 font-bold outline-none" readonly>
+                      <span class="text-[10px] text-gray-600">Fixed: UTC</span>
+                    </div>
                   </div>
+                  <p class="text-[10px] text-gray-600 mt-1.5 flex items-center gap-1">
+                    <i class="fas fa-info-circle text-cyan-700"></i>
+                    All times are in UTC (Coordinated Universal Time). Stored as ISO 8601: e.g. 2026-03-25T18:00:00Z
+                  </p>
                 </div>
 
                 <!-- Description -->
@@ -2386,9 +2399,10 @@ app.get('/', (c) => {
                       class="w-full bg-gray-800/60 border border-gray-700/60 focus:border-purple-500 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 outline-none transition">
                   </div>
                   <div>
-                    <label class="block text-xs text-gray-500 mb-1">TGE Date</label>
+                    <label class="block text-xs text-gray-500 mb-1">TGE Date <span class="text-cyan-600">(UTC)</span></label>
                     <input id="mkt-tge-date" type="date"
                       class="w-full bg-gray-800/60 border border-gray-700/60 focus:border-purple-500 rounded-xl px-3 py-2 text-sm text-white outline-none transition">
+                    <span class="text-[10px] text-gray-600">Stored as UTC midnight (ISO 8601)</span>
                   </div>
                 </div>
                 <button onclick="otcCreateListing()"
