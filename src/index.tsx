@@ -1992,33 +1992,14 @@ app.get('/', (c) => {
                   <div id="cf-fee-preview" style="font-size:11px;color:#8aaac8;margin-top:4px;"></div>
                 </div>
 
-                <!-- OTC Toggle -->
-                <div style="background:rgba(167,139,250,0.05);border:1px solid rgba(167,139,250,0.15);border-radius:12px;padding:10px 14px;">
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                      <i class="fas fa-handshake" style="color:#a78bfa;font-size:12px;"></i>
-                      <span style="color:#c4b5fd;font-size:12px;font-weight:600;">OTC Negotiation</span>
-                      <span style="font-size:9px;background:rgba(167,139,250,0.15);color:#a78bfa;border:1px solid rgba(167,139,250,0.25);padding:1px 6px;border-radius:999px;">optional</span>
-                    </div>
-                    <label style="position:relative;display:inline-block;width:36px;height:20px;cursor:pointer;">
-                      <input type="checkbox" id="cf-otc-toggle" onchange="cfToggleOTC()" style="opacity:0;width:0;height:0;">
-                      <span id="cf-otc-slider" style="position:absolute;inset:0;border-radius:20px;background:rgba(255,255,255,0.08);transition:all 0.3s;border:1px solid rgba(255,255,255,0.12);">
-                        <span id="cf-otc-knob" style="position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#7a9cc0;transition:all 0.3s;"></span>
-                      </span>
-                    </label>
-                  </div>
-                  <div id="cf-otc-fields" class="hidden mt-3 space-y-2">
-                    <div>
-                      <label class="cf-label"><i class="fas fa-star" style="color:#f59e0b;"></i>PROJECT POINTS / TOKENS</label>
-                      <input type="text" id="cf-otc-points" placeholder="e.g. 500 PROJECT_POINTS or 1000 UNLISTED_TKN"
-                        class="cf-input w-full px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                      <label class="cf-label"><i class="fas fa-file-alt" style="color:#f59e0b;"></i>OTC AGREEMENT TERMS</label>
-                      <textarea id="cf-otc-terms" placeholder="Describe the OTC terms and conditions…" rows="2"
-                        class="cf-input w-full px-3 py-2 text-sm resize-none"></textarea>
-                    </div>
-                  </div>
+                <!-- Custodian Address (shown only in Custodial mode) -->
+                <div id="cf-custodian-wrap" style="display:none;background:rgba(167,139,250,0.05);border:1px solid rgba(167,139,250,0.2);border-radius:12px;padding:10px 14px;">
+                  <label class="cf-label"><i class="fas fa-shield-alt" style="color:#a78bfa;"></i>CUSTODIAN ADDRESS OR CONTRACT <span style="color:#f87171;">*</span></label>
+                  <input type="text" id="cf-custodian-addr"
+                    placeholder="Enter custodian wallet address or contract address"
+                    class="cf-input w-full px-3 py-2 text-sm"
+                    style="font-family:monospace;" />
+                  <div style="font-size:10px;color:#6b7280;margin-top:4px;"><i class="fas fa-info-circle mr-1"></i>Accepts wallet address (0x…) or smart contract address</div>
                 </div>
 
                 <!-- Milestones -->
@@ -4585,6 +4566,16 @@ app.get('/', (c) => {
           if (m === 'custodial') { el.style.border = '1px solid rgba(167,139,250,0.2)'; el.style.background = 'rgba(167,139,250,0.06)'; }
         }
       });
+
+      // Show/hide custodian address field
+      var custodianWrap = document.getElementById('cf-custodian-wrap');
+      var custodianInput = document.getElementById('cf-custodian-addr');
+      if (custodianWrap) {
+        custodianWrap.style.display = (mode === 'custodial') ? '' : 'none';
+      }
+      if (mode !== 'custodial' && custodianInput) {
+        custodianInput.value = '';
+      }
 
       // Update mode description
       var desc = document.getElementById('cf-mode-desc');

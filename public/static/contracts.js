@@ -154,7 +154,7 @@ const _cfDismiss = {
 };
 
 // ─── Off-chain metadata (localStorage) ────────────────────────────────────────
-// Stores: { [contractId]: { clientEmail, contractorEmail, otcPoints, otcTerms, proofs: [], completedAt, receiptData } }
+// Stores: { [contractId]: { clientEmail, contractorEmail, custodianAddr, escrowRef, proofs: [], completedAt, receiptData } }
 function cfGetMeta(id) {
   try {
     const all = JSON.parse(localStorage.getItem(CF_META_KEY) || '{}');
@@ -546,8 +546,16 @@ function cfShowListState(state, message = '') {
 async function cfLoadContracts(opts = {}) {
   const wallet = window.walletState?.address;
   if (!wallet) {
-    cfShowListState('no_wallet');
-    cfRenderSummary([], null);
+    // Still show off-chain/custodial contracts (no wallet required)
+    const offchainAll = cfLoadOffchainContracts();
+    if (offchainAll.length > 0) {
+      cfState.contracts = offchainAll;
+      cfRenderContracts(offchainAll, null);
+      cfRenderSummary(offchainAll, null);
+    } else {
+      cfShowListState('no_wallet');
+      cfRenderSummary([], null);
+    }
     cfUpdateNetworkBanner(false);
     return;
   }
@@ -651,6 +659,7 @@ async function cfLoadContracts(opts = {}) {
 
     // Merge with any off-chain contracts
     const offchain = cfLoadOffchainContracts().filter(o => {
+      if (!address) return true; // no wallet: show all offchain contracts
       const meta = cfGetMeta(o.id);
       return meta.createdByWallet?.toLowerCase() === address.toLowerCase() ||
              (o.contractor?.toLowerCase() === address.toLowerCase());
@@ -729,7 +738,7 @@ window.addEventListener('arcSyncRequest', () => {
 function cfRenderSummary(contracts, wallet) {
   const el = cfEl('cf-summary');
   if (!el) return;
-  if (!wallet || !contracts.length) { el.innerHTML = ''; return; }
+  if (!contracts.length) { el.innerHTML = ''; return; }
 
   const total     = contracts.length;
   const pending   = contracts.filter(c => cfUiStatus(c) === 'Pending').length;
@@ -899,11 +908,15 @@ function cfContractCard(c, wallet) {
       if ((uiStatus === 'Pending' || uiStatus === 'Funded' || uiStatus === 'Draft') && isClient)
         actionBtns += `<button onclick="cfCancelContract(${c.id})" class="cf-action-btn cf-btn-cancel"><i class="fas fa-times mr-1.5"></i>Cancel</button>`;
     } else {
-      if (isContr)
+      // Upload proof: available for contractor or for creator of their own offchain contract
+      const canUploadProof = isContr || (c._isOffchain && !isClient);
+      if (canUploadProof)
         actionBtns += `<button onclick="cfShowProofUpload(${c.id})" class="cf-action-btn cf-btn-proof"><i class="fas fa-upload mr-1.5"></i>Upload Proof</button>`;
       if (isClient && hasProofs && !isCommitted)
         actionBtns += `<button onclick="cfCommitProof(${c.id})" class="cf-action-btn cf-btn-sign" style="background:rgba(52,211,153,0.15);border-color:rgba(52,211,153,0.4);color:#34d399;"><i class="fas fa-stamp mr-1.5"></i>Commit Proof</button>`;
-      if (isClient && (meta.offchainStatus !== 'confirmed' && meta.offchainStatus !== 'disputed'))
+      // Offchain status update: available for participants or for any user on their own local offchain contracts
+      const canUpdateStatus = isClient || (c._isOffchain && (meta.offchainStatus !== 'confirmed' && meta.offchainStatus !== 'disputed'));
+      if (canUpdateStatus && meta.offchainStatus !== 'confirmed' && meta.offchainStatus !== 'disputed')
         actionBtns += `<button onclick="cfShowOffchainActions(${c.id})" class="cf-action-btn cf-btn-receipt"><i class="fas fa-tasks mr-1.5"></i>Update Status</button>`;
     }
 
@@ -1064,12 +1077,11 @@ function cfContractCard(c, wallet) {
     </div>` : '';
 
   // ── Meta info ──────────────────────────────────────────────────────────────
-  const metaHtml = (meta.clientEmail || meta.contractorEmail || meta.otcPoints) ? `
+  const metaHtml = (meta.clientEmail || meta.contractorEmail || meta.custodianAddr) ? `
     <div style="margin-top:8px;padding:8px;background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.1);border-radius:10px;">
       ${meta.clientEmail ? `<div style="font-size:11px;color:#4a6490;"><i class="fas fa-envelope mr-1" style="color:#60b4ff;"></i>Client: ${meta.clientEmail}</div>` : ''}
       ${meta.contractorEmail ? `<div style="font-size:11px;color:#4a6490;"><i class="fas fa-envelope mr-1" style="color:#34d399;"></i>Contractor: ${meta.contractorEmail}</div>` : ''}
-      ${meta.otcPoints ? `<div style="font-size:11px;color:#c4b5fd;margin-top:4px;"><i class="fas fa-handshake mr-1" style="color:#a78bfa;"></i>OTC: ${meta.otcPoints}</div>` : ''}
-      ${meta.otcTerms ? `<div style="font-size:10px;color:#4a3a7a;margin-top:2px;">${meta.otcTerms}</div>` : ''}
+      ${meta.custodianAddr ? `<div style="font-size:11px;color:#c4b5fd;margin-top:4px;"><i class="fas fa-shield-alt mr-1" style="color:#a78bfa;"></i>Custodian: <span style="font-family:monospace;">${meta.custodianAddr.slice(0,10)}…${meta.custodianAddr.slice(-6)}</span></div>` : ''}
     </div>` : '';
 
   return `
@@ -2404,7 +2416,7 @@ async function cfMarkComplete(contractId) {
         totalValue: cfFmtUsdc(c.totalValue), feeValue: cfFmtUsdc(cfCalcFee(BigInt(c.totalValue))),
         netValue: cfFmtUsdc(cfNetAmount(BigInt(c.totalValue))),
         proofCount: meta.proofs.length, proofRefs: meta.proofs.map(p => p.name).join(', '),
-        otcPoints: meta.otcPoints || '', otcTerms: meta.otcTerms || '',
+        custodianAddr: meta.custodianAddr || '', escrowRef: meta.escrowRef || '',
         completedAt: new Date(completedAt).toLocaleString('pt-BR'),
         network: CF_NETWORK_NAME, chainId: CF_CHAIN_ID, factory: CF_FACTORY_ADDR,
       }
@@ -2441,8 +2453,8 @@ function cfOpenReceipt(contractId) {
     totalValue:      c ? cfFmtUsdc(c.totalValue) : r.totalValue || '?',
     feeValue:        c ? cfFmtUsdc(cfCalcFee(BigInt(c?.totalValue || 0))) : r.feeValue || '?',
     netValue:        c ? cfFmtUsdc(cfNetAmount(BigInt(c?.totalValue || 0))) : r.netValue || '?',
-    otcPoints:       meta.otcPoints || '',
-    otcTerms:        meta.otcTerms  || '',
+    custodianAddr:   meta.custodianAddr || '',
+    escrowRef:       meta.escrowRef || '',
     proofs:          meta.proofs    || [],
     completedAt:     r.completedAt  || new Date().toLocaleString(),
     _type:           'contract',
@@ -2528,10 +2540,10 @@ function cfDownloadReceipt(contractId) {
   </div>
 </div>
 
-${meta.otcPoints ? `<div class="section">
-  <h2>OTC Negotiation</h2>
-  <div class="row"><span class="label">Points/Tokens</span><span class="value">${meta.otcPoints}</span></div>
-  ${meta.otcTerms ? `<div class="row"><span class="label">Terms</span><span class="value">${meta.otcTerms}</span></div>` : ''}
+${meta.custodianAddr ? `<div class="section">
+  <h2>Custodial Escrow</h2>
+  <div class="row"><span class="label">Custodian Address</span><span class="value" style="font-family:monospace;font-size:12px;">${meta.custodianAddr}</span></div>
+  <div class="row"><span class="label">Escrow Reference</span><span class="value">${meta.escrowRef || 'N/A'}</span></div>
 </div>` : ''}
 
 <div class="section">
@@ -2842,12 +2854,15 @@ async function cfCreateOffchainContract(mode) {
   const totalValue      = (document.getElementById('cf-value')?.value || '').trim();
   const clientEmail     = (document.getElementById('cf-client-email')?.value || '').trim();
   const contractorEmail = (document.getElementById('cf-contractor-email')?.value || '').trim();
-  const otcEnabled      = document.getElementById('cf-otc-toggle')?.checked;
-  const otcPoints       = (document.getElementById('cf-otc-points')?.value || '').trim();
-  const otcTerms        = (document.getElementById('cf-otc-terms')?.value || '').trim();
+  const custodianAddr   = (document.getElementById('cf-custodian-addr')?.value || '').trim();
   const msRows          = document.querySelectorAll('.cf-milestone-row');
 
   if (!contractor || !title || !totalValue) { showToast(t('cf_fill_required_fields'), 'warning'); return; }
+  if (mode === 'custodial') {
+    if (!custodianAddr) { showToast('Custodian address is required for Custodial mode.', 'warning'); return; }
+    const isAddr = /^0x[0-9a-fA-F]{40}$/.test(custodianAddr);
+    if (!isAddr) { showToast('Invalid custodian address. Must be a valid 0x wallet or contract address.', 'error'); return; }
+  }
   const humanAmount = parseFloat(totalValue);
   if (isNaN(humanAmount) || humanAmount <= 0) { showToast('Valor deve ser maior que 0.', 'error'); return; }
 
@@ -2860,8 +2875,8 @@ async function cfCreateOffchainContract(mode) {
   });
   if (!milestoneDescs.length) { showToast('Adicione pelo menos 1 milestone.', 'warning'); return; }
 
-  // Generate a local off-chain ID (negative to distinguish from on-chain)
-  const localId   = -(Date.now() % 1000000);
+  // Generate a unique local off-chain ID (negative to distinguish from on-chain)
+  const localId   = -(Date.now() % 10000000 + Math.floor(Math.random() * 999));
   const paymentNote = mode === 'offchain' ? `Off-Chain Payment — $${humanAmount} USDC` : `Custodial Escrow — $${humanAmount} USDC`;
   const escrowRef   = mode === 'custodial' ? 'CUST-' + Date.now().toString(36).toUpperCase() : '';
 
@@ -2869,13 +2884,12 @@ async function cfCreateOffchainContract(mode) {
     mode,
     clientEmail,
     contractorEmail,
-    otcPoints: otcEnabled ? otcPoints : '',
-    otcTerms:  otcEnabled ? otcTerms  : '',
     proofs: [],
     createdAt:       Date.now(),
     offchainStatus:  'pending',
     paymentNote,
     escrowRef,
+    custodianAddr:   mode === 'custodial' ? custodianAddr : '',
     localId,
     createdByWallet: wallet,
     milestoneDescs,
@@ -2924,7 +2938,7 @@ async function cfCreateOffchainContract(mode) {
   showToast(`✅ Contrato ${modeInfo.label} criado! ID local: ${localId}.`, 'success');
 
   // Reset form
-  ['cf-title','cf-contractor','cf-value','cf-client-email','cf-contractor-email'].forEach(id => {
+  ['cf-title','cf-contractor','cf-value','cf-client-email','cf-contractor-email','cf-custodian-addr'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -2951,13 +2965,17 @@ function cfLoadOffchainContracts() {
 // ─── Create contract (v6: on-chain escrow + off-chain/custodial modes) ────────
 async function cfCreateContract() {
   if (cfState.pending) { showToast(t('contracts_await_tx'), 'warning'); return; }
-  const wallet = window.walletState?.address;
-  if (!wallet) { showToast(t('cf_connect_wallet_warning'), 'warning'); return; }
 
   const contractMode = cfGetSelectedMode();
+
+  // Off-chain and custodial modes do NOT require wallet connection
   if (contractMode !== 'onchain') {
     return cfCreateOffchainContract(contractMode);
   }
+
+  // Only onchain requires wallet
+  const wallet = window.walletState?.address;
+  if (!wallet) { showToast(t('cf_connect_wallet_warning'), 'warning'); return; }
 
   // Network pre-check
   const netCheck = await cfInitProvider();
@@ -2972,9 +2990,7 @@ async function cfCreateContract() {
   const totalValue       = cfEl('cf-value')?.value?.trim();
   const clientEmail      = cfEl('cf-client-email')?.value?.trim();
   const contractorEmail  = cfEl('cf-contractor-email')?.value?.trim();
-  const otcEnabled       = cfEl('cf-otc-toggle')?.checked;
-  const otcPoints        = cfEl('cf-otc-points')?.value?.trim();
-  const otcTerms         = cfEl('cf-otc-terms')?.value?.trim();
+  const custodianAddr    = (cfEl('cf-custodian-addr')?.value || '').trim();
   const msRows           = document.querySelectorAll('.cf-milestone-row');
 
   // Validations
@@ -3101,8 +3117,7 @@ async function cfCreateContract() {
       cfSetMeta(newId, {
         clientEmail: clientEmail || '',
         contractorEmail: contractorEmail || '',
-        otcPoints: otcEnabled ? (otcPoints || '') : '',
-        otcTerms:  otcEnabled ? (otcTerms  || '') : '',
+        custodianAddr: (contractMode === 'custodial') ? custodianAddr : '',
         proofs: [],
         createdAt: Date.now(),
         txHash: receipt.hash,
@@ -3149,16 +3164,12 @@ async function cfCreateContract() {
   }
 }
 
-// ─── OTC toggle ────────────────────────────────────────────────────────────────
-function cfToggleOTC() {
-  const fields = cfEl('cf-otc-fields');
-  const slider = cfEl('cf-otc-slider');
-  const knob   = cfEl('cf-otc-knob');
-  const checked = cfEl('cf-otc-toggle')?.checked;
-  if (fields) fields.classList.toggle('hidden', !checked);
-  if (slider) slider.style.background = checked ? 'rgba(167,139,250,0.4)' : 'rgba(255,255,255,0.08)';
-  if (knob)   knob.style.transform    = checked ? 'translateX(16px)' : 'none';
-  if (knob)   knob.style.background   = checked ? '#a78bfa' : '#4b5675';
+// ─── Custodian address field visibility (kept as utility, called from mode selector) ───
+function cfToggleCustodianField(show) {
+  const wrap  = cfEl('cf-custodian-wrap');
+  const input = cfEl('cf-custodian-addr');
+  if (wrap)  wrap.style.display = show ? '' : 'none';
+  if (!show && input) input.value = '';
 }
 
 // ─── Fee preview ────────────────────────────────────────────────────────────────
@@ -3759,7 +3770,7 @@ window.cfOpenReceipt          = cfOpenReceipt;
 window.cfAddMilestone         = cfAddMilestone;
 window.cfUpdateMilestoneSum   = cfUpdateMilestoneSum;
 window.cfUpdateFeePreview     = cfUpdateFeePreview;
-window.cfToggleOTC            = cfToggleOTC;
+window.cfToggleCustodianField  = cfToggleCustodianField;
 window.cfWalletGateUpdate     = cfWalletGateUpdate;
 window.cfSwitchNetwork        = cfSwitchNetwork;
 window.cfState                = cfState;

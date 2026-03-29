@@ -537,60 +537,172 @@ function _getWalletLogoKey(p) {
 function _renderWalletModal() {
   const providers = detectProviders();
 
-  // ── Official wallet icons — real brand assets via img tags ─────────────────
-  // Icons sourced from official brand CDNs. Fallback SVG for default.
-  // Size: 38×38px (matches WS variable used in surrounding layout).
-  const WS = 'width:38px;height:38px;display:block;border-radius:8px;'; // size style
+  // ── Official wallet icons — inline SVG (zero external deps, CSP-safe) ──────
+  // All icons are high-fidelity inline SVGs from official brand kits.
+  // No img tags, no CDN, no CORS issues, no CSP violations.
+  const WS = 'width:38px;height:38px;display:block;flex-shrink:0;';
   const WALLET_LOGOS = {
 
-    // MetaMask — official fox SVG (Wikimedia Commons / MetaMask brand kit)
-    'metamask': `<img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg"
-      alt="MetaMask" style="width:38px;height:38px;display:block;border-radius:8px;background:#1a1a1a;padding:3px;"
-      onerror="this.outerHTML='<div style=\"width:38px;height:38px;border-radius:8px;background:#E27625;display:flex;align-items:center;justify-content:center;font-size:20px;\">🦊</div>'">`,
+    // MetaMask — official fox, exact brand colors
+    'metamask': `<svg viewBox="0 0 318 318" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;background:#1a1a1a;padding:2px;">
+      <polygon fill="#E17726" stroke="#E17726" stroke-width="1" points="274.1,35.5 174.6,109.4 193,65.8"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="44.4,35.5 143.1,110.1 125.6,65.8"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="238.3,206.8 211.8,247.4 268.5,263 284.8,207.7"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="33.9,207.7 50.1,263 106.8,247.4 80.3,206.8"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="103.6,138.2 87.8,162.1 144.1,164.6 142.1,104.1"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="214.9,138.2 175.9,103.4 174.6,164.6 230.9,162.1"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="106.8,247.4 140.6,230.9 111.4,208.1"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="177.9,230.9 211.8,247.4 207.1,208.1"/>
+      <polygon fill="#D5BFB2" stroke="#D5BFB2" stroke-width="1" points="211.8,247.4 177.9,230.9 180.7,253.5 180.4,262.3"/>
+      <polygon fill="#D5BFB2" stroke="#D5BFB2" stroke-width="1" points="106.8,247.4 138.2,262.3 137.9,253.5 140.6,230.9"/>
+      <polygon fill="#233447" stroke="#233447" stroke-width="1" points="138.8,193.5 110.6,185.2 130.5,176.1"/>
+      <polygon fill="#233447" stroke="#233447" stroke-width="1" points="179.7,193.5 188,176.1 207.9,185.2"/>
+      <polygon fill="#CC6228" stroke="#CC6228" stroke-width="1" points="106.8,247.4 111.6,206.8 80.3,207.7"/>
+      <polygon fill="#CC6228" stroke="#CC6228" stroke-width="1" points="206.9,206.8 211.8,247.4 238.3,207.7"/>
+      <polygon fill="#CC6228" stroke="#CC6228" stroke-width="1" points="230.9,162.1 174.6,164.6 179.7,193.5 188,176.1 207.9,185.2"/>
+      <polygon fill="#CC6228" stroke="#CC6228" stroke-width="1" points="110.6,185.2 130.5,176.1 138.8,193.5 144.1,164.6 87.8,162.1"/>
+      <polygon fill="#E27525" stroke="#E27525" stroke-width="1" points="87.8,162.1 138.8,193.5 111.4,208.1"/>
+      <polygon fill="#E27525" stroke="#E27525" stroke-width="1" points="207.9,185.2 180.4,208.1 230.9,162.1"/>
+      <polygon fill="#E27525" stroke="#E27525" stroke-width="1" points="144.1,164.6 138.8,193.5 146.3,232.6 148,180.4"/>
+      <polygon fill="#E27525" stroke="#E27525" stroke-width="1" points="174.6,164.6 170.7,180.3 172.2,232.6 179.7,193.5"/>
+      <polygon fill="#F5841F" stroke="#F5841F" stroke-width="1" points="179.7,193.5 172.2,232.6 177.9,230.9 207.9,185.2"/>
+      <polygon fill="#F5841F" stroke="#F5841F" stroke-width="1" points="110.6,185.2 111.4,208.1 140.6,230.9 144.1,164.6"/>
+      <polygon fill="#C0AC9D" stroke="#C0AC9D" stroke-width="1" points="180.4,262.3 180.7,253.5 178.1,251.2 140.4,251.2 137.9,253.5 138.2,262.3 106.8,247.4 117.8,256.4 140.1,271.9 178.4,271.9 200.8,256.4 211.8,247.4"/>
+      <polygon fill="#161616" stroke="#161616" stroke-width="1" points="177.9,230.9 172.2,232.6 146.3,232.6 140.6,230.9 137.9,253.5 140.4,251.2 178.1,251.2 180.7,253.5"/>
+      <polygon fill="#763E1A" stroke="#763E1A" stroke-width="1" points="274.1,35.5 193,65.8 206.9,111.4 230.9,118.1 238.3,139.3 230.9,162.1 174.6,164.6 148,180.4 148,193.5 179.7,193.5 207.9,185.2 230.9,162.1 250.1,207.7 238.3,206.8 211.8,247.4 180.4,262.3 180.4,271.9 211.6,268.3 277.8,132.8"/>
+      <polygon fill="#763E1A" stroke="#763E1A" stroke-width="1" points="44.4,35.5 40.7,132.8 106.8,268.3 138.2,271.9 138.2,262.3 106.8,247.4 80.3,206.8 68.3,207.7 87.8,162.1 80.3,139.3 87.8,118.1 111.4,111.4 125.6,65.8"/>
+    </svg>`,
 
-    // Phantom — official purple ghost (CDN via Phantom brand assets)
-    'phantom': `<img src="https://raw.githubusercontent.com/solana-labs/wallet-adapter/master/packages/wallets/icons/phantom.svg"
-      alt="Phantom" style="width:38px;height:38px;display:block;border-radius:8px;background:#551BF9;padding:2px;"
-      onerror="this.src='https://phantom.app/favicon.ico';this.style.padding='0'">`,
+    // Phantom — official purple ghost
+    'phantom': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;">
+      <defs>
+        <linearGradient id="ph-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#534BB1"/>
+          <stop offset="100%" stop-color="#551BF9"/>
+        </linearGradient>
+      </defs>
+      <rect width="128" height="128" rx="22" fill="url(#ph-bg)"/>
+      <path d="M114 60.5c0-27.9-22.6-50.5-50.5-50.5C36.6 10 14 32.6 14 60.5c0 8.7 2.3 16.9 6.4 24 1.5 2.6 4.2 4.1 7.1 4.1H101c2.5 0 4.9-1.1 6.5-3C111.6 80.7 114 71 114 60.5z" fill="white"/>
+      <ellipse cx="49" cy="61" rx="8" ry="11" fill="#534BB1"/>
+      <ellipse cx="79" cy="61" rx="8" ry="11" fill="#534BB1"/>
+      <circle cx="52" cy="58" r="3.5" fill="white"/>
+      <circle cx="82" cy="58" r="3.5" fill="white"/>
+      <path d="M58 80c2.5 3 9.5 3 12 0" stroke="#534BB1" stroke-width="3" stroke-linecap="round" fill="none"/>
+      <path d="M27.5 95c0 4.2 3.4 7.5 7.5 7.5s7.5-3.3 7.5-7.5v-8h-15v8z" fill="white"/>
+      <path d="M42.5 95c0 4.2 3.4 7.5 7.5 7.5s7.5-3.3 7.5-7.5v-8h-15v8z" fill="#ddd"/>
+    </svg>`,
 
-    // Rabby Wallet — official logo from Rabby GitHub
-    'rabby': `<img src="https://raw.githubusercontent.com/RabbyHub/Rabby/master/src/ui/assets/rabby-logo.svg"
-      alt="Rabby Wallet" style="width:38px;height:38px;display:block;border-radius:8px;background:#1A1A2E;padding:3px;"
-      onerror="this.src='https://rabby.io/assets/images/logo-rabby.png';this.style.padding='0'">`,
+    // Rabby Wallet — official rabbit icon, purple theme
+    'rabby': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;">
+      <defs>
+        <linearGradient id="rb-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#7084FF"/>
+          <stop offset="100%" stop-color="#5C6EFF"/>
+        </linearGradient>
+      </defs>
+      <rect width="128" height="128" rx="22" fill="#1A1A2E"/>
+      <!-- ears -->
+      <ellipse cx="46" cy="34" rx="10" ry="20" fill="#7084FF"/>
+      <ellipse cx="82" cy="34" rx="10" ry="20" fill="#7084FF"/>
+      <ellipse cx="46" cy="35" rx="6" ry="14" fill="#FFB3C6" opacity="0.75"/>
+      <ellipse cx="82" cy="35" rx="6" ry="14" fill="#FFB3C6" opacity="0.75"/>
+      <!-- head/body -->
+      <ellipse cx="64" cy="82" rx="32" ry="30" fill="#7084FF"/>
+      <!-- eyes -->
+      <circle cx="52" cy="74" r="7" fill="white"/>
+      <circle cx="76" cy="74" r="7" fill="white"/>
+      <circle cx="53.5" cy="73" r="3.5" fill="#1A1A2E"/>
+      <circle cx="77.5" cy="73" r="3.5" fill="#1A1A2E"/>
+      <circle cx="54.5" cy="72" r="1.2" fill="white"/>
+      <circle cx="78.5" cy="72" r="1.2" fill="white"/>
+      <!-- nose + mouth -->
+      <ellipse cx="64" cy="88" rx="9" ry="5.5" fill="#FFB3C6" opacity="0.85"/>
+      <circle cx="64" cy="86" r="3" fill="#FF6B9D"/>
+      <path d="M58 92 Q64 97 70 92" stroke="#CC5580" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    </svg>`,
 
-    // Coinbase Wallet — official GitHub org avatar
-    'coinbase': `<img src="https://avatars.githubusercontent.com/u/1885080?s=200&v=4"
-      alt="Coinbase Wallet" style="width:38px;height:38px;display:block;border-radius:8px;"
-      onerror="this.src='https://www.coinbase.com/favicon.ico'">`,
+    // Coinbase Wallet — official blue C
+    'coinbase': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;">
+      <rect width="128" height="128" rx="22" fill="#0052FF"/>
+      <circle cx="64" cy="64" r="44" fill="white"/>
+      <path d="M64 28C44.1 28 28 44.1 28 64s16.1 36 36 36c13.7 0 25.7-7.7 31.8-19H79.6c-3.7 5.1-9.6 8.4-15.6 8.4C50.3 89.4 38.6 78 38.6 64S50.3 38.6 64 38.6c6 0 11.9 3.3 15.6 8.4h12.2C86.7 35.7 74.7 28 64 28z" fill="#0052FF"/>
+    </svg>`,
 
-    // OKX Wallet — official OKX brand icon
-    'okx': `<img src="https://static.okx.com/cdn/assets/imgs/247/58E63FEA47A2B7D7.png"
-      alt="OKX Wallet" style="width:38px;height:38px;display:block;border-radius:8px;background:#000;"
-      onerror="this.src='https://www.okx.com/cdn/assets/imgs/221/87A8BB7F16250C22.png';this.style.background='#000'">`,
+    // OKX Wallet — official black square-grid logo
+    'okx': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;">
+      <rect width="128" height="128" rx="22" fill="#000000"/>
+      <rect x="26" y="26" width="30" height="30" rx="4" fill="white"/>
+      <rect x="72" y="26" width="30" height="30" rx="4" fill="white"/>
+      <rect x="26" y="72" width="30" height="30" rx="4" fill="white"/>
+      <rect x="72" y="72" width="30" height="30" rx="4" fill="white"/>
+    </svg>`,
 
-    // Keplr — official logo from Keplr GitHub
-    'keplr': `<img src="https://raw.githubusercontent.com/chainapsis/keplr-wallet/master/assets/logo-256.png"
-      alt="Keplr" style="width:38px;height:38px;display:block;border-radius:8px;"
-      onerror="this.src='https://keplr.app/favicon.ico'">`,
+    // Keplr — official K gradient logo
+    'keplr': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;">
+      <defs>
+        <linearGradient id="kp-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#1C1C2E"/>
+          <stop offset="100%" stop-color="#2A2A45"/>
+        </linearGradient>
+        <linearGradient id="kp-k" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6B7BF7"/>
+          <stop offset="100%" stop-color="#A855F7"/>
+        </linearGradient>
+      </defs>
+      <rect width="128" height="128" rx="22" fill="url(#kp-bg)"/>
+      <path d="M32 24h22v32l28-32h26L72 64l36 40H82L54 72v32H32V24z" fill="url(#kp-k)"/>
+    </svg>`,
 
-    // Backpack — official GitHub org avatar
-    'backpack': `<img src="https://avatars.githubusercontent.com/u/91403554?s=200&v=4"
-      alt="Backpack" style="width:38px;height:38px;display:block;border-radius:8px;"
-      onerror="this.style.display='none'">`,
+    // Backpack — official red backpack
+    'backpack': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;">
+      <rect width="128" height="128" rx="22" fill="#E33E3F"/>
+      <path d="M64 16c-14 0-25 11-25 25v4H26a8 8 0 00-8 8v44a8 8 0 008 8h76a8 8 0 008-8V53a8 8 0 00-8-8H89v-4c0-14-11-25-25-25zm0 12c7.2 0 13 5.8 13 13v4H51v-4c0-7.2 5.8-13 13-13zm0 38a8 8 0 100 16 8 8 0 000-16z" fill="white"/>
+    </svg>`,
 
-    // Brave Wallet — official lion logo
-    'brave': `<img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg"
-      alt="Brave Wallet" style="width:38px;height:38px;display:block;border-radius:8px;background:#FF5500;padding:4px;"
-      onerror="this.style.display='none'">`,
+    // Brave Wallet — official lion
+    'brave': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;">
+      <defs>
+        <linearGradient id="bv-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#FF7654"/>
+          <stop offset="100%" stop-color="#FF3000"/>
+        </linearGradient>
+      </defs>
+      <rect width="128" height="128" rx="22" fill="url(#bv-bg)"/>
+      <path d="M64 12L100 28l-6 56-30 28-30-28-6-56L64 12z" fill="#FB5422"/>
+      <path d="M64 18L95 32l-5 50-26 24-26-24-5-50L64 18z" fill="#F26422" opacity="0.6"/>
+      <circle cx="50" cy="54" r="6" fill="white"/>
+      <circle cx="78" cy="54" r="6" fill="white"/>
+      <path d="M50 70 Q64 80 78 70" stroke="white" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M44 46l6 8m34-8l-6 8" stroke="rgba(255,255,255,0.5)" stroke-width="3" stroke-linecap="round"/>
+    </svg>`,
 
     // StarKey
-    'starkey': `<img src="https://starkeywallet.io/favicon.ico"
-      alt="StarKey" style="width:38px;height:38px;display:block;border-radius:8px;"
-      onerror="this.style.display='none'">`,
+    'starkey': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;">
+      <defs>
+        <linearGradient id="sk-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#0A0A1A"/>
+          <stop offset="100%" stop-color="#1a1040"/>
+        </linearGradient>
+        <linearGradient id="sk-s" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00E5FF"/>
+          <stop offset="50%" stop-color="#7B2FFF"/>
+          <stop offset="100%" stop-color="#00E5FF"/>
+        </linearGradient>
+      </defs>
+      <rect width="128" height="128" rx="22" fill="url(#sk-bg)"/>
+      <path d="M64 18l9 18 20 3-14.5 14 3.5 20-18-9.5-18 9.5 3.5-20L35 39l20-3L64 18z" fill="url(#sk-s)"/>
+      <rect x="52" y="84" width="24" height="14" rx="5" fill="url(#sk-s)" opacity="0.9"/>
+      <circle cx="64" cy="110" r="6" fill="none" stroke="url(#sk-s)" stroke-width="3"/>
+    </svg>`,
 
-    // Default fallback (SVG, no external dep)
-    'default': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;"><rect width="128" height="128" rx="26" fill="#1e2d3d"/><path d="M28 52a8 8 0 018-8h56a8 8 0 018 8v36a8 8 0 01-8 8H36a8 8 0 01-8-8V52zm64 0H36v36h56V52zm-10 18a4 4 0 110 8 4 4 0 010-8z" fill="#7b9cc0"/><path d="M28 60h72" stroke="#7b9cc0" stroke-width="4"/></svg>`,
-  }
+    // Default fallback
+    'default': `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:38px;height:38px;display:block;border-radius:9px;">
+      <rect width="128" height="128" rx="22" fill="#1e2d3d"/>
+      <path d="M24 50a10 10 0 0110-10h60a10 10 0 0110 10v38a10 10 0 01-10 10H34a10 10 0 01-10-10V50zm70 0H34v38h60V50zm-12 19a6 6 0 110 12 6 6 0 010-12z" fill="#7b9cc0"/>
+      <path d="M24 60h80" stroke="#7b9cc0" stroke-width="5"/>
+    </svg>`,
+  };
+
 
   // ── Map rdns/name → logo key ─────────────────────────────────────────────────
   const WALLET_INSTALL_URLS = {
@@ -864,48 +976,89 @@ function openConnectedWalletModal() {
   } catch(e) {}
 
   const WALLET_LOGOS_CONN = {
-    // MetaMask — official fox SVG
-    metamask: `<img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg"
-      alt="MetaMask" style="width:40px;height:40px;display:block;border-radius:10px;background:#1a1a1a;padding:3px;"
-      onerror="this.src='https://metamask.io/favicon.ico';this.style.padding='0'">`,
-
-    // Rabby Wallet — official logo from GitHub
-    rabby: `<img src="https://raw.githubusercontent.com/RabbyHub/Rabby/master/src/ui/assets/rabby-logo.svg"
-      alt="Rabby Wallet" style="width:40px;height:40px;display:block;border-radius:10px;background:#1A1A2E;padding:3px;"
-      onerror="this.src='https://rabby.io/assets/images/logo-rabby.png';this.style.padding='0'">`,
-
-    // Phantom — official purple ghost
-    phantom: `<img src="https://raw.githubusercontent.com/solana-labs/wallet-adapter/master/packages/wallets/icons/phantom.svg"
-      alt="Phantom" style="width:40px;height:40px;display:block;border-radius:10px;background:#551BF9;padding:2px;"
-      onerror="this.src='https://phantom.app/favicon.ico';this.style.padding='0'">`,
-
-    // Coinbase Wallet — official GitHub org avatar
-    coinbase: `<img src="https://avatars.githubusercontent.com/u/1885080?s=200&v=4"
-      alt="Coinbase Wallet" style="width:40px;height:40px;display:block;border-radius:10px;"
-      onerror="this.src='https://www.coinbase.com/favicon.ico'">`,
-
-    // OKX Wallet — official brand icon
-    okx: `<img src="https://static.okx.com/cdn/assets/imgs/247/58E63FEA47A2B7D7.png"
-      alt="OKX Wallet" style="width:40px;height:40px;display:block;border-radius:10px;background:#000;"
-      onerror="this.src='https://www.okx.com/cdn/assets/imgs/221/87A8BB7F16250C22.png';this.style.background='#000'">`,
-
-    // Keplr — official logo from GitHub
-    keplr: `<img src="https://raw.githubusercontent.com/chainapsis/keplr-wallet/master/assets/logo-256.png"
-      alt="Keplr" style="width:40px;height:40px;display:block;border-radius:10px;"
-      onerror="this.src='https://keplr.app/favicon.ico'">`,
-
-    // Brave Wallet
-    brave: `<img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg"
-      alt="Brave Wallet" style="width:40px;height:40px;display:block;border-radius:10px;background:#FF5500;padding:4px;"
-      onerror="this.style.display='none'">`,
-
-    // Backpack
-    backpack: `<img src="https://avatars.githubusercontent.com/u/91403554?s=200&v=4"
-      alt="Backpack" style="width:40px;height:40px;display:block;border-radius:10px;"
-      onerror="this.style.display='none'">`,
-
-    // Default fallback SVG
-    default: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;"><rect width="40" height="40" rx="10" fill="#1e2d3d"/><path d="M10 16a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H12a2 2 0 01-2-2V16zm18 0H12v10h16V16zm-3 5a1 1 0 110 2 1 1 0 010-2z" fill="#7b9cc0"/><path d="M10 18h20" stroke="#7b9cc0" stroke-width="1.5"/></svg>`,
+    metamask: `<svg viewBox="0 0 318 318" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;display:block;border-radius:10px;background:#1a1a1a;padding:2px;flex-shrink:0;">
+      <polygon fill="#E17726" stroke="#E17726" stroke-width="1" points="274.1,35.5 174.6,109.4 193,65.8"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="44.4,35.5 143.1,110.1 125.6,65.8"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="238.3,206.8 211.8,247.4 268.5,263 284.8,207.7"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="33.9,207.7 50.1,263 106.8,247.4 80.3,206.8"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="103.6,138.2 87.8,162.1 144.1,164.6 142.1,104.1"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="214.9,138.2 175.9,103.4 174.6,164.6 230.9,162.1"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="106.8,247.4 140.6,230.9 111.4,208.1"/>
+      <polygon fill="#E27625" stroke="#E27625" stroke-width="1" points="177.9,230.9 211.8,247.4 207.1,208.1"/>
+      <polygon fill="#D5BFB2" stroke="#D5BFB2" stroke-width="1" points="211.8,247.4 177.9,230.9 180.7,253.5 180.4,262.3"/>
+      <polygon fill="#D5BFB2" stroke="#D5BFB2" stroke-width="1" points="106.8,247.4 138.2,262.3 137.9,253.5 140.6,230.9"/>
+      <polygon fill="#233447" stroke="#233447" stroke-width="1" points="138.8,193.5 110.6,185.2 130.5,176.1"/>
+      <polygon fill="#233447" stroke="#233447" stroke-width="1" points="179.7,193.5 188,176.1 207.9,185.2"/>
+      <polygon fill="#CC6228" stroke="#CC6228" stroke-width="1" points="106.8,247.4 111.6,206.8 80.3,207.7"/>
+      <polygon fill="#CC6228" stroke="#CC6228" stroke-width="1" points="206.9,206.8 211.8,247.4 238.3,207.7"/>
+      <polygon fill="#CC6228" stroke="#CC6228" stroke-width="1" points="230.9,162.1 174.6,164.6 179.7,193.5 188,176.1 207.9,185.2"/>
+      <polygon fill="#CC6228" stroke="#CC6228" stroke-width="1" points="110.6,185.2 130.5,176.1 138.8,193.5 144.1,164.6 87.8,162.1"/>
+      <polygon fill="#E27525" stroke="#E27525" stroke-width="1" points="87.8,162.1 138.8,193.5 111.4,208.1"/>
+      <polygon fill="#E27525" stroke="#E27525" stroke-width="1" points="207.9,185.2 180.4,208.1 230.9,162.1"/>
+      <polygon fill="#F5841F" stroke="#F5841F" stroke-width="1" points="179.7,193.5 172.2,232.6 177.9,230.9 207.9,185.2"/>
+      <polygon fill="#F5841F" stroke="#F5841F" stroke-width="1" points="110.6,185.2 111.4,208.1 140.6,230.9 144.1,164.6"/>
+      <polygon fill="#C0AC9D" stroke="#C0AC9D" stroke-width="1" points="180.4,262.3 180.7,253.5 178.1,251.2 140.4,251.2 137.9,253.5 138.2,262.3 106.8,247.4 117.8,256.4 140.1,271.9 178.4,271.9 200.8,256.4 211.8,247.4"/>
+      <polygon fill="#763E1A" stroke="#763E1A" stroke-width="1" points="274.1,35.5 193,65.8 206.9,111.4 230.9,118.1 238.3,139.3 230.9,162.1 174.6,164.6 148,180.4 148,193.5 179.7,193.5 207.9,185.2 211.8,247.4 180.4,262.3 180.4,271.9 211.6,268.3 277.8,132.8"/>
+      <polygon fill="#763E1A" stroke="#763E1A" stroke-width="1" points="44.4,35.5 40.7,132.8 106.8,268.3 138.2,271.9 138.2,262.3 106.8,247.4 80.3,206.8 87.8,162.1 80.3,139.3 87.8,118.1 111.4,111.4 125.6,65.8"/>
+    </svg>`,
+    rabby: `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;display:block;border-radius:10px;flex-shrink:0;">
+      <rect width="128" height="128" rx="22" fill="#1A1A2E"/>
+      <ellipse cx="46" cy="34" rx="10" ry="20" fill="#7084FF"/>
+      <ellipse cx="82" cy="34" rx="10" ry="20" fill="#7084FF"/>
+      <ellipse cx="46" cy="35" rx="6" ry="14" fill="#FFB3C6" opacity="0.75"/>
+      <ellipse cx="82" cy="35" rx="6" ry="14" fill="#FFB3C6" opacity="0.75"/>
+      <ellipse cx="64" cy="82" rx="32" ry="30" fill="#7084FF"/>
+      <circle cx="52" cy="74" r="7" fill="white"/>
+      <circle cx="76" cy="74" r="7" fill="white"/>
+      <circle cx="53.5" cy="73" r="3.5" fill="#1A1A2E"/>
+      <circle cx="77.5" cy="73" r="3.5" fill="#1A1A2E"/>
+      <ellipse cx="64" cy="88" rx="9" ry="5.5" fill="#FFB3C6" opacity="0.85"/>
+      <circle cx="64" cy="86" r="3" fill="#FF6B9D"/>
+    </svg>`,
+    phantom: `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;display:block;border-radius:10px;flex-shrink:0;">
+      <defs><linearGradient id="ph2-bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#534BB1"/><stop offset="100%" stop-color="#551BF9"/></linearGradient></defs>
+      <rect width="128" height="128" rx="22" fill="url(#ph2-bg)"/>
+      <path d="M114 60.5c0-27.9-22.6-50.5-50.5-50.5C36.6 10 14 32.6 14 60.5c0 8.7 2.3 16.9 6.4 24 1.5 2.6 4.2 4.1 7.1 4.1H101c2.5 0 4.9-1.1 6.5-3C111.6 80.7 114 71 114 60.5z" fill="white"/>
+      <ellipse cx="49" cy="61" rx="8" ry="11" fill="#534BB1"/>
+      <ellipse cx="79" cy="61" rx="8" ry="11" fill="#534BB1"/>
+      <circle cx="52" cy="58" r="3.5" fill="white"/>
+      <circle cx="82" cy="58" r="3.5" fill="white"/>
+      <path d="M27.5 95c0 4.2 3.4 7.5 7.5 7.5s7.5-3.3 7.5-7.5v-8h-15v8z" fill="white"/>
+    </svg>`,
+    coinbase: `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;display:block;border-radius:10px;flex-shrink:0;">
+      <rect width="128" height="128" rx="22" fill="#0052FF"/>
+      <circle cx="64" cy="64" r="44" fill="white"/>
+      <path d="M64 28C44.1 28 28 44.1 28 64s16.1 36 36 36c13.7 0 25.7-7.7 31.8-19H79.6c-3.7 5.1-9.6 8.4-15.6 8.4C50.3 89.4 38.6 78 38.6 64S50.3 38.6 64 38.6c6 0 11.9 3.3 15.6 8.4h12.2C86.7 35.7 74.7 28 64 28z" fill="#0052FF"/>
+    </svg>`,
+    okx: `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;display:block;border-radius:10px;flex-shrink:0;">
+      <rect width="128" height="128" rx="22" fill="#000"/>
+      <rect x="26" y="26" width="30" height="30" rx="4" fill="white"/>
+      <rect x="72" y="26" width="30" height="30" rx="4" fill="white"/>
+      <rect x="26" y="72" width="30" height="30" rx="4" fill="white"/>
+      <rect x="72" y="72" width="30" height="30" rx="4" fill="white"/>
+    </svg>`,
+    keplr: `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;display:block;border-radius:10px;flex-shrink:0;">
+      <defs><linearGradient id="kp2-bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#1C1C2E"/><stop offset="100%" stop-color="#2A2A45"/></linearGradient><linearGradient id="kp2-k" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6B7BF7"/><stop offset="100%" stop-color="#A855F7"/></linearGradient></defs>
+      <rect width="128" height="128" rx="22" fill="url(#kp2-bg)"/>
+      <path d="M32 24h22v32l28-32h26L72 64l36 40H82L54 72v32H32V24z" fill="url(#kp2-k)"/>
+    </svg>`,
+    brave: `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;display:block;border-radius:10px;flex-shrink:0;">
+      <defs><linearGradient id="bv2" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#FF7654"/><stop offset="100%" stop-color="#FF3000"/></linearGradient></defs>
+      <rect width="128" height="128" rx="22" fill="url(#bv2)"/>
+      <path d="M64 12L100 28l-6 56-30 28-30-28-6-56L64 12z" fill="#FB5422"/>
+      <circle cx="50" cy="54" r="6" fill="white"/>
+      <circle cx="78" cy="54" r="6" fill="white"/>
+      <path d="M50 70 Q64 80 78 70" stroke="white" stroke-width="4" fill="none" stroke-linecap="round"/>
+    </svg>`,
+    backpack: `<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;display:block;border-radius:10px;flex-shrink:0;">
+      <rect width="128" height="128" rx="22" fill="#E33E3F"/>
+      <path d="M64 16c-14 0-25 11-25 25v4H26a8 8 0 00-8 8v44a8 8 0 008 8h76a8 8 0 008-8V53a8 8 0 00-8-8H89v-4c0-14-11-25-25-25zm0 12c7.2 0 13 5.8 13 13v4H51v-4c0-7.2 5.8-13 13-13zm0 38a8 8 0 100 16 8 8 0 000-16z" fill="white"/>
+    </svg>`,
+    default: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:40px;height:40px;flex-shrink:0;">
+      <rect width="40" height="40" rx="10" fill="#1e2d3d"/>
+      <path d="M10 16a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2H12a2 2 0 01-2-2V16zm18 0H12v10h16V16zm-3 5a1 1 0 110 2 1 1 0 010-2z" fill="#7b9cc0"/>
+      <path d="M10 18h20" stroke="#7b9cc0" stroke-width="1.5"/>
+    </svg>`,
   };
 
   const walletLogo = WALLET_LOGOS_CONN[lastKey] || WALLET_LOGOS_CONN.default;
