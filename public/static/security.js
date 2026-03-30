@@ -59,7 +59,14 @@
             arcSecurityLog('PROTO_POLLUTION_ATTEMPT', { prop })
             return obj
           }
-          return origDefProp(obj, prop, descriptor)
+          // Wrap in try/catch to silently absorb non-fatal TypeError from ethers v6 UMD
+          // which tries to defineProperty('toString', {writable:false}) on sealed TypedArray objects.
+          try {
+            return origDefProp(obj, prop, descriptor)
+          } catch(e) {
+            if (e instanceof TypeError) return obj  // non-fatal — ethers prototype patch on sealed object
+            throw e
+          }
         },
         writable: false,
         configurable: false,
