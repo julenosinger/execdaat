@@ -1508,6 +1508,9 @@ app.get('/', (c) => {
                 <p style="color:#fca5a5;font-size:11px;margin:0;">Never enter private keys or seed phrases. All interactions use wallet approval only.</p>
               </div>
 
+              <!-- KYC Status Bar -->
+              <div id="pay-kyc-status" style="display:none;background:rgba(29,158,117,0.06);border:1px solid rgba(29,158,117,0.2);border-radius:9px;padding:7px 11px;align-items:center;gap:7px;margin-bottom:12px;font-size:11px;font-weight:600;"></div>
+
               <!-- Smart Autofill Profile Bar -->
               <div id="pay-form-top"></div>
 
@@ -1520,6 +1523,7 @@ app.get('/', (c) => {
                       <i class="fas fa-user" style="color:#90bce0;"></i>
                       SENDER NAME
                       <span class="opt">(optional)</span>
+                      <span style="margin-left:auto;cursor:help;" title="Your name will appear on the payment receipt for record-keeping."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                     </label>
                     <input type="text" id="pay-fullname" class="pay-cf-input px-3 py-2 text-sm"
                       placeholder="Your name"
@@ -1532,6 +1536,7 @@ app.get('/', (c) => {
                       <i class="fas fa-envelope" style="color:#90bce0;"></i>
                       EMAIL
                       <span class="opt">(optional)</span>
+                      <span style="margin-left:auto;cursor:help;" title="Used for receipt delivery and record-keeping only."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                     </label>
                     <input type="email" id="pay-email" class="pay-cf-input px-3 py-2 text-sm"
                       placeholder="you@example.com"
@@ -1541,17 +1546,29 @@ app.get('/', (c) => {
                   </div>
                 </div>
 
-                <!-- Recipient wallet -->
+                <!-- Recipient wallet + ENS -->
                 <div>
                   <label class="pay-cf-label">
                     <i class="fas fa-hard-hat" style="color:#1D9E75;"></i>
                     RECIPIENT WALLET (0x…)
+                    <span style="margin-left:auto;cursor:help;" title="Enter a 0x EVM wallet address (42 chars). Must match Arc Testnet (Chain 5042002). You can also type an ENS name and click ENS to resolve."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </label>
-                  <input type="text" id="pay-recipient" class="pay-cf-input px-3 py-2.5 text-sm font-mono"
-                    placeholder="0x..."
-                    autocomplete="off" spellcheck="false"
-                    oninput="payValidateField('recipient'); updatePayPreview(); payValidateForm()">
-                  <div id="pay-hint-recipient" class="pay-field-hint"></div>
+                  <div style="display:flex;gap:6px;align-items:flex-start;">
+                    <div style="flex:1;">
+                      <input type="text" id="pay-recipient" class="pay-cf-input px-3 py-2.5 text-sm font-mono"
+                        placeholder="0x… or vitalik.eth"
+                        autocomplete="off" spellcheck="false"
+                        inputmode="text"
+                        oninput="payValidateField('recipient'); updatePayPreview(); payValidateForm()">
+                      <div id="pay-hint-recipient" class="pay-field-hint"></div>
+                    </div>
+                    <button id="pay-ens-btn" onclick="payResolveENS()"
+                      title="Resolve ENS name to wallet address"
+                      style="flex-shrink:0;padding:9px 10px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:9px;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;white-space:nowrap;"
+                      onmouseover="this.style.background='rgba(167,139,250,0.2)'" onmouseout="this.style.background='rgba(167,139,250,0.1)'">
+                      <i class="fas fa-search"></i> ENS
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Recipient name + email (optional) -->
@@ -1597,10 +1614,12 @@ app.get('/', (c) => {
                     <i class="fas fa-coins" style="color:#1D9E75;"></i>
                     AMOUNT (<span id="pay-label-token">USDC</span>)
                     <span id="pay-max-hint" style="font-size:10px;color:#8aaac8;font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto;"></span>
+                    <span style="cursor:help;" title="Enter the amount to send. Use MAX to fill your full balance. Amounts are in token units (6 decimals for USDC/EURC)."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </label>
                   <div style="position:relative;">
                     <input type="number" id="pay-amount" class="pay-cf-input px-3 py-2.5 text-sm pr-24"
                       placeholder="0.000000" min="0" step="0.000001"
+                      inputmode="decimal"
                       oninput="payValidateField('amount'); updatePayPreview(); payValidateForm()">
                     <button onclick="setPayMax()"
                       style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;color:#378ADD;background:rgba(55,138,221,0.12);padding:2px 8px;border-radius:8px;border:1px solid rgba(55,138,221,0.25);cursor:pointer;transition:all 0.2s;"
@@ -1609,12 +1628,88 @@ app.get('/', (c) => {
                   <div id="pay-hint-amount" class="pay-field-hint"></div>
                 </div>
 
+                <!-- Government Tax (optional) -->
+                <div style="background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.15);border-radius:11px;padding:11px 13px 9px;">
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
+                    <i class="fas fa-landmark" style="color:#a78bfa;font-size:11px;"></i>
+                    <span style="color:#c4b5fd;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Government Tax</span>
+                    <span style="color:#5a5070;font-size:9px;">(optional)</span>
+                    <span style="margin-left:auto;cursor:help;" title="Optional regulatory tax. Enter as % of amount or a fixed USD value. Default: 0. Included in total cost and receipt."><i class="fas fa-info-circle" style="color:#a78bfa;font-size:10px;opacity:0.7;"></i></span>
+                  </div>
+                  <div style="display:flex;gap:6px;align-items:center;">
+                    <input type="number" id="pay-gov-tax" class="pay-cf-input px-3 py-2 text-sm" style="flex:1;"
+                      placeholder="0" min="0" step="0.01" inputmode="decimal"
+                      oninput="updatePayPreview(); payValidateForm()">
+                    <select id="pay-tax-mode" class="pay-cf-input px-2 py-2 text-sm" style="width:100px;"
+                      onchange="updatePayPreview(); payValidateForm()">
+                      <option value="pct">% of amt</option>
+                      <option value="fixed">Fixed USD</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Gas Speed Selector -->
+                <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.15);border-radius:11px;padding:11px 13px 9px;">
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
+                    <i class="fas fa-tachometer-alt" style="color:#60b4ff;font-size:11px;"></i>
+                    <span style="color:#8aaac8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Gas Speed</span>
+                    <span style="margin-left:auto;cursor:help;" title="Choose transaction speed. Fast: higher gas, ~10s confirmation. Standard: balanced. Slow: lowest gas, ~120s."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;">
+                    <button id="pay-gas-slow" onclick="paySelectGasTier('slow')"
+                      style="padding:7px 5px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
+                      <div style="font-size:10px;font-weight:700;color:#6b7280;">🐢 Slow</div>
+                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
+                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~120s</div>
+                    </button>
+                    <button id="pay-gas-standard" onclick="paySelectGasTier('standard')"
+                      style="padding:7px 5px;background:rgba(55,138,221,0.18);border:1px solid rgba(55,138,221,0.5);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
+                      <div style="font-size:10px;font-weight:700;color:#60b4ff;">⚡ Standard</div>
+                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
+                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~30s</div>
+                    </button>
+                    <button id="pay-gas-fast" onclick="paySelectGasTier('fast')"
+                      style="padding:7px 5px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
+                      <div style="font-size:10px;font-weight:700;color:#34d399;">🚀 Fast</div>
+                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
+                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~10s</div>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Fee Transparency Box -->
+                <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.18);border-radius:11px;padding:10px 13px 9px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <i class="fas fa-receipt" style="color:#60b4ff;font-size:11px;"></i>
+                      <span style="color:#8aaac8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Total Cost Breakdown</span>
+                    </div>
+                    <div style="position:relative;display:inline-block;">
+                      <i class="fas fa-info-circle" style="color:#60b4ff;font-size:12px;cursor:help;"
+                        onmouseenter="document.getElementById('pay-fee-tooltip').style.display='block'"
+                        onmouseleave="document.getElementById('pay-fee-tooltip').style.display='none'"></i>
+                      <div id="pay-fee-tooltip" style="display:none;position:absolute;right:0;top:20px;z-index:100;background:#1a2235;border:1px solid rgba(55,138,221,0.3);border-radius:10px;padding:10px 13px;box-shadow:0 8px 30px rgba(0,0,0,0.4);white-space:nowrap;"></div>
+                    </div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;font-size:11px;">
+                    <div style="color:#8aaac8;">Network Gas</div>
+                    <div id="pay-fee-gas" style="color:#fbbf24;font-weight:700;text-align:right;">$0.0000</div>
+                    <div style="color:#8aaac8;">Platform Fee (0.2%)</div>
+                    <div id="pay-fee-platform" style="color:#60b4ff;font-weight:700;text-align:right;">$0.0000</div>
+                    <div style="color:#8aaac8;">Government Tax</div>
+                    <div id="pay-fee-tax" style="color:#a78bfa;font-weight:700;text-align:right;">$0.0000</div>
+                    <div style="color:#dde2f0;font-weight:700;border-top:1px solid rgba(55,138,221,0.15);padding-top:4px;margin-top:2px;">Total Cost (USD)</div>
+                    <div id="pay-fee-total" style="color:#34d399;font-weight:800;text-align:right;border-top:1px solid rgba(55,138,221,0.15);padding-top:4px;margin-top:2px;">$0.0000</div>
+                  </div>
+                </div>
+
                 <!-- Payment Note -->
                 <div>
                   <label class="pay-cf-label">
                     <i class="fas fa-sticky-note" style="color:#a78bfa;"></i>
                     PAYMENT NOTE
                     <span class="opt">(optional)</span>
+                    <span style="margin-left:auto;cursor:help;" title="A short text memo included in the receipt. Not stored on-chain. Max 300 characters."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </label>
                   <textarea id="pay-note" class="pay-note-input px-3 py-2"
                     placeholder="e.g. Freelance payment, invoice #123, salary…"
@@ -1629,6 +1724,7 @@ app.get('/', (c) => {
                   <div class="pay-cf-label" style="margin-bottom:10px;">
                     <i class="fas fa-clock" style="color:#a78bfa;"></i>
                     SEND TIMING
+                    <span style="margin-left:auto;cursor:help;" title="Send Now executes immediately. Schedule queues the payment and executes at the specified time (MM/DD/YYYY, local → UTC). Gas estimate may vary at execution."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </div>
                   <div class="pay-sched-toggle">
                     <button type="button" class="pay-sched-opt active-now" id="pay-sched-now" onclick="paySetSchedule('now')">
@@ -1641,7 +1737,7 @@ app.get('/', (c) => {
                   <div id="pay-sched-inputs" style="display:none;">
                     <div>
                       <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;margin-top:2px;">
-                        <i class="fas fa-calendar" style="color:#60b4ff;"></i>DATE
+                        <i class="fas fa-calendar" style="color:#60b4ff;"></i>DATE (MM/DD/YYYY)
                       </label>
                       <input type="date" id="pay-sched-date" class="pay-cf-input px-3 py-2 text-sm"
                         oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
@@ -1662,13 +1758,15 @@ app.get('/', (c) => {
                       </select>
                     </div>
                     <div id="pay-sched-hint" class="pay-sched-hint" style="grid-column:1/-1;"></div>
+                    <!-- Future cost warning for scheduled payments -->
+                    <div id="pay-future-cost-warn" style="display:none;grid-column:1/-1;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:7px 10px;margin-top:4px;"></div>
                   </div>
                 </div>
 
                 <!-- Preview box -->
                 <div id="pay-preview-box">
                   <div class="prow"><span class="pk">Token</span><span id="prev-token" class="pv" style="color:#60b4ff;">USDC</span></div>
-                  <div class="prow"><span class="pk">Amount</span><span id="prev-amount" class="pv">—</span></div>
+                  <div class="prow"><span class="pk">Amount</span><span id="prev-amount" class="pv">—</span><span id="prev-amount-usd" style="color:#8aaac8;font-size:10px;margin-left:6px;"></span></div>
                   <div class="prow"><span class="pk">To</span><span id="prev-recipient" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
                   <div class="prow" id="prev-recipient-name-row" style="display:none;"><span class="pk">Recipient</span><span id="prev-recipient-name" class="pv" style="color:#34d399;">—</span></div>
                   <div class="prow" id="prev-recipient-email-row" style="display:none;"><span class="pk">Recip. Email</span><span id="prev-recipient-email-display" class="pv" style="color:#34d399;">—</span></div>
@@ -1676,7 +1774,8 @@ app.get('/', (c) => {
                   <div class="prow"><span class="pk">Network</span><span id="prev-network" class="pv" style="color:#34d399;">Arc Testnet</span></div>
                   <div class="prow" id="prev-sched-row" style="display:none;"><span class="pk">Scheduled</span><span id="prev-sched" class="pv" style="color:#c4b5fd;">—</span></div>
                   <div class="prow" id="prev-note-row" style="display:none;"><span class="pk">Note</span><span id="prev-note" class="pv" style="color:#a8c4e0;font-style:italic;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span></div>
-                  <div class="prow"><span class="pk">Est. Fee</span><span id="prev-gas" class="pv" style="color:#fbbf24;">~1 tx</span></div>
+                  <div class="prow"><span class="pk">Est. Gas</span><span id="prev-gas" class="pv" style="color:#fbbf24;">~1 tx</span></div>
+                  <div class="prow" style="border-top:1px solid rgba(55,138,221,0.15);margin-top:3px;padding-top:5px;"><span class="pk" style="color:#dde2f0;font-weight:700;">Total Cost (USD)</span><span id="prev-total-cost" class="pv" style="color:#34d399;font-weight:800;">$0.0000</span></div>
                 </div>
 
                 <!-- Error box -->
@@ -1685,6 +1784,13 @@ app.get('/', (c) => {
                   <span id="pay-error-text" style="color:#fca5a5;font-size:12px;flex:1;"></span>
                   <button onclick="hidePayError()" style="background:none;border:none;color:#8aaac8;cursor:pointer;font-size:14px;padding:0;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#8aaac8'">✕</button>
                 </div>
+
+                <!-- Retry button -->
+                <button id="pay-retry-btn" onclick="executePayment()"
+                  style="display:none;width:100%;padding:9px;background:rgba(251,191,36,0.09);border:1px solid rgba(251,191,36,0.3);border-radius:10px;color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;align-items:center;justify-content:center;gap:7px;"
+                  onmouseover="this.style.background='rgba(251,191,36,0.16)'" onmouseout="this.style.background='rgba(251,191,36,0.09)'">
+                  <i class="fas fa-redo"></i> Retry Transaction
+                </button>
 
                 <!-- Submit button -->
                 <button type="button" id="pay-send-btn" onclick="executePayment()" disabled
@@ -4750,7 +4856,7 @@ app.get('/', (c) => {
   <script src="/static/persistence.js?v=20250323"></script>
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
   <script src="/static/app.js?v=20260327b"></script>
-  <script src="/static/payments.js?v=20260327b"></script>
+  <script src="/static/payments.js?v=20260330a"></script>
   <script src="/static/contracts.js?v=20250325a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
@@ -4766,7 +4872,7 @@ app.get('/', (c) => {
   <script src="/static/permit2-engine.js?v=20260328a"></script>
   <script src="/static/permit2-chat.js?v=20260328b"></script>
   <script src="/static/chat-csv.js?v=20260328a"></script>
-  <script src="/static/chat.js?v=20260402b"></script>
+  <script src="/static/chat.js?v=20260330a"></script>
   <script src="/static/queue-engine.js?v=20260402a"></script>
   <script src="/static/otc-escrow-abi.js?v=20260403b"></script>
   <script src="/static/otc.js?v=20260403b"></script>

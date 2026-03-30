@@ -1,6 +1,6 @@
 // ============================================================
-// ARC Payments Module v3 — Scheduled Payments · Notes · Receipt Modal
-// Features: real-time validation, scheduling, notes, receipt modal, PDF
+// ARC Payments Module v4 — Fee Transparency · Gas Oracle · Multi-Token
+// Multi-Network · Gov Tax · ENS · KYC · TX Pipeline · Receipts++
 // ============================================================
 'use strict';
 
@@ -12,6 +12,25 @@ const PAY_CHAIN_ID  = 5042002;
 const PAY_CHAIN_HEX = '0x4cef52';
 const PAY_NOTE_MAX  = 300;
 const PAY_SCHEDULED_KEY = 'arc_scheduled_payments';
+
+// ─── Multi-Token & Multi-Network Registry ────────────────────────────────────
+const PAY_TOKENS = {
+  USDC: { address: () => PAY_USDC(), decimals: 6, symbol: 'USDC', usdRate: 1.0,   color: '#60b4ff', network: 'arc' },
+  EURC: { address: () => PAY_EURC(), decimals: 6, symbol: 'EURC', usdRate: 1.08,  color: '#a78bfa', network: 'arc' },
+};
+
+// ─── Gas Speed Tiers ─────────────────────────────────────────────────────────
+const PAY_GAS_TIERS = {
+  slow:     { label: 'Slow',     multiplier: 0.85, confirmTime: '~120s', color: '#6b7280' },
+  standard: { label: 'Standard', multiplier: 1.00, confirmTime: '~30s',  color: '#fbbf24' },
+  fast:     { label: 'Fast',     multiplier: 1.30, confirmTime: '~10s',  color: '#34d399' },
+};
+
+// ─── Platform Fee ─────────────────────────────────────────────────────────────
+const PAY_PLATFORM_FEE_PCT = 0.002; // 0.2%
+
+// ─── State ────────────────────────────────────────────────────────────────────
+// (extended below with new fields)
 
 const PAY_ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -39,6 +58,18 @@ const payState = {
   pending: false,
   scheduleMode: 'now',  // 'now' | 'later'
   schedTimerId: null,   // setInterval for polling scheduled jobs
+  // New v4 state
+  gasTier: 'standard',  // 'slow' | 'standard' | 'fast'
+  gasUSD: 0,            // last estimated gas cost in USD
+  gasGwei: 0,           // last gas price in gwei
+  platformFeeUSD: 0,    // 0.2% of amount in USD
+  govTaxUSD: 0,         // gov tax in USD
+  govTaxMode: 'pct',    // 'pct' | 'fixed'
+  govTaxValue: 0,       // user-entered tax value
+  totalCostUSD: 0,      // sum of gas+platform+tax in USD
+  arcUSD: 0.0001,       // ARC token price in USD (fetched live)
+  kycStatus: null,      // 'verified' | 'unverified' | null
+  ensResolved: null,    // ENS→address resolved
 };
 
 // ─── Persistent Hide State (Payments) ──────────────────────────────────────────
@@ -170,6 +201,291 @@ async function payGetNonce(address) {
   return await window.walletState.provider.request({ method: 'eth_getTransactionCount', params: [address, 'latest'] });
 }
 
+// ─── Gas Oracle & Fee Calculation ────────────────────────────────────────────
+async function payFetchARCPrice() {
+  // Try to fetch live ARC/USD price from CoinGecko or public oracle
+  // Since ARC testnet has no live price, use a reasonable default with fallback
+  try {
+    // Try coingecko free API for reference price (using ARC equivalent)
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd', { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const json = await res.json();
+      // ARC testnet: estimate price relative to ETH (testnet ratio)
+      // Using ETH price / 10000 as placeholder since ARC is a testnet
+      const ethPrice = json.ethereum?.usd || 3000;
+      payState.arcUSD = ethPrice / 100000; // ~$0.03 per ARC as testnet estimate
+    }
+  } catch (_) {
+    // Fallback: use $0.0001 per ARC (testnet)
+    payState.arcUSD = 0.0001;
+  }
+  return payState.arcUSD;
+}
+
+async function payGetGasPriceGwei() {
+  const provider = window.walletState?.provider;
+  if (!provider) return 10; // default 10 gwei
+  try {
+    const hex = await provider.request({ method: 'eth_gasPrice' });
+    return Number(BigInt(hex)) / 1e9;
+  } catch (_) { return 10; }
+}
+
+// Get gas price with tier multiplier
+async function payGetTieredGasPrice() {
+  const baseGwei = await payGetGasPriceGwei();
+  const tier = PAY_GAS_TIERS[payState.gasTier] || PAY_GAS_TIERS.standard;
+  const tieredGwei = baseGwei * tier.multiplier;
+  payState.gasGwei = tieredGwei;
+  return '0x' + Math.round(tieredGwei * 1e9).toString(16);
+}
+
+// Estimate total fee in USD for current form state
+async function payUpdateGasEstimate() {
+  const amountStr = (payEl('pay-amount')?.value || '').trim();
+  const amountNum = parseFloat(amountStr) || 0;
+  const token = payState.token;
+  const tokenMeta = PAY_TOKENS[token];
+
+  // Platform fee (0.2% of amount)
+  const amountUSD = amountNum * (tokenMeta?.usdRate || 1.0);
+  payState.platformFeeUSD = amountUSD * PAY_PLATFORM_FEE_PCT;
+
+  // Gas estimate
+  try {
+    const arcPrice = await payFetchARCPrice();
+    const gasPriceGwei = await payGetGasPriceGwei();
+    const tier = PAY_GAS_TIERS[payState.gasTier] || PAY_GAS_TIERS.standard;
+    const tieredGwei = gasPriceGwei * tier.multiplier;
+    const gasUnits = 65000; // typical ERC-20 transfer
+    const gasFeeARC = (tieredGwei * 1e9 * gasUnits) / 1e18;
+    payState.gasUSD = gasFeeARC * arcPrice;
+    payState.gasGwei = tieredGwei;
+  } catch (_) {
+    payState.gasUSD = 0.000001; // negligible testnet
+  }
+
+  // Gov tax
+  const rawTax = parseFloat((payEl('pay-gov-tax')?.value || '').trim()) || 0;
+  const taxMode = (payEl('pay-tax-mode')?.value || 'pct');
+  payState.govTaxMode = taxMode;
+  payState.govTaxValue = rawTax;
+  if (taxMode === 'pct') {
+    payState.govTaxUSD = amountUSD * (rawTax / 100);
+  } else {
+    payState.govTaxUSD = rawTax;
+  }
+
+  // Total cost
+  payState.totalCostUSD = payState.gasUSD + payState.platformFeeUSD + payState.govTaxUSD;
+
+  // Update UI panels
+  _payUpdateFeeUI();
+  _payUpdateGasSpeedUI();
+}
+
+function _payUpdateFeeUI() {
+  const fmt = (n) => n < 0.0001 ? '<$0.0001' : '$' + n.toFixed(4);
+  paySet('pay-fee-gas',      fmt(payState.gasUSD));
+  paySet('pay-fee-platform', fmt(payState.platformFeeUSD));
+  paySet('pay-fee-tax',      fmt(payState.govTaxUSD));
+  paySet('pay-fee-total',    fmt(payState.totalCostUSD));
+  paySet('prev-total-cost',  fmt(payState.totalCostUSD));
+
+  // Tooltip breakdown
+  const tt = payEl('pay-fee-tooltip');
+  if (tt) {
+    const amountNum = parseFloat((payEl('pay-amount')?.value || '').trim()) || 0;
+    const amountUSD = amountNum * (PAY_TOKENS[payState.token]?.usdRate || 1.0);
+    const tier = PAY_GAS_TIERS[payState.gasTier] || PAY_GAS_TIERS.standard;
+    tt.innerHTML = `
+      <div style="min-width:220px;font-size:11px;line-height:1.7;">
+        <div style="font-weight:700;color:#dde2f0;margin-bottom:4px;">Fee Breakdown</div>
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <span style="color:#8aaac8;">Network Gas (${tier.label}, ~${payState.gasGwei.toFixed(1)} gwei)</span>
+          <span style="color:#fbbf24;">${fmt(payState.gasUSD)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <span style="color:#8aaac8;">Platform Fee (0.2%)</span>
+          <span style="color:#60b4ff;">${fmt(payState.platformFeeUSD)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <span style="color:#8aaac8;">Government Tax (${payState.govTaxMode === 'pct' ? payState.govTaxValue + '%' : '$' + payState.govTaxValue + ' fixed'})</span>
+          <span style="color:#a78bfa;">${fmt(payState.govTaxUSD)}</span>
+        </div>
+        <div style="border-top:1px solid rgba(55,138,221,0.2);margin-top:4px;padding-top:4px;display:flex;justify-content:space-between;gap:8px;">
+          <span style="color:#dde2f0;font-weight:700;">Total Cost</span>
+          <span style="color:#34d399;font-weight:700;">${fmt(payState.totalCostUSD)}</span>
+        </div>
+        <div style="margin-top:4px;color:#5a8090;font-size:10px;">
+          Amount value: ${fmt(amountUSD)} · Gas: ${tier.confirmTime}
+        </div>
+        ${payState.scheduleMode === 'later' ? '<div style="margin-top:3px;color:#fbbf24;font-size:10px;">⚠️ Estimated future cost — gas prices may change</div>' : ''}
+      </div>`;
+  }
+}
+
+function _payUpdateGasSpeedUI() {
+  // Update gas tier buttons
+  Object.keys(PAY_GAS_TIERS).forEach(tier => {
+    const btn = payEl('pay-gas-' + tier);
+    if (!btn) return;
+    const tierData = PAY_GAS_TIERS[tier];
+    const isActive = tier === payState.gasTier;
+    btn.style.background = isActive ? `rgba(55,138,221,0.18)` : 'rgba(55,138,221,0.06)';
+    btn.style.borderColor = isActive ? 'rgba(55,138,221,0.5)' : 'rgba(55,138,221,0.15)';
+    btn.style.color = isActive ? '#60b4ff' : '#7a9ab8';
+    const fmtGas = payState.gasUSD < 0.0001 ? '<$0.0001' : '$' + (payState.gasUSD * (tierData.multiplier / (PAY_GAS_TIERS[payState.gasTier]?.multiplier || 1))).toFixed(5);
+    const costEl = btn.querySelector('.gas-cost');
+    const timeEl = btn.querySelector('.gas-time');
+    if (costEl) costEl.textContent = fmtGas;
+    if (timeEl) timeEl.textContent = tierData.confirmTime;
+  });
+}
+
+function paySelectGasTier(tier) {
+  if (!PAY_GAS_TIERS[tier]) return;
+  payState.gasTier = tier;
+  payUpdateGasEstimate();
+}
+
+// ─── ENS Resolver ─────────────────────────────────────────────────────────────
+async function payResolveENS() {
+  const input = payEl('pay-recipient');
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val.includes('.')) {
+    showToast('Enter an ENS name (e.g. vitalik.eth)', 'warning');
+    return;
+  }
+  const btn = payEl('pay-ens-btn');
+  if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; btn.disabled = true; }
+  try {
+    // Use public ENS resolution via ethers if available
+    if (window.ethers?.providers?.JsonRpcProvider || window.ethers?.JsonRpcProvider) {
+      const ProvClass = window.ethers.JsonRpcProvider || window.ethers.providers.JsonRpcProvider;
+      const mainnetProvider = new ProvClass('https://cloudflare-eth.com');
+      const resolved = await mainnetProvider.resolveName(val);
+      if (resolved) {
+        input.value = resolved;
+        payState.ensResolved = { ens: val, address: resolved };
+        showToast(`✅ ENS resolved: ${val} → ${resolved.slice(0,10)}…${resolved.slice(-8)}`, 'success');
+        payValidateField('recipient'); updatePayPreview(); payValidateForm();
+      } else {
+        showToast('ENS name not found or not registered', 'error');
+      }
+    } else {
+      // Fallback: ENS API
+      const res = await fetch(`https://api.ensideas.com/ens/resolve/${encodeURIComponent(val)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.address) {
+          input.value = data.address;
+          payState.ensResolved = { ens: val, address: data.address };
+          showToast(`✅ ENS resolved: ${val} → ${data.address.slice(0,10)}…`, 'success');
+          payValidateField('recipient'); updatePayPreview(); payValidateForm();
+        } else {
+          showToast('ENS name not resolved', 'error');
+        }
+      }
+    }
+  } catch (e) {
+    showToast('ENS resolution failed: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.innerHTML = '<i class="fas fa-search"></i> ENS'; btn.disabled = false; }
+  }
+}
+
+// ─── KYC Status ───────────────────────────────────────────────────────────────
+async function payCheckKYC(address) {
+  if (!address) return;
+  try {
+    // Check against local KYC records first
+    const res = await fetch(`/api/kyc/status?address=${encodeURIComponent(address)}`).catch(() => null);
+    if (res && res.ok) {
+      const data = await res.json();
+      payState.kycStatus = data.status || 'unverified';
+      payState.kycLimit  = data.limit  || 0;
+    } else {
+      payState.kycStatus = 'unverified';
+      payState.kycLimit  = 0;
+    }
+  } catch (_) {
+    payState.kycStatus = null;
+  }
+  _payUpdateKYCUI();
+}
+
+function _payUpdateKYCUI() {
+  const el = payEl('pay-kyc-status');
+  if (!el) return;
+  if (!payState.kycStatus) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  if (payState.kycStatus === 'verified') {
+    el.innerHTML = `<i class="fas fa-shield-check" style="color:#34d399;"></i><span style="color:#34d399;">KYC Verified${payState.kycLimit ? ' — Limit $' + Number(payState.kycLimit).toLocaleString() : ''}</span>`;
+  } else {
+    el.innerHTML = `<i class="fas fa-exclamation-triangle" style="color:#fbbf24;"></i><span style="color:#fbbf24;">KYC Not Verified</span>`;
+  }
+}
+
+// ─── Transaction Status Pipeline ──────────────────────────────────────────────
+const PAY_STEPS = [
+  { icon: 'fa-network-wired',   label: 'Verify network'             },
+  { icon: 'fa-coins',           label: 'Read token balance'         },
+  { icon: 'fa-check-double',    label: 'Token approval (if needed)' },
+  { icon: 'fa-signature',       label: 'Sign & broadcast'           },
+  { icon: 'fa-hourglass-half',  label: 'Awaiting confirmation'      },
+  { icon: 'fa-receipt',         label: 'Generating receipt'         },
+];
+
+function paySetStepEx(step, state, detail) {
+  paySetStep(step, state);
+  if (detail) paySetStepLabel(step, PAY_STEPS[step]?.label + ' — ' + detail);
+}
+
+function payResetSteps() {
+  PAY_STEPS.forEach((_, i) => {
+    paySetStep(i, 'idle');
+    paySetStepLabel(i, PAY_STEPS[i].label);
+  });
+}
+
+// ─── Error decoder with retry ─────────────────────────────────────────────────
+function payDecodeError(err) {
+  if (err.code === 4001 || /reject|denied|user/i.test(err.message))
+    return { msg: 'Transaction rejected by user.', canRetry: true };
+  if (/insufficient.*gas/i.test(err.message))
+    return { msg: 'Insufficient gas — increase gas tier or add funds.', canRetry: true };
+  if (/insufficient.*balance/i.test(err.message))
+    return { msg: err.message, canRetry: false };
+  if (/nonce/i.test(err.message))
+    return { msg: 'Nonce error — please retry.', canRetry: true };
+  if (/network|rpc|chain/i.test(err.message))
+    return { msg: 'Network error: ' + err.message, canRetry: true };
+  if (/revert/i.test(err.message))
+    return { msg: 'Transaction reverted by contract: ' + err.message.slice(0, 100), canRetry: false };
+  return { msg: 'Payment failed: ' + (err.message || String(err)).slice(0, 120), canRetry: true };
+}
+
+function payShowRetryBtn(show) {
+  let btn = payEl('pay-retry-btn');
+  if (!btn) return;
+  btn.style.display = show ? '' : 'none';
+}
+
+// ─── Scheduled payment: future cost warning ────────────────────────────────────
+function payShowFutureCostWarning() {
+  const el = payEl('pay-future-cost-warn');
+  if (!el) return;
+  if (payState.scheduleMode === 'later') {
+    el.style.display = '';
+    el.innerHTML = `<i class="fas fa-exclamation-triangle" style="color:#fbbf24;margin-right:6px;"></i>
+      <span style="color:#fbbf24;font-size:11px;">Estimated future cost shown — gas prices may change at execution time.</span>`;
+  } else {
+    el.style.display = 'none';
+  }
+}
+
 async function payWaitReceipt(txHash, maxAttempts = 30) {
   const provider = window.walletState?.provider;
   for (let i = 0; i < maxAttempts; i++) {
@@ -213,24 +529,21 @@ async function refreshPaymentBalances() {
 
 // ─── Token selector ────────────────────────────────────────────────────────────
 function selectPayToken(token) {
+  if (!PAY_TOKENS[token]) return;
   payState.token = token;
-  const uBtn = payEl('pay-token-usdc');
-  const eBtn = payEl('pay-token-eurc');
-  if (uBtn && eBtn) {
-    if (token === 'USDC') {
-      uBtn.className = 'pay-tok-btn tok-usdc';
-      eBtn.className = 'pay-tok-btn tok-off';
-    } else {
-      uBtn.className = 'pay-tok-btn tok-off';
-      eBtn.className = 'pay-tok-btn tok-eurc';
-    }
-  }
+  // Update all token buttons
+  Object.keys(PAY_TOKENS).forEach(t => {
+    const btn = payEl('pay-token-' + t.toLowerCase());
+    if (btn) btn.className = t === token ? 'pay-tok-btn tok-' + t.toLowerCase() : 'pay-tok-btn tok-off';
+  });
   const lblTok = payEl('pay-label-token');
   if (lblTok) lblTok.textContent = token;
   paySet('prev-token', token);
   updatePayMaxHint();
   updatePayPreview();
   payValidateForm();
+  // Re-estimate gas with new token
+  payUpdateGasEstimate();
 }
 
 function updatePayMaxHint() {
@@ -406,9 +719,12 @@ function updatePayPreview() {
   const amountNum      = parseFloat(amountStr) || 0;
   const note           = (payEl('pay-note')?.value            || '').trim();
   const token          = payState.token;
+  const tokenMeta      = PAY_TOKENS[token] || { usdRate: 1.0 };
+  const amountUSD      = amountNum * tokenMeta.usdRate;
 
   paySet('prev-token',     token);
   paySet('prev-amount',    amountNum > 0 ? amountNum.toFixed(6) + ' ' + token : '—');
+  paySet('prev-amount-usd', amountNum > 0 ? '≈ $' + amountUSD.toFixed(2) : '');
   paySet('prev-recipient', isValidAddress(recipient) ? shortAddr(recipient) : (recipient || '—'));
   paySet('prev-network',   'Arc Testnet (5042002)');
   paySet('prev-gas',       token === 'EURC' ? '~2 txs (approve + transfer)' : '~1 tx (ERC-20 transfer)');
@@ -444,8 +760,10 @@ function updatePayPreview() {
     } else {
       if (schedRow) schedRow.style.display = 'none';
     }
+    payShowFutureCostWarning();
   } else {
     if (schedRow) schedRow.style.display = 'none';
+    payShowFutureCostWarning();
   }
 
   // Note row
@@ -455,6 +773,12 @@ function updatePayPreview() {
     if (noteRow) noteRow.style.display = '';
   } else {
     if (noteRow) noteRow.style.display = 'none';
+  }
+
+  // Trigger fee recalculation
+  if (amountNum > 0 || payState.totalCostUSD > 0) {
+    clearTimeout(payState._feeTimer);
+    payState._feeTimer = setTimeout(payUpdateGasEstimate, 400);
   }
 }
 
@@ -732,36 +1056,47 @@ async function executePaymentCore({ fullname, email, recipient, recipientName, r
   let gasPrice = '0x2540BE400';
   const startTime = Date.now();
 
+  // Use tiered gas price
+  const tieredGasPrice = await payGetTieredGasPrice();
+
   if (window.ethers?.Contract) {
     const contract = await payGetContract(token);
     showToast('📝 Confirm ' + token + ' transfer in your wallet…', 'info');
     const tx = await contract.transfer(recipient, amount);
     txHash   = tx.hash;
-    gasPrice = await payGetGasPrice();
+    gasPrice = tieredGasPrice;
     showToast('⏳ Transaction submitted: ' + txHash.slice(0,14) + '…', 'info');
     const receipt = await tx.wait();
     if (!receipt || receipt.status !== 1) throw new Error(token + ' transfer reverted on-chain.');
-    gasUsed = receipt.gasUsed ? receipt.gasUsed.toString() : '~21000';
+    gasUsed = receipt.gasUsed ? receipt.gasUsed.toString() : '~65000';
   } else {
     const contractAddr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
     const data    = PAY_SELECTORS.transfer + encAddr(recipient) + BigInt(amount).toString(16).padStart(64, '0');
-    gasPrice      = await payGetGasPrice();
+    gasPrice      = tieredGasPrice;
     const txBase  = { from, to: contractAddr, data, value: '0x0' };
     const gas     = await payEstimateGas(txBase);
     const nonce   = await payGetNonce(from);
     txHash        = await window.walletState.provider.request({
       method: 'eth_sendTransaction',
-      params: [{ from, to: contractAddr, data, value: '0x0', gas, gasPrice, nonce }],
+      params: [{ from, to: contractAddr, data, value: '0x0', gas, gasPrice: tieredGasPrice, nonce }],
     });
     const rxReceipt = await payWaitReceipt(txHash);
     if (rxReceipt.status !== '0x1' && rxReceipt.status !== 1) throw new Error('Transaction reverted on-chain.');
-    gasUsed = rxReceipt.gasUsed ? parseInt(rxReceipt.gasUsed, 16).toString() : '~21000';
+    gasUsed = rxReceipt.gasUsed ? parseInt(rxReceipt.gasUsed, 16).toString() : '~65000';
   }
 
   const durationMs = Date.now() - startTime;
   const gpNum      = Number(BigInt(gasPrice));
   let gasFeeEst    = (gpNum * Number(gasUsed)) / 1e18;
   if (isNaN(gasFeeEst) || gasFeeEst === 0) gasFeeEst = 0.000021;
+
+  // Build complete fee breakdown
+  const tokenMeta     = PAY_TOKENS[token] || { usdRate: 1.0 };
+  const amountUSD     = amountHuman * tokenMeta.usdRate;
+  const gasUSD        = payState.gasUSD > 0 ? payState.gasUSD : gasFeeEst * payState.arcUSD;
+  const platformFeeUSD = amountUSD * PAY_PLATFORM_FEE_PCT;
+  const govTaxUSD     = payState.govTaxUSD || 0;
+  const totalCostUSD  = gasUSD + platformFeeUSD + govTaxUSD;
 
   const receiptData = {
     id: 'pay_' + Date.now(),
@@ -770,7 +1105,16 @@ async function executePaymentCore({ fullname, email, recipient, recipientName, r
     recipientEmail: recipientEmail || '',
     txHash, sender: from, recipient,
     amount: amountHuman, token,
+    amountUSD: amountUSD.toFixed(4),
     gasFee: gasFeeEst.toFixed(6), gasUsed,
+    gasUSD: gasUSD.toFixed(6),
+    gasTier: payState.gasTier,
+    gasGwei: payState.gasGwei.toFixed(2),
+    platformFeeUSD: platformFeeUSD.toFixed(6),
+    govTaxUSD: govTaxUSD.toFixed(6),
+    govTaxMode: payState.govTaxMode,
+    govTaxValue: payState.govTaxValue,
+    totalCostUSD: totalCostUSD.toFixed(6),
     network: 'Arc Testnet', chainId: PAY_CHAIN_ID,
     timestamp: new Date().toISOString(),
     durationMs,
@@ -930,13 +1274,10 @@ async function executePayment() {
   } catch (err) {
     console.error('[PAY] Payment error:', err);
     paySetStep(payState.step, 'error');
-    const msg = err.code === 4001 || /reject|denied|user/i.test(err.message)
-      ? 'Transaction rejected by user.'
-      : /insufficient/i.test(err.message) ? err.message
-      : /network|rpc|chain/i.test(err.message) ? 'Network error: ' + err.message
-      : 'Payment failed: ' + err.message;
+    const { msg, canRetry } = payDecodeError(err);
     showPayError(msg);
-    showToast('❌ ' + err.message?.slice(0, 80), 'error');
+    payShowRetryBtn(canRetry);
+    showToast('❌ ' + (err.message?.slice(0, 80) || String(err)), 'error');
   } finally {
     payState.pending = false;
     payValidateForm();
@@ -995,10 +1336,10 @@ function buildReceiptHTML(r) {
         ${statusBadge}
         <span style="font-size:10px;color:#7a9cc0;">${new Date(r.timestamp || r.createdAt).toLocaleString()}</span>
       </div>
-      ${r.fullname  ? receiptRow('Sender Name',     r.fullname)  : ''}
+    ${r.fullname  ? receiptRow('Sender Name',     r.fullname)  : ''}
       ${r.email     ? receiptRow('Sender Email',    r.email)     : ''}
       ${receiptRow('Token',      '<span style="color:#60b4ff;font-weight:700;">' + r.token + '</span>')}
-      ${receiptRow('Amount',     '<span style="color:#dde2f0;font-weight:700;">' + Number(r.amount).toFixed(6) + ' ' + r.token + '</span>')}
+      ${receiptRow('Amount',     '<span style="color:#dde2f0;font-weight:700;">' + Number(r.amount).toFixed(6) + ' ' + r.token + (r.amountUSD ? ' <span style="color:#8aaac8;font-size:10px;">(≈$' + r.amountUSD + ')</span>' : '') + '</span>')}
       ${receiptRow('From',       '<span style="font-family:monospace;font-size:11px;color:#dde2f0;">' + shortAddr(r.sender || r.from) + '</span>')}
       ${receiptRow('To',         '<span style="font-family:monospace;font-size:11px;color:#dde2f0;">' + shortAddr(r.recipient) + '</span>')}
       ${r.recipientName  ? receiptRow('Recipient Name',  r.recipientName)  : ''}
@@ -1008,7 +1349,11 @@ function buildReceiptHTML(r) {
       ${r.scheduledAt ? receiptRow('Scheduled For', new Date(r.scheduledAt).toLocaleString()) : ''}
       ${r.txHash ? receiptRow('Tx Hash', '<a href="' + r.explorerUrl + '" target="_blank" style="color:#378ADD;font-family:monospace;font-size:11px;text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + r.txHash.slice(0,16) + '… ↗</a>') : ''}
       ${r.timestamp ? receiptRow('Date & Time', new Date(r.timestamp).toLocaleString()) : ''}
-      ${r.gasFee ? receiptRow('Est. Gas', '~' + r.gasFee + ' ARC') : ''}
+      ${r.gasFee ? receiptRow('Gas Fee (ARC)', '~' + r.gasFee + ' ARC' + (r.gasGwei ? ' @ ' + r.gasGwei + ' gwei' : '') + (r.gasTier ? ' [' + r.gasTier + ']' : '')) : ''}
+      ${r.gasUSD ? receiptRow('Gas Cost (USD)', '≈ $' + Number(r.gasUSD).toFixed(6)) : ''}
+      ${r.platformFeeUSD ? receiptRow('Platform Fee (0.2%)', '≈ $' + Number(r.platformFeeUSD).toFixed(6)) : ''}
+      ${r.govTaxUSD && Number(r.govTaxUSD) > 0 ? receiptRow('Gov. Tax', '≈ $' + Number(r.govTaxUSD).toFixed(6) + (r.govTaxMode === 'pct' ? ' (' + r.govTaxValue + '%)' : ' (fixed)')) : ''}
+      ${r.totalCostUSD ? receiptRow('<strong>Total Cost (USD)</strong>', '<strong style="color:#34d399;">≈ $' + Number(r.totalCostUSD).toFixed(6) + '</strong>') : ''}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button onclick="(typeof arcViewPaymentReceipt==='function'?arcViewPaymentReceipt:payOpenReceiptModal)(payFindReceipt('${r.id}')||payState.receipt)"
@@ -1109,11 +1454,15 @@ function generatePayReceiptPDF(r, autoDownload) {
 
       addSection('Payment Details');
       addRow('Token',       r.token, [34, 100, 200]);
-      addRow('Amount',      Number(r.amount).toFixed(6) + ' ' + r.token);
+      addRow('Amount',      Number(r.amount).toFixed(6) + ' ' + r.token + (r.amountUSD ? ' (≈$' + r.amountUSD + ')' : ''));
       addRow('Recipient',   r.recipient);
       addRow('Network',     (r.network || 'Arc Testnet') + ' (Chain ' + (r.chainId || PAY_CHAIN_ID) + ')', [22, 140, 80]);
-      if (r.gasFee) addRow('Est. Gas Fee', '~' + r.gasFee + ' ARC');
-      if (r.note)   addRow('Note', r.note);
+      if (r.gasFee)          addRow('Gas Fee (ARC)', '~' + r.gasFee + ' ARC' + (r.gasTier ? ' [' + r.gasTier + ']' : ''));
+      if (r.gasUSD)          addRow('Gas Cost (USD)', '≈ $' + Number(r.gasUSD).toFixed(6));
+      if (r.platformFeeUSD)  addRow('Platform Fee (0.2%)', '≈ $' + Number(r.platformFeeUSD).toFixed(6));
+      if (r.govTaxUSD && Number(r.govTaxUSD) > 0) addRow('Gov. Tax', '≈ $' + Number(r.govTaxUSD).toFixed(6) + (r.govTaxMode === 'pct' ? ' (' + r.govTaxValue + '%)' : ' (fixed)'));
+      if (r.totalCostUSD)    addRow('Total Cost (USD)', '≈ $' + Number(r.totalCostUSD).toFixed(6), [22, 140, 80]);
+      if (r.note)            addRow('Note', r.note);
       y += 4;
 
       addSection('Transaction Details');
@@ -1625,5 +1974,11 @@ window.addEventListener('accountsChanged', async (e) => {
 });
 
 // ─── Boot log ──────────────────────────────────────────────────────────────────
-console.log('[PAY v3] Payments module loaded — Arc Testnet ChainID:', PAY_CHAIN_ID);
-console.log('[PAY v3] Features: Scheduled Payments · Notes · Receipt Modal · Status Labels · Hybrid Persistence');
+console.log('[PAY v4] Payments module loaded — Arc Testnet ChainID:', PAY_CHAIN_ID);
+console.log('[PAY v4] Features: Fee Transparency · Gas Oracle · Multi-Token · Gov Tax · ENS · KYC · TX Pipeline · Receipts++');
+
+// ─── Expose new functions to window ──────────────────────────────────────────
+window.paySelectGasTier    = paySelectGasTier;
+window.payResolveENS       = payResolveENS;
+window.payUpdateGasEstimate = payUpdateGasEstimate;
+window.payDecodeError      = payDecodeError;

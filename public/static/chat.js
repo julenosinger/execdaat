@@ -1861,12 +1861,14 @@ async function cmdSendPayment(amount, token, recipient) {
     `| Amount | **${amount} ${token}** |\n` +
     `| To | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n` +
     `| ${gasNote.replace('⛽ ','')} | |\n` +
+    `| Platform Fee | 0.2% of amount |\n` +
     `| 🛡️ Guardian | ✅ Approved |` +
     balanceNote + reuseNote +
-    `\n\n🤖 *Confirm to proceed with the transfer.*`,
+    `\n\n💡 *Full fee breakdown shown in the Payments form. Confirm to proceed.*`,
     'payments'
   );
   // BRAIN → UI: queue the transfer (no Permit2, no wallet popup)
+  // Single recipient → always routes to Payments tab (never Multisend)
   appendActionCard([
     { label: `📥 Adicionar à Fila`, action: `_chatQueueTransfer('${amount}','${token}','${recipient}')`, primary: true },
     { label: '📝 Pré-preencher Formulário', action: `_chatPrefillPaymentForm('${amount}','${token}','${recipient}')`, primary: false },
@@ -2133,15 +2135,17 @@ async function _chatPrefillPaymentForm(amount, token, recipient) {
   await new Promise(r => setTimeout(r, 300));
   const addrEl = document.getElementById('pay-recipient');
   const amtEl  = document.getElementById('pay-amount');
-  if (addrEl) addrEl.value = recipient;
-  if (amtEl)  amtEl.value  = amount;
-  document.querySelectorAll('.pay-token-btn').forEach(btn => {
-    if (btn.dataset.token === token) btn.click();
-  });
+  if (addrEl) { addrEl.value = recipient; addrEl.dispatchEvent(new Event('input', { bubbles: true })); }
+  if (amtEl)  { amtEl.value  = amount;    amtEl.dispatchEvent(new Event('input', { bubbles: true })); }
+  if (token && typeof selectPayToken === 'function') selectPayToken(token);
+  if (typeof updatePayPreview === 'function') updatePayPreview();
+  if (typeof payValidateForm  === 'function') payValidateForm();
+  // Trigger fee calculation after form fill
+  if (typeof payUpdateGasEstimate === 'function') setTimeout(payUpdateGasEstimate, 500);
   appendChatMessage('assistant',
     `✅ **Form pre-filled!**\n\n` +
     `Amount: **${amount} ${token}** → \`${recipient.slice(0,10)}…\`\n\n` +
-    `Review and click **Sign & Send** to execute.`,
+    `Fee breakdown is being calculated. Review and click **Sign & Send** to execute.`,
     'payments'
   );
   appendActionCard([{ label: '💳 Go to Payments Tab', action: `switchTab('payments')`, primary: true }]);
@@ -2396,13 +2400,13 @@ function arcExecuteAction(actionId) {
   switch (action.type) {
 
     case 'transfer': {
-      // Single recipient → Payments tab
+      // Single recipient → Payments tab (NEVER Multisend)
       // Queue the transfer so "Execute Payments" button appears in chat
       if (d.to && d.amount) {
         const token = d.token || 'USDC';
         _chatQueueTransfer(String(d.amount), token, String(d.to));
       }
-      // Also navigate to payments tab + pre-fill the form
+      // Navigate to payments tab + pre-fill the form
       if (typeof switchTab === 'function') switchTab('payments');
       setTimeout(() => {
         fillField('pay-recipient', d.to || '');
@@ -2411,6 +2415,8 @@ function arcExecuteAction(actionId) {
         if (d.token && typeof selectPayToken === 'function') selectPayToken(d.token);
         if (typeof updatePayPreview === 'function') updatePayPreview();
         if (typeof payValidateForm === 'function') payValidateForm();
+        // Trigger fee calculation with a small delay (fees load asynchronously)
+        if (typeof payUpdateGasEstimate === 'function') setTimeout(payUpdateGasEstimate, 500);
         // Close chat after short delay
         setTimeout(() => { if (typeof toggleChat === 'function') toggleChat(); }, 300);
       }, 400);
