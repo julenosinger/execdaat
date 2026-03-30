@@ -38,15 +38,11 @@
   }
 
   // ── 2. Prototype Pollution Prevention ────────────────────────────────────────
-  // Freeze critical object prototypes to block __proto__ attacks
+  // Note: Object.freeze(Object.prototype) was removed — freezing global prototypes
+  // breaks legitimate libraries (ethers v6, jsPDF) that define non-writable properties
+  // on instances, causing "Cannot assign to read only property 'toString'" errors.
+  // Prototype pollution is instead prevented by the defineProperty monitor below.
   ;(function freezePrototypes() {
-    try {
-      Object.freeze(Object.prototype)
-      Object.freeze(Array.prototype)
-      Object.freeze(Function.prototype)
-    } catch (e) {
-      // Already frozen or strict mode prevents it — safe to continue
-    }
 
     // Monitor for prototype mutation attempts
     const dangerous = ['__proto__', 'constructor', 'prototype']
