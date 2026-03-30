@@ -652,3 +652,23 @@ function otcDecodeDealState(stateNum) {
 
 // Backward-compat alias (v1/v2 code may reference this)
 const OTC_ESCROW_ABI_GETDEALSTATUS = OTC_ESCROW_ABI.find(e => e.name === 'getDealStatus');
+
+// ─── Explicit window exports ──────────────────────────────────────────────────
+// In browsers, top-level `const` declarations are NOT added to window.*
+// (unlike `var`). Scripts loaded after this one that check
+// `typeof window.OTC_ESCROW_ADDRESS` would get `undefined`.
+// We explicitly assign here so cross-script guards work correctly.
+window.OTC_ESCROW_ADDRESS      = OTC_ESCROW_ADDRESS;
+window.OTC_ESCROW_DEPLOYED     = OTC_ESCROW_DEPLOYED;
+window.OTC_ESCROW_ABI          = OTC_ESCROW_ABI;
+window.OTC_DEAL_STATE          = OTC_DEAL_STATE;
+window.OTC_TRADE_MODE          = OTC_TRADE_MODE;
+window.OTC_KNOWN_TOKENS        = OTC_KNOWN_TOKENS;
+window.OTC_ERC20_APPROVE_ABI   = OTC_ERC20_APPROVE_ABI;
+window.OTC_ESCROW_ABI_GETDEALSTATUS = OTC_ESCROW_ABI_GETDEALSTATUS;
+window.otcResolveToken         = otcResolveToken;
+window.otcGetEscrowContract    = otcGetEscrowContract;
+window.otcGetERC20Contract     = otcGetERC20Contract;
+window.otcParseTokenAmount     = otcParseTokenAmount;
+window.otcFormatTokenAmount    = otcFormatTokenAmount;
+window.otcDecodeDealState      = otcDecodeDealState;

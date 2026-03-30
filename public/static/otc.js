@@ -20,23 +20,32 @@
 'use strict';
 
 // ─── Guard: ensure otc-escrow-abi.js variables are always available ───────────
-// These should be defined by otc-escrow-abi.js (loaded before this script).
-// If for any reason they are missing (cache, load error, CDN failure),
-// we define safe fallbacks here so the rest of the UI never throws ReferenceError.
-/* global OTC_ESCROW_ADDRESS, OTC_ESCROW_DEPLOYED */
-if (typeof OTC_ESCROW_ADDRESS === 'undefined') {
-  // eslint-disable-next-line no-var
-  var OTC_ESCROW_ADDRESS = '0x0000000000000000000000000000000000000000';
-  console.warn('[OTC] OTC_ESCROW_ADDRESS not found — otc-escrow-abi.js may not have loaded. Using zero address fallback.');
-}
-if (typeof OTC_ESCROW_DEPLOYED === 'undefined') {
-  // eslint-disable-next-line no-var
-  var OTC_ESCROW_DEPLOYED = OTC_ESCROW_ADDRESS !== '0x0000000000000000000000000000000000000000';
-  console.warn('[OTC] OTC_ESCROW_DEPLOYED not found — derived from OTC_ESCROW_ADDRESS fallback.');
-}
+// otc-escrow-abi.js (loaded BEFORE this script) declares:
+//   const OTC_ESCROW_ADDRESS  — deployed contract address
+//   const OTC_ESCROW_DEPLOYED — boolean, true when address is non-zero
+//
+// If for any reason those declarations are missing (stale cache, CDN failure,
+// script load error) we inject them onto window so every reference below still
+// resolves.  We MUST NOT redeclare them with var/let/const here (that would
+// throw "already declared" when the ABI file DID load correctly). Instead we
+// write only to window.* and rely on the fact that bare identifiers in
+// non-module scripts resolve through the global (window) scope.
+(function _otcEnsureGlobals() {
+  var ZERO = '0x0000000000000000000000000000000000000000';
+  // otc-escrow-abi.js explicitly sets window.OTC_ESCROW_ADDRESS at its end.
+  // If it didn't load (cache miss, CDN error), inject safe fallbacks here.
+  if (typeof window.OTC_ESCROW_ADDRESS === 'undefined') {
+    window.OTC_ESCROW_ADDRESS = ZERO;
+    console.warn('[OTC] OTC_ESCROW_ADDRESS missing — otc-escrow-abi.js may not have loaded correctly.');
+  }
+  if (typeof window.OTC_ESCROW_DEPLOYED === 'undefined') {
+    window.OTC_ESCROW_DEPLOYED = window.OTC_ESCROW_ADDRESS !== ZERO;
+    console.warn('[OTC] OTC_ESCROW_DEPLOYED missing — derived from address fallback:', window.OTC_ESCROW_DEPLOYED);
+  }
+}());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260404a';
+const OTC_VERSION    = '20260405b';
 
 // ─── Date/Time UTC helpers ────────────────────────────────────────────────────
 // Convert HTML date input (YYYY-MM-DD) + time input (HH:MM) → ISO 8601 UTC string
