@@ -4898,8 +4898,20 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260330a"></script>
   <script src="/static/queue-engine.js?v=20260402a"></script>
-  <script src="/static/otc-escrow-abi.js?v=20260407a"></script>
-  <script src="/static/otc.js?v=20260407a"></script>
+  <!--
+    OTC MODULE — Cache-busted filenames (hash in name, not query string)
+    The query-string approach (?v=) does NOT invalidate browser cache when
+    Cache-Control: immutable is set. Using content-hash in the filename
+    guarantees a fresh fetch regardless of browser cache state.
+
+    Current hashes (updated 2026-04-08 — FULLY CLEAN, no OTC_ESCROW_DEPLOYED anywhere):
+      otc-escrow-abi.72e5bfc4.js  ← single source of truth for OTC_ESCROW_ADDRESS
+      otc.28d7f18f.js              ← full OTC module v20260408a (uses otcIsDeployed() only)
+
+    ZERO OTC_ESCROW_DEPLOYED references in these files.
+  -->
+  <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
+  <script src="/static/otc.28d7f18f.js"></script>
   <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
