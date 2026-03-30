@@ -1153,6 +1153,7 @@ async function otcReleaseDeal(contractId) {
  * Only callable when status == AWAITING_SELLER_DEPOSIT.
  */
 async function otcDepositSeller(contractId) {
+  try { otcRequireDeployed(); } catch(e) { return _otcToast(e.message, 'warning'); }
   if (!window.ethereum || !window.walletState?.connected) {
     _otcToast('Connect wallet to deposit', 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
@@ -1252,6 +1253,7 @@ async function otcOpenDisputeDialog(contractId) {
 
 // ─── 4b-2. Raise/Open Dispute on-chain (v4 openDispute + v3 raiseDispute fallback) ───
 async function otcRaiseDispute(contractId, disputeReason) {
+  try { otcRequireDeployed(); } catch(e) { return _otcToast(e.message, 'warning'); }
   if (!window.ethereum || !window.walletState?.connected) {
     _otcToast('Connect wallet to open a dispute', 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
@@ -1342,6 +1344,7 @@ async function otcRaiseDispute(contractId, disputeReason) {
 // This function is called by the arbiter wallet directly from the UI.
 // Non-arbiters will see a NotArbiter error on the contract — we surface that clearly.
 async function otcResolveDispute(contractId, releaseToSeller) {
+  try { otcRequireDeployed(); } catch(e) { return _otcToast(e.message, 'warning'); }
   if (!window.ethereum || !window.walletState?.connected) {
     _otcToast('Connect your wallet to resolve the dispute', 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
@@ -1424,6 +1427,7 @@ async function otcResolveDispute(contractId, releaseToSeller) {
 
 // ─── 5. Request cancel on-chain (cancel dual-consent for funded deals) ─────
 async function otcRequestCancelOnChain(contractId) {
+  try { otcRequireDeployed(); } catch(e) { return _otcToast(e.message, 'warning'); }
   if (!window.ethereum || !window.walletState?.connected) {
     _otcToast('Connect wallet to request cancel', 'warning');
     return;
