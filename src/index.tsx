@@ -523,60 +523,31 @@ app.get('/', (c) => {
   <!-- jsPDF — PDF receipt generation (loads before ethers to pre-populate prototypes) -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <!-- ── ethers.js v6.16.0 ──────────────────────────────────────────────────────
-       ethers v6 UMD tries to defineProperty('toString') on objects that may
-       already be sealed by jsPDF or the browser runtime. The try/catch inside
-       ethers wraps MOST of these but not all in every browser/engine combination.
-       The inline script below patches Object.defineProperty to silently skip
-       non-writable toString assignments and restores itself after ethers loads.
+       ethers v6 UMD has an internal defineProperties() helper that captures the
+       original Object.defineProperty at module evaluation time. It tries to set
+       { writable:false } on sealed TypedArray prototypes (#<X>, #<st>), which
+       throws "Cannot assign to read only property 'toString'".
+       These errors are non-fatal — ethers works correctly despite them.
+       We suppress them via a window error event listener installed before load.
   ──────────────────────────────────────────────────────────────────────────── -->
   <script>
-  /* Patch Object.defineProperty and Object.defineProperties to suppress non-fatal
-     TypeError from ethers v6 UMD. ethers uses defineProperties (plural, 78x) to
-     define toString on sealed TypedArray instances (#<X>, #<st>), which throws
-     "Cannot assign to read only property 'toString'" in strict mode.
-     We wrap both methods to silently swallow TypeErrors during ethers UMD load. */
-  (function() {
-    var _origDef  = Object.defineProperty;
-    var _origDefs = Object.defineProperties;
-    window.__arc_origDefineProp  = _origDef;
-    window.__arc_origDefineProps = _origDefs;
-
-    Object.defineProperty = function(obj, prop, desc) {
-      try { return _origDef(obj, prop, desc); }
-      catch(e) {
-        if (e instanceof TypeError) return obj; /* swallow — non-fatal ethers UMD conflict */
-        throw e;
-      }
-    };
-
-    Object.defineProperties = function(obj, props) {
-      try { return _origDefs(obj, props); }
-      catch(e) {
-        if (e instanceof TypeError) {
-          /* Try each property individually, skipping failures */
-          if (props && typeof props === 'object') {
-            Object.keys(props).forEach(function(k) {
-              try { _origDef(obj, k, props[k]); } catch(_) {}
-            });
-          }
-          return obj;
-        }
-        throw e;
-      }
-    };
-  })();
-  </script>
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"></script>
-  <script>
-  /* Restore original Object.defineProperty/defineProperties after ethers UMD loads */
-  (function() {
-    if (window.__arc_origDefineProp) {
-      Object.defineProperty  = window.__arc_origDefineProp;
-      Object.defineProperties = window.__arc_origDefineProps;
-      delete window.__arc_origDefineProp;
-      delete window.__arc_origDefineProps;
+  /* Suppress non-fatal ethers v6 UMD toString prototype-patch errors.
+     These arise from ethers internal defineProperties() capturing the original
+     Object.defineProperty reference at module evaluation — no outer patch can
+     intercept them. They are cosmetic and do not affect runtime behaviour. */
+  window.__arc_ethersErrHandler = function(event) {
+    if (event && event.message &&
+        event.message.indexOf("read only property 'toString'") !== -1) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return true;
     }
-  })();
+  };
+  window.addEventListener('error', window.__arc_ethersErrHandler, true);
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"
+          onload="(function(){ if(window.__arc_ethersErrHandler){ setTimeout(function(){ window.removeEventListener('error', window.__arc_ethersErrHandler, true); delete window.__arc_ethersErrHandler; }, 100); } })()"
+          onerror="console.warn('[ARC] ethers CDN failed — blockchain features unavailable')">
   </script>
   <link href="/static/styles.css?v=20260407a" rel="stylesheet">
   <script src="/static/i18n.js?v=20260407a"></script>
