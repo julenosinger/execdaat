@@ -302,7 +302,8 @@ const OTC_ESCROW_ABI = [
     ]
   },
 
-  // ── DOMAIN_SEPARATOR ─────────────────────────────────────────────────────────
+  // ── isAuthorized ───────────────────────────────────────────────────────────
+  {
     "type": "function",
     "name": "isAuthorized",
     "stateMutability": "view",

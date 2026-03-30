@@ -19,6 +19,23 @@
 // ============================================================
 'use strict';
 
+// ─── Guard: ensure otc-escrow-abi.js variables are always available ───────────
+// These should be defined by otc-escrow-abi.js (loaded before this script).
+// If for any reason they are missing (cache, load error, CDN failure),
+// we define safe fallbacks here so the rest of the UI never throws ReferenceError.
+/* global OTC_ESCROW_ADDRESS, OTC_ESCROW_DEPLOYED */
+if (typeof OTC_ESCROW_ADDRESS === 'undefined') {
+  // eslint-disable-next-line no-var
+  var OTC_ESCROW_ADDRESS = '0x0000000000000000000000000000000000000000';
+  console.warn('[OTC] OTC_ESCROW_ADDRESS not found — otc-escrow-abi.js may not have loaded. Using zero address fallback.');
+}
+if (typeof OTC_ESCROW_DEPLOYED === 'undefined') {
+  // eslint-disable-next-line no-var
+  var OTC_ESCROW_DEPLOYED = OTC_ESCROW_ADDRESS !== '0x0000000000000000000000000000000000000000';
+  console.warn('[OTC] OTC_ESCROW_DEPLOYED not found — derived from OTC_ESCROW_ADDRESS fallback.');
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const OTC_VERSION    = '20260404a';
 
 // ─── Date/Time UTC helpers ────────────────────────────────────────────────────
