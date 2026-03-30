@@ -19,7 +19,7 @@
 // ============================================================
 'use strict';
 
-const OTC_VERSION    = '20260403b';
+const OTC_VERSION    = '20260404a';
 
 // ─── Date/Time UTC helpers ────────────────────────────────────────────────────
 // Convert HTML date input (YYYY-MM-DD) + time input (HH:MM) → ISO 8601 UTC string
@@ -104,12 +104,18 @@ const OTC_STATUS_LABEL = {
   COMPLETED:        { label: 'Completed',         color: 'text-emerald-400', bg: 'bg-emerald-900/30 border-emerald-700/40', icon: 'fa-check-double' },
   CANCELLED:        { label: 'Cancelled',         color: 'text-red-400',     bg: 'bg-red-900/30 border-red-700/40',         icon: 'fa-times-circle' },
   DISPUTED:         { label: 'Disputed',          color: 'text-rose-400',    bg: 'bg-rose-900/30 border-rose-700/40',       icon: 'fa-exclamation-triangle' },
-  // On-chain escrow statuses
+  // On-chain escrow statuses (v3)
   ONCHAIN_CREATED:  { label: 'On-Chain (Signing)', color: 'text-violet-400', bg: 'bg-violet-900/30 border-violet-700/40',  icon: 'fa-link' },
   ONCHAIN_SIGNED:   { label: 'On-Chain Signed',   color: 'text-violet-300',  bg: 'bg-violet-900/30 border-violet-600/40',  icon: 'fa-file-signature' },
   FUNDED:           { label: 'Funded (Escrow)',    color: 'text-teal-400',    bg: 'bg-teal-900/30 border-teal-700/40',       icon: 'fa-vault' },
   RELEASED:         { label: 'Released',          color: 'text-emerald-300', bg: 'bg-emerald-900/30 border-emerald-600/40', icon: 'fa-paper-plane' },
   CANCEL_REQUESTED: { label: 'Cancel Requested',  color: 'text-amber-400',   bg: 'bg-amber-900/30 border-amber-700/40',     icon: 'fa-undo' },
+  // v4 Status enum labels
+  IN_DISPUTE:             { label: 'In Dispute',            color: 'text-rose-400',    bg: 'bg-rose-900/30 border-rose-700/40',       icon: 'fa-gavel' },
+  AWAITING_BUYER_DEPOSIT: { label: 'Awaiting Buyer Deposit',color: 'text-cyan-400',    bg: 'bg-cyan-900/30 border-cyan-700/40',       icon: 'fa-coins' },
+  AWAITING_SELLER_DEPOSIT:{ label: 'Awaiting Seller Deposit',color: 'text-orange-400', bg: 'bg-orange-900/30 border-orange-700/40',   icon: 'fa-hand-holding-usd' },
+  AWAITING_PROOF:         { label: 'Awaiting Proof',        color: 'text-teal-400',    bg: 'bg-teal-900/30 border-teal-700/40',       icon: 'fa-vault' },
+  READY_TO_SETTLE:        { label: 'Ready to Settle',       color: 'text-emerald-400', bg: 'bg-emerald-900/30 border-emerald-700/40', icon: 'fa-check-circle' },
 };
 
 // ─── State ─────────────────────────────────────────────────────────────────────
@@ -118,7 +124,7 @@ let _otcListings  = [];
 let _otcSubTab    = 'create'; // 'create' | 'my' | 'market'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function _otcLog(...a)  { console.log('%c[OTC v3]', 'color:#818cf8;font-weight:bold', ...a); }
+function _otcLog(...a)  { console.log('%c[OTC v4]', 'color:#818cf8;font-weight:bold', ...a); }
 function _otcEl(id)     { return document.getElementById(id); }
 function _otcVal(id)    { const e = _otcEl(id); return e ? e.value.trim() : ''; }
 function _otcIsAddr(a)  { return /^0x[0-9a-fA-F]{40}$/.test(String(a||'').trim()); }
@@ -183,8 +189,11 @@ function _otcRenderEventFeed() {
     DealReleased:  { icon: 'fa-paper-plane',    color: 'text-emerald-400'},
     DealCancelled: { icon: 'fa-times-circle',   color: 'text-red-400'    },
     CancelRequested: { icon: 'fa-ban',          color: 'text-orange-400' },
-    DisputeRaised: { icon: 'fa-gavel',          color: 'text-orange-400' },
+    DisputeOpened:   { icon: 'fa-gavel',        color: 'text-rose-400'   },
+    DisputeRaised:   { icon: 'fa-gavel',        color: 'text-orange-400' },
     DisputeResolved: { icon: 'fa-balance-scale',color: 'text-yellow-400' },
+    ProofSubmitted:  { icon: 'fa-file-check',   color: 'text-blue-400'   },
+    SellerDeposited: { icon: 'fa-hand-holding-usd', color: 'text-orange-300'},
   };
 
   el.innerHTML = _otcEvents.slice(0, 20).map(ev => {
@@ -1066,10 +1075,113 @@ async function otcReleaseDeal(contractId) {
   }
 }
 
-// ─── 4b. Raise Dispute on-chain (v3) ──────────────────────────────────────
-async function otcRaiseDispute(contractId) {
+// ─── 4a-2. Deposit Seller (TRUSTLESS mode, v4) ────────────────────────────
+/**
+ * Seller deposits their collateral in TRUSTLESS mode.
+ * Only callable when status == AWAITING_SELLER_DEPOSIT.
+ */
+async function otcDepositSeller(contractId) {
   if (!window.ethereum || !window.walletState?.connected) {
-    _otcToast('Connect wallet to raise a dispute', 'warning');
+    _otcToast('Connect wallet to deposit', 'warning');
+    if (typeof openWalletModal === 'function') openWalletModal();
+    return;
+  }
+
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+
+  const walletAddr = window.walletState.address?.toLowerCase();
+  if (contract.seller.toLowerCase() !== walletAddr) {
+    return _otcToast('Only the seller can deposit in TRUSTLESS mode', 'error');
+  }
+  if (contract.status !== 'AWAITING_SELLER_DEPOSIT') {
+    return _otcToast('Seller deposit only valid when status is AWAITING_SELLER_DEPOSIT', 'warning');
+  }
+
+  const amountStr = prompt(
+    `Enter seller deposit amount (${contract.asset}):\n(This is your collateral for the TRUSTLESS trade)`,
+    String(contract.amount)
+  );
+  if (!amountStr || isNaN(Number(amountStr)) || Number(amountStr) <= 0) return;
+
+  try {
+    const signer   = await _otcGetSigner();
+    const provider = signer.provider;
+    const escrow   = otcGetEscrowContract(signer);
+    if (!escrow) throw new Error('Escrow not available on this network');
+
+    const tokenAddr = otcResolveToken(contract.asset);
+    if (!tokenAddr) throw new Error(`Unknown token: ${contract.asset}`);
+
+    const amountRaw  = await otcParseTokenAmount(Number(amountStr), tokenAddr, provider);
+    const erc20      = otcGetERC20Contract(tokenAddr, signer);
+    const allowance  = await erc20.allowance(walletAddr, OTC_ESCROW_ADDRESS);
+
+    if (allowance < amountRaw) {
+      _otcToast('Approving token spend…', 'info');
+      const approveTx = await erc20.approve(OTC_ESCROW_ADDRESS, amountRaw);
+      await approveTx.wait();
+      _otcToast('Approval confirmed. Now depositing…', 'info');
+    }
+
+    _otcToast('Confirm seller deposit in wallet…', 'info');
+    const tx      = await escrow.depositSeller(contract.escrowDealId, amountRaw);
+    _otcToast('⏳ Deposit tx sent — waiting for confirmation…', 'info');
+    const receipt = await tx.wait();
+
+    contract.status         = 'AWAITING_PROOF';
+    contract.sellerAmount   = Number(amountStr);
+    contract.sellerDepositTx= receipt.hash;
+    contract.updatedAt      = _otcNow();
+    otcSave();
+
+    _otcEmitOnChainEvent('SellerDeposited', {
+      contractId,
+      txHash: receipt.hash,
+      amount: amountStr,
+      asset:  contract.asset,
+    });
+
+    const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+    _otcToast(
+      `✅ Seller deposit confirmed! ${amountStr} ${contract.asset} locked. ` +
+      `<a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`,
+      'success'
+    );
+    otcRenderMyContracts();
+
+  } catch(e) {
+    const decoded = _otcDecodeError(e);
+    if (decoded.userRejected) {
+      _otcToast('Transaction rejected', 'warning');
+    } else {
+      _otcToast(`❌ Seller deposit error: ${decoded.msg}`, 'error');
+    }
+    _otcLog('depositSeller error:', e);
+  }
+}
+
+// ─── 4b. Open Dispute Dialog (v4) ─────────────────────────────────────────
+/**
+ * Shows a prompt for dispute reason, then calls openDispute(tradeId, reason).
+ * Falls back to raiseDispute() if openDispute is not available (v3 contract).
+ */
+async function otcOpenDisputeDialog(contractId) {
+  const reason = prompt(
+    `Open Dispute for deal ${contractId}\n\n` +
+    `Please provide a brief reason for the dispute (optional):\n` +
+    `(Will be stored on-chain as part of the dispute record)`,
+    ''
+  );
+  if (reason === null) return; // user cancelled
+
+  await otcRaiseDispute(contractId, reason.trim());
+}
+
+// ─── 4b-2. Raise/Open Dispute on-chain (v4 openDispute + v3 raiseDispute fallback) ───
+async function otcRaiseDispute(contractId, disputeReason) {
+  if (!window.ethereum || !window.walletState?.connected) {
+    _otcToast('Connect wallet to open a dispute', 'warning');
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
@@ -1080,17 +1192,20 @@ async function otcRaiseDispute(contractId) {
   const walletAddr = window.walletState.address?.toLowerCase();
   const isBuyer    = contract.buyer.toLowerCase()  === walletAddr;
   const isSeller   = contract.seller.toLowerCase() === walletAddr;
-  if (!isBuyer && !isSeller) return _otcToast('Only the buyer or seller can raise a dispute', 'error');
+  if (!isBuyer && !isSeller) return _otcToast('Only the buyer or seller can open a dispute', 'error');
 
-  if (contract.status !== OTC_STATUS.FUNDED) {
-    return _otcToast('Disputes can only be raised on funded deals', 'warning');
+  // v4: accept AWAITING_PROOF, AWAITING_SELLER_DEPOSIT, READY_TO_SETTLE, FUNDED (v3 compat)
+  const disputableStatuses = [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'AWAITING_SELLER_DEPOSIT', 'READY_TO_SETTLE'];
+  if (!disputableStatuses.some(s => s === contract.status)) {
+    return _otcToast('Disputes can only be opened on funded deals', 'warning');
   }
 
   const confirmed = confirm(
-    `Raise a dispute for deal ${contractId}?\n\n` +
-    `An arbitrator will review the case and decide whether to:\n` +
+    `Open a dispute for deal ${contractId}?\n\n` +
+    `An arbiter will review the case and decide whether to:\n` +
     `  • Release funds to the seller, or\n` +
     `  • Refund tokens to the buyer.\n\n` +
+    `Settlement is FROZEN while the dispute is open.\n` +
     `This action is irreversible. Continue?`
   );
   if (!confirmed) return;
@@ -1101,23 +1216,36 @@ async function otcRaiseDispute(contractId) {
     if (!escrow) throw new Error('Escrow not available on this network');
 
     _otcToast('Confirm dispute in wallet…', 'info');
-    const tx = await escrow.raiseDispute(contract.escrowDealId);
-    _otcToast('⏳ Dispute tx sent — waiting…', 'info');
+
+    // v4: try openDispute(tradeId, reason) first, fallback to raiseDispute()
+    let tx;
+    const reason = disputeReason || '';
+    try {
+      tx = await escrow.openDispute(contract.escrowDealId, reason);
+      _otcLog('openDispute (v4) sent');
+    } catch(e2) {
+      // Might be a v3 contract — fallback to raiseDispute()
+      _otcLog('openDispute failed, trying raiseDispute (v3 fallback):', e2.message);
+      tx = await escrow.raiseDispute(contract.escrowDealId);
+    }
+
+    _otcToast('⏳ Dispute tx sent — waiting for confirmation…', 'info');
     const receipt = await tx.wait();
 
-    // Update local state to reflect dispute
-    contract.status        = 'DISPUTED';
-    contract.onChainState  = 4; // State.Disputed
+    // Update local state — v4 IN_DISPUTE
+    contract.status        = 'IN_DISPUTE';
+    contract.onChainState  = 5; // Status.IN_DISPUTE=5 in v4
     contract.disputeTxHash = receipt.hash;
+    contract.disputeReason = reason;
     contract.updatedAt     = _otcNow();
     otcSave();
-    _otcPushHistory(contract, `Dispute raised by ${isBuyer ? 'buyer' : 'seller'}`);
+    _otcPushHistory(contract, `Dispute opened by ${isBuyer ? 'buyer' : 'seller'}${reason ? `: ${reason}` : ''}`);
 
-    _otcEmitOnChainEvent('DisputeRaised', { contractId, txHash: receipt.hash, raisedBy: walletAddr });
+    _otcEmitOnChainEvent('DisputeOpened', { contractId, txHash: receipt.hash, openedBy: walletAddr, reason });
 
     const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
     _otcToast(
-      `⚖️ Dispute raised. An arbitrator will review the case. ` +
+      `⚖️ Dispute opened. Settlement frozen. An arbiter will review the case. ` +
       `<a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`,
       'warning'
     );
@@ -1127,16 +1255,20 @@ async function otcRaiseDispute(contractId) {
     const decoded = _otcDecodeError(e);
     if (decoded.userRejected) {
       _otcToast('Transaction rejected', 'warning');
+    } else if (decoded.msg.includes('DisputeAlreadyResolved')) {
+      _otcToast('❌ This dispute has already been resolved', 'error');
+    } else if (decoded.msg.includes('InvalidState') || decoded.msg.includes('NotFunded')) {
+      _otcToast('❌ Deal must be funded before opening a dispute', 'error');
     } else {
       _otcToast(`❌ Dispute error: ${decoded.msg}`, 'error');
     }
-    _otcLog('raiseDispute error:', e);
+    _otcLog('openDispute error:', e);
   }
 }
 
-// ─── 4c. Resolve Dispute on-chain (arbitrator only — v3) ──────────────────
-// This function is called by the arbitrator wallet directly from the UI.
-// Non-arbitrators will see a NotArbitrator error on the contract — we surface that clearly.
+// ─── 4c. Resolve Dispute on-chain (arbiter only — v4) ────────────────────
+// This function is called by the arbiter wallet directly from the UI.
+// Non-arbiters will see a NotArbiter error on the contract — we surface that clearly.
 async function otcResolveDispute(contractId, releaseToSeller) {
   if (!window.ethereum || !window.walletState?.connected) {
     _otcToast('Connect your wallet to resolve the dispute', 'warning');
@@ -1147,7 +1279,10 @@ async function otcResolveDispute(contractId, releaseToSeller) {
   const contract = _otcContracts.find(c => c.contractId === contractId);
   if (!contract) return _otcToast('Contract not found', 'error');
 
-  if (contract.status !== 'DISPUTED' && contract.onChainState !== 4) {
+  // Accept both v4 IN_DISPUTE and v3 DISPUTED local statuses
+  const isDisputed = contract.status === 'IN_DISPUTE' || contract.status === 'DISPUTED'
+    || contract.onChainState === 5 || contract.onChainState === 4;
+  if (!isDisputed) {
     return _otcToast('This deal is not under active dispute', 'warning');
   }
 
@@ -1170,9 +1305,9 @@ async function otcResolveDispute(contractId, releaseToSeller) {
     _otcToast('⏳ Resolution tx sent — waiting for confirmation…', 'info');
     const receipt = await tx.wait();
 
-    // Update local state
+    // Update local state — v4: COMPLETED=6, CANCELLED=7
     contract.status        = releaseToSeller ? OTC_STATUS.RELEASED : OTC_STATUS.CANCELLED;
-    contract.onChainState  = releaseToSeller ? 2 : 3; // Completed=2, Cancelled=3
+    contract.onChainState  = releaseToSeller ? 6 : 7; // v4: COMPLETED=6, CANCELLED=7
     contract.resolveTxHash = receipt.hash;
     contract.updatedAt     = _otcNow();
     otcSave();
@@ -1202,8 +1337,12 @@ async function otcResolveDispute(contractId, releaseToSeller) {
     const decoded = _otcDecodeError(e);
     if (decoded.userRejected) {
       _otcToast('Transaction rejected', 'warning');
-    } else if (decoded.msg.includes('NotArbitrator')) {
-      _otcToast('❌ Only the arbitrator can resolve disputes. Your wallet is not the designated arbitrator.', 'error');
+    } else if (decoded.msg.includes('NotArbiter') || decoded.msg.includes('NotArbitrator')) {
+      _otcToast('❌ Only the arbiter can resolve disputes. Your wallet is not the designated arbiter.', 'error');
+    } else if (decoded.msg.includes('DisputeAlreadyResolved')) {
+      _otcToast('❌ This dispute has already been resolved.', 'error');
+    } else if (decoded.msg.includes('NoDispute')) {
+      _otcToast('❌ No active dispute found for this deal. Sync status and try again.', 'error');
     } else {
       _otcToast(`❌ Resolve dispute error: ${decoded.msg}`, 'error');
     }
@@ -1315,15 +1454,25 @@ async function otcSyncDealStatus(contractId) {
     const onChainStatus = await escrow.dealStatus(contract.escrowDealId);
     _otcLog(`On-chain status for ${contractId}: ${onChainStatus}`);
 
+    // Map on-chain string → local UI status (v4 + v3 compat)
     const statusMap = {
-      'CREATED':          OTC_STATUS.ONCHAIN_CREATED,
-      'PARTIALLY_SIGNED': OTC_STATUS.ONCHAIN_CREATED,
-      'BOTH_SIGNED':      OTC_STATUS.ONCHAIN_SIGNED,
-      'FUNDED':           OTC_STATUS.FUNDED,
-      'EXECUTABLE':       OTC_STATUS.FUNDED,  // FUNDED + TGE passed
-      'DISPUTED':         'DISPUTED',          // v3 dispute state
-      'RELEASED':         OTC_STATUS.RELEASED,
-      'CANCELLED':        OTC_STATUS.CANCELLED,
+      // v4 Status strings
+      'CREATED':                  OTC_STATUS.ONCHAIN_CREATED,
+      'AWAITING_BUYER_DEPOSIT':   'AWAITING_BUYER_DEPOSIT',
+      'AWAITING_SELLER_DEPOSIT':  'AWAITING_SELLER_DEPOSIT',
+      'AWAITING_PROOF':           'AWAITING_PROOF',
+      'READY_TO_SETTLE':          'READY_TO_SETTLE',
+      'IN_DISPUTE':               'IN_DISPUTE',
+      'COMPLETED':                OTC_STATUS.RELEASED,
+      'CANCELLED':                OTC_STATUS.CANCELLED,
+      // v4 EXECUTABLE (READY_TO_SETTLE + TGE past)
+      'EXECUTABLE':               'READY_TO_SETTLE',
+      // v3 legacy string names (for old deployed contract compatibility)
+      'PARTIALLY_SIGNED':         OTC_STATUS.ONCHAIN_CREATED,
+      'BOTH_SIGNED':              OTC_STATUS.ONCHAIN_SIGNED,
+      'FUNDED':                   OTC_STATUS.FUNDED,
+      'DISPUTED':                 'IN_DISPUTE',
+      'RELEASED':                 OTC_STATUS.RELEASED,
     };
 
     const newStatus = statusMap[onChainStatus];
@@ -1756,31 +1905,38 @@ function _otcContractCard(c, wallet) {
 
   // Fund: buyer, both signed on-chain (either ONCHAIN_SIGNED status or ONCHAIN_CREATED
   // with both local sigs present — handles out-of-sync local state), escrow not yet funded
+  // v4 also accepts AWAITING_BUYER_DEPOSIT status
   const canFund = isOnChain && isBuyer && !isTerminal
     && (c.status === OTC_STATUS.ONCHAIN_SIGNED
+        || c.status === 'AWAITING_BUYER_DEPOSIT'
         || (c.status === OTC_STATUS.ONCHAIN_CREATED && onChainBuyerSigned && onChainSellerSigned));
 
-  // Release: SELLER-ONLY (v3 contract) or authorized address.
+  // Release: SELLER-ONLY (v4 contract) or authorized address.
   // Buyer can NO longer call release — contract will revert with NotAuthorized.
   // We hide the button for non-sellers to prevent confusion.
+  // Accepts FUNDED (v3 compat), AWAITING_PROOF, or READY_TO_SETTLE
   const tgeTs   = new Date(c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime)).getTime();
   const tgeIn   = tgeTs - Date.now();
   const tgePast = tgeIn <= 0;
-  const canRelease = isOnChain && isSeller && !isTerminal
-    && c.status === OTC_STATUS.FUNDED && tgePast;
+  const canRelease = isOnChain && isSeller && !isTerminal && !isDisputed
+    && [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'READY_TO_SETTLE'].some(s => c.status === s) && tgePast;
 
   // Raise dispute: funded deal, buyer or seller, not already disputed/terminal
-  const isDisputed  = c.status === 'DISPUTED' || c.onChainState === 4; // State.Disputed=4
-  const canDispute  = isOnChain && isParty && !isTerminal
-    && c.status === OTC_STATUS.FUNDED && !isDisputed;
+  // In v4: disputable statuses are AWAITING_PROOF, AWAITING_SELLER_DEPOSIT, READY_TO_SETTLE
+  const isDisputed  = c.status === 'DISPUTED' || c.status === 'IN_DISPUTE'
+    || c.onChainState === 5; // IN_DISPUTE=5 in v4 Status enum
+  const canDispute  = isOnChain && isParty && !isTerminal && !isDisputed
+    && [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'AWAITING_SELLER_DEPOSIT', 'READY_TO_SETTLE'].some(s => c.status === s);
 
   // Resolve dispute: arbitrator only — show note if address matches arbitrator field
   // (We don't know arbitrator address from localStorage — show a neutral panel for disputed deals)
 
   // Cancel on-chain: party + not released + not already cancelled + not disputed
-  // Disputed deals block cancel — must go through resolveDispute (arbitrator only)
+  // Disputed deals block cancel — must go through resolveDispute (arbiter only)
   const canCancelOnChain = isOnChain && isParty && !isTerminal && !isDisputed
-    && [OTC_STATUS.ONCHAIN_CREATED, OTC_STATUS.ONCHAIN_SIGNED, OTC_STATUS.FUNDED, OTC_STATUS.CANCEL_REQUESTED].includes(c.status);
+    && [OTC_STATUS.ONCHAIN_CREATED, OTC_STATUS.ONCHAIN_SIGNED, OTC_STATUS.FUNDED,
+        OTC_STATUS.CANCEL_REQUESTED, 'AWAITING_PROOF', 'AWAITING_SELLER_DEPOSIT',
+        'READY_TO_SETTLE'].includes(c.status);
 
   // Off-chain cancel: not on-chain, not terminal
   const canCancelOffChain = !isOnChain && !isTerminal
@@ -1789,20 +1945,48 @@ function _otcContractCard(c, wallet) {
   // Legacy TX proof (off-chain flow)
   const canProof = !isOnChain && isBuyer && c.status === OTC_STATUS.AWAITING_PAYMENT;
 
+  // v4: TRUSTLESS mode — seller deposit button
+  const isTrustless = c.tradeMode === 'TRUSTLESS' || c.onChainTradeMode === 0;
+  const canDepositSeller = isOnChain && isSeller && !isTerminal && !isDisputed
+    && c.status === 'AWAITING_SELLER_DEPOSIT';
+
+  // v4: Submit proof (seller or authorized) — advances to READY_TO_SETTLE
+  const canSubmitProof = isOnChain && (isSeller || isAuthorizedLocal) && !isTerminal && !isDisputed
+    && c.status === 'AWAITING_PROOF';
+
+  // Local check for authorized (can't know on-chain from localStorage alone)
+  const isAuthorizedLocal = false; // No local authorized check
+
   const tgeLabel = tgeIn > 0
     ? `in ${_otcFormatDuration(tgeIn)}`
     : `${_otcFormatDuration(-tgeIn)} ago`;
 
   // ── Timeline steps — adapts to on-chain vs off-chain mode ────────────────
+  const fundedStatuses   = [OTC_STATUS.FUNDED, OTC_STATUS.RELEASED,
+    'AWAITING_PROOF', 'AWAITING_SELLER_DEPOSIT', 'READY_TO_SETTLE', 'IN_DISPUTE', 'COMPLETED'];
+  const proofStatuses    = ['READY_TO_SETTLE', 'IN_DISPUTE', 'COMPLETED'];
+  const settledStatuses  = [OTC_STATUS.RELEASED, 'COMPLETED'];
   let steps;
   if (isOnChain) {
-    steps = [
-      { label: 'Created',   done: true },
-      { label: 'Registered',done: isOnChain },
-      { label: 'Signed',    done: c.status === OTC_STATUS.ONCHAIN_SIGNED || c.status === OTC_STATUS.FUNDED || c.status === OTC_STATUS.RELEASED },
-      { label: 'Funded',    done: c.status === OTC_STATUS.FUNDED || c.status === OTC_STATUS.RELEASED },
-      { label: 'Released',  done: c.status === OTC_STATUS.RELEASED },
-    ];
+    if (isTrustless) {
+      steps = [
+        { label: 'Created',   done: true },
+        { label: 'Registered',done: isOnChain },
+        { label: 'Signed',    done: [OTC_STATUS.ONCHAIN_SIGNED, ...fundedStatuses].some(s => c.status === s) },
+        { label: 'Buyer ↓',   done: fundedStatuses.some(s => c.status === s) },
+        { label: 'Seller ↓',  done: ['AWAITING_PROOF', 'READY_TO_SETTLE', 'COMPLETED', 'IN_DISPUTE'].some(s => c.status === s) },
+        { label: 'Settled',   done: settledStatuses.some(s => c.status === s) },
+      ];
+    } else {
+      steps = [
+        { label: 'Created',   done: true },
+        { label: 'Registered',done: isOnChain },
+        { label: 'Signed',    done: [OTC_STATUS.ONCHAIN_SIGNED, ...fundedStatuses].some(s => c.status === s) },
+        { label: 'Funded',    done: fundedStatuses.some(s => c.status === s) },
+        { label: 'Proof',     done: proofStatuses.some(s => c.status === s) },
+        { label: 'Released',  done: settledStatuses.some(s => c.status === s) },
+      ];
+    }
   } else {
     steps = [
       { label: 'Created',   done: true },
@@ -1831,6 +2015,7 @@ function _otcContractCard(c, wallet) {
           <div class="text-white font-bold text-sm font-mono">${c.contractId}</div>
           <div class="text-gray-500 text-xs">${_otcDisplayCreated(c.createdAt)} · ${c.asset} · ${_otcFmt(c.amount)} ${c.asset}
             ${isOnChain ? '<span class="ml-1 text-[9px] text-violet-400 font-semibold bg-violet-900/30 px-1.5 py-0.5 rounded-full border border-violet-700/40">ON-CHAIN</span>' : ''}
+            ${isTrustless ? '<span class="ml-1 text-[9px] text-orange-400 font-semibold bg-orange-900/30 px-1.5 py-0.5 rounded-full border border-orange-700/40" title="Both buyer and seller deposit tokens">TRUSTLESS</span>' : (isOnChain ? '<span class="ml-1 text-[9px] text-teal-400 font-semibold bg-teal-900/30 px-1.5 py-0.5 rounded-full border border-teal-700/40" title="Buyer deposits; seller provides proof">FLEXIBLE</span>' : '')}
           </div>
         </div>
       </div>
@@ -1940,14 +2125,22 @@ function _otcContractCard(c, wallet) {
       <p class="text-gray-500 text-xs">Both parties signed on-chain. Approve ERC-20 and lock <strong class="text-white">${_otcFmt(c.amount)} ${c.asset}</strong> in escrow.</p>
     </div>` : ''}
 
-    <!-- Funded info -->
-    ${isOnChain && c.status === OTC_STATUS.FUNDED ? `
+    <!-- Funded info / AWAITING_PROOF info -->
+    ${isOnChain && (c.status === OTC_STATUS.FUNDED || c.status === 'AWAITING_PROOF' || c.status === 'READY_TO_SETTLE') ? `
     <div class="px-5 py-3 bg-teal-950/20 border-b border-teal-800/20">
       <p class="text-teal-400 text-xs font-semibold"><i class="fas fa-vault mr-1"></i>Tokens locked in escrow</p>
       <p class="text-gray-500 text-xs mt-1">
         <strong class="text-white">${_otcFmt(c.amount)} ${c.asset}</strong> locked until TGE.
         ${tgePast ? '<span class="text-emerald-400 font-semibold ml-2">TGE reached — release available!</span>' : `Releases ${tgeLabel}.`}
+        ${c.status === 'READY_TO_SETTLE' ? '<span class="text-emerald-300 font-semibold ml-2">✓ Proof submitted</span>' : ''}
       </p>
+    </div>` : ''}
+
+    <!-- AWAITING_SELLER_DEPOSIT (TRUSTLESS) info -->
+    ${isOnChain && c.status === 'AWAITING_SELLER_DEPOSIT' ? `
+    <div class="px-5 py-3 bg-orange-950/20 border-b border-orange-800/20">
+      <p class="text-orange-400 text-xs font-semibold"><i class="fas fa-hand-holding-usd mr-1"></i>TRUSTLESS — awaiting seller deposit</p>
+      <p class="text-gray-500 text-xs mt-1">Buyer deposited <strong class="text-white">${_otcFmt(c.amount)} ${c.asset}</strong>. Seller must also deposit their collateral to continue.</p>
     </div>` : ''}
 
     <!-- Cancel requested info -->
@@ -2008,53 +2201,63 @@ function _otcContractCard(c, wallet) {
         <i class="fas fa-file-signature"></i>Sign On-Chain
       </button>` : ''}
 
-      <!-- Fund escrow (approve + fundDeal) -->
-      ${canFund ? `
+      <!-- Fund escrow (approve + fundDeal) — DISABLED when IN_DISPUTE -->
+      ${canFund && !isDisputed ? `
       <button onclick="otcFundDeal('${c.contractId}')"
         class="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-teal-900/30">
         <i class="fas fa-vault"></i>Fund Escrow
       </button>` : ''}
 
-      <!-- Release funds (release) — SELLER ONLY in v3 -->
-      ${canRelease ? `
+      <!-- TRUSTLESS: Seller deposit button — DISABLED when IN_DISPUTE -->
+      ${canDepositSeller && !isDisputed ? `
+      <button onclick="otcDepositSeller('${c.contractId}')"
+        title="Deposit your collateral (TRUSTLESS mode) — buyer has already deposited"
+        class="flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-orange-900/30">
+        <i class="fas fa-hand-holding-usd"></i>Deposit (Seller)
+      </button>` : ''}
+
+      <!-- Release funds (release) — SELLER ONLY in v4, BLOCKED by IN_DISPUTE -->
+      ${canRelease && !isDisputed ? `
       <button onclick="otcReleaseDeal('${c.contractId}')"
-        title="Only the seller can release funds (v3 contract requirement)"
+        title="Only the seller can release funds (v4 contract requirement)"
         class="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-emerald-900/30">
         <i class="fas fa-paper-plane"></i>Release Funds
       </button>` : ''}
 
       <!-- Buyer sees info badge when TGE reached but can't release (seller must) -->
-      ${isOnChain && isBuyer && !isSeller && c.status === OTC_STATUS.FUNDED && tgePast ? `
+      ${isOnChain && isBuyer && !isSeller && ['FUNDED','AWAITING_PROOF','READY_TO_SETTLE'].some(s => c.status === s) && tgePast && !isDisputed ? `
       <span class="flex items-center gap-1.5 px-3 py-2 bg-emerald-900/20 border border-emerald-700/30 text-emerald-400 rounded-xl text-xs">
         <i class="fas fa-clock text-[10px]"></i>TGE reached — awaiting seller release
       </span>` : ''}
 
-      <!-- Raise dispute (funded deals) -->
+      <!-- Open Dispute button (v4: uses openDispute with reason input) -->
       ${canDispute ? `
-      <button onclick="otcRaiseDispute('${c.contractId}')"
-        title="Raise a dispute — arbitrator will review and resolve"
-        class="flex items-center gap-1.5 px-4 py-2 bg-orange-900/30 hover:bg-orange-900/50 border border-orange-700/40 text-orange-400 hover:text-orange-300 rounded-xl text-xs transition">
-        <i class="fas fa-gavel"></i>Raise Dispute
+      <button onclick="otcOpenDisputeDialog('${c.contractId}')"
+        title="Open a dispute — arbiter will review and resolve. Settlement is frozen while disputed."
+        class="flex items-center gap-1.5 px-4 py-2 bg-rose-900/30 hover:bg-rose-900/50 border border-rose-700/40 text-rose-400 hover:text-rose-300 rounded-xl text-xs transition">
+        <i class="fas fa-gavel"></i>Open Dispute
       </button>` : ''}
 
-      <!-- Disputed status banner + resolve buttons (arbitrator-gated on-chain) -->
+      <!-- IN_DISPUTE status banner (settlement frozen) -->
       ${isOnChain && isDisputed && !isTerminal ? `
-      <span class="flex items-center gap-1.5 px-3 py-2 bg-orange-900/20 border border-orange-700/30 text-orange-400 rounded-xl text-xs">
-        <i class="fas fa-balance-scale text-[10px]"></i>Under arbitration — awaiting resolution
-      </span>
-      <button onclick="otcResolveDispute('${c.contractId}', true)"
-        title="Arbitrator only: release escrowed tokens to seller"
-        class="flex items-center gap-1.5 px-3 py-2 bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-400 hover:text-emerald-300 rounded-xl text-xs transition">
-        <i class="fas fa-arrow-right text-[10px]"></i>Resolve → Seller
-      </button>
-      <button onclick="otcResolveDispute('${c.contractId}', false)"
-        title="Arbitrator only: refund escrowed tokens to buyer"
-        class="flex items-center gap-1.5 px-3 py-2 bg-blue-900/30 hover:bg-blue-900/50 border border-blue-700/40 text-blue-400 hover:text-blue-300 rounded-xl text-xs transition">
-        <i class="fas fa-undo text-[10px]"></i>Resolve → Buyer
-      </button>` : ''}
+      <div class="flex items-center gap-2 flex-wrap w-full">
+        <span class="flex items-center gap-1.5 px-3 py-2 bg-rose-900/20 border border-rose-700/30 text-rose-300 rounded-xl text-xs font-semibold">
+          <i class="fas fa-gavel text-[10px]"></i>IN DISPUTE — Settlement frozen. Arbiter must resolve.
+        </span>
+        <button onclick="otcResolveDispute('${c.contractId}', true)"
+          title="Arbiter only: release escrowed tokens to seller"
+          class="flex items-center gap-1.5 px-3 py-2 bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-400 hover:text-emerald-300 rounded-xl text-xs transition">
+          <i class="fas fa-arrow-right text-[10px]"></i>Resolve → Seller
+        </button>
+        <button onclick="otcResolveDispute('${c.contractId}', false)"
+          title="Arbiter only: refund escrowed tokens to buyer"
+          class="flex items-center gap-1.5 px-3 py-2 bg-blue-900/30 hover:bg-blue-900/50 border border-blue-700/40 text-blue-400 hover:text-blue-300 rounded-xl text-xs transition">
+          <i class="fas fa-undo text-[10px]"></i>Resolve → Buyer
+        </button>
+      </div>` : ''}
 
       <!-- Fund TGE countdown (funded but not yet releasable) -->
-      ${isOnChain && c.status === OTC_STATUS.FUNDED && !tgePast ? `
+      ${isOnChain && ['FUNDED','AWAITING_PROOF','READY_TO_SETTLE'].some(s => c.status === s) && !tgePast && !isDisputed ? `
       <span class="flex items-center gap-1.5 px-4 py-2 bg-gray-800 border border-teal-700/30 text-teal-400 rounded-xl text-xs">
         <i class="fas fa-hourglass-half"></i>Release in ${tgeLabel}
       </span>` : ''}
@@ -2116,6 +2319,11 @@ function otcRenderMarketplace() {
       const isOwn      = wallet && l.seller.toLowerCase() === wallet;
       const canCancel  = isOwn && l.status === 'OPEN';   // only OPEN can be cancelled
       const isBlocked  = isOwn && l.status === 'NEGOTIATING'; // in-progress — show warning badge
+      const tradeModeLabel = l.tradeMode === 'TRUSTLESS'
+        ? '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-900/30 border border-orange-700/40 text-orange-400 font-semibold" title="Both parties deposit tokens (atomic swap)">TRUSTLESS</span>'
+        : l.tradeMode === 'FLEXIBLE'
+        ? '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-900/30 border border-teal-700/40 text-teal-400 font-semibold" title="Buyer deposits; seller provides proof">FLEXIBLE</span>'
+        : '';
       return `
       <div class="bg-gray-900/70 border border-gray-700/50 rounded-2xl p-5 hover:border-indigo-700/40 transition-all" id="listing-card-${l.id}">
         <div class="flex items-start justify-between gap-3 mb-3">
@@ -2124,7 +2332,10 @@ function otcRenderMarketplace() {
               <i class="fas fa-tags text-indigo-400 text-base"></i>
             </div>
             <div>
-              <div class="text-white font-semibold text-sm">${l.description}</div>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-white font-semibold text-sm">${l.description}</span>
+                ${tradeModeLabel}
+              </div>
               <div class="text-gray-500 text-xs font-mono">${_otcShort(l.seller)}${isOwn ? ' <span class="text-indigo-400 font-semibold">(you)</span>' : ''}</div>
             </div>
           </div>
@@ -2300,11 +2511,13 @@ function _otcInit() {
   window.otcFundDeal           = otcFundDeal;
   window.otcReleaseDeal        = otcReleaseDeal;
   window.otcRaiseDispute       = otcRaiseDispute;
+  window.otcOpenDisputeDialog  = otcOpenDisputeDialog;  // v4: opens reason prompt
   window.otcResolveDispute     = otcResolveDispute;
+  window.otcDepositSeller      = otcDepositSeller;       // v4: TRUSTLESS mode
   window.otcRequestCancelOnChain = otcRequestCancelOnChain;
   window.otcSyncDealStatus     = otcSyncDealStatus;
 
-  _otcLog(`Loaded | v${OTC_VERSION} | Chain ${OTC_CHAIN_ID}`);
+  _otcLog(`Loaded | v${OTC_VERSION} | Chain ${OTC_CHAIN_ID} | Contract v4 (TradeMode, openDispute, arbiter)`);
 }
 
 if (document.readyState === 'loading') {

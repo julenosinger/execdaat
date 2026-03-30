@@ -107,7 +107,19 @@ const OTC_ESCROW_ABI = [
     "outputs": []
   },
 
-  // ── raiseDispute ─────────────────────────────────────────────────────────────
+  // ── openDispute (v4 — with reason string) ────────────────────────────────────
+  {
+    "type": "function",
+    "name": "openDispute",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "name": "tradeId", "type": "bytes32" },
+      { "name": "reason",  "type": "string"  }
+    ],
+    "outputs": []
+  },
+
+  // ── raiseDispute (v3 backward-compat — no reason) ──────────────────────────────
   {
     "type": "function",
     "name": "raiseDispute",
@@ -116,19 +128,43 @@ const OTC_ESCROW_ABI = [
     "outputs": []
   },
 
-  // ── resolveDispute (arbitrator only) ─────────────────────────────────────────
+  // ── resolveDispute (arbiter only) ──────────────────────────────────────────────
   {
     "type": "function",
     "name": "resolveDispute",
     "stateMutability": "nonpayable",
     "inputs": [
-      { "name": "dealId",          "type": "bytes32" },
+      { "name": "tradeId",         "type": "bytes32" },
       { "name": "releaseToSeller", "type": "bool"    }
     ],
     "outputs": []
   },
 
-  // ── setAuthorized (arbitrator governance) ────────────────────────────────────
+  // ── depositSeller (TRUSTLESS mode) ─────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "depositSeller",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "name": "dealId",  "type": "bytes32" },
+      { "name": "amount",  "type": "uint256" }
+    ],
+    "outputs": []
+  },
+
+  // ── submitProof ────────────────────────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "submitProof",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "name": "dealId",    "type": "bytes32" },
+      { "name": "proofHash", "type": "bytes32" }
+    ],
+    "outputs": []
+  },
+
+  // ── setAuthorized (arbiter governance) ─────────────────────────────────────────
   {
     "type": "function",
     "name": "setAuthorized",
@@ -214,7 +250,14 @@ const OTC_ESCROW_ABI = [
     "outputs": [{ "name": "", "type": "string" }]
   },
 
-  // ── arbitrator ───────────────────────────────────────────────────────────────
+  // ── arbiter / arbitrator (both immutables) ──────────────────────────────────────
+  {
+    "type": "function",
+    "name": "arbiter",
+    "stateMutability": "view",
+    "inputs":  [],
+    "outputs": [{ "name": "", "type": "address" }]
+  },
   {
     "type": "function",
     "name": "arbitrator",
@@ -223,8 +266,43 @@ const OTC_ESCROW_ABI = [
     "outputs": [{ "name": "", "type": "address" }]
   },
 
-  // ── isAuthorized ─────────────────────────────────────────────────────────────
+  // ── getDisputeData ──────────────────────────────────────────────────────────────
   {
+    "type": "function",
+    "name": "getDisputeData",
+    "stateMutability": "view",
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
+    "outputs": [
+      { "name": "opener",           "type": "address" },
+      { "name": "openedAt",         "type": "uint256" },
+      { "name": "reason",           "type": "string"  },
+      { "name": "resolved",         "type": "bool"    },
+      { "name": "releasedToSeller", "type": "bool"    }
+    ]
+  },
+
+  // ── getTradeMode ────────────────────────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "getTradeMode",
+    "stateMutability": "view",
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
+    "outputs": [{ "name": "", "type": "uint8" }]
+  },
+
+  // ── canOpenDispute ──────────────────────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "canOpenDispute",
+    "stateMutability": "view",
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
+    "outputs": [
+      { "name": "",       "type": "bool"   },
+      { "name": "reason", "type": "string" }
+    ]
+  },
+
+  // ── DOMAIN_SEPARATOR ─────────────────────────────────────────────────────────
     "type": "function",
     "name": "isAuthorized",
     "stateMutability": "view",
@@ -333,6 +411,16 @@ const OTC_ESCROW_ABI = [
       { "name": "requester", "type": "address", "indexed": true }
     ]
   },
+  // ── DisputeOpened (v4 primary) ────────────────────────────────────────────────
+  {
+    "type": "event",
+    "name": "DisputeOpened",
+    "inputs": [
+      { "name": "tradeId",  "type": "bytes32", "indexed": true },
+      { "name": "openedBy", "type": "address", "indexed": true }
+    ]
+  },
+  // ── DisputeRaised (v3 compat alias) ──────────────────────────────────────────
   {
     "type": "event",
     "name": "DisputeRaised",
@@ -341,13 +429,23 @@ const OTC_ESCROW_ABI = [
       { "name": "raisedBy", "type": "address", "indexed": true }
     ]
   },
+  // ── DisputeResolved (v4: tradeId + bool only) ─────────────────────────────────
   {
     "type": "event",
     "name": "DisputeResolved",
     "inputs": [
-      { "name": "dealId",          "type": "bytes32", "indexed": true  },
-      { "name": "releaseToSeller", "type": "bool",    "indexed": false },
-      { "name": "resolver",        "type": "address", "indexed": true  }
+      { "name": "tradeId",         "type": "bytes32", "indexed": true  },
+      { "name": "releaseToSeller", "type": "bool",    "indexed": false }
+    ]
+  },
+  // ── ProofSubmitted ────────────────────────────────────────────────────────────
+  {
+    "type": "event",
+    "name": "ProofSubmitted",
+    "inputs": [
+      { "name": "dealId",    "type": "bytes32", "indexed": true },
+      { "name": "submitter", "type": "address", "indexed": true },
+      { "name": "proofHash", "type": "bytes32", "indexed": false}
     ]
   },
   {
@@ -389,21 +487,47 @@ const OTC_ESCROW_ABI = [
   { "type": "error", "name": "PermitExpired",          "inputs": [] }, // 0x1a15a3cc
   { "type": "error", "name": "InvalidPermitSignature", "inputs": [] }, // 0xa4654144
   { "type": "error", "name": "InvalidNonce",           "inputs": [] }, // 0x756688fe
-  { "type": "error", "name": "InvalidState",           "inputs": [] }  // 0xbaf3f0f7
+  { "type": "error", "name": "InvalidState",              "inputs": [] }, // 0xbaf3f0f7
+  { "type": "error", "name": "NotArbiter",               "inputs": [] }, // v4
+  { "type": "error", "name": "DisputeAlreadyResolved",   "inputs": [] }, // v4
+  { "type": "error", "name": "DisputeTimeoutNotReached", "inputs": [] }  // v4
 ];
 
-// ─── State enum mapping (mirrors Solidity State enum) ────────────────────────
+// ─── Status enum mapping (mirrors Solidity Status enum v4) ─────────────────
+// v3 numeric aliases kept for backward compat
 const OTC_DEAL_STATE = {
-  0: 'Pending',
-  1: 'Funded',
-  2: 'Completed',
-  3: 'Cancelled',
-  4: 'Disputed',
+  // v4 Status values (0–7)
+  0: 'CREATED',
+  1: 'AWAITING_BUYER_DEPOSIT',
+  2: 'AWAITING_SELLER_DEPOSIT',
+  3: 'AWAITING_PROOF',
+  4: 'READY_TO_SETTLE',
+  5: 'IN_DISPUTE',
+  6: 'COMPLETED',
+  7: 'CANCELLED',
+  // Reverse lookup
+  CREATED:                 0,
+  AWAITING_BUYER_DEPOSIT:  1,
+  AWAITING_SELLER_DEPOSIT: 2,
+  AWAITING_PROOF:          3,
+  READY_TO_SETTLE:         4,
+  IN_DISPUTE:              5,
+  COMPLETED:               6,
+  CANCELLED:               7,
+  // v3 backward compat aliases
   Pending:   0,
-  Funded:    1,
-  Completed: 2,
-  Cancelled: 3,
-  Disputed:  4,
+  Funded:    3,
+  Completed: 6,
+  Cancelled: 7,
+  Disputed:  5,
+};
+
+// TradeMode enum
+const OTC_TRADE_MODE = {
+  0: 'TRUSTLESS',
+  1: 'FLEXIBLE',
+  TRUSTLESS: 0,
+  FLEXIBLE:  1,
 };
 
 // ERC-20 minimal ABI for approvals + permit
