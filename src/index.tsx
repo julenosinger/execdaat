@@ -530,23 +530,35 @@ app.get('/', (c) => {
        non-writable toString assignments and restores itself after ethers loads.
   ──────────────────────────────────────────────────────────────────────────── -->
   <script>
-  /* Patch Object.defineProperty to suppress non-fatal toString conflicts */
-  window.__arc_origDefineProp = Object.defineProperty;
-  Object.defineProperty = function(obj, prop, desc) {
-    if (prop === 'toString' && desc && desc.writable === false) {
-      try { return window.__arc_origDefineProp(obj, prop, desc); }
-      catch(e) { /* swallow non-writable toString assignment — non-fatal */ return obj; }
-    }
-    return window.__arc_origDefineProp(obj, prop, desc);
-  };
+  /* Patch Object.defineProperty to suppress non-fatal toString conflicts from ethers v6 UMD.
+     ethers tries to defineProperty('toString') on sealed TypedArray instances (#<X>, #<st>).
+     We catch ALL TypeError thrown by defineProperty and swallow them — ethers wraps
+     its own calls in try/catch but some environments still propagate them. */
+  (function() {
+    var _orig = Object.defineProperty;
+    window.__arc_origDefineProp = _orig;
+    Object.defineProperty = function(obj, prop, desc) {
+      try {
+        return _orig(obj, prop, desc);
+      } catch(e) {
+        if (e instanceof TypeError) {
+          /* Silently ignore — these are non-fatal prototype conflicts from ethers UMD */
+          return obj;
+        }
+        throw e;
+      }
+    };
+  })();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"></script>
   <script>
-  /* Restore Object.defineProperty after ethers loads */
-  if (window.__arc_origDefineProp) {
-    Object.defineProperty = window.__arc_origDefineProp;
-    delete window.__arc_origDefineProp;
-  }
+  /* Restore original Object.defineProperty after ethers UMD finishes patching */
+  (function() {
+    if (window.__arc_origDefineProp) {
+      Object.defineProperty = window.__arc_origDefineProp;
+      delete window.__arc_origDefineProp;
+    }
+  })();
   </script>
   <link href="/static/styles.css?v=20260407a" rel="stylesheet">
   <script src="/static/i18n.js?v=20260407a"></script>
