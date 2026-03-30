@@ -19,7 +19,7 @@
 // ============================================================
 'use strict';
 
-const OTC_VERSION    = '20260402a';
+const OTC_VERSION    = '20260402b';
 
 // ─── Date/Time UTC helpers ────────────────────────────────────────────────────
 // Convert HTML date input (YYYY-MM-DD) + time input (HH:MM) → ISO 8601 UTC string
@@ -1308,6 +1308,92 @@ function otcEnterDeal(listingId) {
   }, 200);
 }
 
+// ─── Marketplace: Cancel Listing ─────────────────────────────────────────────
+/**
+ * Cancels a marketplace listing created by the connected wallet.
+ *
+ * Guards:
+ *   - Wallet must be connected and match listing.seller
+ *   - Status must be OPEN or NEGOTIATING (not CLOSED or already CANCELLED)
+ *   - If NEGOTIATING, block cancellation — a deal is already in progress
+ * Flow:
+ *   1. Verify ownership
+ *   2. Show confirm dialog
+ *   3. Mark as CANCELLED + timestamp
+ *   4. Persist to localStorage
+ *   5. Push to global history
+ *   6. Re-render marketplace with instant visual feedback
+ */
+function otcCancelListing(listingId) {
+  const wallet = window.walletState?.address;
+  if (!wallet) {
+    _otcToast('Connect your wallet to cancel a listing', 'warning');
+    return;
+  }
+
+  const listing = _otcListings.find(l => l.id === listingId);
+  if (!listing) return _otcToast('Listing not found', 'error');
+
+  // ── Ownership check ──────────────────────────────────────────────────────
+  if (listing.seller.toLowerCase() !== wallet.toLowerCase()) {
+    return _otcToast('Only the creator of this listing can cancel it', 'error');
+  }
+
+  // ── Status guards ────────────────────────────────────────────────────────
+  if (listing.status === 'CANCELLED') {
+    return _otcToast('This listing is already cancelled', 'warning');
+  }
+  if (listing.status === 'CLOSED') {
+    return _otcToast('This listing is closed and cannot be cancelled', 'warning');
+  }
+  if (listing.status === 'NEGOTIATING') {
+    return _otcToast(
+      '❌ Cannot cancel active or in-progress deal — a buyer is already negotiating. ' +
+      'Wait for the deal to conclude or contact the counterparty.',
+      'error'
+    );
+  }
+
+  // ── Confirmation step ────────────────────────────────────────────────────
+  const confirmed = confirm(
+    `Are you sure you want to cancel this listing?\n\n` +
+    `"${listing.description}"\n` +
+    `${listing.amount} ${listing.token} — $${_otcFmt(listing.price)}\n\n` +
+    `This action cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  // ── Apply cancellation ───────────────────────────────────────────────────
+  listing.status      = 'CANCELLED';
+  listing.cancelledAt = _otcNow();
+  listing.cancelledBy = wallet;
+  listing.updatedAt   = _otcNow();
+
+  otcSave();
+
+  // Push to global transaction history
+  try {
+    const hist = JSON.parse(localStorage.getItem('execDaat_history') || '[]');
+    hist.unshift({
+      type:        'otc_listing',
+      event:       'Listing Cancelled',
+      listingId:   listing.id,
+      seller:      listing.seller,
+      token:       listing.token,
+      amount:      listing.amount,
+      price:       listing.price,
+      description: listing.description,
+      status:      'CANCELLED',
+      timestamp:   _otcNow(),
+    });
+    localStorage.setItem('execDaat_history', JSON.stringify(hist.slice(0, 200)));
+  } catch(e) {}
+
+  _otcLog('Listing cancelled:', listingId);
+  _otcToast('✅ Listing cancelled successfully.', 'success');
+  otcRenderMarketplace();
+}
+
 // ─── History bridge ───────────────────────────────────────────────────────────
 function _otcPushHistory(contract, event) {
   try {
@@ -1708,65 +1794,117 @@ function otcRenderMarketplace() {
   const container = _otcEl('otc-mkt-list');
   if (!container) return;
 
-  const open = _otcListings.filter(l => l.status !== 'CLOSED');
+  const wallet = window.walletState?.address?.toLowerCase();
 
-  if (!open.length) {
-    container.innerHTML = `
+  // Active listings: OPEN or NEGOTIATING (not CLOSED, not CANCELLED)
+  const active    = _otcListings.filter(l => l.status !== 'CLOSED' && l.status !== 'CANCELLED');
+  // Cancelled listings owned by current wallet (shown as history at bottom)
+  const cancelled = _otcListings.filter(l => l.status === 'CANCELLED' && wallet && l.seller.toLowerCase() === wallet);
+
+  const statusColors = {
+    OPEN:        'text-green-400 bg-green-900/30 border-green-700/40',
+    NEGOTIATING: 'text-yellow-400 bg-yellow-900/30 border-yellow-700/40',
+    CLOSED:      'text-gray-500 bg-gray-800/40 border-gray-700/40',
+    CANCELLED:   'text-red-400 bg-red-900/30 border-red-700/40',
+  };
+
+  let html = '';
+
+  if (!active.length) {
+    html += `
       <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-600">
         <i class="fas fa-store text-3xl"></i>
         <p class="text-gray-500 text-sm">No active listings yet.</p>
         <p class="text-gray-600 text-xs">Be the first to list a deal!</p>
       </div>`;
-    return;
+  } else {
+    html += active.map(l => {
+      const isOwn      = wallet && l.seller.toLowerCase() === wallet;
+      const canCancel  = isOwn && l.status === 'OPEN';   // only OPEN can be cancelled
+      const isBlocked  = isOwn && l.status === 'NEGOTIATING'; // in-progress — show warning badge
+      return `
+      <div class="bg-gray-900/70 border border-gray-700/50 rounded-2xl p-5 hover:border-indigo-700/40 transition-all" id="listing-card-${l.id}">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-700/30 to-purple-700/30 border border-indigo-700/30 flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-tags text-indigo-400 text-base"></i>
+            </div>
+            <div>
+              <div class="text-white font-semibold text-sm">${l.description}</div>
+              <div class="text-gray-500 text-xs font-mono">${_otcShort(l.seller)}${isOwn ? ' <span class="text-indigo-400 font-semibold">(you)</span>' : ''}</div>
+            </div>
+          </div>
+          <span class="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full border font-semibold ${statusColors[l.status] || statusColors.OPEN}">${l.status}</span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-xs">
+          <div class="bg-gray-800/40 rounded-xl p-2.5 text-center">
+            <div class="text-gray-600 text-[10px]">Token</div>
+            <div class="text-white font-bold">${l.token}</div>
+          </div>
+          <div class="bg-gray-800/40 rounded-xl p-2.5 text-center">
+            <div class="text-gray-600 text-[10px]">Amount</div>
+            <div class="text-white font-bold">${l.amount}</div>
+          </div>
+          <div class="bg-gray-800/40 rounded-xl p-2.5 text-center">
+            <div class="text-gray-600 text-[10px]">Asking Price</div>
+            <div class="text-emerald-400 font-bold">$${_otcFmt(l.price)}</div>
+          </div>
+          <div class="bg-gray-800/40 rounded-xl p-2.5 text-center">
+            <div class="text-gray-600 text-[10px]">TGE Date</div>
+            <div class="text-white font-bold">${_otcDisplayDate(l.tgeDate)}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          ${!isOwn && l.status === 'OPEN' ? `
+          <button onclick="otcEnterDeal('${l.id}')"
+            class="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-sm font-bold transition shadow-md">
+            <i class="fas fa-handshake"></i>Enter Deal
+          </button>` : ''}
+          ${canCancel ? `
+          <button onclick="otcCancelListing('${l.id}')"
+            title="Cancel this listing — only available to you as the creator"
+            class="flex items-center gap-1.5 px-4 py-2 bg-red-900/30 hover:bg-red-800/50 active:bg-red-900/60 border border-red-700/50 hover:border-red-600/70 text-red-400 hover:text-red-300 rounded-xl text-xs font-semibold transition-all">
+            <i class="fas fa-trash-alt text-[11px]"></i>Cancel Listing
+          </button>` : ''}
+          ${isBlocked ? `
+          <span class="inline-flex items-center gap-1.5 px-3 py-2 bg-yellow-900/20 border border-yellow-700/30 text-yellow-500 rounded-xl text-xs">
+            <i class="fas fa-lock text-[10px]"></i>In-progress — cannot cancel
+          </span>` : ''}
+          ${isOwn ? `<span class="text-xs text-gray-500 italic">${l.interestedBuyers.length} interested buyer(s)</span>` : ''}
+          <span class="text-xs text-gray-600 ml-auto">${_otcDisplayCreated(l.createdAt)}</span>
+        </div>
+      </div>`;
+    }).join('');
   }
 
-  container.innerHTML = open.map(l => {
-    const wallet = window.walletState?.address?.toLowerCase();
-    const isOwn  = wallet && l.seller.toLowerCase() === wallet;
-    const statusColors = { OPEN: 'text-green-400 bg-green-900/30 border-green-700/40', NEGOTIATING: 'text-yellow-400 bg-yellow-900/30 border-yellow-700/40', CLOSED: 'text-gray-500 bg-gray-800/40 border-gray-700/40' };
-    return `
-    <div class="bg-gray-900/70 border border-gray-700/50 rounded-2xl p-5 hover:border-indigo-700/40 transition-all">
-      <div class="flex items-start justify-between gap-3 mb-3">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-700/30 to-purple-700/30 border border-indigo-700/30 flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-tags text-indigo-400 text-base"></i>
-          </div>
-          <div>
-            <div class="text-white font-semibold text-sm">${l.description}</div>
-            <div class="text-gray-500 text-xs font-mono">${_otcShort(l.seller)}${isOwn ? ' <span class="text-indigo-400">(you)</span>' : ''}</div>
-          </div>
+  // ── Cancelled listings (shown as history, owner-only) ──────────────────────
+  if (cancelled.length) {
+    html += `
+      <div class="mt-6">
+        <div class="flex items-center gap-2 mb-3">
+          <i class="fas fa-history text-gray-600 text-xs"></i>
+          <span class="text-xs text-gray-600 font-semibold uppercase tracking-wide">Your Cancelled Listings</span>
         </div>
-        <span class="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full border font-semibold ${statusColors[l.status]}">${l.status}</span>
-      </div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-xs">
-        <div class="bg-gray-800/40 rounded-xl p-2.5 text-center">
-          <div class="text-gray-600 text-[10px]">Token</div>
-          <div class="text-white font-bold">${l.token}</div>
+        <div class="flex flex-col gap-2">
+          ${cancelled.map(l => `
+          <div class="bg-gray-900/40 border border-red-900/20 rounded-xl p-4 opacity-60 hover:opacity-80 transition-opacity">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <i class="fas fa-times-circle text-red-500 text-xs flex-shrink-0"></i>
+                <span class="text-gray-400 text-xs truncate">${l.description}</span>
+              </div>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <span class="text-[10px] text-gray-600">${l.amount} ${l.token} · $${_otcFmt(l.price)}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-red-900/30 border border-red-700/30 text-red-400 font-semibold">CANCELLED</span>
+                <span class="text-[10px] text-gray-700">${_otcDisplayCreated(l.cancelledAt || l.updatedAt)}</span>
+              </div>
+            </div>
+          </div>`).join('')}
         </div>
-        <div class="bg-gray-800/40 rounded-xl p-2.5 text-center">
-          <div class="text-gray-600 text-[10px]">Amount</div>
-          <div class="text-white font-bold">${l.amount}</div>
-        </div>
-        <div class="bg-gray-800/40 rounded-xl p-2.5 text-center">
-          <div class="text-gray-600 text-[10px]">Asking Price</div>
-          <div class="text-emerald-400 font-bold">$${_otcFmt(l.price)}</div>
-        </div>
-        <div class="bg-gray-800/40 rounded-xl p-2.5 text-center">
-          <div class="text-gray-600 text-[10px]">TGE Date</div>
-          <div class="text-white font-bold">${_otcDisplayDate(l.tgeDate)}</div>
-        </div>
-      </div>
-      <div class="flex items-center gap-2">
-        ${!isOwn && l.status === 'OPEN' ? `
-        <button onclick="otcEnterDeal('${l.id}')"
-          class="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-sm font-bold transition shadow-md">
-          <i class="fas fa-handshake"></i>Enter Deal
-        </button>` : ''}
-        ${isOwn ? `<span class="text-xs text-gray-500 italic">${l.interestedBuyers.length} interested buyer(s)</span>` : ''}
-        <span class="text-xs text-gray-600 ml-auto">${_otcDisplayCreated(l.createdAt)}</span>
-      </div>
-    </div>`;
-  }).join('');
+      </div>`;
+  }
+
+  container.innerHTML = html;
 }
 
 // ─── Form helpers ─────────────────────────────────────────────────────────────
@@ -1859,6 +1997,7 @@ function _otcInit() {
   window.otcDownloadReceipt= otcDownloadReceipt;
   window.otcCreateListing  = otcCreateListing;
   window.otcEnterDeal      = otcEnterDeal;
+  window.otcCancelListing  = otcCancelListing;
   window.otcRenderMyContracts = otcRenderMyContracts;
   window.otcRenderMarketplace = otcRenderMarketplace;
   // On-chain escrow actions
