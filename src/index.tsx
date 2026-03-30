@@ -523,32 +523,31 @@ app.get('/', (c) => {
   <!-- jsPDF — PDF receipt generation (loads before ethers to pre-populate prototypes) -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <!-- ── ethers.js v6.16.0 ──────────────────────────────────────────────────────
-       ethers v6 UMD patches built-in prototype toString during its IIFE.
-       When jsPDF or the browser has sealed those properties, the engine throws
-       "Cannot assign to read only property 'toString'" — a non-fatal TypeError
-       that does NOT prevent ethers from loading or functioning.
-       We suppress it via a global error handler that ignores exactly this message.
+       ethers v6 UMD tries to defineProperty('toString') on objects that may
+       already be sealed by jsPDF or the browser runtime. The try/catch inside
+       ethers wraps MOST of these but not all in every browser/engine combination.
+       The inline script below patches Object.defineProperty to silently skip
+       non-writable toString assignments and restores itself after ethers loads.
   ──────────────────────────────────────────────────────────────────────────── -->
   <script>
-  /* Suppress the known non-fatal ethers v6 UMD / jsPDF toString conflict */
-  (function() {
-    var _origOnerror = window.onerror;
-    window.onerror = function(msg, src, line, col, err) {
-      if (typeof msg === 'string' && msg.indexOf("read only property 'toString'") !== -1) {
-        return true; // suppress — non-fatal ethers.js UMD prototype patching conflict
-      }
-      return _origOnerror ? _origOnerror(msg, src, line, col, err) : false;
-    };
-    var _origUnhandled = window.onunhandledrejection;
-    window.addEventListener('unhandledrejection', function(e) {
-      var msg = e && e.reason && String(e.reason.message || e.reason);
-      if (msg && msg.indexOf("read only property 'toString'") !== -1) {
-        e.preventDefault();
-      }
-    });
-  }());
+  /* Patch Object.defineProperty to suppress non-fatal toString conflicts */
+  window.__arc_origDefineProp = Object.defineProperty;
+  Object.defineProperty = function(obj, prop, desc) {
+    if (prop === 'toString' && desc && desc.writable === false) {
+      try { return window.__arc_origDefineProp(obj, prop, desc); }
+      catch(e) { /* swallow non-writable toString assignment — non-fatal */ return obj; }
+    }
+    return window.__arc_origDefineProp(obj, prop, desc);
+  };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"></script>
+  <script>
+  /* Restore Object.defineProperty after ethers loads */
+  if (window.__arc_origDefineProp) {
+    Object.defineProperty = window.__arc_origDefineProp;
+    delete window.__arc_origDefineProp;
+  }
+  </script>
   <link href="/static/styles.css?v=20260407a" rel="stylesheet">
   <script src="/static/i18n.js?v=20260407a"></script>
 </head>
