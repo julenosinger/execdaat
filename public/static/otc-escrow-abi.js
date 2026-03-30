@@ -22,16 +22,61 @@
 //   node contracts/script/deployOTCEscrow.cjs <PRIVATE_KEY>
 // ============================================================
 
-// Deployed contract address on ARC Testnet
-// v1 (original):  0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d  — deployed 2026-03-29
-// v2 (NotBuyer/NotSigned/InsufficientAllowance/TransferFailed/getDealStatus): same address
-// v3 (dispute, authorized releasers, Permit2, state machine): pending redeployment
-//   Run: node contracts/script/deployOTCEscrow.cjs <PRIVATE_KEY>
+// ─── CONTRACT ADDRESS — Single Source of Truth ──────────────────────────────
+// This is the ONLY place where the OTC Escrow contract address is defined.
+// To update: change the address below and redeploy.
+//
+// Deployed addresses on ARC Testnet (Chain ID: 5042002):
+//   v1 (original):  0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d  — deployed 2026-03-29
+//   v2 (NotBuyer/NotSigned/InsufficientAllowance/TransferFailed/getDealStatus): same address
+//   v3 (dispute, authorized releasers, Permit2, state machine): pending redeployment
+//      → Run: node contracts/script/deployOTCEscrow.cjs <PRIVATE_KEY>
+//
+// To disable on-chain features (local-only mode), set to zero address:
+//   const OTC_ESCROW_ADDRESS = '0x0000000000000000000000000000000000000000';
 const OTC_ESCROW_ADDRESS = '0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d'; // ARC Testnet — v1 (live)
-// const OTC_ESCROW_ADDRESS = '0x0000000000000000000000000000000000000000'; // set after v3 deploy
 
-// Whether the escrow contract is available (non-zero address)
-const OTC_ESCROW_DEPLOYED = OTC_ESCROW_ADDRESS !== '0x0000000000000000000000000000000000000000';
+// ─── Address validation helpers ──────────────────────────────────────────────
+const _OTC_ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const _OTC_ADDR_REGEX   = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * Returns true if the escrow contract is properly configured:
+ *   - Address is a valid EVM hex string (0x + 40 hex chars)
+ *   - Address is not the zero address
+ *
+ * Use this INSTEAD of any boolean flag. It derives its answer directly
+ * from OTC_ESCROW_ADDRESS at call-time, so it is always fresh and
+ * immune to script-load ordering issues.
+ *
+ * @returns {boolean}
+ */
+function otcIsDeployed() {
+  var addr = OTC_ESCROW_ADDRESS;
+  return typeof addr === 'string'
+    && _OTC_ADDR_REGEX.test(addr)
+    && addr.toLowerCase() !== _OTC_ZERO_ADDRESS;
+}
+
+/**
+ * Validates the escrow address and throws a descriptive Error if invalid.
+ * Call this at the start of any on-chain interaction to get a clear error
+ * instead of a confusing revert.
+ *
+ * @throws {Error} if address is missing, invalid, or zero
+ */
+function otcRequireDeployed() {
+  var addr = OTC_ESCROW_ADDRESS;
+  if (typeof addr !== 'string' || addr.trim() === '') {
+    throw new Error('OTC Escrow: contract address not configured. Set OTC_ESCROW_ADDRESS in otc-escrow-abi.js.');
+  }
+  if (!_OTC_ADDR_REGEX.test(addr)) {
+    throw new Error('OTC Escrow: invalid contract address format: ' + addr);
+  }
+  if (addr.toLowerCase() === _OTC_ZERO_ADDRESS) {
+    throw new Error('OTC Escrow: contract not deployed yet (zero address). Deploy the contract and update OTC_ESCROW_ADDRESS.');
+  }
+}
 
 // ─── OTCEscrow v3 ABI ────────────────────────────────────────────────────────
 const OTC_ESCROW_ABI = [
@@ -605,8 +650,9 @@ function otcResolveToken(assetOrAddr) {
 }
 
 // Helper: get escrow contract instance (requires ethers.js + wallet connected)
+// Returns null if address is not configured — callers must check.
 function otcGetEscrowContract(signerOrProvider) {
-  if (!OTC_ESCROW_DEPLOYED) return null;
+  if (!otcIsDeployed()) return null;
   const ethers = window.ethers;
   if (!ethers) return null;
   return new ethers.Contract(OTC_ESCROW_ADDRESS, OTC_ESCROW_ABI, signerOrProvider);
@@ -654,12 +700,17 @@ function otcDecodeDealState(stateNum) {
 const OTC_ESCROW_ABI_GETDEALSTATUS = OTC_ESCROW_ABI.find(e => e.name === 'getDealStatus');
 
 // ─── Explicit window exports ──────────────────────────────────────────────────
-// In browsers, top-level `const` declarations are NOT added to window.*
-// (unlike `var`). Scripts loaded after this one that check
-// `typeof window.OTC_ESCROW_ADDRESS` would get `undefined`.
-// We explicitly assign here so cross-script guards work correctly.
+// In browsers, top-level `const` and `function` declarations are NOT added to
+// window.* automatically (unlike `var`). Scripts loaded after this one that
+// reference these names as bare identifiers may see them as undefined if there
+// is any script-load ordering issue or cache miss.
+// We explicitly assign here so cross-script access is always reliable.
 window.OTC_ESCROW_ADDRESS      = OTC_ESCROW_ADDRESS;
-window.OTC_ESCROW_DEPLOYED     = OTC_ESCROW_DEPLOYED;
+// NOTE: OTC_ESCROW_DEPLOYED is intentionally NOT exported.
+//       Use otcIsDeployed() everywhere — it derives the answer from the
+//       address at call-time and is immune to stale-flag bugs.
+window.otcIsDeployed           = otcIsDeployed;
+window.otcRequireDeployed      = otcRequireDeployed;
 window.OTC_ESCROW_ABI          = OTC_ESCROW_ABI;
 window.OTC_DEAL_STATE          = OTC_DEAL_STATE;
 window.OTC_TRADE_MODE          = OTC_TRADE_MODE;

@@ -19,33 +19,53 @@
 // ============================================================
 'use strict';
 
-// ─── Guard: ensure otc-escrow-abi.js variables are always available ───────────
-// otc-escrow-abi.js (loaded BEFORE this script) declares:
-//   const OTC_ESCROW_ADDRESS  — deployed contract address
-//   const OTC_ESCROW_DEPLOYED — boolean, true when address is non-zero
+// ─── Guard: ensure otc-escrow-abi.js loaded correctly ────────────────────────
+// otc-escrow-abi.js (loaded BEFORE this script) must export:
+//   window.OTC_ESCROW_ADDRESS  — the deployed contract address (string)
+//   window.otcIsDeployed       — function(): boolean
+//   window.otcRequireDeployed  — function(): void (throws if not configured)
 //
-// If for any reason those declarations are missing (stale cache, CDN failure,
-// script load error) we inject them onto window so every reference below still
-// resolves.  We MUST NOT redeclare them with var/let/const here (that would
-// throw "already declared" when the ABI file DID load correctly). Instead we
-// write only to window.* and rely on the fact that bare identifiers in
-// non-module scripts resolve through the global (window) scope.
+// If those exports are absent (stale browser cache, CDN error, wrong load
+// order) we inject safe no-op fallbacks so the page never hard-crashes.
+// On-chain features will be disabled; the user will see UI warnings instead
+// of uncaught ReferenceErrors.
 (function _otcEnsureGlobals() {
   var ZERO = '0x0000000000000000000000000000000000000000';
-  // otc-escrow-abi.js explicitly sets window.OTC_ESCROW_ADDRESS at its end.
-  // If it didn't load (cache miss, CDN error), inject safe fallbacks here.
-  if (typeof window.OTC_ESCROW_ADDRESS === 'undefined') {
+  var ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
+
+  // ── OTC_ESCROW_ADDRESS ────────────────────────────────────────────────────
+  if (typeof window.OTC_ESCROW_ADDRESS !== 'string' || !ADDR_RE.test(window.OTC_ESCROW_ADDRESS)) {
     window.OTC_ESCROW_ADDRESS = ZERO;
-    console.warn('[OTC] OTC_ESCROW_ADDRESS missing — otc-escrow-abi.js may not have loaded correctly.');
+    console.error(
+      '[OTC] otc-escrow-abi.js did not export a valid OTC_ESCROW_ADDRESS. ' +
+      'Check script load order and browser cache. On-chain features disabled.'
+    );
   }
-  if (typeof window.OTC_ESCROW_DEPLOYED === 'undefined') {
-    window.OTC_ESCROW_DEPLOYED = window.OTC_ESCROW_ADDRESS !== ZERO;
-    console.warn('[OTC] OTC_ESCROW_DEPLOYED missing — derived from address fallback:', window.OTC_ESCROW_DEPLOYED);
+
+  // ── otcIsDeployed ─────────────────────────────────────────────────────────
+  // This MUST be a function — never a cached boolean — so it always reads the
+  // current address value rather than a stale snapshot.
+  if (typeof window.otcIsDeployed !== 'function') {
+    window.otcIsDeployed = function() {
+      var a = window.OTC_ESCROW_ADDRESS;
+      return typeof a === 'string' && ADDR_RE.test(a) && a.toLowerCase() !== ZERO;
+    };
+    console.warn('[OTC] otcIsDeployed fallback injected (otc-escrow-abi.js may not have loaded).');
+  }
+
+  // ── otcRequireDeployed ────────────────────────────────────────────────────
+  if (typeof window.otcRequireDeployed !== 'function') {
+    window.otcRequireDeployed = function() {
+      if (!window.otcIsDeployed()) {
+        throw new Error('OTC Escrow: contract address not configured or is zero address.');
+      }
+    };
+    console.warn('[OTC] otcRequireDeployed fallback injected (otc-escrow-abi.js may not have loaded).');
   }
 }());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260405b';
+const OTC_VERSION    = '20260406b';
 
 // ─── Date/Time UTC helpers ────────────────────────────────────────────────────
 // Convert HTML date input (YYYY-MM-DD) + time input (HH:MM) → ISO 8601 UTC string
@@ -346,8 +366,8 @@ async function otcCreateDeal() {
     // Push to global history
     _otcPushHistory(contract, 'Created');
 
-    // ── Try on-chain createDeal if escrow is deployed & wallet connected ───────
-    if (OTC_ESCROW_DEPLOYED && window.walletState?.connected) {
+    // ── Try on-chain createDeal if escrow is configured & wallet connected ───────
+    if (otcIsDeployed() && window.walletState?.connected) {
       _otcToast('✅ OTC Deal created locally! Registering on-chain…', 'info');
       // Non-blocking: try to push to chain in background
       _otcCreateDealOnChain(contract).catch(e => {
@@ -355,8 +375,8 @@ async function otcCreateDeal() {
         _otcToast('⚠️ On-chain registration failed. Deal saved locally.', 'warning');
       });
     } else {
-      const chainNote = !OTC_ESCROW_DEPLOYED
-        ? ' (Escrow contract not deployed yet — local mode)'
+      const chainNote = !otcIsDeployed()
+        ? ' (Escrow contract not configured — local mode only)'
         : ' (Connect wallet to register on-chain)';
       _otcToast(`✅ OTC Contract created! ID: ${contractId}${chainNote}`, 'success');
     }
@@ -651,8 +671,8 @@ async function otcRegisterOnChain(contractId) {
     return _otcToast('Only the buyer can register the deal on-chain', 'error');
   }
 
-  if (!OTC_ESCROW_DEPLOYED) {
-    return _otcToast('Escrow contract not deployed yet. Set OTC_ESCROW_ADDRESS in otc-escrow-abi.js', 'warning');
+  if (!otcIsDeployed()) {
+    return _otcToast('Escrow contract not configured. Set OTC_ESCROW_ADDRESS in otc-escrow-abi.js', 'warning');
   }
 
   try {
@@ -738,6 +758,7 @@ async function otcSignDealOnChain(contractId) {
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
+  try { otcRequireDeployed(); } catch(e) { return _otcToast(e.message, 'warning'); }
 
   const contract  = _otcContracts.find(c => c.contractId === contractId);
   if (!contract) return _otcToast('Contract not found', 'error');
@@ -860,6 +881,7 @@ async function otcFundDeal(contractId) {
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
+  try { otcRequireDeployed(); } catch(e) { return _otcToast(e.message, 'warning'); }
 
   const contract = _otcContracts.find(c => c.contractId === contractId);
   if (!contract) return _otcToast('Contract not found', 'error');
@@ -1036,6 +1058,7 @@ async function otcReleaseDeal(contractId) {
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
   }
+  try { otcRequireDeployed(); } catch(e) { return _otcToast(e.message, 'warning'); }
 
   const contract = _otcContracts.find(c => c.contractId === contractId);
   if (!contract) return _otcToast('Contract not found', 'error');
@@ -1919,7 +1942,7 @@ function _otcContractCard(c, wallet) {
   // Register on-chain: buyer, both off-chain signed, schedule confirmed, escrow deployed, not yet on-chain
   const bothOffSigned = !!c.buyerSig && !!c.sellerSig;
   const canRegister   = isBuyer && bothOffSigned && c.sellerScheduleConfirmed
-    && !isOnChain && !isTerminal && OTC_ESCROW_DEPLOYED;
+    && !isOnChain && !isTerminal && otcIsDeployed();
 
   // Sign on-chain
   const onChainBuyerSigned  = isOnChain && !!c.buyerSig  && (c.buyerSig.startsWith('0x') && c.buyerSig.length === 66);
