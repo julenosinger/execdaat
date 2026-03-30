@@ -522,33 +522,16 @@ app.get('/', (c) => {
   <script src="/static/axios-shim.js?v=20260328a"></script>
   <!-- jsPDF — PDF receipt generation (loads before ethers to pre-populate prototypes) -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <!-- ── ethers.js v6.16.0 ──────────────────────────────────────────────────────
-       ethers v6 UMD has an internal defineProperties() helper that captures the
-       original Object.defineProperty at module evaluation time. It tries to set
-       { writable:false } on sealed TypedArray prototypes (#<X>, #<st>), which
-       throws "Cannot assign to read only property 'toString'".
-       These errors are non-fatal — ethers works correctly despite them.
-       We suppress them via a window error event listener installed before load.
+  <!-- ── ethers.js v6.16.0 (ARC-patched) ────────────────────────────────────────
+       Uses a locally-hosted build of ethers v6.16.0 with a one-line patch applied
+       to the internal defineProperties() helper: wraps Object.defineProperty in
+       try/catch to prevent "Cannot assign to read only property 'toString'" errors
+       that occur when ethers tries to define non-writable properties on already-
+       sealed TypedArray/BigInt prototype objects.
+       Source: https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js
+       Patch:  function defineProperties(...){ ... try{ defineProperty(...) }catch(e){} }
   ──────────────────────────────────────────────────────────────────────────── -->
-  <script>
-  /* Suppress non-fatal ethers v6 UMD toString prototype-patch errors.
-     These arise from ethers internal defineProperties() capturing the original
-     Object.defineProperty reference at module evaluation — no outer patch can
-     intercept them. They are cosmetic and do not affect runtime behaviour. */
-  window.__arc_ethersErrHandler = function(event) {
-    if (event && event.message &&
-        event.message.indexOf("read only property 'toString'") !== -1) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return true;
-    }
-  };
-  window.addEventListener('error', window.__arc_ethersErrHandler, true);
-  </script>
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"
-          onload="(function(){ if(window.__arc_ethersErrHandler){ setTimeout(function(){ window.removeEventListener('error', window.__arc_ethersErrHandler, true); delete window.__arc_ethersErrHandler; }, 100); } })()"
-          onerror="console.warn('[ARC] ethers CDN failed — blockchain features unavailable')">
-  </script>
+  <script src="/static/ethers.umd.patched.js"></script>
   <link href="/static/styles.css?v=20260407a" rel="stylesheet">
   <script src="/static/i18n.js?v=20260407a"></script>
 </head>
