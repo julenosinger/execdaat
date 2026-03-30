@@ -417,7 +417,7 @@ function copyIt(){
 app.get('/api/status', (c) => {
   return c.json({
     status: 'online',
-    app: 'ExecDaat - Pagamentos & Contratos',
+    app: 'ExecDaat - Autonomous Payments & Contracts',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     network: {
@@ -524,8 +524,8 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <!-- jsPDF — PDF receipt generation -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20260329c" rel="stylesheet">
-  <script src="/static/i18n.js?v=20260327b"></script>
+  <link href="/static/styles.css?v=20260406a" rel="stylesheet">
+  <script src="/static/i18n.js?v=20260406a"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
 
@@ -909,8 +909,8 @@ app.get('/', (c) => {
             <div class="w-10 h-10 rounded-xl bg-orange-900/40 border border-orange-700/30 flex items-center justify-center mb-3">
               <i class="fas fa-shield-alt text-orange-400"></i>
             </div>
-            <h3 class="text-white font-semibold mb-1.5 text-sm">Escrow Integrado</h3>
-            <p class="text-gray-500 text-xs leading-relaxed">Cada contrato é um escrow autônomo. O cliente deposita USDC diretamente no contrato; o contratado recebe por milestone confirmado on-chain.</p>
+            <h3 class="text-white font-semibold mb-1.5 text-sm" data-i18n="feat_escrow_title">Integrated Escrow</h3>
+            <p class="text-gray-500 text-xs leading-relaxed" data-i18n="feat_escrow_desc">Each contract is an autonomous escrow. The client deposits USDC directly into the contract; the contractor receives payment per milestone confirmed on-chain.</p>
           </div>
 
           <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-pink-600/40 transition-colors">
@@ -1114,7 +1114,7 @@ app.get('/', (c) => {
           </h3>
           <div class="space-y-3">
             <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
-              <span class="text-gray-400 text-sm">RPC Primário</span>
+              <span class="text-gray-400 text-sm" data-i18n="network_rpc_primary">Primary RPC</span>
               <a href="https://rpc.testnet.arc.network" target="_blank" class="text-purple-400 text-sm hover:underline font-mono text-xs">rpc.testnet.arc.network</a>
             </div>
             <div class="flex justify-between items-center py-2 border-b border-gray-700/30">
@@ -1723,35 +1723,35 @@ app.get('/', (c) => {
                 <div class="pay-sched-panel">
                   <div class="pay-cf-label" style="margin-bottom:10px;">
                     <i class="fas fa-clock" style="color:#a78bfa;"></i>
-                    SEND TIMING
-                    <span style="margin-left:auto;cursor:help;" title="Send Now executes immediately. Schedule queues the payment and executes at the specified time (MM/DD/YYYY, local → UTC). Gas estimate may vary at execution."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                    <span data-i18n="sched_send_timing">SEND TIMING</span>
+                    <span style="margin-left:auto;cursor:help;" data-i18n-title="sched_send_timing_tooltip" title="Send Now executes immediately. Schedule queues the payment and executes at the specified time (MM/DD/YYYY, local → UTC). Gas estimate may vary at execution."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </div>
                   <div class="pay-sched-toggle">
                     <button type="button" class="pay-sched-opt active-now" id="pay-sched-now" onclick="paySetSchedule('now')">
-                      <i class="fas fa-bolt" style="margin-right:4px;"></i>Send Now
+                      <i class="fas fa-bolt" style="margin-right:4px;"></i><span data-i18n="sched_send_now">Send Now</span>
                     </button>
                     <button type="button" class="pay-sched-opt" id="pay-sched-later" onclick="paySetSchedule('later')">
-                      <i class="fas fa-calendar-alt" style="margin-right:4px;"></i>Schedule for Later
+                      <i class="fas fa-calendar-alt" style="margin-right:4px;"></i><span data-i18n="sched_send_later">Schedule for Later</span>
                     </button>
                   </div>
                   <div id="pay-sched-inputs" style="display:none;">
                     <div>
                       <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;margin-top:2px;">
-                        <i class="fas fa-calendar" style="color:#60b4ff;"></i>DATE (MM/DD/YYYY)
+                        <i class="fas fa-calendar" style="color:#60b4ff;"></i><span data-i18n="sched_date_label">DATE (MM/DD/YYYY)</span>
                       </label>
                       <input type="date" id="pay-sched-date" class="pay-cf-input px-3 py-2 text-sm"
                         oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
                     </div>
                     <div>
                       <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;margin-top:2px;">
-                        <i class="fas fa-clock" style="color:#60b4ff;"></i>TIME
+                        <i class="fas fa-clock" style="color:#60b4ff;"></i><span data-i18n="sched_time_label">TIME</span>
                       </label>
                       <input type="time" id="pay-sched-time" class="pay-cf-input px-3 py-2 text-sm"
                         oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
                     </div>
                     <div style="grid-column:1/-1;">
                       <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;">
-                        <i class="fas fa-globe" style="color:#34d399;"></i>TIMEZONE
+                        <i class="fas fa-globe" style="color:#34d399;"></i><span data-i18n="sched_tz_label">TIMEZONE</span>
                       </label>
                       <select id="pay-sched-tz" class="pay-cf-input px-3 py-2 text-sm"
                         oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
@@ -3422,14 +3422,14 @@ app.get('/', (c) => {
             <div id="autonoma-permit2-mirror" class="space-y-2 mb-4">
               <div class="text-center text-gray-600 text-sm py-6">
                 <i class="fas fa-lock text-gray-700 text-2xl mb-2 block"></i>
-                Conecte a wallet para ver os permits
+                <span data-i18n="permit2_connect_prompt">Connect wallet to view permits</span>
               </div>
             </div>
 
             <!-- Quick permit commands (send to autonoma chat) -->
             <div class="bg-gray-800/50 rounded-lg p-4">
               <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3">
-                <i class="fas fa-terminal mr-1"></i> Comandos Rápidos
+                <i class="fas fa-terminal mr-1"></i> <span data-i18n="permit2_quick_cmds">Quick Commands</span>
               </h4>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
@@ -3444,7 +3444,7 @@ app.get('/', (c) => {
                 </button>
                 <button onclick="autonomaSendChat('authorize payments of 200 USDC for 7 days')"
                   class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
-                  <div class="text-xs text-yellow-400 font-medium mb-0.5">Pagamentos (7 dias)</div>
+                  <div class="text-xs text-yellow-400 font-medium mb-0.5" data-i18n="permit2_payments_7d">Payments (7 days)</div>
                   <div class="text-[11px] text-gray-500 font-mono">200 USDC payments, 7 days</div>
                 </button>
                 <button onclick="autonomaSendChat('revoke all permits')"
@@ -3540,11 +3540,11 @@ app.get('/', (c) => {
             <!-- Quick actions -->
             <div class="px-2 pb-1 flex gap-1.5 overflow-x-auto flex-shrink-0 border-t border-gray-800/40 pt-1.5" style="scrollbar-width:none">
               <button onclick="autonomaSendChat('my wallet')"       class="autonoma-quick-btn">💳 Wallet</button>
-              <button onclick="autonomaSendChat('check balance')"   class="autonoma-quick-btn">💰 Saldo</button>
+              <button onclick="autonomaSendChat('check balance')"   class="autonoma-quick-btn" data-i18n="quick_balance">💰 Balance</button>
               <button onclick="autonomaSendChat('show my permissions')" class="autonoma-quick-btn">🔐 Permits</button>
               <button onclick="autonomaSendChat('guardian')"        class="autonoma-quick-btn">🛡️ Guardian</button>
-              <button onclick="autonomaSendChat('network status')"  class="autonoma-quick-btn">⛓️ Rede</button>
-              <button onclick="autonomaSendChat('my transactions')" class="autonoma-quick-btn">📜 Histórico</button>
+              <button onclick="autonomaSendChat('network status')"  class="autonoma-quick-btn" data-i18n="quick_network">⛓️ Network</button>
+              <button onclick="autonomaSendChat('my transactions')" class="autonoma-quick-btn" data-i18n="quick_history">📜 History</button>
             </div>
 
             <!-- CSV banner (hidden by default) -->

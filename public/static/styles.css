@@ -3129,3 +3129,163 @@ body.light-mode #autonoma-chat-messages {
 body.light-mode #autonoma-chat-input {
   color: #111827;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLOBAL DARK-MODE SELECT / DROPDOWN FIX
+   Applies to ALL <select> and <option> elements across the entire app.
+   Overrides browser-native white/light background in dark UIs.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Global select base ───────────────────────────────────────────────── */
+select {
+  color-scheme: dark;
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(55, 138, 221, 0.32) !important;
+}
+
+/* ─── Option elements ──────────────────────────────────────────────────── */
+option {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+option:hover,
+option:focus,
+option:checked {
+  background-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+/* ─── Disabled options ─────────────────────────────────────────────────── */
+option:disabled {
+  color: #475569 !important;
+  background-color: #0f172a !important;
+}
+
+/* ─── Focus/hover states ────────────────────────────────────────────────── */
+select:focus {
+  outline: none !important;
+  border-color: rgba(55, 138, 221, 0.75) !important;
+  box-shadow: 0 0 0 3px rgba(55, 138, 221, 0.16) !important;
+  background-color: rgba(55, 138, 221, 0.07) !important;
+}
+
+select:hover {
+  border-color: rgba(55, 138, 221, 0.55) !important;
+}
+
+/* ─── pay-cf-input selects (Payments, Schedule, Tax) ───────────────────── */
+select.pay-cf-input {
+  background: rgba(30, 41, 59, 0.95) !important;
+  color: #e8edf8 !important;
+  border: 1px solid rgba(55, 138, 221, 0.32) !important;
+  border-radius: 12px !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  padding-right: 30px !important;
+}
+
+select.pay-cf-input:hover {
+  border-color: rgba(55, 138, 221, 0.55) !important;
+  background-color: rgba(30, 41, 59, 0.98) !important;
+}
+
+select.pay-cf-input:focus {
+  border-color: rgba(55, 138, 221, 0.75) !important;
+  box-shadow: 0 0 0 3px rgba(55, 138, 221, 0.16) !important;
+  background-color: rgba(55, 138, 221, 0.08) !important;
+}
+
+/* ─── Tailwind bg-gray-700/800 selects (Guardian, KYC, Yield, OTC, Settings) */
+select.bg-gray-700\/60,
+select.bg-gray-800\/60,
+select.bg-gray-800 {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  padding-right: 30px !important;
+}
+
+/* ─── Timezone select special case (Schedule Payment) ──────────────────── */
+#pay-sched-tz {
+  background-color: rgba(30, 41, 59, 0.95) !important;
+  color: #e8edf8 !important;
+  max-height: 240px;
+}
+
+/* ─── OTC asset / marketplace token selects ─────────────────────────────── */
+#otc-asset,
+#mkt-token {
+  background-color: rgba(30, 41, 59, 0.9) !important;
+  color: #f1f5f9 !important;
+}
+
+/* ─── Settings language / refresh selects ───────────────────────────────── */
+#cfg-language,
+#cfg-refresh {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+/* ─── Optgroup styling ──────────────────────────────────────────────────── */
+optgroup {
+  background-color: #1e293b !important;
+  color: #94a3b8 !important;
+  font-style: normal;
+  font-weight: 600;
+}
+
+/* ─── Date and time inputs (light calendar popup fix) ───────────────────── */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+  background-color: rgba(30, 41, 59, 0.95) !important;
+  color: #e8edf8 !important;
+  border: 1px solid rgba(55, 138, 221, 0.32) !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(0.8);
+  cursor: pointer;
+}
+
+/* ─── Custom dropdown arrow for ALL selects (prevent browser default) ───── */
+select:not([multiple]):not([size]) {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  padding-right: 30px !important;
+}
+
+/* ─── Light-mode overrides (if app ever adds body.light-mode) ──────────── */
+body.light-mode select {
+  color-scheme: light !important;
+  background-color: #f8fafc !important;
+  color: #1e293b !important;
+  border-color: rgba(100, 116, 139, 0.4) !important;
+}
+
+body.light-mode option {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+}
+
+body.light-mode select:not([multiple]):not([size]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
+}

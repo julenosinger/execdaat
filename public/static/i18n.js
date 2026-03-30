@@ -433,6 +433,32 @@ const TRANSLATIONS = {
     contracts_upload_proof_first: '⚠️ Upload at least one proof of work first.',
     contracts_custody_reference: 'Custody Reference (ID / Hash)',
     contracts_await_tx: 'Awaiting transaction.',
+
+    // Dashboard feature cards
+    feat_escrow_title: 'Integrated Escrow',
+    feat_escrow_desc: 'Each contract is an autonomous escrow. The client deposits USDC directly into the contract; the contractor receives payment per milestone confirmed on-chain.',
+
+    // Network panel
+    network_rpc_primary: 'Primary RPC',
+
+    // Schedule payment panel
+    sched_send_timing: 'SEND TIMING',
+    sched_send_timing_tooltip: 'Send Now executes immediately. Schedule queues the payment and executes at the specified time (MM/DD/YYYY, local → UTC). Gas estimate may vary at execution.',
+    sched_send_now: 'Send Now',
+    sched_send_later: 'Schedule for Later',
+    sched_date_label: 'DATE (MM/DD/YYYY)',
+    sched_time_label: 'TIME',
+    sched_tz_label: 'TIMEZONE',
+
+    // Permit2 / Autonoma panel
+    permit2_connect_prompt: 'Connect wallet to view permits',
+    permit2_quick_cmds: 'Quick Commands',
+    permit2_payments_7d: 'Payments (7 days)',
+
+    // Autonoma quick-action buttons
+    quick_balance: '💰 Balance',
+    quick_network: '⛓️ Network',
+    quick_history: '📜 History',
   },
 
   // ══════════════════════════════════════════════
@@ -835,9 +861,38 @@ const TRANSLATIONS = {
     contracts_irreversible_action: 'Esta ação não pode ser desfeita.',
     contracts_pending_tx: 'Aguarde a transação atual.',
     contracts_contract_not_found: 'Contrato não encontrado.',
+    contracts_irreversible_action: 'Esta ação não pode ser desfeita.',
+    contracts_pending_tx: 'Aguarde a transação atual.',
+    contracts_contract_not_found: 'Contrato não encontrado.',
     contracts_upload_proof_first: '⚠️ Faça o upload de pelo menos uma prova de trabalho primeiro.',
     contracts_custody_reference: 'Referência de Custódia (ID / Hash)',
     contracts_await_tx: 'Aguardando transação.',
+
+    // Dashboard feature cards
+    feat_escrow_title: 'Escrow Integrado',
+    feat_escrow_desc: 'Cada contrato é um escrow autônomo. O cliente deposita USDC diretamente no contrato; o contratado recebe por milestone confirmado on-chain.',
+
+    // Network panel
+    network_rpc_primary: 'RPC Primário',
+
+    // Schedule payment panel
+    sched_send_timing: 'HORA DE ENVIO',
+    sched_send_timing_tooltip: 'Enviar Agora executa imediatamente. Agendar coloca o pagamento na fila e executa no horário especificado (MM/DD/AAAA, local → UTC). A estimativa de gas pode variar na execução.',
+    sched_send_now: 'Enviar Agora',
+    sched_send_later: 'Agendar para Depois',
+    sched_date_label: 'DATA (MM/DD/AAAA)',
+    sched_time_label: 'HORA',
+    sched_tz_label: 'FUSO HORÁRIO',
+
+    // Permit2 / Autonoma panel
+    permit2_connect_prompt: 'Conecte a wallet para ver os permits',
+    permit2_quick_cmds: 'Comandos Rápidos',
+    permit2_payments_7d: 'Pagamentos (7 dias)',
+
+    // Autonoma quick-action buttons
+    quick_balance: '💰 Saldo',
+    quick_network: '⛓️ Rede',
+    quick_history: '📜 Histórico',
   },
   // ══════════════════════════════════════════════
   es: {
@@ -1238,6 +1293,32 @@ const TRANSLATIONS = {
     contracts_upload_proof_first: '⚠️ Sube al menos una prueba de trabajo primero.',
     contracts_custody_reference: 'Referencia de Custodia (ID / Hash)',
     contracts_await_tx: 'Esperando transacción.',
+
+    // Dashboard feature cards
+    feat_escrow_title: 'Escrow Integrado',
+    feat_escrow_desc: 'Cada contrato es un escrow autónomo. El cliente deposita USDC directamente en el contrato; el contratista recibe por hito confirmado on-chain.',
+
+    // Network panel
+    network_rpc_primary: 'RPC Primario',
+
+    // Schedule payment panel
+    sched_send_timing: 'TIEMPO DE ENVÍO',
+    sched_send_timing_tooltip: 'Enviar Ahora ejecuta inmediatamente. Programar pone el pago en cola y lo ejecuta en el tiempo especificado (MM/DD/AAAA, local → UTC). La estimación de gas puede variar en la ejecución.',
+    sched_send_now: 'Enviar Ahora',
+    sched_send_later: 'Programar para Después',
+    sched_date_label: 'FECHA (MM/DD/AAAA)',
+    sched_time_label: 'HORA',
+    sched_tz_label: 'ZONA HORARIA',
+
+    // Permit2 / Autonoma panel
+    permit2_connect_prompt: 'Conecta la wallet para ver los permisos',
+    permit2_quick_cmds: 'Comandos Rápidos',
+    permit2_payments_7d: 'Pagos (7 días)',
+
+    // Autonoma quick-action buttons
+    quick_balance: '💰 Saldo',
+    quick_network: '⛓️ Red',
+    quick_history: '📜 Historial',
   },
 
   // ══════════════════════════════════════════════
@@ -1641,6 +1722,32 @@ const TRANSLATIONS = {
     contracts_upload_proof_first: '⚠️ 请先上传至少一个工作证明。',
     contracts_custody_reference: '托管参考 (ID / Hash)',
     contracts_await_tx: '等待交易。',
+
+    // Dashboard feature cards
+    feat_escrow_title: '集成托管',
+    feat_escrow_desc: '每个合同都是一个自主托管。客户直接将USDC存入合同；承包商在链上确认里程碑后获得付款。',
+
+    // Network panel
+    network_rpc_primary: '主要RPC',
+
+    // Schedule payment panel
+    sched_send_timing: '发送时间',
+    sched_send_timing_tooltip: '立即发送会立即执行。计划发送会将付款排入队列，并在指定时间执行（MM/DD/YYYY，本地→UTC）。执行时的Gas估算可能有所不同。',
+    sched_send_now: '立即发送',
+    sched_send_later: '稍后计划',
+    sched_date_label: '日期 (MM/DD/YYYY)',
+    sched_time_label: '时间',
+    sched_tz_label: '时区',
+
+    // Permit2 / Autonoma panel
+    permit2_connect_prompt: '连接钱包以查看许可',
+    permit2_quick_cmds: '快速命令',
+    permit2_payments_7d: '付款（7天）',
+
+    // Autonoma quick-action buttons
+    quick_balance: '💰 余额',
+    quick_network: '⛓️ 网络',
+    quick_history: '📜 历史',
   },
 
   // ══════════════════════════════════════════════
@@ -2044,6 +2151,32 @@ const TRANSLATIONS = {
     contracts_upload_proof_first: '⚠️ 먼저 작업 증명을 하나 이상 업로드하세요.',
     contracts_custody_reference: '탁탁 참조 (ID / Hash)',
     contracts_await_tx: '트랜잭션 대기 중.',
+
+    // Dashboard feature cards
+    feat_escrow_title: '통합 에스크로',
+    feat_escrow_desc: '각 계약은 자율 에스크로입니다. 클라이언트는 USDC를 계약에 직접 입금하고, 계약자는 체인에서 확인된 마일스톤당 지급 받습니다.',
+
+    // Network panel
+    network_rpc_primary: '기본 RPC',
+
+    // Schedule payment panel
+    sched_send_timing: '전송 시간',
+    sched_send_timing_tooltip: '지금 전송하면 즉시 실행됩니다. 예약하면 결제가 대기열에 추가되고 지정된 시간에 실행됩니다(MM/DD/YYYY, 로컬→UTC). 실행 시 Gas 추정치는 달라질 수 있습니다.',
+    sched_send_now: '지금 전송',
+    sched_send_later: '나중에 예약',
+    sched_date_label: '날짜 (MM/DD/YYYY)',
+    sched_time_label: '시간',
+    sched_tz_label: '시간대',
+
+    // Permit2 / Autonoma panel
+    permit2_connect_prompt: '지갑을 연결하여 허가를 확인하세요',
+    permit2_quick_cmds: '빠른 명령',
+    permit2_payments_7d: '결제 (7일)',
+
+    // Autonoma quick-action buttons
+    quick_balance: '💰 잔액',
+    quick_network: '⛓️ 네트워크',
+    quick_history: '📜 내역',
   },
 };
 
