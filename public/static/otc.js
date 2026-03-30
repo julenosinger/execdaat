@@ -62,10 +62,21 @@
     };
     console.warn('[OTC] otcRequireDeployed fallback injected (otc-escrow-abi.js may not have loaded).');
   }
+
+  // ── Sentinel: OTC_ESCROW_DEPLOYED must NEVER be defined ───────────────────
+  // If any stale script, cache, or future change reintroduces this deprecated
+  // boolean flag, we catch it here at runtime and remove it immediately.
+  if (typeof window.OTC_ESCROW_DEPLOYED !== 'undefined') {
+    console.error(
+      '[OTC SENTINEL] Deprecated window.OTC_ESCROW_DEPLOYED detected and removed.\n' +
+      'Use otcIsDeployed() instead. This variable must not exist.'
+    );
+    try { delete window.OTC_ESCROW_DEPLOYED; } catch (_) {}
+  }
 }());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260406b';
+const OTC_VERSION    = '20260407a';
 
 // ─── Date/Time UTC helpers ────────────────────────────────────────────────────
 // Convert HTML date input (YYYY-MM-DD) + time input (HH:MM) → ISO 8601 UTC string
@@ -690,6 +701,18 @@ async function _otcGetSigner() {
   if (!ethers) throw new Error('ethers.js not loaded');
   if (!window.ethereum) throw new Error('No wallet detected');
   const provider = new ethers.BrowserProvider(window.ethereum);
+
+  // ── Network validation: enforce ARC Testnet ──────────────────────────────
+  const network = await provider.getNetwork();
+  const chainId = Number(network.chainId);
+  if (chainId !== OTC_CHAIN_ID) {
+    throw new Error(
+      `Wrong network: connected to chain ${chainId}, but OTC requires ARC Testnet (chain ${OTC_CHAIN_ID}). ` +
+      `Please switch your wallet to ARC Testnet.`
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   return provider.getSigner();
 }
 
@@ -2521,6 +2544,37 @@ function _otcCheckAlerts() {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 function _otcInit() {
   otcLoad();
+
+  // ── UI Warning: show banner if escrow contract is not configured ───────────
+  // This prevents silent failures and informs users that on-chain features
+  // require a valid contract address on ARC Testnet (chain 5042002).
+  (function _otcInjectWarningBanner() {
+    if (otcIsDeployed()) return; // Address is valid — no warning needed
+    const containerId = 'otc-escrow-warning-banner';
+    if (document.getElementById(containerId)) return; // Already injected
+    // Find the OTC tab container (try multiple selectors)
+    const container = document.getElementById('tab-otc')
+      || document.querySelector('[data-tab="otc"]')
+      || document.querySelector('.otc-container');
+    if (!container) return;
+    const banner = document.createElement('div');
+    banner.id = containerId;
+    banner.style.cssText = [
+      'background:#7f1d1d','color:#fca5a5','border:1px solid #ef4444',
+      'border-radius:8px','padding:12px 16px','margin:12px 0',
+      'font-size:0.875rem','display:flex','align-items:center','gap:8px'
+    ].join(';');
+    banner.innerHTML =
+      '<span style="font-size:1.25rem">⚠️</span>' +
+      '<div>' +
+        '<strong>OTC Escrow not configured</strong> — ' +
+        'On-chain actions (register, fund, settle, dispute) are disabled. ' +
+        'Set a valid <code>OTC_ESCROW_ADDRESS</code> in ' +
+        '<code>otc-escrow-abi.js</code> and redeploy.' +
+      '</div>';
+    container.insertBefore(banner, container.firstChild);
+  }());
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Auto-fill timezone
   const tzEl = _otcEl('otc-tge-tz');

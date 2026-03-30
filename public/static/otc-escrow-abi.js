@@ -658,6 +658,22 @@ function otcGetEscrowContract(signerOrProvider) {
   return new ethers.Contract(OTC_ESCROW_ADDRESS, OTC_ESCROW_ABI, signerOrProvider);
 }
 
+/**
+ * getOTCEscrowContract(signerOrProvider) — Strict variant
+ * Throws a clear Error if the contract is not configured or ethers.js is absent.
+ * Use this in on-chain interaction functions where failure must be surfaced.
+ *
+ * @param {ethers.Signer|ethers.Provider} signerOrProvider
+ * @returns {ethers.Contract}
+ * @throws {Error} if address is invalid or ethers.js is not loaded
+ */
+function getOTCEscrowContract(signerOrProvider) {
+  otcRequireDeployed(); // throws if address is missing/invalid/zero
+  const ethers = window.ethers;
+  if (!ethers) throw new Error('ethers.js not loaded — cannot create contract instance.');
+  return new ethers.Contract(OTC_ESCROW_ADDRESS, OTC_ESCROW_ABI, signerOrProvider);
+}
+
 // Helper: get ERC20 contract instance
 function otcGetERC20Contract(tokenAddr, signerOrProvider) {
   const ethers = window.ethers;
@@ -699,6 +715,20 @@ function otcDecodeDealState(stateNum) {
 // Backward-compat alias (v1/v2 code may reference this)
 const OTC_ESCROW_ABI_GETDEALSTATUS = OTC_ESCROW_ABI.find(e => e.name === 'getDealStatus');
 
+// ─── Runtime sentinel: OTC_ESCROW_DEPLOYED must NEVER exist ──────────────────
+// If something reintroduces this deprecated variable, we catch it immediately
+// at module load time rather than silently allowing the stale-flag bug to return.
+(function _otcSentinel() {
+  if (typeof window.OTC_ESCROW_DEPLOYED !== 'undefined') {
+    console.error(
+      '[OTC SENTINEL] Deprecated variable window.OTC_ESCROW_DEPLOYED detected!\n' +
+      'This variable must not exist. Use otcIsDeployed() instead.\n' +
+      'Removing it now to prevent stale-flag bugs.'
+    );
+    try { delete window.OTC_ESCROW_DEPLOYED; } catch (_) {}
+  }
+}());
+
 // ─── Explicit window exports ──────────────────────────────────────────────────
 // In browsers, top-level `const` and `function` declarations are NOT added to
 // window.* automatically (unlike `var`). Scripts loaded after this one that
@@ -706,9 +736,6 @@ const OTC_ESCROW_ABI_GETDEALSTATUS = OTC_ESCROW_ABI.find(e => e.name === 'getDea
 // is any script-load ordering issue or cache miss.
 // We explicitly assign here so cross-script access is always reliable.
 window.OTC_ESCROW_ADDRESS      = OTC_ESCROW_ADDRESS;
-// NOTE: OTC_ESCROW_DEPLOYED is intentionally NOT exported.
-//       Use otcIsDeployed() everywhere — it derives the answer from the
-//       address at call-time and is immune to stale-flag bugs.
 window.otcIsDeployed           = otcIsDeployed;
 window.otcRequireDeployed      = otcRequireDeployed;
 window.OTC_ESCROW_ABI          = OTC_ESCROW_ABI;
@@ -719,6 +746,7 @@ window.OTC_ERC20_APPROVE_ABI   = OTC_ERC20_APPROVE_ABI;
 window.OTC_ESCROW_ABI_GETDEALSTATUS = OTC_ESCROW_ABI_GETDEALSTATUS;
 window.otcResolveToken         = otcResolveToken;
 window.otcGetEscrowContract    = otcGetEscrowContract;
+window.getOTCEscrowContract    = getOTCEscrowContract;  // strict variant (throws on error)
 window.otcGetERC20Contract     = otcGetERC20Contract;
 window.otcParseTokenAmount     = otcParseTokenAmount;
 window.otcFormatTokenAmount    = otcFormatTokenAmount;

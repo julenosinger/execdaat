@@ -520,12 +520,13 @@ app.get('/', (c) => {
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
   <!-- axios-shim: drop-in fetch() fallback, only activates when CDN axios is undefined -->
   <script src="/static/axios-shim.js?v=20260328a"></script>
-  <!-- ethers.js v6 — used for ethers.Contract, ethers.parseUnits, BrowserProvider -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
-  <!-- jsPDF — PDF receipt generation -->
+  <!-- jsPDF — PDF receipt generation (MUST load before ethers.js to avoid toString conflict) -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <link href="/static/styles.css?v=20260406a" rel="stylesheet">
-  <script src="/static/i18n.js?v=20260406a"></script>
+  <!-- ethers.js v6.16.0 — upgraded from 6.13.4 to fix "Cannot assign to read-only property toString" errors -->
+  <!-- NOTE: Must load AFTER jsPDF. The UMD bundle patches BigInt/Number prototypes on load. -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"></script>
+  <link href="/static/styles.css?v=20260407a" rel="stylesheet">
+  <script src="/static/i18n.js?v=20260407a"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
 
@@ -4874,8 +4875,8 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260330a"></script>
   <script src="/static/queue-engine.js?v=20260402a"></script>
-  <script src="/static/otc-escrow-abi.js?v=20260406b"></script>
-  <script src="/static/otc.js?v=20260406b"></script>
+  <script src="/static/otc-escrow-abi.js?v=20260407a"></script>
+  <script src="/static/otc.js?v=20260407a"></script>
   <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
