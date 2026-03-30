@@ -69,9 +69,12 @@
   Pragma: no-cache
   X-Content-Type-Options: nosniff
 
-# Security JS — slightly shorter cache (for faster rollout of security fixes)
+# Security JS — no-cache so security fixes propagate immediately to all users
+# (immutable from /static/* rule was preventing updates)
 /static/security.js
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Cache-Control: no-store, no-cache, must-revalidate
+  Pragma: no-cache
+  X-Content-Type-Options: nosniff
 
 # HTML pages — no caching (always fresh)
 /*.html

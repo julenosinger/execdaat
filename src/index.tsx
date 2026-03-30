@@ -514,7 +514,7 @@ app.get('/', (c) => {
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- ARC Security Layer (loaded first, before all app scripts) -->
-  <script src="/static/security.js?v=20250323"></script>
+  <script src="/static/security.js?v=20260408b"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
   <!-- axios CDN — primary. The shim below provides fallback if CDN fails. -->
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
