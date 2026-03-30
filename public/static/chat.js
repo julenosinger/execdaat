@@ -1,6 +1,6 @@
 // ============================================================
 // CHAT MODULE v3 — ARC AI Assistant | build: 20260329c
-// ArcPay Agent v1.0 — Full Platform Integration
+// Daat Agent v1.0 — Full Platform Integration
 //
 // ╔══════════════════════════════════════════════════════════╗
 // ║  ARCHITECTURE: Brain / Execution Separation             ║
@@ -21,7 +21,7 @@
 // ╚══════════════════════════════════════════════════════════╝
 //
 // Authorization Flow:
-//   1. User clicks "Authorize ArcPay Agent" button
+//   1. User clicks "Authorize Daat Agent" button
 //   2. Wallet opens → user SIGNS an EIP-191 message (off-chain)
 //   3. Wallet opens again → user CONFIRMS a 0-value USDC.transfer
 //      to the factory contract as on-chain session proof
@@ -204,7 +204,7 @@ const CHAT_EXPAND_MIN_PX = 650;
     .chat-size-btn:hover, .chat-size-btn.active { background: rgba(139,92,246,0.25);
       border-color: rgba(139,92,246,0.5); color: #c4b5fd; }
 
-    /* ArcPay auth bar — prominent, not hidden */
+    /* Daat auth bar — prominent, not hidden */
     #chat-arcpay-bar {
       flex-shrink: 0;
       border-bottom: 1px solid rgba(109,40,217,0.3);
@@ -740,7 +740,7 @@ function openChatNewTab() {
   window.open(location.origin + location.pathname + '?chat=1', '_blank', 'width=480,height=720,menubar=no,toolbar=no');
 }
 
-// ── ArcPay Bar ─────────────────────────────────────────────────────────────────
+// ── Daat Bar ─────────────────────────────────────────────────────────────────
 function updateArcPayBar() {
   const bar       = document.getElementById('chat-arcpay-bar');
   const statusEl  = document.getElementById('chat-arcpay-status');
@@ -756,14 +756,14 @@ function updateArcPayBar() {
     const walletShort = arcPaySession.wallet.slice(0, 8) + '…' + arcPaySession.wallet.slice(-5);
     const expiry      = new Date(arcPaySession.expiry).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     if (statusEl) statusEl.innerHTML =
-      `<span class="arcpay-badge-active"><i class="fas fa-shield-alt"></i> ArcPay Agent Active</span>` +
+      `<span class="arcpay-badge-active"><i class="fas fa-shield-alt"></i> Daat Agent Active</span>` +
       `<span class="text-[9px] text-green-600 ml-1">${walletShort} · exp ${expiry}</span>`;
     if (authBtn)   authBtn.classList.add('hidden');
     if (revokeBtn) revokeBtn.classList.remove('hidden');
     if (badge)     { badge.classList.remove('hidden'); badge.textContent = '✅ Active'; }
   } else {
     if (statusEl) statusEl.innerHTML =
-      `<span class="arcpay-badge-inactive"><i class="fas fa-robot"></i> ArcPay Agent</span>` +
+      `<span class="arcpay-badge-inactive"><i class="fas fa-robot"></i> Daat Agent</span>` +
       `<span class="text-[9px] text-purple-400 ml-1">Not authorized — click to enable</span>`;
     if (authBtn)   authBtn.classList.remove('hidden');
     if (revokeBtn) revokeBtn.classList.add('hidden');
@@ -787,7 +787,7 @@ async function executeArcPayAuthorization() {
   if (!wallet) {
     showToast('Connect your wallet first.', 'warning');
     appendChatMessage('assistant',
-      `⚠️ **Wallet required**\n\nConnect your EVM wallet first to authorize the ArcPay Agent.`,
+      `⚠️ **Wallet required**\n\nConnect your EVM wallet first to authorize the Daat Agent.`,
       'agents'
     );
     appendActionCard([{ label: '🔗 Connect Wallet', action: `openWalletModal()`, primary: true }]);
@@ -796,7 +796,7 @@ async function executeArcPayAuthorization() {
 
   if (isAgentActive()) {
     appendChatMessage('assistant',
-      `✅ **ArcPay Agent already active**\n\nYour wallet \`${wallet.slice(0,10)}…\` already has an active session.\n\n` +
+      `✅ **Daat Agent already active**\n\nYour wallet \`${wallet.slice(0,10)}…\` already has an active session.\n\n` +
       `All platform operations are available via chat commands.`,
       'agents'
     );
@@ -843,11 +843,11 @@ async function executeArcPayAuthorization() {
     const expiry       = Date.now() + SESSION_TTL_MS;
     const message      = [
       '═══════════════════════════════════════',
-      '  ARC Platform — ArcPay Agent v1.0',
+      '  ARC Platform — Daat Agent v1.0',
       '  Authorization Request',
       '═══════════════════════════════════════',
       '',
-      'I authorize the ArcPay Agent to execute',
+      'I authorize the Daat Agent to execute',
       'platform operations on my behalf:',
       '  • Token transfers & payments',
       '  • Token swaps (USDC ↔ EURC)',
@@ -937,7 +937,7 @@ async function executeArcPayAuthorization() {
     updateArcPayBar();
 
     appendChatMessage('assistant',
-      `🎉 **ArcPay Agent v1.0 Authorized!**\n\n` +
+      `🎉 **Daat Agent v1.0 Authorized!**\n\n` +
       `✅ Wallet: \`${signerAddr.slice(0,10)}…${signerAddr.slice(-6)}\`\n` +
       `🔐 Session: \`${sessionHash.slice(0,16)}…\`\n` +
       `⛓️ On-chain proof: [\`${confirmTx.hash.slice(0,14)}…\`](${ARC_EXPLORER}/tx/${confirmTx.hash})\n` +
@@ -956,7 +956,7 @@ async function executeArcPayAuthorization() {
       { label: '💳 My Balance',        action: `sendQuickMessage('my wallet')`, primary: false },
     ]);
 
-    showToast('✅ ArcPay Agent authorized!', 'success');
+    showToast('✅ Daat Agent authorized!', 'success');
 
   } catch (err) {
     hideAuthOverlay();
@@ -986,7 +986,7 @@ function showAuthOverlay() {
         <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#6d28d9,#3b82f6);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
           <i class="fas fa-shield-alt text-white" style="font-size:20px;"></i>
         </div>
-        <p style="color:#e5e7eb;font-weight:700;font-size:15px;margin:0 0 4px;">ArcPay Agent v1.0</p>
+        <p style="color:#e5e7eb;font-weight:700;font-size:15px;margin:0 0 4px;">Daat Agent v1.0</p>
         <p style="color:#6b7280;font-size:11px;margin:0;">Authorization in progress…</p>
       </div>
 
@@ -1063,17 +1063,17 @@ function setAuthStep(n, state, detail) {
 function cancelArcPayAuth() {
   hideAuthOverlay();
   authInProgress = false;
-  appendChatMessage('assistant', `⚠️ Authorization cancelled. Click **Authorize ArcPay** whenever you're ready.`, 'agents');
+  appendChatMessage('assistant', `⚠️ Authorization cancelled. Click **Authorize Daat** whenever you're ready.`, 'agents');
 }
 
 function revokeArcPaySession() {
   clearSession();
   updateArcPayBar();
   appendChatMessage('assistant',
-    `✅ **ArcPay Agent session revoked.**\n\nThe agent no longer has permission to act on your behalf.\n\nYou can re-authorize at any time by clicking **Authorize ArcPay Agent**.`,
+    `✅ **Daat Agent session revoked.**\n\nThe agent no longer has permission to act on your behalf.\n\nYou can re-authorize at any time by clicking **Authorize Daat Agent**.`,
     'agents'
   );
-  showToast('ArcPay session revoked.', 'info');
+  showToast('Daat session revoked.', 'info');
 }
 
 // ── Init Session ───────────────────────────────────────────────────────────────
@@ -1114,8 +1114,8 @@ function showWelcomeMessage() {
       ? `✅ Wallet: \`${wallet.slice(0,8)}…${wallet.slice(-6)}\``
       : `⚠️ No wallet connected`) + '\n' +
     (active
-      ? `🤖 ArcPay Agent: **✅ Active** — I can execute operations for you\n`
-      : `🔒 ArcPay Agent: **Not authorized** — Click **Authorize** above to enable\n`) +
+      ? `🤖 Daat Agent: **✅ Active** — I can execute operations for you\n`
+      : `🔒 Daat Agent: **Not authorized** — Click **Authorize** above to enable\n`) +
     `\n**What I can do:**\n` +
     `- 💳 Send payments on-chain\n` +
     `- 🔄 Swap tokens (USDC ↔ EURC)\n` +
@@ -1125,13 +1125,13 @@ function showWelcomeMessage() {
     `- 🛡️ Guardian pre-validation on all ops\n\n` +
     (active
       ? `Try: *"send 10 USDC to 0x…"*, *"swap 5 USDC to EURC"*, *"show my contracts"*`
-      : `👆 **Authorize the ArcPay Agent** above to unlock all operations.`),
+      : `👆 **Authorize the Daat Agent** above to unlock all operations.`),
     'general'
   );
 
   if (!active && wallet) {
     appendActionCard([
-      { label: '🤖 Authorize ArcPay Agent', action: `executeArcPayAuthorization()`, primary: true },
+      { label: '🤖 Authorize Daat Agent', action: `executeArcPayAuthorization()`, primary: true },
     ]);
   } else if (!wallet) {
     appendActionCard([
@@ -1223,18 +1223,18 @@ async function handleLocalCommand(msg) {
     await cmdShowContracts(); return true;
   }
 
-  // ── Permit2 intents (handled before ArcPay authorize to avoid collisions) ────
+  // ── Permit2 intents (handled before Daat authorize to avoid collisions) ────
   if (typeof handlePermitIntent === 'function') {
     const p2handled = await handlePermitIntent(msg);
     if (p2handled) return true;
   }
 
-  // ── Authorize ArcPay ──────────────────────────────────────────────────────
+  // ── Authorize Daat ──────────────────────────────────────────────────────
   if (/approve arcpay|authorize agent|enable agent|arcpay agent|autorizar|autorize/i.test(lower)) {
     await executeArcPayAuthorization(); return true;
   }
 
-  // ── Revoke ArcPay ─────────────────────────────────────────────────────────
+  // ── Revoke Daat ─────────────────────────────────────────────────────────
   if (/revoke arcpay|revoke agent|revogar|desautorizar/i.test(lower)) {
     revokeArcPaySession(); return true;
   }
@@ -1590,7 +1590,7 @@ async function cmdHelp() {
   const hasP2E  = typeof Permit2Engine !== 'undefined';
   appendChatMessage('assistant',
     `🤖 **ARC AI Assistant — Commands**\n\n` +
-    `${active ? '✅ ArcPay Agent Active' : '⚠️ ArcPay not authorized — some commands need authorization'}\n` +
+    `${active ? '✅ Daat Agent Active' : '⚠️ Daat not authorized — some commands need authorization'}\n` +
     `${hasP2E ? '⚡ Permit2Engine: Loaded' : ''}\n\n` +
     `**💳 Payments**\n` +
     `- \`send 10 USDC to 0x...\` — single transfer with preflight\n` +
@@ -1658,7 +1658,7 @@ async function cmdShowWallet() {
     `EURC Balance: **${eurcBal}**\n` +
     `Latest Block: ${blockNum}\n` +
     `Network: Arc Testnet (5042002)\n` +
-    `ArcPay Agent: ${active ? '✅ Active' : '❌ Not authorized'}\n\n` +
+    `Daat Agent: ${active ? '✅ Active' : '❌ Not authorized'}\n\n` +
     `[View on ArcScan](${ARC_EXPLORER}/address/${wallet})`,
     'general'
   );
@@ -1780,7 +1780,7 @@ async function cmdShowDashboard() {
     `- 📋 Contracts: ${Object.keys(contracts).length} in memory\n` +
     `- 💰 Wallet: ${wallet ? `\`${wallet.slice(0,10)}…\`` : 'Not connected'}\n\n` +
     `**Agents:**\n` +
-    `- 🤖 ArcPay: ${active ? '✅ Active' : '⚠️ Not authorized'}\n` +
+    `- 🤖 Daat: ${active ? '✅ Active' : '⚠️ Not authorized'}\n` +
     `- 🛡️ Guardian: 🟢 Online`,
     'general'
   );
@@ -1803,7 +1803,7 @@ async function cmdSendPayment(amount, token, recipient) {
   // Require agent authorization
   if (!isAgentActive()) {
     appendChatMessage('assistant',
-      `🔒 **ArcPay Agent not authorized**\n\nAuthorize the agent first to execute payments via chat.`,
+      `🔒 **Daat Agent not authorized**\n\nAuthorize the agent first to execute payments via chat.`,
       'agents'
     );
     appendActionCard([{ label: '🤖 Authorize Agent', action: `executeArcPayAuthorization()`, primary: true }]);
@@ -1883,7 +1883,7 @@ async function cmdBatchPayment(entries) {
     return;
   }
   if (!isAgentActive()) {
-    appendChatMessage('assistant', `🔒 Authorize ArcPay Agent first to use batch payments.`, 'agents');
+    appendChatMessage('assistant', `🔒 Authorize Daat Agent first to use batch payments.`, 'agents');
     appendActionCard([{ label: '🤖 Authorize Agent', action: `executeArcPayAuthorization()`, primary: true }]);
     return;
   }
@@ -1947,7 +1947,7 @@ async function cmdSwap(amount, fromToken, toToken) {
     return;
   }
   if (!isAgentActive()) {
-    appendChatMessage('assistant', `🔒 Authorize ArcPay Agent first to execute swaps via chat.`, 'agents');
+    appendChatMessage('assistant', `🔒 Authorize Daat Agent first to execute swaps via chat.`, 'agents');
     appendActionCard([{ label: '🤖 Authorize Agent', action: `executeArcPayAuthorization()`, primary: true }]);
     return;
   }
@@ -1984,7 +1984,7 @@ async function cmdCreateContract(contractor, amount) {
     return;
   }
   if (!isAgentActive()) {
-    appendChatMessage('assistant', `🔒 Authorize ArcPay Agent first to create contracts via chat.`, 'agents');
+    appendChatMessage('assistant', `🔒 Authorize Daat Agent first to create contracts via chat.`, 'agents');
     appendActionCard([{ label: '🤖 Authorize Agent', action: `executeArcPayAuthorization()`, primary: true }]);
     return;
   }
@@ -2017,7 +2017,7 @@ async function cmdCreateContract(contractor, amount) {
 async function cmdDepositContract(amount, contractId) {
   hideTypingIndicator();
   if (!isAgentActive()) {
-    appendChatMessage('assistant', `🔒 Authorize ArcPay Agent first.`, 'agents');
+    appendChatMessage('assistant', `🔒 Authorize Daat Agent first.`, 'agents');
     appendActionCard([{ label: '🤖 Authorize Agent', action: `executeArcPayAuthorization()`, primary: true }]);
     return;
   }
@@ -2038,7 +2038,7 @@ async function cmdDepositContract(amount, contractId) {
 async function cmdReleaseMilestone(milestoneId, contractId) {
   hideTypingIndicator();
   if (!isAgentActive()) {
-    appendChatMessage('assistant', `🔒 Authorize ArcPay Agent first.`, 'agents');
+    appendChatMessage('assistant', `🔒 Authorize Daat Agent first.`, 'agents');
     appendActionCard([{ label: '🤖 Authorize Agent', action: `executeArcPayAuthorization()`, primary: true }]);
     return;
   }
@@ -2189,7 +2189,7 @@ function chatOpenContractForm(contractor, amount) {
     const contractorEl = document.getElementById('cf-contractor');
     const titleEl      = document.getElementById('cf-title');
     if (contractorEl) contractorEl.value = contractor;
-    if (titleEl && !titleEl.value) titleEl.value = 'Contract via ArcPay Agent';
+    if (titleEl && !titleEl.value) titleEl.value = 'Contract via Daat Agent';
     // Trigger add milestone with amount
     const milestoneAmtEl = document.querySelector('.cf-milestone-amount');
     const milestoneTitleEl = document.querySelector('.cf-milestone-title');
@@ -2596,7 +2596,7 @@ window.addEventListener('walletConnected', () => {
     updateArcPayBar();
     if (chatOpen) {
       appendChatMessage('assistant',
-        `⚠️ Wallet changed — ArcPay session cleared.\n\nRe-authorize to use the agent with this wallet.`,
+        `⚠️ Wallet changed — Daat session cleared.\n\nRe-authorize to use the agent with this wallet.`,
         'agents'
       );
     }
@@ -2904,7 +2904,7 @@ window.updateCSVBanner = updateCSVBanner;
 
 const _active = isAgentActive();
 console.log('%c[CHAT v3 — Brain/Execution Split]', 'color:#a78bfa;font-weight:bold',
-  'ArcPay Agent:', _active ? '✅ Active' : '⚠️ Not authorized',
+  'Daat Agent:', _active ? '✅ Active' : '⚠️ Not authorized',
   '| Session:', _active ? arcPaySession?.sessionHash?.slice(0,12)+'…' : 'none',
   '| Size:', chatSize,
   '| 🧠 Brain-only mode: chatbot nunca executa blockchain'

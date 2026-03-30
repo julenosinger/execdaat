@@ -47,7 +47,7 @@ export class PaymentAgent {
     this.contractAddress = contractAddress;
     this.state = {
       id: 'payment-agent-01',
-      name: 'ArcPay Agent v1.0',
+      name: 'Daat Agent v1.0',
       type: 'payment',
       status: 'idle',
       lastAction: 'Inicializado',

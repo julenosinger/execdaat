@@ -262,7 +262,7 @@
       `• 🛡️ Validar segurança via Guardian\n\n` +
       (wallet
         ? `Wallet conectada: \`${wallet.slice(0,10)}…\`\n` +
-          `ArcPay Agent: ${active ? '✅ Autorizado' : '⚠️ Não autorizado'}\n\n` +
+          `Daat Agent: ${active ? '✅ Autorizado' : '⚠️ Não autorizado'}\n\n` +
           `*Use os botões de ação rápida ou digite um comando.*`
         : `⚠️ *Conecte sua wallet para usar todas as funcionalidades.*`),
       'agents'
@@ -302,10 +302,10 @@
 
     const active = typeof isAgentActive === 'function' ? isAgentActive() : false;
     if (active) {
-      statusEl.innerHTML = '<i class="fas fa-robot text-green-400 text-[9px] mr-1"></i> ArcPay Agent · <span class="text-green-400">✅ Autorizado</span>';
+      statusEl.innerHTML = '<i class="fas fa-robot text-green-400 text-[9px] mr-1"></i> Daat Agent · <span class="text-green-400">✅ Autorizado</span>';
       if (authBtn) authBtn.classList.add('hidden');
     } else {
-      statusEl.innerHTML = '<i class="fas fa-robot text-purple-400 text-[9px] mr-1"></i> ArcPay Agent · <span class="text-yellow-400">Não autorizado</span>';
+      statusEl.innerHTML = '<i class="fas fa-robot text-purple-400 text-[9px] mr-1"></i> Daat Agent · <span class="text-yellow-400">Não autorizado</span>';
       if (authBtn) authBtn.classList.remove('hidden');
     }
   }

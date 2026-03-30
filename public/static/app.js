@@ -633,7 +633,7 @@ async function loadAgentsDetails() {
         <span class="text-yellow-400">${payData.stats.pending}</span>
       </div>
       <div class="flex justify-between text-sm py-1 border-b border-gray-700/30">
-        <span class="text-gray-400">ArcPay Authorization</span>
+        <span class="text-gray-400">Daat Authorization</span>
         <span class="${localStorage.getItem('arc-pay-approved')==='1' ? 'text-green-400' : 'text-gray-500'}">
           ${localStorage.getItem('arc-pay-approved')==='1' ? '✅ Active' : '⚠️ Not authorized'}
         </span>

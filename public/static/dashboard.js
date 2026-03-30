@@ -268,7 +268,7 @@ function dbRenderAgentCards(latency, arcPayActive) {
         <i class="fas fa-robot text-purple-400 text-sm"></i>
       </div>
       <div class="flex-1 min-w-0">
-        <div class="text-sm text-white font-medium">ArcPay Agent v1.0</div>
+        <div class="text-sm text-white font-medium">Daat Agent v1.0</div>
         <div class="text-xs text-gray-400 truncate">${arcPayActive ? 'Authorized — ready to execute batched txs' : 'Not authorized — open chat → "approve arcpay"'}</div>
       </div>
       <span class="text-xs px-2 py-1 rounded-full flex-shrink-0 ${arcPayActive ? 'bg-green-900/30 text-green-400 border border-green-700/30' : 'bg-gray-700/40 text-gray-400 border border-gray-600/30'}">
@@ -300,7 +300,7 @@ function dbRenderAgentCards(latency, arcPayActive) {
         <i class="fas fa-file-contract text-orange-400 text-sm"></i>
       </div>
       <div class="flex-1 min-w-0">
-        <div class="text-sm text-white font-medium">ArcContract Agent v1.0</div>
+        <div class="text-sm text-white font-medium">Daat Contract Agent v1.0</div>
         <div class="text-xs text-gray-400">Escrow · IPFS proof · PDF receipts</div>
       </div>
       <span class="text-xs px-2 py-1 rounded-full flex-shrink-0 bg-green-900/30 text-green-400 border border-green-700/30">Active</span>
@@ -426,12 +426,12 @@ async function loadDashboard() {
     const activityItems = dbGetLocalActivity();
     dbRenderActivity(activityItems);
 
-    // ── Update ArcPay bar in chat ──
+    // ── Update Daat bar in chat ──
     const arcpayBar    = document.getElementById('chat-arcpay-bar');
     const arcpayStatus = document.getElementById('chat-arcpay-status');
     const arcpayBtn    = document.getElementById('chat-arcpay-btn');
     if (arcpayBar)    arcpayBar.classList.remove('hidden');
-    if (arcpayStatus) arcpayStatus.textContent = arcPayActive ? 'ArcPay: ✅ Active' : 'ArcPay: Not authorized';
+    if (arcpayStatus) arcpayStatus.textContent = arcPayActive ? 'Daat: ✅ Active' : 'Daat: Not authorized';
     if (arcpayBtn)    arcpayBtn.classList.toggle('hidden', arcPayActive);
 
     // ── Update live block display (top of dashboard tab if exists) ──

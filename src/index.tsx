@@ -436,13 +436,13 @@ app.get('/api/status', (c) => {
     agents: {
       payment: {
         id: 'payment-agent-01',
-        name: 'ArcPay Agent v1.0',
+        name: 'Daat Agent v1.0',
         capabilities: ['analyze', 'execute', 'cancel', 'batch'],
         endpoint: '/api/payments',
       },
       contract: {
         id: 'contract-agent-01',
-        name: 'ArcContract Agent v1.0',
+        name: 'Daat Contract Agent v1.0',
         capabilities: ['review', 'activate', 'verify_milestone', 'resolve_dispute'],
         endpoint: '/api/contracts',
       },
@@ -1463,7 +1463,7 @@ app.get('/', (c) => {
       <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:10px 16px;">
         <div class="flex items-center gap-2">
           <div class="w-2 h-2 rounded-full" style="background:#4ade80;animation:pulse 2s infinite;box-shadow:0 0 6px #4ade80;"></div>
-          <span style="color:#90bce0;font-weight:700;">ArcPay Payments</span>
+          <span style="color:#90bce0;font-weight:700;">Daat Payments</span>
         </div>
         <span style="color:#7aaad0;">Single on-chain ERC-20 transfer</span>
         <span class="ml-auto" style="color:#6a90b8;">Arc Testnet · Chain 5042002 · No real funds</span>
@@ -2808,7 +2808,7 @@ app.get('/', (c) => {
               <i class="fas fa-money-bill-wave text-white text-xl"></i>
             </div>
             <div>
-              <h3 class="text-white font-semibold">ArcPay Agent v1.0</h3>
+              <h3 class="text-white font-semibold">Daat Agent v1.0</h3>
               <p class="text-purple-400 text-xs" data-i18n="payment_agent_desc">USDC Payment Agent</p>
             </div>
             <div id="pay-agent-status-dot" class="ml-auto w-3 h-3 rounded-full bg-green-400 animate-pulse"></div>
@@ -2858,7 +2858,7 @@ app.get('/', (c) => {
               <i class="fas fa-file-contract text-white text-xl"></i>
             </div>
             <div>
-              <h3 class="text-white font-semibold">ArcContract Agent v1.0</h3>
+              <h3 class="text-white font-semibold">Daat Contract Agent v1.0</h3>
               <p class="text-blue-400 text-xs" data-i18n="contract_agent_desc">Digital Contract Agent</p>
             </div>
             <div id="contract-agent-status-dot" class="ml-auto w-3 h-3 rounded-full bg-green-400 animate-pulse"></div>
@@ -2919,8 +2919,8 @@ app.get('/', (c) => {
         <div id="agent-logs" class="font-mono text-xs space-y-1 max-h-64 overflow-y-auto bg-black/40 rounded-lg p-4">
           <div class="text-green-400">[SYSTEM] ExecDaat initialized...</div>
           <div class="text-blue-400">[NETWORK] Connected to Arc Testnet (Chain ID: 5042002)</div>
-          <div class="text-purple-400">[AGENT:PAY] ArcPay Agent v1.0 ready</div>
-          <div class="text-cyan-400">[AGENT:CTR] ArcContract Agent v1.0 ready</div>
+          <div class="text-purple-400">[AGENT:PAY] Daat Agent v1.0 ready</div>
+          <div class="text-cyan-400">[AGENT:CTR] Daat Contract Agent v1.0 ready</div>
           <div class="text-yellow-400">[AGENT:GRD] Guardian Agent v1.0 ready</div>
           <div class="text-green-400">[AGENT:YLD] Yield Optimizer v1.0 ready</div>
           <div class="text-gray-500">[INFO] All 4 agents active — waiting for tasks...</div>
@@ -3412,12 +3412,12 @@ app.get('/', (c) => {
               </div>
             </div>
 
-            <!-- ArcPay status bar -->
+            <!-- Daat status bar -->
             <div class="px-3 py-2 border-b border-gray-800/60 flex-shrink-0 bg-gray-950/30">
               <div class="flex items-center justify-between gap-2">
                 <span class="text-[10px] flex items-center gap-1.5 flex-1 min-w-0 truncate text-gray-400">
                   <i class="fas fa-robot text-purple-400 text-[9px]"></i>
-                  <span id="autonoma-arcpay-status-text">ArcPay Agent · verificando...</span>
+                  <span id="autonoma-arcpay-status-text">Daat Agent · verificando...</span>
                 </span>
                 <button id="autonoma-arcpay-auth-btn"
                   onclick="if(typeof executeArcPayAuthorization==='function')executeArcPayAuthorization()"
@@ -4216,12 +4216,12 @@ app.get('/', (c) => {
       </div>
     </div>
 
-    <!-- ArcPay Agent v1.0 — Status Bar -->
+    <!-- Daat Agent v1.0 — Status Bar -->
     <div id="chat-arcpay-bar" class="px-3 py-2 unauthorized flex-shrink-0">
       <div class="flex items-center justify-between gap-2">
         <!-- Status text + badge -->
         <span id="chat-arcpay-status" class="text-[10px] flex items-center gap-1.5 flex-1 min-w-0 truncate">
-          <span class="arcpay-badge-inactive"><i class="fas fa-robot"></i> ArcPay Agent</span>
+          <span class="arcpay-badge-inactive"><i class="fas fa-robot"></i> Daat Agent</span>
           <span class="text-[9px] text-purple-400 ml-1">Not authorized — click to enable</span>
         </span>
         <!-- Active badge (hidden until authorized) -->
@@ -4250,7 +4250,7 @@ app.get('/', (c) => {
       <button onclick="sendQuickMessage('my wallet')"        class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">💳 Wallet</button>
       <button onclick="sendQuickMessage('network status')"   class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">⛓️ Network</button>
       <button onclick="sendQuickMessage('show my contracts')"class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">📋 Contracts</button>
-      <button onclick="sendQuickMessage('approve arcpay')"   class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🤖 ArcPay</button>
+      <button onclick="sendQuickMessage('approve arcpay')"   class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🤖 Daat</button>
       <button onclick="sendQuickMessage('guardian')"         class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">🛡️ Guardian</button>
       <button onclick="sendQuickMessage('dashboard')"        class="chat-quick-btn flex-shrink-0 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-full border border-gray-700">📊 Stats</button>
       <button onclick="document.getElementById('chat-csv-file-input').click()"
@@ -4878,7 +4878,7 @@ app.get('/', (c) => {
       // 0. Sync --topbar-h CSS variable on load (in case banner was pre-dismissed)
       if (typeof updateTopbarHeight === 'function') updateTopbarHeight();
 
-      // 1. ArcPay status bar — delegate fully to chat.js v3 updateArcPayBar()
+      // 1. Daat status bar — delegate fully to chat.js v3 updateArcPayBar()
       //    The bar is visible by default (no hidden class) and chat.js v3 owns it.
       //    We call updateArcPayBar() after a short delay to ensure chat.js is ready.
       setTimeout(() => {

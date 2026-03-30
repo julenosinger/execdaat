@@ -49,7 +49,7 @@ export class ContractAgent {
     this.contractAddress = contractAddress;
     this.state = {
       id: 'contract-agent-01',
-      name: 'ArcContract Agent v1.0',
+      name: 'Daat Contract Agent v1.0',
       type: 'contract',
       status: 'idle',
       lastAction: 'Inicializado',
