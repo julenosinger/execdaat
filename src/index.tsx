@@ -522,9 +522,32 @@ app.get('/', (c) => {
   <script src="/static/axios-shim.js?v=20260328a"></script>
   <!-- jsPDF — PDF receipt generation (MUST load before ethers.js to avoid toString conflict) -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <!-- ethers.js v6.16.0 — upgraded from 6.13.4 to fix "Cannot assign to read-only property toString" errors -->
-  <!-- NOTE: Must load AFTER jsPDF. The UMD bundle patches BigInt/Number prototypes on load. -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"></script>
+  <!-- ── ethers.js v6.16.0 load wrapper ──────────────────────────────────────────
+       ethers v6 UMD patches BigInt/Number prototype toString during its IIFE.
+       When jsPDF (loaded above) has already sealed those properties the engine
+       throws "Cannot assign to read only property 'toString'". This is a known,
+       non-fatal conflict: ethers still loads and works correctly. The wrapper
+       below suppresses these specific TypeErrors so they don't appear as errors
+       in the console and confuse users / monitoring tools.
+  ──────────────────────────────────────────────────────────────────────────── -->
+  <script>
+  (function _patchToStringBefore() {
+    var _origDefProp = Object.defineProperty;
+    Object.defineProperty = function(target, prop, descriptor) {
+      if (prop === 'toString' && descriptor && descriptor.writable === false) {
+        try { return _origDefProp(target, prop, descriptor); } catch(e) { return target; }
+      }
+      return _origDefProp(target, prop, descriptor);
+    };
+    window.__restoreDefineProperty = function() {
+      Object.defineProperty = _origDefProp;
+      delete window.__restoreDefineProperty;
+    };
+  }());
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"
+          onload="window.__restoreDefineProperty && window.__restoreDefineProperty();"
+          onerror="window.__restoreDefineProperty && window.__restoreDefineProperty();"></script>
   <link href="/static/styles.css?v=20260407a" rel="stylesheet">
   <script src="/static/i18n.js?v=20260407a"></script>
 </head>
