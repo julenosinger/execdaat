@@ -530,19 +530,35 @@ app.get('/', (c) => {
        non-writable toString assignments and restores itself after ethers loads.
   ──────────────────────────────────────────────────────────────────────────── -->
   <script>
-  /* Patch Object.defineProperty to suppress non-fatal toString conflicts from ethers v6 UMD.
-     ethers tries to defineProperty('toString') on sealed TypedArray instances (#<X>, #<st>).
-     We catch ALL TypeError thrown by defineProperty and swallow them — ethers wraps
-     its own calls in try/catch but some environments still propagate them. */
+  /* Patch Object.defineProperty and Object.defineProperties to suppress non-fatal
+     TypeError from ethers v6 UMD. ethers uses defineProperties (plural, 78x) to
+     define toString on sealed TypedArray instances (#<X>, #<st>), which throws
+     "Cannot assign to read only property 'toString'" in strict mode.
+     We wrap both methods to silently swallow TypeErrors during ethers UMD load. */
   (function() {
-    var _orig = Object.defineProperty;
-    window.__arc_origDefineProp = _orig;
+    var _origDef  = Object.defineProperty;
+    var _origDefs = Object.defineProperties;
+    window.__arc_origDefineProp  = _origDef;
+    window.__arc_origDefineProps = _origDefs;
+
     Object.defineProperty = function(obj, prop, desc) {
-      try {
-        return _orig(obj, prop, desc);
-      } catch(e) {
+      try { return _origDef(obj, prop, desc); }
+      catch(e) {
+        if (e instanceof TypeError) return obj; /* swallow — non-fatal ethers UMD conflict */
+        throw e;
+      }
+    };
+
+    Object.defineProperties = function(obj, props) {
+      try { return _origDefs(obj, props); }
+      catch(e) {
         if (e instanceof TypeError) {
-          /* Silently ignore — these are non-fatal prototype conflicts from ethers UMD */
+          /* Try each property individually, skipping failures */
+          if (props && typeof props === 'object') {
+            Object.keys(props).forEach(function(k) {
+              try { _origDef(obj, k, props[k]); } catch(_) {}
+            });
+          }
           return obj;
         }
         throw e;
@@ -552,11 +568,13 @@ app.get('/', (c) => {
   </script>
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.16.0/dist/ethers.umd.min.js"></script>
   <script>
-  /* Restore original Object.defineProperty after ethers UMD finishes patching */
+  /* Restore original Object.defineProperty/defineProperties after ethers UMD loads */
   (function() {
     if (window.__arc_origDefineProp) {
-      Object.defineProperty = window.__arc_origDefineProp;
+      Object.defineProperty  = window.__arc_origDefineProp;
+      Object.defineProperties = window.__arc_origDefineProps;
       delete window.__arc_origDefineProp;
+      delete window.__arc_origDefineProps;
     }
   })();
   </script>
