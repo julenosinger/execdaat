@@ -19,7 +19,7 @@
 // ============================================================
 'use strict';
 
-const OTC_VERSION    = '20260402b';
+const OTC_VERSION    = '20260403b';
 
 // ─── Date/Time UTC helpers ────────────────────────────────────────────────────
 // Convert HTML date input (YYYY-MM-DD) + time input (HH:MM) → ISO 8601 UTC string
@@ -118,7 +118,7 @@ let _otcListings  = [];
 let _otcSubTab    = 'create'; // 'create' | 'my' | 'market'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function _otcLog(...a)  { console.log('%c[OTC v1]', 'color:#818cf8;font-weight:bold', ...a); }
+function _otcLog(...a)  { console.log('%c[OTC v3]', 'color:#818cf8;font-weight:bold', ...a); }
 function _otcEl(id)     { return document.getElementById(id); }
 function _otcVal(id)    { const e = _otcEl(id); return e ? e.value.trim() : ''; }
 function _otcIsAddr(a)  { return /^0x[0-9a-fA-F]{40}$/.test(String(a||'').trim()); }
@@ -128,6 +128,84 @@ function _otcFmt(n)     { return Number(n||0).toFixed(2); }
 function _otcToast(msg, type='info') {
   if (typeof showToast === 'function') showToast(msg, type);
   else console.log('[OTC]', type, msg);
+}
+
+// ─── On-chain event feed ──────────────────────────────────────────────────────
+// In-memory ring buffer for on-chain events emitted during this session.
+// Persisted to localStorage (max 50 entries) for the event feed panel.
+const OTC_EVENTS_KEY = 'execDaat_otc_events';
+let _otcEvents = [];
+
+function _otcLoadEvents() {
+  try { _otcEvents = JSON.parse(localStorage.getItem(OTC_EVENTS_KEY) || '[]'); } catch(e) { _otcEvents = []; }
+}
+
+/**
+ * Record an on-chain event to the local event feed.
+ * @param {string} name    - Event name (e.g. 'DealFunded', 'DealReleased')
+ * @param {Object} payload - Event details (contractId, txHash, etc.)
+ */
+function _otcEmitOnChainEvent(name, payload = {}) {
+  _otcLoadEvents();
+  _otcEvents.unshift({
+    name,
+    ...payload,
+    ts: _otcNow(),
+  });
+  try {
+    localStorage.setItem(OTC_EVENTS_KEY, JSON.stringify(_otcEvents.slice(0, 50)));
+  } catch(e) {}
+  // Re-render event feed if visible
+  _otcRenderEventFeed();
+}
+
+/**
+ * Render the on-chain event feed into #otc-event-feed element (if present).
+ */
+function _otcRenderEventFeed() {
+  const el = _otcEl('otc-event-feed');
+  if (!el) return;
+  _otcLoadEvents();
+
+  // Show panel when there are events
+  const panel = _otcEl('otc-events-panel');
+  if (panel && _otcEvents.length) panel.classList.remove('hidden');
+
+  if (!_otcEvents.length) {
+    el.innerHTML = `<p class="text-gray-600 text-xs text-center py-4">No on-chain events yet for this session.</p>`;
+    return;
+  }
+
+  const icons = {
+    DealCreated:   { icon: 'fa-plus-circle',   color: 'text-indigo-400' },
+    DealSigned:    { icon: 'fa-pen',            color: 'text-violet-400' },
+    DealFunded:    { icon: 'fa-vault',          color: 'text-teal-400'   },
+    DealReleased:  { icon: 'fa-paper-plane',    color: 'text-emerald-400'},
+    DealCancelled: { icon: 'fa-times-circle',   color: 'text-red-400'    },
+    CancelRequested: { icon: 'fa-ban',          color: 'text-orange-400' },
+    DisputeRaised: { icon: 'fa-gavel',          color: 'text-orange-400' },
+    DisputeResolved: { icon: 'fa-balance-scale',color: 'text-yellow-400' },
+  };
+
+  el.innerHTML = _otcEvents.slice(0, 20).map(ev => {
+    const ic = icons[ev.name] || { icon: 'fa-circle', color: 'text-gray-400' };
+    const link = ev.txHash
+      ? `<a href="${OTC_EXPLORER}/tx/${ev.txHash}" target="_blank" class="text-indigo-400 hover:text-indigo-300 underline text-[10px]">View TX ↗</a>`
+      : '';
+    return `
+    <div class="flex items-start gap-2.5 py-2 border-b border-gray-800/60 last:border-0">
+      <i class="fas ${ic.icon} ${ic.color} text-xs mt-0.5 w-3 flex-shrink-0"></i>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-white text-xs font-semibold">${ev.name}</span>
+          ${link}
+        </div>
+        ${ev.contractId ? `<div class="text-gray-600 text-[10px] font-mono truncate">${ev.contractId}</div>` : ''}
+        ${ev.amount ? `<div class="text-gray-500 text-[10px]">${ev.amount} ${ev.asset || ''}</div>` : ''}
+      </div>
+      <span class="text-gray-700 text-[10px] flex-shrink-0">${new Date(ev.ts).toLocaleTimeString()}</span>
+    </div>`;
+  }).join('');
 }
 
 // ─── Hash generator ───────────────────────────────────────────────────────────
@@ -681,9 +759,10 @@ async function otcSignDealOnChain(contractId) {
 
 // ─── Custom-error decoder ─────────────────────────────────────────────────
 // Maps the 4-byte selector (keccak256 first 4 bytes) of every known custom
-// error to a human-readable description. Works for both v1 and v2 contracts.
+// error to a human-readable description. Works for v1, v2 and v3 contracts.
 const _OTC_CUSTOM_ERRORS = {
   // selector: keccak256("ErrorName()").slice(0,10)  — verified on ARC Testnet
+  // ── v1 / v2 / v3 shared ────────────────────────────────────────────────────
   '0xc8ee2d1d': 'NotParty — your wallet is not buyer or seller of this deal',
   '0x472e017e': 'NotBuyer — only the buyer can fund this deal',
   '0xa72952d8': 'NotSigned — both buyer and seller must sign on-chain before funding',
@@ -702,6 +781,16 @@ const _OTC_CUSTOM_ERRORS = {
   '0x13be252b': 'InsufficientAllowance — ERC20 allowance too low; approve escrow first',
   '0x90b8ec18': 'TransferFailed — ERC20 transferFrom returned false',
   '0xb0bd6aca': 'AlreadySigned — you have already signed this deal on-chain',
+  // ── v3 new errors ─────────────────────────────────────────────────────────
+  '0x5ec82351': 'NotSeller — only the seller (or authorized address) can release funds',
+  '0xea8e4eb5': 'NotAuthorized — only the seller or an authorized address can release',
+  '0x667f86ef': 'NotArbitrator — only the arbitrator can resolve disputes',
+  '0x912a47b7': 'DealDisputed — this deal is under active dispute; wait for arbitration',
+  '0x93754748': 'NoDispute — no active dispute found for this deal',
+  '0x1a15a3cc': 'PermitExpired — the EIP-2612 permit signature has expired',
+  '0xa4654144': 'InvalidPermitSignature — the permit signature is invalid',
+  '0x756688fe': 'InvalidNonce — invalid nonce for permit; please re-sign',
+  '0xbaf3f0f7': 'InvalidState — deal is in an unexpected state for this action',
 };
 
 /**
@@ -883,6 +972,7 @@ async function otcFundDeal(contractId) {
     contract.updatedAt  = _otcNow();
     otcSave();
     _otcPushHistory(contract, `Funded: ${contract.amount} ${contract.asset} locked in escrow`);
+    _otcEmitOnChainEvent('DealFunded', { contractId, txHash: receipt.hash, amount: contract.amount, asset: contract.asset });
 
     const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
     _otcToast(
@@ -903,6 +993,8 @@ async function otcFundDeal(contractId) {
 }
 
 // ─── 4. Release funds on-chain (release) ──────────────────────────────────
+// v3: RESTRICTED to seller or authorized address only.
+// The buyer will get NotAuthorized if they try to call release().
 async function otcReleaseDeal(contractId) {
   if (!window.ethereum || !window.walletState?.connected) {
     _otcToast('Connect your wallet to release', 'warning');
@@ -917,6 +1009,16 @@ async function otcReleaseDeal(contractId) {
     return _otcToast('Deal must be funded before release', 'warning');
   }
 
+  // ── Seller-only enforcement (v3 contract requirement) ────────────────────
+  const walletAddr = window.walletState.address?.toLowerCase();
+  if (contract.seller.toLowerCase() !== walletAddr) {
+    return _otcToast(
+      '🔒 Only the seller can release funds (v3 contract restriction). ' +
+      'If you are an authorized relayer, use the contract directly.',
+      'error'
+    );
+  }
+
   // Check TGE
   const tgeMs = new Date(contract.timestamp_utc).getTime();
   const now   = Date.now();
@@ -927,7 +1029,7 @@ async function otcReleaseDeal(contractId) {
     return _otcToast(`TGE not reached yet. Releases in ${h}h ${m}m.`, 'warning');
   }
 
-  if (!confirm(`Release ${contract.amount} ${contract.asset} to seller ${_otcShort(contract.seller)}?`)) return;
+  if (!confirm(`Release ${contract.amount} ${contract.asset} to your wallet as seller?\n\nContract: ${contractId}`)) return;
 
   try {
     const signer  = await _otcGetSigner();
@@ -936,7 +1038,7 @@ async function otcReleaseDeal(contractId) {
 
     _otcToast('Confirm release in wallet…', 'info');
     const tx = await escrow.release(contract.escrowDealId);
-    _otcToast('⏳ Release tx sent — waiting…', 'info');
+    _otcToast('⏳ Release tx sent — waiting for confirmation…', 'info');
     const receipt = await tx.wait();
 
     contract.released      = true;
@@ -946,17 +1048,166 @@ async function otcReleaseDeal(contractId) {
     otcSave();
     _otcPushHistory(contract, `Released: ${contract.amount} ${contract.asset} to seller`);
 
+    // Dispatch event so on-chain feed updates
+    _otcEmitOnChainEvent('DealReleased', { contractId, txHash: receipt.hash, amount: contract.amount, asset: contract.asset });
+
     const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
-    _otcToast(`✅ Funds released to seller! <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
+    _otcToast(`✅ Funds released! <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
     otcRenderMyContracts();
 
   } catch(e) {
     const decoded = _otcDecodeError(e);
-    _otcToast(
-      decoded.userRejected ? 'Transaction rejected' : `❌ Release error: ${decoded.msg}`,
-      decoded.userRejected ? 'warning' : 'error'
-    );
+    if (decoded.userRejected) {
+      _otcToast('Transaction rejected', 'warning');
+    } else {
+      _otcToast(`❌ Release error: ${decoded.msg}`, 'error');
+    }
     _otcLog('release error:', e);
+  }
+}
+
+// ─── 4b. Raise Dispute on-chain (v3) ──────────────────────────────────────
+async function otcRaiseDispute(contractId) {
+  if (!window.ethereum || !window.walletState?.connected) {
+    _otcToast('Connect wallet to raise a dispute', 'warning');
+    if (typeof openWalletModal === 'function') openWalletModal();
+    return;
+  }
+
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+
+  const walletAddr = window.walletState.address?.toLowerCase();
+  const isBuyer    = contract.buyer.toLowerCase()  === walletAddr;
+  const isSeller   = contract.seller.toLowerCase() === walletAddr;
+  if (!isBuyer && !isSeller) return _otcToast('Only the buyer or seller can raise a dispute', 'error');
+
+  if (contract.status !== OTC_STATUS.FUNDED) {
+    return _otcToast('Disputes can only be raised on funded deals', 'warning');
+  }
+
+  const confirmed = confirm(
+    `Raise a dispute for deal ${contractId}?\n\n` +
+    `An arbitrator will review the case and decide whether to:\n` +
+    `  • Release funds to the seller, or\n` +
+    `  • Refund tokens to the buyer.\n\n` +
+    `This action is irreversible. Continue?`
+  );
+  if (!confirmed) return;
+
+  try {
+    const signer  = await _otcGetSigner();
+    const escrow  = otcGetEscrowContract(signer);
+    if (!escrow) throw new Error('Escrow not available on this network');
+
+    _otcToast('Confirm dispute in wallet…', 'info');
+    const tx = await escrow.raiseDispute(contract.escrowDealId);
+    _otcToast('⏳ Dispute tx sent — waiting…', 'info');
+    const receipt = await tx.wait();
+
+    // Update local state to reflect dispute
+    contract.status        = 'DISPUTED';
+    contract.onChainState  = 4; // State.Disputed
+    contract.disputeTxHash = receipt.hash;
+    contract.updatedAt     = _otcNow();
+    otcSave();
+    _otcPushHistory(contract, `Dispute raised by ${isBuyer ? 'buyer' : 'seller'}`);
+
+    _otcEmitOnChainEvent('DisputeRaised', { contractId, txHash: receipt.hash, raisedBy: walletAddr });
+
+    const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+    _otcToast(
+      `⚖️ Dispute raised. An arbitrator will review the case. ` +
+      `<a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`,
+      'warning'
+    );
+    otcRenderMyContracts();
+
+  } catch(e) {
+    const decoded = _otcDecodeError(e);
+    if (decoded.userRejected) {
+      _otcToast('Transaction rejected', 'warning');
+    } else {
+      _otcToast(`❌ Dispute error: ${decoded.msg}`, 'error');
+    }
+    _otcLog('raiseDispute error:', e);
+  }
+}
+
+// ─── 4c. Resolve Dispute on-chain (arbitrator only — v3) ──────────────────
+// This function is called by the arbitrator wallet directly from the UI.
+// Non-arbitrators will see a NotArbitrator error on the contract — we surface that clearly.
+async function otcResolveDispute(contractId, releaseToSeller) {
+  if (!window.ethereum || !window.walletState?.connected) {
+    _otcToast('Connect your wallet to resolve the dispute', 'warning');
+    if (typeof openWalletModal === 'function') openWalletModal();
+    return;
+  }
+
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+
+  if (contract.status !== 'DISPUTED' && contract.onChainState !== 4) {
+    return _otcToast('This deal is not under active dispute', 'warning');
+  }
+
+  const outcome = releaseToSeller ? 'release funds to the seller' : 'refund tokens to the buyer';
+  const confirmed = confirm(
+    `Resolve dispute for deal ${contractId}?\n\n` +
+    `You are about to: ${outcome.toUpperCase()}\n\n` +
+    `⚠️  This action is IRREVERSIBLE and requires arbitrator authority.\n` +
+    `Proceed?`
+  );
+  if (!confirmed) return;
+
+  try {
+    const signer  = await _otcGetSigner();
+    const escrow  = otcGetEscrowContract(signer);
+    if (!escrow) throw new Error('Escrow contract not available on this network');
+
+    _otcToast('Confirm resolution in wallet…', 'info');
+    const tx = await escrow.resolveDispute(contract.escrowDealId, releaseToSeller);
+    _otcToast('⏳ Resolution tx sent — waiting for confirmation…', 'info');
+    const receipt = await tx.wait();
+
+    // Update local state
+    contract.status        = releaseToSeller ? OTC_STATUS.RELEASED : OTC_STATUS.CANCELLED;
+    contract.onChainState  = releaseToSeller ? 2 : 3; // Completed=2, Cancelled=3
+    contract.resolveTxHash = receipt.hash;
+    contract.updatedAt     = _otcNow();
+    otcSave();
+
+    const outcomeLabel = releaseToSeller
+      ? `Funds released to seller (${_otcShort(contract.seller)})`
+      : `Tokens refunded to buyer (${_otcShort(contract.buyer)})`;
+
+    _otcPushHistory(contract, `Dispute resolved: ${outcomeLabel}`);
+    _otcEmitOnChainEvent('DisputeResolved', {
+      contractId,
+      txHash:  receipt.hash,
+      releaseToSeller,
+      amount:  contract.amount,
+      asset:   contract.asset,
+    });
+
+    const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+    _otcToast(
+      `⚖️ Dispute resolved! ${outcomeLabel}. ` +
+      `<a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`,
+      'success'
+    );
+    otcRenderMyContracts();
+
+  } catch(e) {
+    const decoded = _otcDecodeError(e);
+    if (decoded.userRejected) {
+      _otcToast('Transaction rejected', 'warning');
+    } else if (decoded.msg.includes('NotArbitrator')) {
+      _otcToast('❌ Only the arbitrator can resolve disputes. Your wallet is not the designated arbitrator.', 'error');
+    } else {
+      _otcToast(`❌ Resolve dispute error: ${decoded.msg}`, 'error');
+    }
+    _otcLog('resolveDispute error:', e);
   }
 }
 
@@ -1070,6 +1321,7 @@ async function otcSyncDealStatus(contractId) {
       'BOTH_SIGNED':      OTC_STATUS.ONCHAIN_SIGNED,
       'FUNDED':           OTC_STATUS.FUNDED,
       'EXECUTABLE':       OTC_STATUS.FUNDED,  // FUNDED + TGE passed
+      'DISPUTED':         'DISPUTED',          // v3 dispute state
       'RELEASED':         OTC_STATUS.RELEASED,
       'CANCELLED':        OTC_STATUS.CANCELLED,
     };
@@ -1508,15 +1760,26 @@ function _otcContractCard(c, wallet) {
     && (c.status === OTC_STATUS.ONCHAIN_SIGNED
         || (c.status === OTC_STATUS.ONCHAIN_CREATED && onChainBuyerSigned && onChainSellerSigned));
 
-  // Release: any party (buyer typically initiates), funded + TGE reached
+  // Release: SELLER-ONLY (v3 contract) or authorized address.
+  // Buyer can NO longer call release — contract will revert with NotAuthorized.
+  // We hide the button for non-sellers to prevent confusion.
   const tgeTs   = new Date(c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime)).getTime();
   const tgeIn   = tgeTs - Date.now();
   const tgePast = tgeIn <= 0;
-  const canRelease = isOnChain && isParty && !isTerminal
+  const canRelease = isOnChain && isSeller && !isTerminal
     && c.status === OTC_STATUS.FUNDED && tgePast;
 
-  // Cancel on-chain: party + not released + not already cancelled
-  const canCancelOnChain = isOnChain && isParty && !isTerminal
+  // Raise dispute: funded deal, buyer or seller, not already disputed/terminal
+  const isDisputed  = c.status === 'DISPUTED' || c.onChainState === 4; // State.Disputed=4
+  const canDispute  = isOnChain && isParty && !isTerminal
+    && c.status === OTC_STATUS.FUNDED && !isDisputed;
+
+  // Resolve dispute: arbitrator only — show note if address matches arbitrator field
+  // (We don't know arbitrator address from localStorage — show a neutral panel for disputed deals)
+
+  // Cancel on-chain: party + not released + not already cancelled + not disputed
+  // Disputed deals block cancel — must go through resolveDispute (arbitrator only)
+  const canCancelOnChain = isOnChain && isParty && !isTerminal && !isDisputed
     && [OTC_STATUS.ONCHAIN_CREATED, OTC_STATUS.ONCHAIN_SIGNED, OTC_STATUS.FUNDED, OTC_STATUS.CANCEL_REQUESTED].includes(c.status);
 
   // Off-chain cancel: not on-chain, not terminal
@@ -1752,11 +2015,42 @@ function _otcContractCard(c, wallet) {
         <i class="fas fa-vault"></i>Fund Escrow
       </button>` : ''}
 
-      <!-- Release funds (release) -->
+      <!-- Release funds (release) — SELLER ONLY in v3 -->
       ${canRelease ? `
       <button onclick="otcReleaseDeal('${c.contractId}')"
+        title="Only the seller can release funds (v3 contract requirement)"
         class="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-emerald-900/30">
         <i class="fas fa-paper-plane"></i>Release Funds
+      </button>` : ''}
+
+      <!-- Buyer sees info badge when TGE reached but can't release (seller must) -->
+      ${isOnChain && isBuyer && !isSeller && c.status === OTC_STATUS.FUNDED && tgePast ? `
+      <span class="flex items-center gap-1.5 px-3 py-2 bg-emerald-900/20 border border-emerald-700/30 text-emerald-400 rounded-xl text-xs">
+        <i class="fas fa-clock text-[10px]"></i>TGE reached — awaiting seller release
+      </span>` : ''}
+
+      <!-- Raise dispute (funded deals) -->
+      ${canDispute ? `
+      <button onclick="otcRaiseDispute('${c.contractId}')"
+        title="Raise a dispute — arbitrator will review and resolve"
+        class="flex items-center gap-1.5 px-4 py-2 bg-orange-900/30 hover:bg-orange-900/50 border border-orange-700/40 text-orange-400 hover:text-orange-300 rounded-xl text-xs transition">
+        <i class="fas fa-gavel"></i>Raise Dispute
+      </button>` : ''}
+
+      <!-- Disputed status banner + resolve buttons (arbitrator-gated on-chain) -->
+      ${isOnChain && isDisputed && !isTerminal ? `
+      <span class="flex items-center gap-1.5 px-3 py-2 bg-orange-900/20 border border-orange-700/30 text-orange-400 rounded-xl text-xs">
+        <i class="fas fa-balance-scale text-[10px]"></i>Under arbitration — awaiting resolution
+      </span>
+      <button onclick="otcResolveDispute('${c.contractId}', true)"
+        title="Arbitrator only: release escrowed tokens to seller"
+        class="flex items-center gap-1.5 px-3 py-2 bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-700/40 text-emerald-400 hover:text-emerald-300 rounded-xl text-xs transition">
+        <i class="fas fa-arrow-right text-[10px]"></i>Resolve → Seller
+      </button>
+      <button onclick="otcResolveDispute('${c.contractId}', false)"
+        title="Arbitrator only: refund escrowed tokens to buyer"
+        class="flex items-center gap-1.5 px-3 py-2 bg-blue-900/30 hover:bg-blue-900/50 border border-blue-700/40 text-blue-400 hover:text-blue-300 rounded-xl text-xs transition">
+        <i class="fas fa-undo text-[10px]"></i>Resolve → Buyer
       </button>` : ''}
 
       <!-- Fund TGE countdown (funded but not yet releasable) -->
@@ -2005,6 +2299,8 @@ function _otcInit() {
   window.otcSignDealOnChain    = otcSignDealOnChain;
   window.otcFundDeal           = otcFundDeal;
   window.otcReleaseDeal        = otcReleaseDeal;
+  window.otcRaiseDispute       = otcRaiseDispute;
+  window.otcResolveDispute     = otcResolveDispute;
   window.otcRequestCancelOnChain = otcRequestCancelOnChain;
   window.otcSyncDealStatus     = otcSyncDealStatus;
 

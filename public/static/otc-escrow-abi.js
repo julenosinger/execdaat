@@ -1,27 +1,44 @@
 // ============================================================
-// OTCEscrow ABI + Contract Address
+// OTCEscrow v3 ABI + Contract Address
 // ExecDaat — OTC Contracts Tab ONLY
 //
-// Contract: OTCEscrow.sol
+// Contract: OTCEscrow.sol v3
 // Network:  ARC Testnet (Chain ID: 5042002)
 //
-// ⚠️  NOTE: OTC_ESCROW_ADDRESS is set to address(0) as a placeholder.
-//     After deploying OTCEscrow.sol to ARC Testnet, paste the deployed
-//     address below to activate full on-chain escrow functionality.
-//     Until deployed, the system falls back to localStorage-only mode.
+// Changes from v1/v2:
+//   - State machine (enum State: Pending, Funded, Completed, Cancelled, Disputed)
+//   - release() RESTRICTED: only seller or isAuthorized[msg.sender]
+//   - raiseDispute() / resolveDispute() — arbitration mechanism
+//   - fundDealWithPermit() — EIP-2612 / gasless approve
+//   - setAuthorized() — governance by arbitrator
+//   - getDealStatus() now also returns State enum
+//   - State cleanup: deal.amount zeroed after release/cancel/resolveDispute
+//   - New events: DisputeRaised, DisputeResolved, AuthorizationUpdated
+//   - New errors: NotSeller, NotAuthorized, NotArbitrator, DealDisputed,
+//                 NoDispute, PermitExpired, InvalidPermitSignature,
+//                 InvalidNonce, InvalidState
+//
+// ⚠️  NOTE: Deploy v3 via:
+//   node contracts/script/deployOTCEscrow.cjs <PRIVATE_KEY>
 // ============================================================
 
 // Deployed contract address on ARC Testnet
 // v1 (original):  0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d  — deployed 2026-03-29
-// v2 (with NotBuyer/NotSigned/InsufficientAllowance/TransferFailed/getDealStatus):
+// v2 (NotBuyer/NotSigned/InsufficientAllowance/TransferFailed/getDealStatus): same address
+// v3 (dispute, authorized releasers, Permit2, state machine): pending redeployment
 //   Run: node contracts/script/deployOTCEscrow.cjs <PRIVATE_KEY>
-const OTC_ESCROW_ADDRESS = '0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d'; // ARC Testnet — v1
+const OTC_ESCROW_ADDRESS = '0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d'; // ARC Testnet — v1 (live)
+// const OTC_ESCROW_ADDRESS = '0x0000000000000000000000000000000000000000'; // set after v3 deploy
 
 // Whether the escrow contract is available (non-zero address)
 const OTC_ESCROW_DEPLOYED = OTC_ESCROW_ADDRESS !== '0x0000000000000000000000000000000000000000';
 
-// ─── OTCEscrow ABI ───────────────────────────────────────────────────────────
+// ─── OTCEscrow v3 ABI ────────────────────────────────────────────────────────
 const OTC_ESCROW_ABI = [
+  // ══════════════════════════════════════════════════════
+  // STATE-CHANGING FUNCTIONS
+  // ══════════════════════════════════════════════════════
+
   // ── createDeal ──────────────────────────────────────────────────────────────
   {
     "type": "function",
@@ -44,9 +61,7 @@ const OTC_ESCROW_ABI = [
     "type": "function",
     "name": "signDeal",
     "stateMutability": "nonpayable",
-    "inputs": [
-      { "name": "dealId", "type": "bytes32" }
-    ],
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
     "outputs": []
   },
 
@@ -55,20 +70,31 @@ const OTC_ESCROW_ABI = [
     "type": "function",
     "name": "fundDeal",
     "stateMutability": "nonpayable",
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
+    "outputs": []
+  },
+
+  // ── fundDealWithPermit (EIP-2612) ─────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "fundDealWithPermit",
+    "stateMutability": "nonpayable",
     "inputs": [
-      { "name": "dealId", "type": "bytes32" }
+      { "name": "dealId",   "type": "bytes32" },
+      { "name": "deadline", "type": "uint256" },
+      { "name": "v",        "type": "uint8"   },
+      { "name": "r",        "type": "bytes32" },
+      { "name": "s",        "type": "bytes32" }
     ],
     "outputs": []
   },
 
-  // ── release ──────────────────────────────────────────────────────────────────
+  // ── release (RESTRICTED: seller or authorized only) ───────────────────────────
   {
     "type": "function",
     "name": "release",
     "stateMutability": "nonpayable",
-    "inputs": [
-      { "name": "dealId", "type": "bytes32" }
-    ],
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
     "outputs": []
   },
 
@@ -77,20 +103,53 @@ const OTC_ESCROW_ABI = [
     "type": "function",
     "name": "cancel",
     "stateMutability": "nonpayable",
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
+    "outputs": []
+  },
+
+  // ── raiseDispute ─────────────────────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "raiseDispute",
+    "stateMutability": "nonpayable",
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
+    "outputs": []
+  },
+
+  // ── resolveDispute (arbitrator only) ─────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "resolveDispute",
+    "stateMutability": "nonpayable",
     "inputs": [
-      { "name": "dealId", "type": "bytes32" }
+      { "name": "dealId",          "type": "bytes32" },
+      { "name": "releaseToSeller", "type": "bool"    }
     ],
     "outputs": []
   },
+
+  // ── setAuthorized (arbitrator governance) ────────────────────────────────────
+  {
+    "type": "function",
+    "name": "setAuthorized",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "name": "account",    "type": "address" },
+      { "name": "authorized", "type": "bool"    }
+    ],
+    "outputs": []
+  },
+
+  // ══════════════════════════════════════════════════════
+  // VIEW FUNCTIONS
+  // ══════════════════════════════════════════════════════
 
   // ── getDeal ──────────────────────────────────────────────────────────────────
   {
     "type": "function",
     "name": "getDeal",
     "stateMutability": "view",
-    "inputs": [
-      { "name": "dealId", "type": "bytes32" }
-    ],
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
     "outputs": [
       {
         "name": "",
@@ -103,15 +162,28 @@ const OTC_ESCROW_ABI = [
           { "name": "tgeTimestamp",          "type": "uint256" },
           { "name": "buyerSigned",           "type": "bool"    },
           { "name": "sellerSigned",          "type": "bool"    },
-          { "name": "funded",                "type": "bool"    },
-          { "name": "released",              "type": "bool"    },
-          { "name": "cancelled",             "type": "bool"    },
+          { "name": "state",                 "type": "uint8"   },
           { "name": "buyerCancelRequested",  "type": "bool"    },
           { "name": "sellerCancelRequested", "type": "bool"    },
+          { "name": "disputeRaisedBy",       "type": "address" },
           { "name": "contractHash",          "type": "bytes32" },
           { "name": "createdAt",             "type": "uint256" }
         ]
       }
+    ]
+  },
+
+  // ── getDealStatus (v3: also returns State enum as uint8) ─────────────────────
+  {
+    "type": "function",
+    "name": "getDealStatus",
+    "stateMutability": "view",
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
+    "outputs": [
+      { "name": "buyerSigned",   "type": "bool"  },
+      { "name": "sellerSigned",  "type": "bool"  },
+      { "name": "funded",        "type": "bool"  },
+      { "name": "currentState",  "type": "uint8" }
     ]
   },
 
@@ -120,12 +192,8 @@ const OTC_ESCROW_ABI = [
     "type": "function",
     "name": "getDealsByParty",
     "stateMutability": "view",
-    "inputs": [
-      { "name": "party", "type": "address" }
-    ],
-    "outputs": [
-      { "name": "", "type": "bytes32[]" }
-    ]
+    "inputs":  [{ "name": "party", "type": "address" }],
+    "outputs": [{ "name": "", "type": "bytes32[]" }]
   },
 
   // ── canRelease ───────────────────────────────────────────────────────────────
@@ -133,12 +201,8 @@ const OTC_ESCROW_ABI = [
     "type": "function",
     "name": "canRelease",
     "stateMutability": "view",
-    "inputs": [
-      { "name": "dealId", "type": "bytes32" }
-    ],
-    "outputs": [
-      { "name": "", "type": "bool" }
-    ]
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
+    "outputs": [{ "name": "", "type": "bool" }]
   },
 
   // ── dealStatus ───────────────────────────────────────────────────────────────
@@ -146,12 +210,44 @@ const OTC_ESCROW_ABI = [
     "type": "function",
     "name": "dealStatus",
     "stateMutability": "view",
-    "inputs": [
-      { "name": "dealId", "type": "bytes32" }
-    ],
-    "outputs": [
-      { "name": "", "type": "string" }
-    ]
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
+    "outputs": [{ "name": "", "type": "string" }]
+  },
+
+  // ── arbitrator ───────────────────────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "arbitrator",
+    "stateMutability": "view",
+    "inputs":  [],
+    "outputs": [{ "name": "", "type": "address" }]
+  },
+
+  // ── isAuthorized ─────────────────────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "isAuthorized",
+    "stateMutability": "view",
+    "inputs":  [{ "name": "account", "type": "address" }],
+    "outputs": [{ "name": "", "type": "bool" }]
+  },
+
+  // ── DOMAIN_SEPARATOR ─────────────────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "DOMAIN_SEPARATOR",
+    "stateMutability": "view",
+    "inputs":  [],
+    "outputs": [{ "name": "", "type": "bytes32" }]
+  },
+
+  // ── getNonce ─────────────────────────────────────────────────────────────────
+  {
+    "type": "function",
+    "name": "getNonce",
+    "stateMutability": "view",
+    "inputs":  [{ "name": "buyer", "type": "address" }],
+    "outputs": [{ "name": "", "type": "uint256" }]
   },
 
   // ── deals (public mapping) ────────────────────────────────────────────────────
@@ -159,9 +255,7 @@ const OTC_ESCROW_ABI = [
     "type": "function",
     "name": "deals",
     "stateMutability": "view",
-    "inputs": [
-      { "name": "dealId", "type": "bytes32" }
-    ],
+    "inputs":  [{ "name": "dealId", "type": "bytes32" }],
     "outputs": [
       { "name": "buyer",                 "type": "address" },
       { "name": "seller",                "type": "address" },
@@ -170,24 +264,26 @@ const OTC_ESCROW_ABI = [
       { "name": "tgeTimestamp",          "type": "uint256" },
       { "name": "buyerSigned",           "type": "bool"    },
       { "name": "sellerSigned",          "type": "bool"    },
-      { "name": "funded",                "type": "bool"    },
-      { "name": "released",              "type": "bool"    },
-      { "name": "cancelled",             "type": "bool"    },
+      { "name": "state",                 "type": "uint8"   },
       { "name": "buyerCancelRequested",  "type": "bool"    },
       { "name": "sellerCancelRequested", "type": "bool"    },
+      { "name": "disputeRaisedBy",       "type": "address" },
       { "name": "contractHash",          "type": "bytes32" },
       { "name": "createdAt",             "type": "uint256" }
     ]
   },
 
-  // ─── EVENTS ──────────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════
+  // EVENTS
+  // ══════════════════════════════════════════════════════
+
   {
     "type": "event",
     "name": "DealCreated",
     "inputs": [
-      { "name": "dealId",       "type": "bytes32", "indexed": true },
-      { "name": "buyer",        "type": "address", "indexed": true },
-      { "name": "seller",       "type": "address", "indexed": true },
+      { "name": "dealId",       "type": "bytes32", "indexed": true  },
+      { "name": "buyer",        "type": "address", "indexed": true  },
+      { "name": "seller",       "type": "address", "indexed": true  },
       { "name": "token",        "type": "address", "indexed": false },
       { "name": "amount",       "type": "uint256", "indexed": false },
       { "name": "tgeTimestamp", "type": "uint256", "indexed": false },
@@ -198,8 +294,8 @@ const OTC_ESCROW_ABI = [
     "type": "event",
     "name": "DealSigned",
     "inputs": [
-      { "name": "dealId", "type": "bytes32", "indexed": true },
-      { "name": "signer", "type": "address", "indexed": true },
+      { "name": "dealId", "type": "bytes32", "indexed": true  },
+      { "name": "signer", "type": "address", "indexed": true  },
       { "name": "role",   "type": "string",  "indexed": false }
     ]
   },
@@ -207,7 +303,7 @@ const OTC_ESCROW_ABI = [
     "type": "event",
     "name": "DealFunded",
     "inputs": [
-      { "name": "dealId", "type": "bytes32", "indexed": true },
+      { "name": "dealId", "type": "bytes32", "indexed": true  },
       { "name": "amount", "type": "uint256", "indexed": false }
     ]
   },
@@ -215,8 +311,8 @@ const OTC_ESCROW_ABI = [
     "type": "event",
     "name": "DealReleased",
     "inputs": [
-      { "name": "dealId", "type": "bytes32", "indexed": true },
-      { "name": "seller", "type": "address", "indexed": true },
+      { "name": "dealId", "type": "bytes32", "indexed": true  },
+      { "name": "seller", "type": "address", "indexed": true  },
       { "name": "amount", "type": "uint256", "indexed": false }
     ]
   },
@@ -237,46 +333,80 @@ const OTC_ESCROW_ABI = [
       { "name": "requester", "type": "address", "indexed": true }
     ]
   },
+  {
+    "type": "event",
+    "name": "DisputeRaised",
+    "inputs": [
+      { "name": "dealId",   "type": "bytes32", "indexed": true },
+      { "name": "raisedBy", "type": "address", "indexed": true }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "DisputeResolved",
+    "inputs": [
+      { "name": "dealId",          "type": "bytes32", "indexed": true  },
+      { "name": "releaseToSeller", "type": "bool",    "indexed": false },
+      { "name": "resolver",        "type": "address", "indexed": true  }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "AuthorizationUpdated",
+    "inputs": [
+      { "name": "account",    "type": "address", "indexed": true  },
+      { "name": "authorized", "type": "bool",    "indexed": false }
+    ]
+  },
 
-  // ─── ERRORS ──────────────────────────────────────────────────────────────────
-  { "type": "error", "name": "NotParty",               "inputs": [] },
-  { "type": "error", "name": "NotBuyer",               "inputs": [] },
-  { "type": "error", "name": "AlreadySigned",          "inputs": [] },
-  { "type": "error", "name": "NotSigned",              "inputs": [] },
-  { "type": "error", "name": "NotBothSigned",          "inputs": [] },
-  { "type": "error", "name": "AlreadyFunded",          "inputs": [] },
-  { "type": "error", "name": "NotFunded",              "inputs": [] },
-  { "type": "error", "name": "AlreadyReleased",        "inputs": [] },
-  { "type": "error", "name": "AlreadyCancelled",       "inputs": [] },
-  { "type": "error", "name": "TGENotReached",          "inputs": [] },
-  { "type": "error", "name": "DealNotFound",           "inputs": [] },
-  { "type": "error", "name": "InvalidAddress",         "inputs": [] },
-  { "type": "error", "name": "InvalidAmount",          "inputs": [] },
-  { "type": "error", "name": "InvalidTimestamp",       "inputs": [] },
-  { "type": "error", "name": "SameAddress",            "inputs": [] },
-  { "type": "error", "name": "AlreadyCancelRequested", "inputs": [] },
-  { "type": "error", "name": "InsufficientAllowance",  "inputs": [] },
-  { "type": "error", "name": "TransferFailed",         "inputs": [] }
+  // ══════════════════════════════════════════════════════
+  // ERRORS (with 4-byte selectors in comments for debugging)
+  // ══════════════════════════════════════════════════════
+
+  { "type": "error", "name": "NotParty",               "inputs": [] }, // 0xc8ee2d1d
+  { "type": "error", "name": "NotBuyer",               "inputs": [] }, // 0x472e017e
+  { "type": "error", "name": "NotSeller",              "inputs": [] }, // 0x5ec82351
+  { "type": "error", "name": "NotAuthorized",          "inputs": [] }, // 0xea8e4eb5
+  { "type": "error", "name": "NotArbitrator",          "inputs": [] }, // 0x667f86ef
+  { "type": "error", "name": "AlreadySigned",          "inputs": [] }, // 0xb0bd6aca
+  { "type": "error", "name": "NotSigned",              "inputs": [] }, // 0xa72952d8
+  { "type": "error", "name": "NotBothSigned",          "inputs": [] }, // 0x7dd2022e (legacy alias)
+  { "type": "error", "name": "AlreadyFunded",          "inputs": [] }, // 0x5adf6387
+  { "type": "error", "name": "NotFunded",              "inputs": [] }, // 0xd5ef09ba
+  { "type": "error", "name": "AlreadyReleased",        "inputs": [] }, // 0x63b4904e
+  { "type": "error", "name": "AlreadyCancelled",       "inputs": [] }, // 0x54e37625
+  { "type": "error", "name": "DealDisputed",           "inputs": [] }, // 0x912a47b7
+  { "type": "error", "name": "NoDispute",              "inputs": [] }, // 0x93754748
+  { "type": "error", "name": "TGENotReached",          "inputs": [] }, // 0x2ebd3179
+  { "type": "error", "name": "DealNotFound",           "inputs": [] }, // 0x88f691cc
+  { "type": "error", "name": "InvalidAddress",         "inputs": [] }, // 0xe6c4247b
+  { "type": "error", "name": "InvalidAmount",          "inputs": [] }, // 0x2c5211c6
+  { "type": "error", "name": "InvalidTimestamp",       "inputs": [] }, // 0xb7d09497
+  { "type": "error", "name": "SameAddress",            "inputs": [] }, // 0x367558c3
+  { "type": "error", "name": "AlreadyCancelRequested", "inputs": [] }, // 0x7c704211
+  { "type": "error", "name": "InsufficientAllowance",  "inputs": [] }, // 0x13be252b
+  { "type": "error", "name": "TransferFailed",         "inputs": [] }, // 0x90b8ec18
+  { "type": "error", "name": "PermitExpired",          "inputs": [] }, // 0x1a15a3cc
+  { "type": "error", "name": "InvalidPermitSignature", "inputs": [] }, // 0xa4654144
+  { "type": "error", "name": "InvalidNonce",           "inputs": [] }, // 0x756688fe
+  { "type": "error", "name": "InvalidState",           "inputs": [] }  // 0xbaf3f0f7
 ];
 
-// ─── getDealStatus (v2 contract only) ────────────────────────────────────────
-// Appended separately so v1 contract ABI stays backward-compatible.
-// When OTCEscrow is redeployed with getDealStatus, merge this entry into OTC_ESCROW_ABI.
-const OTC_ESCROW_ABI_GETDEALSTATUS = {
-  "type": "function",
-  "name": "getDealStatus",
-  "stateMutability": "view",
-  "inputs": [
-    { "name": "dealId", "type": "bytes32" }
-  ],
-  "outputs": [
-    { "name": "buyerSigned",  "type": "bool" },
-    { "name": "sellerSigned", "type": "bool" },
-    { "name": "funded",       "type": "bool" }
-  ]
+// ─── State enum mapping (mirrors Solidity State enum) ────────────────────────
+const OTC_DEAL_STATE = {
+  0: 'Pending',
+  1: 'Funded',
+  2: 'Completed',
+  3: 'Cancelled',
+  4: 'Disputed',
+  Pending:   0,
+  Funded:    1,
+  Completed: 2,
+  Cancelled: 3,
+  Disputed:  4,
 };
 
-// ERC-20 minimal ABI for approvals
+// ERC-20 minimal ABI for approvals + permit
 const OTC_ERC20_APPROVE_ABI = [
   {
     "type": "function",
@@ -302,22 +432,37 @@ const OTC_ERC20_APPROVE_ABI = [
     "type": "function",
     "name": "decimals",
     "stateMutability": "view",
-    "inputs": [],
+    "inputs":  [],
     "outputs": [{ "name": "", "type": "uint8" }]
   },
   {
     "type": "function",
     "name": "symbol",
     "stateMutability": "view",
-    "inputs": [],
+    "inputs":  [],
     "outputs": [{ "name": "", "type": "string" }]
   },
   {
     "type": "function",
     "name": "balanceOf",
     "stateMutability": "view",
-    "inputs": [{ "name": "account", "type": "address" }],
+    "inputs":  [{ "name": "account", "type": "address" }],
     "outputs": [{ "name": "", "type": "uint256" }]
+  },
+  // EIP-2612 permit (tokens that support it)
+  {
+    "type": "function",
+    "name": "nonces",
+    "stateMutability": "view",
+    "inputs":  [{ "name": "owner", "type": "address" }],
+    "outputs": [{ "name": "", "type": "uint256" }]
+  },
+  {
+    "type": "function",
+    "name": "DOMAIN_SEPARATOR",
+    "stateMutability": "view",
+    "inputs":  [],
+    "outputs": [{ "name": "", "type": "bytes32" }]
   }
 ];
 
@@ -354,7 +499,7 @@ async function otcParseTokenAmount(amount, tokenAddr, provider) {
   const ethers = window.ethers;
   if (!ethers) return BigInt(Math.round(amount * 1e6));
   try {
-    const erc20 = otcGetERC20Contract(tokenAddr, provider);
+    const erc20    = otcGetERC20Contract(tokenAddr, provider);
     const decimals = await erc20.decimals();
     return ethers.parseUnits(String(amount), decimals);
   } catch(e) {
@@ -367,10 +512,18 @@ async function otcFormatTokenAmount(raw, tokenAddr, provider) {
   const ethers = window.ethers;
   if (!ethers) return (Number(raw) / 1e6).toFixed(2);
   try {
-    const erc20 = otcGetERC20Contract(tokenAddr, provider);
+    const erc20    = otcGetERC20Contract(tokenAddr, provider);
     const decimals = await erc20.decimals();
     return ethers.formatUnits(raw, decimals);
   } catch(e) {
     return ethers.formatUnits(raw, 6);
   }
 }
+
+// Helper: decode on-chain deal state (uint8) to human string
+function otcDecodeDealState(stateNum) {
+  return OTC_DEAL_STATE[Number(stateNum)] || 'Unknown';
+}
+
+// Backward-compat alias (v1/v2 code may reference this)
+const OTC_ESCROW_ABI_GETDEALSTATUS = OTC_ESCROW_ABI.find(e => e.name === 'getDealStatus');

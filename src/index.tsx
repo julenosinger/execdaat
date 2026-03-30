@@ -2422,6 +2422,21 @@ app.get('/', (c) => {
     </div>
     <!-- ══ END OTC CONTRACTS TAB ══ -->
 
+    <!-- OTC On-Chain Event Feed (floating, shown when events exist) -->
+    <div id="otc-events-panel" class="hidden fixed bottom-4 right-4 w-80 z-40 bg-gray-900/95 border border-indigo-700/30 rounded-2xl shadow-2xl overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-800/60">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-satellite-dish text-indigo-400 text-sm"></i>
+          <span class="text-white text-xs font-semibold">On-Chain Events</span>
+        </div>
+        <button onclick="document.getElementById('otc-events-panel').classList.add('hidden')"
+          class="text-gray-600 hover:text-gray-400 text-xs transition"><i class="fas fa-times"></i></button>
+      </div>
+      <div id="otc-event-feed" class="px-4 py-3 max-h-64 overflow-y-auto text-xs">
+        <p class="text-gray-600 text-xs text-center py-4">No on-chain events yet.</p>
+      </div>
+    </div>
+
     <!-- MULTISEND TAB -->
     <div id="tab-content-multisend" class="tab-content hidden">
       <div class="max-w-5xl mx-auto">
@@ -4753,8 +4768,8 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260402b"></script>
   <script src="/static/queue-engine.js?v=20260402a"></script>
-  <script src="/static/otc-escrow-abi.js?v=20260402a"></script>
-  <script src="/static/otc.js?v=20260402b"></script>
+  <script src="/static/otc-escrow-abi.js?v=20260403b"></script>
+  <script src="/static/otc.js?v=20260403b"></script>
   <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────

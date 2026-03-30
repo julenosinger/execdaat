@@ -1,0 +1,16 @@
+{
+  "name": "otc-escrow-contracts",
+  "version": "3.0.0",
+  "description": "OTCEscrow v3 deployment scripts for ARC Testnet",
+  "private": true,
+  "scripts": {
+    "deploy": "node script/deployOTCEscrow.cjs",
+    "test": "cd hardhat && npx hardhat test",
+    "flatten": "cd hardhat && npx hardhat flatten contracts/OTCEscrow.sol"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.2.0",
+    "ethers": "^6.13.0",
+    "solc": "^0.8.24"
+  }
+}

@@ -35,3 +35,10 @@ contracts/lib/
 *.tar.gz
 *.zip
 *.bak
+
+# Hardhat project (local dev only — test suite lives in contracts/hardhat/)
+contracts/hardhat/node_modules/
+contracts/hardhat/artifacts/
+contracts/hardhat/cache/
+contracts/node_modules/
+contracts/package-lock.json

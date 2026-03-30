@@ -1,0 +1,17 @@
+{
+  "name": "otcescrow-tests",
+  "version": "1.0.0",
+  "description": "OTCEscrow v3 comprehensive test suite",
+  "scripts": {
+    "test": "npx hardhat test",
+    "coverage": "npx hardhat coverage"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.2.0",
+    "chai": "^4.3.0",
+    "ethers": "^6.0.0",
+    "hardhat": "^2.22.0"
+  }
+}
