@@ -4888,14 +4888,14 @@ app.get('/', (c) => {
     Cache-Control: immutable is set. Using content-hash in the filename
     guarantees a fresh fetch regardless of browser cache state.
 
-    Current hashes (updated 2026-04-08 — FULLY CLEAN, no OTC_ESCROW_DEPLOYED anywhere):
-      otc-escrow-abi.72e5bfc4.js  ← single source of truth for OTC_ESCROW_ADDRESS
-      otc.28d7f18f.js              ← full OTC module v20260408a (uses otcIsDeployed() only)
+    Current hashes (updated 2026-04-09a — OTC_ESCROW_DEPLOYED fully removed, error stack traces on all critical functions):
+      otc-escrow-abi.72e5bfc4.js  ← single source of truth for OTC_ESCROW_ADDRESS + getOTCEscrowContract()
+      otc.f4dcbb9e.js              ← OTC v20260409a: ZERO OTC_ESCROW_DEPLOYED, 10x console.error stack traces
 
-    ZERO OTC_ESCROW_DEPLOYED references in these files.
+    ZERO references to OTC_ESCROW_DEPLOYED in any form.
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
-  <script src="/static/otc.28d7f18f.js"></script>
+  <script src="/static/otc.f4dcbb9e.js"></script>
   <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
