@@ -65,7 +65,7 @@
 }());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260410h';
+const OTC_VERSION    = '20260410g';
 
 // ─── Startup check ───────────────────────────────────────────────────────────
 (function _otcStartupCheck() {
@@ -84,10 +84,7 @@ const OTC_VERSION    = '20260410h';
 function _otcToUTCIso(dateYMD, timeHHMM) {
   // Inputs from <input type="date"> and <input type="time"> are already in the
   // format YYYY-MM-DD and HH:MM — treating them as UTC directly.
-  // Both date and time are optional:
-  //   - no date  → return null  ("To Be Confirmed")
-  //   - no time  → default to 00:00 (midnight UTC)
-  if (!dateYMD || !dateYMD.trim()) return null;
+  // Time is optional — default to 00:00 (midnight UTC) when not provided.
   const t = (timeHHMM && timeHHMM.trim()) ? timeHHMM.trim() : '00:00';
   return dateYMD + 'T' + t + ':00Z';
 }
@@ -103,19 +100,19 @@ function _otcFromUTCIso(isoStr) {
 }
 // Format ISO UTC string → MM/DD/YYYY HH:MM UTC (display only)
 function _otcDisplayDT(isoStr) {
-  if (!isoStr) return 'To Be Confirmed';
+  if (!isoStr) return '—';
   const d = new Date(isoStr);
-  if (isNaN(d)) return 'To Be Confirmed';
+  if (isNaN(d)) return isoStr;
   const pad = n => String(n).padStart(2, '0');
   return pad(d.getUTCMonth()+1) + '/' + pad(d.getUTCDate()) + '/' + d.getUTCFullYear()
     + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ' UTC';
 }
 // Format ISO UTC string → MM/DD/YYYY (date only, for marketplace)
 function _otcDisplayDate(isoStr) {
-  if (!isoStr) return 'To Be Confirmed';
+  if (!isoStr) return '—';
   // Accept both ISO strings and plain YYYY-MM-DD
   const d = isoStr.includes('T') ? new Date(isoStr) : new Date(isoStr + 'T00:00:00Z');
-  if (isNaN(d)) return 'To Be Confirmed';
+  if (isNaN(d)) return isoStr;
   const pad = n => String(n).padStart(2, '0');
   return pad(d.getUTCMonth()+1) + '/' + pad(d.getUTCDate()) + '/' + d.getUTCFullYear();
 }
@@ -410,7 +407,7 @@ async function otcCreateDeal() {
   if (buyer.toLowerCase() === seller.toLowerCase()) errors.push('Buyer and seller cannot be the same address');
   if (!asset)               errors.push('Select a token/asset');
   if (!amount || isNaN(amount) || amount <= 0) errors.push('Enter a valid amount');
-  // tgeDate is optional — if omitted, stored as null (displayed as "To Be Confirmed")
+  if (!tgeDate)             errors.push('TGE date is required');
 
   if (errors.length) {
     _otcShowFormError(errors.join(' · '));
@@ -424,8 +421,8 @@ async function otcCreateDeal() {
 
   try {
     const contractId    = _otcId();
-    // Store as ISO 8601 UTC (e.g. 2026-03-25T18:00:00Z), or null if no date provided
-    const timestamp_utc = tgeDate ? _otcToUTCIso(tgeDate, tgeTime) : null;
+    // Store as ISO 8601 UTC (e.g. 2026-03-25T18:00:00Z)
+    const timestamp_utc = _otcToUTCIso(tgeDate, tgeTime);
     const tgeDatetime   = timestamp_utc; // alias for existing status checks
 
     const contractData = { contractId, buyer, seller, asset, amount, tgeDate, tgeTime, tgeTz, tgeDatetime, timestamp_utc, description };
@@ -2612,12 +2609,9 @@ function _otcContractCard(c, wallet) {
   // Buyer can NO longer call release — contract will revert with NotAuthorized.
   // We hide the button for non-sellers to prevent confusion.
   // Accepts FUNDED (v3 compat), AWAITING_PROOF, or READY_TO_SETTLE
-  // When date is null ("To Be Confirmed"), treat TGE as far future so release
-  // is never accidentally enabled and countdown shows nothing.
-  const _tgeIso = c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime);
-  const tgeTs   = _tgeIso ? new Date(_tgeIso).getTime() : Infinity;
-  const tgeIn   = tgeTs === Infinity ? Infinity : tgeTs - Date.now();
-  const tgePast = tgeIn !== Infinity && tgeIn <= 0;
+  const tgeTs   = new Date(c.timestamp_utc || _otcToUTCIso(c.tgeDate, c.tgeTime)).getTime();
+  const tgeIn   = tgeTs - Date.now();
+  const tgePast = tgeIn <= 0;
 
   // Raise dispute: funded deal, buyer or seller, not already disputed/terminal
   // In v4: disputable statuses are AWAITING_PROOF, AWAITING_SELLER_DEPOSIT, READY_TO_SETTLE
@@ -2662,11 +2656,9 @@ function _otcContractCard(c, wallet) {
   const canSubmitProof = isSeller && !isTerminal && !isDisputed && !hasProof
     && ['AWAITING_PROOF', OTC_STATUS.FUNDED, 'READY_TO_SETTLE'].some(s => c.status === s);
 
-  const tgeLabel = tgeIn === Infinity
-    ? 'To Be Confirmed'
-    : tgeIn > 0
-      ? `in ${_otcFormatDuration(tgeIn)}`
-      : `${_otcFormatDuration(-tgeIn)} ago`;
+  const tgeLabel = tgeIn > 0
+    ? `in ${_otcFormatDuration(tgeIn)}`
+    : `${_otcFormatDuration(-tgeIn)} ago`;
 
   // ── Timeline steps — adapts to on-chain vs off-chain mode ────────────────
   const fundedStatuses   = [OTC_STATUS.FUNDED, OTC_STATUS.RELEASED,
