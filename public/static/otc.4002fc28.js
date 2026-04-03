@@ -65,7 +65,7 @@
 }());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260409b';
+const OTC_VERSION    = '20260410a';
 
 // ─── Startup check ───────────────────────────────────────────────────────────
 (function _otcStartupCheck() {
@@ -177,9 +177,10 @@ const OTC_STATUS_LABEL = {
 };
 
 // ─── State ─────────────────────────────────────────────────────────────────────
-let _otcContracts = [];
-let _otcListings  = [];
-let _otcSubTab    = 'create'; // 'create' | 'my' | 'market'
+let _otcContracts       = [];
+let _otcListings        = [];
+let _otcSubTab          = 'create'; // 'create' | 'my' | 'market'
+let _otcSyncInProgress  = false;    // guard: only one chain-sync at a time
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function _otcLog(...a)  { console.log('%c[OTC v4]', 'color:#818cf8;font-weight:bold', ...a); }
@@ -461,24 +462,23 @@ async function otcCreateDeal() {
 
     // ── Try on-chain createDeal if escrow is configured & wallet connected ───────
     if (otcIsDeployed() && window.walletState?.connected) {
-      _otcToast('✅ OTC Deal created locally! Registering on-chain…', 'info');
-      // Non-blocking: on-chain registration runs in background.
-      // Contract is already saved locally — it will NOT disappear if on-chain fails.
-      // Pass contractId (not the object) so _otcCreateDealOnChain always works
-      // with the canonical copy stored in _otcContracts.
-      _otcCreateDealOnChain(contractId).catch(e => {
-        console.error('[OTC ERROR LOCATION] _otcCreateDealOnChain (background) threw:', e.stack || e.message);
+      _otcToast('⏳ Registering deal on-chain — confirm in wallet…', 'info');
+      try {
+        // BLOCKING: await full tx.wait() before switching tabs.
+        // Eliminates "On-chain registration failed. Deal saved locally." warning.
+        await _otcCreateDealOnChain(contractId);
+        // Success toast + render already called inside _otcCreateDealOnChain
+      } catch(e) {
+        console.error('[OTC ERROR LOCATION] _otcCreateDealOnChain threw:', e.stack || e.message);
         _otcLog('On-chain createDeal failed (deal is saved locally):', e.message);
-        // Mark onChain:false on the saved copy so UI shows correct state
         const saved = _otcContracts.find(c => c.contractId === contractId);
-        if (saved) {
-          saved.onChain   = false;
-          saved.updatedAt = _otcNow();
-          otcSave();
+        if (saved) { saved.onChain = false; saved.updatedAt = _otcNow(); otcSave(); }
+        if (e.code === 4001 || e.message?.includes('rejected')) {
+          _otcToast('⚠️ Transaction rejected. Deal saved locally only.', 'warning');
+        } else {
+          _otcToast(`⚠️ On-chain registration failed: ${e.message}. Deal saved locally.`, 'warning');
         }
-        _otcToast('⚠️ On-chain registration failed. Deal saved locally.', 'warning');
-        otcRenderMyContracts();
-      });
+      }
     } else {
       const chainNote = !otcIsDeployed()
         ? ' (Escrow contract not configured — local mode only)'
@@ -491,9 +491,17 @@ async function otcCreateDeal() {
     // Reset form
     _otcResetForm();
 
-    // Switch to My Contracts tab and show the new contract
-    otcSwitchSub('my');
-    setTimeout(() => otcRenderMyContracts(), 100);
+    // Switch to My Contracts tab — skip sync since we just finished the on-chain tx
+    _otcSubTab = 'my';
+    ['create','my','market'].forEach(s => {
+      const btn = _otcEl(`otc-sub-${s}`);
+      const panel = _otcEl(`otc-panel-${s}`);
+      if (btn) btn.className = s === 'my'
+        ? 'otc-sub-btn px-5 py-2.5 rounded-xl text-sm font-semibold transition-all bg-indigo-600 text-white shadow-md'
+        : 'otc-sub-btn px-5 py-2.5 rounded-xl text-sm font-medium transition-all text-gray-400 hover:text-white hover:bg-gray-800/60';
+      if (panel) panel.classList.toggle('hidden', s !== 'my');
+    });
+    otcRenderMyContracts();
 
   } catch(e) {
     console.error('[OTC ERROR LOCATION] otcCreateDeal threw:', e.stack || e.message);
@@ -1648,6 +1656,204 @@ async function _otcCancelOnChain(contract) {
   }
 }
 
+// ─── 6a. Full on-chain sync: rebuild local state from blockchain ───────────
+// Fetches all dealIds for walletAddress via getDealsByParty(), then calls
+// getDeal() for each one in parallel. Merges results into _otcContracts and
+// otcSave(). Called on wallet connect and on tab switch to "my".
+async function otcSyncFromChain(walletAddress) {
+  if (!walletAddress || !otcIsDeployed()) return;
+  if (_otcSyncInProgress) {
+    _otcLog('[SYNC] Already in progress — skipping duplicate call');
+    return;
+  }
+  _otcSyncInProgress = true;
+
+  // ── Show loading indicator ────────────────────────────────────────────────
+  const container = _otcEl('otc-my-list');
+  if (container) {
+    container.innerHTML = `
+      <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-500" id="otc-sync-loading">
+        <i class="fas fa-spinner fa-spin text-2xl text-indigo-400"></i>
+        <p class="text-sm">Syncing trades from blockchain…</p>
+        <p class="text-xs text-gray-600">Querying Arc Testnet (chain ${OTC_CHAIN_ID})</p>
+      </div>`;
+  }
+
+  try {
+    const ethers   = window.ethers;
+    if (!ethers) throw new Error('ethers.js not loaded');
+
+    const provider = new ethers.JsonRpcProvider(OTC_RPC);
+    const escrow   = otcGetEscrowContract(provider);
+    if (!escrow) throw new Error('Cannot instantiate escrow contract (address missing)');
+
+    _otcLog('[SYNC] Fetching dealIds for', walletAddress);
+
+    // getDealsByParty returns bytes32[] of dealIds for this address
+    let dealIds = [];
+    try {
+      dealIds = await escrow.getDealsByParty(walletAddress);
+    } catch(e) {
+      _otcLog('[SYNC] getDealsByParty failed:', e.message);
+      // Graceful: keep whatever is in localStorage
+      _otcSyncInProgress = false;
+      otcRenderMyContracts();
+      return;
+    }
+
+    _otcLog('[SYNC] Found', dealIds.length, 'on-chain deals');
+    if (!dealIds.length) {
+      _otcSyncInProgress = false;
+      otcRenderMyContracts();
+      return;
+    }
+
+    // ── On-chain status → local status map (v4 State enum) ──────────────────
+    const stateMap = {
+      0: OTC_STATUS.ONCHAIN_CREATED,    // CREATED
+      1: 'AWAITING_BUYER_DEPOSIT',       // AWAITING_BUYER_DEPOSIT
+      2: 'AWAITING_SELLER_DEPOSIT',      // AWAITING_SELLER_DEPOSIT
+      3: 'AWAITING_PROOF',               // AWAITING_PROOF
+      4: 'READY_TO_SETTLE',              // READY_TO_SETTLE (EXECUTABLE)
+      5: 'IN_DISPUTE',                   // IN_DISPUTE
+      6: OTC_STATUS.RELEASED,            // COMPLETED / RELEASED
+      7: OTC_STATUS.CANCELLED,           // CANCELLED
+    };
+
+    // ── Fetch all deals in parallel ──────────────────────────────────────────
+    const dealFetches = dealIds.map(async (dealId) => {
+      try {
+        const d = await escrow.getDeal(dealId);
+        // getDeal returns tuple: buyer, seller, token, amount, tgeTimestamp,
+        // buyerSigned, sellerSigned, state, buyerCancelRequested,
+        // sellerCancelRequested, disputeRaisedBy, contractHash, createdAt
+        return { dealId, deal: d, ok: true };
+      } catch(e) {
+        _otcLog('[SYNC] getDeal failed for', dealId, ':', e.message);
+        return { dealId, ok: false };
+      }
+    });
+
+    const results = await Promise.all(dealFetches);
+
+    // ── Merge each on-chain deal into local _otcContracts ───────────────────
+    let changed = false;
+    for (const { dealId, deal, ok } of results) {
+      if (!ok || !deal) continue;
+
+      const dealIdHex   = dealId.toString();
+      const buyer       = deal[0]?.toLowerCase?.() || deal.buyer?.toLowerCase?.() || '';
+      const seller      = deal[1]?.toLowerCase?.() || deal.seller?.toLowerCase?.() || '';
+      const token       = deal[2] || deal.token;
+      const amountRaw   = deal[3] || deal.amount;
+      const tgeTs       = Number(deal[4] ?? deal.tgeTimestamp ?? 0);
+      const buyerSigned = deal[5] ?? deal.buyerSigned ?? false;
+      const sellerSigned= deal[6] ?? deal.sellerSigned ?? false;
+      const stateNum    = Number(deal[7] ?? deal.state ?? 0);
+      const contractHash= deal[11] || deal.contractHash || '';
+      const createdAtTs = Number(deal[12] ?? deal.createdAt ?? 0);
+
+      const onChainStatus = stateMap[stateNum] || OTC_STATUS.ONCHAIN_CREATED;
+      const tgeISO        = tgeTs ? new Date(tgeTs * 1000).toISOString() : null;
+      const createdISO    = createdAtTs ? new Date(createdAtTs * 1000).toISOString() : _otcNow();
+
+      // Find existing local record by escrowDealId or contractHash
+      let existing = _otcContracts.find(c => c.escrowDealId === dealIdHex);
+      if (!existing && contractHash && contractHash !== '0x' + '0'.repeat(64)) {
+        existing = _otcContracts.find(c => c.contractHash === contractHash);
+      }
+
+      if (existing) {
+        // Update the existing local record with fresh on-chain data
+        const wasStatus = existing.status;
+        existing.onChain       = true;
+        existing.escrowDealId  = dealIdHex;
+        existing.status        = onChainStatus;
+        existing.updatedAt     = _otcNow();
+        // Sync on-chain signature flags (bytes32 sig means signed on-chain)
+        if (buyerSigned  && !existing.buyerSig)  existing.buyerSig  = '0x' + '0'.repeat(62) + '01';
+        if (sellerSigned && !existing.sellerSig) existing.sellerSig = '0x' + '0'.repeat(62) + '01';
+        if (wasStatus !== onChainStatus) {
+          _otcLog('[SYNC] Updated', existing.contractId, wasStatus, '→', onChainStatus);
+          changed = true;
+        }
+      } else {
+        // Reconstruct a minimal local record from on-chain data
+        // (covers case where localStorage was cleared)
+        const assetSym = _otcReverseToken(token);
+        const newLocal = {
+          contractId:   'OTC-CHAIN-' + dealIdHex.slice(2, 12).toUpperCase(),
+          buyer,
+          seller,
+          asset:        assetSym || token,
+          amount:       0,           // raw amount — display as raw until parsed
+          tgeDate:      tgeISO ? tgeISO.slice(0, 10) : '',
+          tgeTime:      tgeISO ? tgeISO.slice(11, 16) : '',
+          tgeTz:        'UTC',
+          tgeDatetime:  tgeISO,
+          timestamp_utc: tgeISO,
+          description:  'Recovered from chain (dealId: ' + dealIdHex.slice(0, 14) + '…)',
+          contractHash,
+          status:       onChainStatus,
+          createdAt:    createdISO,
+          updatedAt:    _otcNow(),
+          buyerSig:     buyerSigned  ? '0x' + '0'.repeat(62) + '01' : null,
+          sellerSig:    sellerSigned ? '0x' + '0'.repeat(62) + '01' : null,
+          buyerSigAt:   buyerSigned  ? createdISO : null,
+          sellerSigAt:  sellerSigned ? createdISO : null,
+          txProof:      null,
+          verifiedAt:   null,
+          receipt:      null,
+          notes:        [],
+          sellerScheduleConfirmed: sellerSigned,
+          sellerTgeDate: null,
+          sellerTgeTime: null,
+          escrowDealId:  dealIdHex,
+          escrowTxHash:  null,
+          fundTxHash:    null,
+          releaseTxHash: null,
+          cancelTxHash:  null,
+          onChain:       true,
+          _recoveredFromChain: true,
+        };
+        _otcContracts.unshift(newLocal);
+        _otcLog('[SYNC] Recovered deal from chain:', newLocal.contractId, onChainStatus);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      // Sort: most-recently-updated first
+      _otcContracts.sort((a, b) =>
+        new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)
+      );
+      otcSave();
+    }
+
+    _otcLog('[SYNC] Complete — total local contracts:', _otcContracts.length);
+
+  } catch(e) {
+    console.error('[OTC ERROR LOCATION] otcSyncFromChain threw:', e.stack || e.message);
+    _otcLog('[SYNC] Error (local data preserved):', e.message);
+  } finally {
+    _otcSyncInProgress = false;
+    otcRenderMyContracts();
+  }
+}
+
+// ─── Helper: reverse-lookup token symbol from address ─────────────────────
+function _otcReverseToken(addr) {
+  if (!addr) return null;
+  const lower = addr.toLowerCase();
+  // OTC_KNOWN_TOKENS is defined in otc-escrow-abi.js (symbol → address)
+  if (typeof OTC_KNOWN_TOKENS === 'object') {
+    for (const [sym, a] of Object.entries(OTC_KNOWN_TOKENS)) {
+      if (a.toLowerCase() === lower) return sym;
+    }
+  }
+  return null;
+}
+
 // ─── 6. Sync deal status from on-chain ────────────────────────────────────
 async function otcSyncDealStatus(contractId) {
   const contract = _otcContracts.find(c => c.contractId === contractId);
@@ -2037,7 +2243,15 @@ function otcSwitchSub(sub) {
     if (content) content.classList.toggle('hidden', s !== sub);
   });
 
-  if (sub === 'my')     otcRenderMyContracts();
+  if (sub === 'my') {
+    // Trigger chain sync when switching to "My Contracts" tab (if wallet connected)
+    const wallet = window.walletState?.address?.toLowerCase();
+    if (wallet && otcIsDeployed() && !_otcSyncInProgress) {
+      otcSyncFromChain(wallet); // async — renders when done
+    } else {
+      otcRenderMyContracts();
+    }
+  }
   if (sub === 'market') otcRenderMarketplace();
   if (sub === 'create') _otcAutoFillWallet();
 }
@@ -2717,7 +2931,7 @@ function _otcInit() {
   const tzEl = _otcEl('otc-tge-tz');
   if (tzEl) tzEl.value = 'UTC';
 
-  // Watch wallet for auto-fill
+  // Watch wallet for auto-fill AND trigger chain sync on connect
   let lastWallet = null;
   setInterval(() => {
     const w = window.walletState?.address;
@@ -2725,6 +2939,11 @@ function _otcInit() {
       lastWallet = w;
       if (_otcSubTab === 'create') _otcAutoFillWallet();
       _otcCheckAlerts();
+      // Sync from chain whenever wallet connects or changes
+      if (w && otcIsDeployed()) {
+        _otcLog('[INIT] Wallet changed →', w, '— triggering chain sync');
+        otcSyncFromChain(w.toLowerCase());
+      }
     }
   }, 2000);
 
@@ -2756,6 +2975,7 @@ function _otcInit() {
   window.otcDepositSeller      = otcDepositSeller;       // v4: TRUSTLESS mode
   window.otcRequestCancelOnChain = otcRequestCancelOnChain;
   window.otcSyncDealStatus     = otcSyncDealStatus;
+  window.otcSyncFromChain      = otcSyncFromChain;
 
   _otcLog(`Loaded | v${OTC_VERSION} | Chain ${OTC_CHAIN_ID} | Contract v4 (TradeMode, openDispute, arbiter)`);
 }

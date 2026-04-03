@@ -4890,12 +4890,12 @@ app.get('/', (c) => {
 
     Current hashes (updated 2026-04-09a — OTC_ESCROW_DEPLOYED fully removed, error stack traces on all critical functions):
       otc-escrow-abi.72e5bfc4.js  ← single source of truth for OTC_ESCROW_ADDRESS + getOTCEscrowContract()
-      otc.86160821.js              ← OTC v20260409b: contractId-based createDeal, dual-write IDB+LS, backup key
+      otc.4002fc28.js              ← OTC v20260410a: otcSyncFromChain (getDealsByParty+getDeal), blocking createDeal await tx.wait()
 
     ZERO references to OTC_ESCROW_DEPLOYED in any form.
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
-  <script src="/static/otc.86160821.js"></script>
+  <script src="/static/otc.4002fc28.js"></script>
   <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
