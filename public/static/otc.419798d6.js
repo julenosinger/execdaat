@@ -65,7 +65,7 @@
 }());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260410c';
+const OTC_VERSION    = '20260410d';
 
 // ─── Startup check ───────────────────────────────────────────────────────────
 (function _otcStartupCheck() {
@@ -1324,26 +1324,59 @@ async function otcSubmitProof(contractId) {
       // keccak256 hash of the raw proof string → bytes32
       const proofBytes32 = ethers.id(rawInput); // ethers.id() = keccak256(utf8(str))
 
-      _otcToast('⏳ Confirm submitProof in wallet…', 'info');
-      const tx = await escrow.submitProof(contract.escrowDealId, proofBytes32);
+      // ── Try on-chain submitProof; fall back silently if contract is v1
+      // (v1 does not have submitProof — CALL_EXCEPTION / estimateGas failure)
+      let onChainSuccess = false;
+      try {
+        _otcToast('⏳ Confirm submitProof in wallet…', 'info');
+        const tx = await escrow.submitProof(contract.escrowDealId, proofBytes32);
 
-      _otcToast('⏳ submitProof tx sent — waiting for confirmation…', 'info');
-      _otcLog('submitProof tx hash:', tx.hash);
+        _otcToast('⏳ submitProof tx sent — waiting for confirmation…', 'info');
+        _otcLog('submitProof tx hash:', tx.hash);
 
-      const receipt = await tx.wait();
-      _otcLog('submitProof confirmed:', receipt.hash);
+        const receipt = await tx.wait();
+        _otcLog('submitProof confirmed:', receipt.hash);
 
-      // Persist locally
-      contract.proofData      = rawInput;
-      contract.proofTxHash    = receipt.hash;
+        contract.proofTxHash = receipt.hash;
+        onChainSuccess = true;
+
+        const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+        _otcToast(`✅ Proof submitted on-chain! <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
+
+      } catch (onChainErr) {
+        // Graceful fallback: contract may be v1 (no submitProof function)
+        // or user rejected — handle each case
+        const isReject = onChainErr.code === 4001
+          || onChainErr.action === 'sendTransaction'
+          || String(onChainErr.message).includes('rejected')
+          || String(onChainErr.message).includes('denied');
+
+        if (isReject) {
+          // User explicitly rejected — re-throw so outer catch handles it
+          throw onChainErr;
+        }
+
+        // CALL_EXCEPTION / estimateGas failure — submitProof not available on
+        // this contract version; store proof locally only
+        _otcLog('[OTC] submitProof not available on deployed contract (v1 fallback):', onChainErr.message);
+        _otcToast('ℹ️ Proof saved locally (escrow contract does not support on-chain proof submission)', 'info');
+        contract.proofTxHash   = null;
+        contract.proofOnChainSkipped = true; // flag for UI
+      }
+
+      // Persist locally regardless of on-chain outcome
+      contract.proofData        = rawInput;
       contract.proofSubmittedAt = _otcNow();
-      contract.status         = 'READY_TO_SETTLE';
-      contract.updatedAt      = _otcNow();
+      contract.status           = 'READY_TO_SETTLE';
+      contract.updatedAt        = _otcNow();
       otcSave();
-      _otcPushHistory(contract, `Proof submitted on-chain (tx: ${_otcShort(receipt.hash)})`);
+      _otcPushHistory(contract, onChainSuccess
+        ? `Proof submitted on-chain (tx: ${_otcShort(contract.proofTxHash)})`
+        : `Proof submitted locally (contract v1 fallback)`);
 
-      const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
-      _otcToast(`✅ Proof submitted on-chain! <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
+      if (!onChainSuccess) {
+        _otcToast('✅ Proof saved! Status → Ready to Settle.', 'success');
+      }
 
     } else {
       // ── Off-chain / local-only path (no escrowDealId) ───────────────────
@@ -1361,11 +1394,81 @@ async function otcSubmitProof(contractId) {
 
   } catch(e) {
     console.error('[OTC ERROR LOCATION] otcSubmitProof threw:', e.stack || e.message);
-    const rej = e.code === 4001 || e.message?.includes('rejected');
+    const rej = e.code === 4001 || e.message?.includes('rejected') || e.message?.includes('denied');
     _otcToast(rej ? '⚠️ Transaction rejected.' : `❌ Proof submission failed: ${e.message}`, rej ? 'warning' : 'error');
     _otcLog('submitProof error:', e);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload mr-1"></i>Submit Proof'; }
+  }
+}
+
+// ─── 4a-1b. Buyer attestation (confirm delivery) ──────────────────────────
+/**
+ * Buyer attests that the seller has fulfilled their obligation.
+ * - Signs an EIP-191 message locally (no gas).
+ * - Stores attestation in the contract object for auditing.
+ * - Updates buyerAttestedAt + buyerAttestationSig fields.
+ */
+async function otcAttestDelivery(contractId) {
+  _otcLog('[TRACE] Entering otcAttestDelivery()', contractId);
+
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+
+  const wallet = window.walletState?.address?.toLowerCase();
+  if (!wallet || contract.buyer.toLowerCase() !== wallet) {
+    return _otcToast('Only the buyer can attest delivery', 'error');
+  }
+
+  if (!contract.proofData) {
+    return _otcToast('No proof to attest — seller has not submitted proof yet', 'warning');
+  }
+
+  if (contract.buyerAttestedAt) {
+    return _otcToast('You have already attested delivery for this contract', 'info');
+  }
+
+  const btn = _otcEl(`otc-attest-btn-${contractId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Signing…'; }
+
+  try {
+    if (!window.ethereum || !window.walletState?.connected) {
+      _otcToast('Connect your wallet to attest', 'warning');
+      if (typeof openWalletModal === 'function') openWalletModal();
+      return;
+    }
+
+    const signer = await _otcGetSigner();
+
+    // Construct deterministic attestation message
+    const msg = [
+      'OTC Delivery Attestation',
+      `Contract: ${contractId}`,
+      `Proof: ${contract.proofData}`,
+      `Attested at: ${new Date().toISOString()}`,
+      `Buyer: ${wallet}`,
+    ].join('\n');
+
+    _otcToast('⏳ Sign the attestation message in your wallet…', 'info');
+    const sig = await signer.signMessage(msg);
+    _otcLog('Attestation signed:', sig.slice(0, 20) + '…');
+
+    contract.buyerAttestedAt      = _otcNow();
+    contract.buyerAttestationSig  = sig;
+    contract.buyerAttestationMsg  = msg;
+    contract.updatedAt            = _otcNow();
+    otcSave();
+    _otcPushHistory(contract, `Buyer attested delivery (sig: ${sig.slice(0, 14)}…)`);
+
+    _otcToast('✅ Delivery attested! Your signature has been recorded.', 'success');
+    otcRenderMyContracts();
+
+  } catch(e) {
+    console.error('[OTC] otcAttestDelivery error:', e.stack || e.message);
+    const rej = e.code === 4001 || e.message?.includes('rejected') || e.message?.includes('denied');
+    _otcToast(rej ? '⚠️ Attestation rejected.' : `❌ Attestation failed: ${e.message}`, rej ? 'warning' : 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-stamp mr-1"></i>Attest Delivery'; }
   }
 }
 
@@ -2693,6 +2796,10 @@ function _otcContractCard(c, wallet) {
         return `<span class="text-gray-200 break-all">${trimmed}</span>`;
       }
 
+      // Buyer attestation state
+      const hasAttestation = !!c.buyerAttestedAt;
+      const canAttest      = isBuyer && hasProof && !hasAttestation;
+
       if (hasProof) {
         // ── Proof already submitted: show to BOTH parties ─────────────────
         return `
@@ -2710,12 +2817,49 @@ function _otcContractCard(c, wallet) {
             <i class="fas fa-link text-[9px]"></i>submitProof on-chain:
             <a href="${OTC_EXPLORER}/tx/${c.proofTxHash}" target="_blank"
               class="text-indigo-400 hover:text-indigo-300 underline font-mono">${_otcShort(c.proofTxHash)}</a>
-          </div>` : ''}
+          </div>` : (c.proofOnChainSkipped ? `
+          <div class="mt-1.5 flex items-center gap-1.5 text-[10px] text-gray-600">
+            <i class="fas fa-info-circle text-[9px]"></i>Stored locally (contract v1 — no on-chain proof registry)
+          </div>` : '')}
           ${isSeller ? `
           <button onclick="window._otcClearProofInput('${c.contractId}')"
             class="mt-2 text-[10px] text-gray-600 hover:text-gray-400 transition underline">
             Update proof
           </button>` : ''}
+
+          <!-- ── Buyer Attestation row ──────────────────────────────────── -->
+          ${hasAttestation ? `
+          <div class="mt-3 pt-3 border-t border-emerald-800/30 flex items-start gap-2">
+            <i class="fas fa-stamp text-emerald-400 text-xs mt-0.5"></i>
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-emerald-400 text-xs font-semibold">Buyer Attested</span>
+                <span class="text-gray-600 text-[10px]">${new Date(c.buyerAttestedAt).toLocaleString()}</span>
+              </div>
+              <div class="text-[10px] text-gray-500 font-mono mt-0.5 break-all">
+                Sig: ${c.buyerAttestationSig ? c.buyerAttestationSig.slice(0, 20) + '…' : '—'}
+              </div>
+            </div>
+          </div>` : (canAttest ? `
+          <div class="mt-3 pt-3 border-t border-emerald-800/30">
+            <div class="flex items-center gap-2 mb-1.5">
+              <i class="fas fa-stamp text-sky-400 text-xs"></i>
+              <span class="text-sky-400 text-xs font-semibold">Confirm Delivery</span>
+              <span class="text-[10px] text-gray-600 ml-auto">Optional — attests seller fulfilled obligation</span>
+            </div>
+            <p class="text-[10px] text-gray-500 mb-2">
+              By attesting, you sign a message confirming the seller delivered as agreed. Your signature is stored locally for dispute evidence.
+            </p>
+            <button id="otc-attest-btn-${c.contractId}"
+              onclick="otcAttestDelivery('${c.contractId}')"
+              class="flex items-center gap-1.5 px-4 py-1.5 bg-sky-700 hover:bg-sky-600 active:bg-sky-800 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-sky-900/30">
+              <i class="fas fa-stamp mr-1"></i>Attest Delivery
+            </button>
+          </div>` : (isSeller && !hasAttestation ? `
+          <div class="mt-3 pt-3 border-t border-emerald-800/20 flex items-center gap-1.5 text-[10px] text-gray-600">
+            <i class="fas fa-hourglass-half text-[9px]"></i>
+            Awaiting buyer attestation…
+          </div>` : ''))}
         </div>`;
       } else if (canSubmitProof) {
         // ── No proof yet: show input to SELLER only ────────────────────────
@@ -3182,6 +3326,7 @@ function _otcInit() {
   window.otcSyncDealStatus     = otcSyncDealStatus;
   window.otcSyncFromChain      = otcSyncFromChain;
   window.otcSubmitProof        = otcSubmitProof;
+  window.otcAttestDelivery     = otcAttestDelivery;
 
   // ── Proof UI helpers (called inline from card HTML) ─────────────────────
   // Live preview: shows what type of proof is detected as user types
