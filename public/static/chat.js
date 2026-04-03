@@ -23,9 +23,8 @@
 // Authorization Flow:
 //   1. User clicks "Authorize Daat Agent" button
 //   2. Wallet opens → user SIGNS an EIP-191 message (off-chain)
-//   3. Wallet opens again → user CONFIRMS a 0-value USDC.transfer
-//      to the factory contract as on-chain session proof
-//   4. Session token stored: { wallet, sig, sessionHash, expiry }
+//   3. Session token derived from signature + nonce (no on-chain tx)
+//   4. Session stored: { wallet, sig, sessionHash, expiry }
 //   5. Agent is now active — all platform ops via chat prompt
 //
 // Supported commands (post-authorization):
@@ -53,7 +52,7 @@ const ARC_RPC        = 'https://rpc.testnet.arc.network';
 const ARC_CHAIN_ID   = 5042002;
 const ARC_CHAIN_HEX  = '0x4cef52';
 const ARC_EXPLORER   = 'https://testnet.arcscan.app';
-const CF_FACTORY     = '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A';
+// CF_FACTORY removed — no on-chain tx during agent authorization (pure off-chain EIP-191)
 const USDC_ADDR      = '0x3600000000000000000000000000000000000000';
 const EURC_ADDR      = '0x89B5EF8FfF7e58BD6A1b7FcF04F1B6A2bbabD72a';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -778,7 +777,7 @@ function updateArcPayBar() {
 // ══════════════════════════════════════════════════════════════════════════════
 // ARCPAY AGENT v1.0 — AUTHORIZATION FLOW
 // Step 1: Sign EIP-191 message (off-chain identity proof)
-// Step 2: Confirm 0-USDC transfer to Factory as on-chain session anchor
+// Step 2: Derive session hash from signature + nonce (no transaction required)
 // ══════════════════════════════════════════════════════════════════════════════
 async function executeArcPayAuthorization() {
   if (authInProgress) return;
@@ -874,58 +873,29 @@ async function executeArcPayAuthorization() {
     }
 
     setAuthStep(1, 'done', 'Signature confirmed ✓');
-    setAuthStep(2, 'active', 'Confirm on-chain session in wallet…');
+    setAuthStep(2, 'active', 'Deriving session token…');
 
-    // ── STEP 2: On-chain confirmation — 0 USDC transfer as session anchor ──
-    // We call USDC.transfer(factory, 0) — zero amount, just the event
-    // This anchors the session on-chain without spending any funds
-    const usdcAbi = [
-      'function transfer(address to, uint256 amount) returns (bool)',
-    ];
-    const usdc = new ethers.Contract(USDC_ADDR, usdcAbi, signer);
+    // ── STEP 2: Derive session hash from signature + nonce (pure off-chain) ──
+    // No transaction is sent here. Authorization is fully off-chain via EIP-191.
 
-    // Encode the session nonce into the calldata via a comment in the memo
-    // We send 0 USDC to the factory as proof of session intent
-    let confirmTx;
-    try {
-      // Estimate gas first
-      let gasLimit = 60_000n;
-      try {
-        const est = await usdc.transfer.estimateGas(CF_FACTORY, 0n);
-        gasLimit = BigInt(Math.ceil(Number(est) * 1.3));
-      } catch (_) {}
-
-      confirmTx = await usdc.transfer(CF_FACTORY, 0n, { gasLimit });
-    } catch (e) {
-      if (e.code === 4001 || e.code === 'ACTION_REJECTED') throw new Error('__cancelled__');
-      throw new Error(`On-chain confirmation failed: ${e.message}`);
-    }
-
-    setAuthStep(2, 'active', `Waiting for confirmation… <span class="font-mono text-[10px] text-blue-300">${confirmTx.hash.slice(0,14)}…</span>`);
-
-    const receipt = await confirmTx.wait(1);
-    if (receipt.status !== 1) throw new Error('Confirmation transaction reverted on-chain.');
-
-    setAuthStep(2, 'done', `On-chain confirmed ✓ Block #${receipt.blockNumber}`);
-    setAuthStep(3, 'active', 'Activating session…');
-
-    // ── Derive session hash ──────────────────────────────────────────────────
+    // ── Derive session hash (off-chain, no tx) ─────────────────────────────
     const sessionHash = await crypto.subtle.digest(
       'SHA-256',
       new TextEncoder().encode(signature + sessionNonce + signerAddr)
     ).then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join(''));
 
+    setAuthStep(2, 'done', 'Session token derived ✓');
+    setAuthStep(3, 'active', 'Activating session…');
+
     // ── Save session ────────────────────────────────────────────────────────
     const session = {
-      authorized:   true,
-      wallet:       signerAddr,
+      authorized:  true,
+      wallet:      signerAddr,
       signature,
       sessionNonce,
-      sessionHash:  sessionHash.slice(0, 32),
-      confirmTxHash: confirmTx.hash,
-      confirmBlock:  receipt.blockNumber,
+      sessionHash: sessionHash.slice(0, 32),
       expiry,
-      createdAt:    Date.now(),
+      createdAt:   Date.now(),
     };
     saveSession(session);
 
@@ -940,7 +910,6 @@ async function executeArcPayAuthorization() {
       `🎉 **Daat Agent v1.0 Authorized!**\n\n` +
       `✅ Wallet: \`${signerAddr.slice(0,10)}…${signerAddr.slice(-6)}\`\n` +
       `🔐 Session: \`${sessionHash.slice(0,16)}…\`\n` +
-      `⛓️ On-chain proof: [\`${confirmTx.hash.slice(0,14)}…\`](${ARC_EXPLORER}/tx/${confirmTx.hash})\n` +
       `⏱️ Valid until: ${new Date(expiry).toLocaleString()}\n\n` +
       `**I can now execute all platform operations for you:**\n` +
       `- 💳 *"send 10 USDC to 0x…"*\n` +
@@ -1003,8 +972,8 @@ function showAuthOverlay() {
         <div id="auth-step-row-2" class="auth-step pending">
           <div class="auth-step-icon" id="auth-step-icon-2">2</div>
           <div style="text-align:left;flex:1;">
-            <p style="color:#9ca3af;font-size:12px;font-weight:600;margin:0 0 2px;">Step 2 — On-chain Confirmation</p>
-            <p id="auth-step-detail-2" style="color:#6b7280;font-size:10px;margin:0;">Confirm session anchor transaction…</p>
+            <p style="color:#9ca3af;font-size:12px;font-weight:600;margin:0 0 2px;">Step 2 — Session Token</p>
+            <p id="auth-step-detail-2" style="color:#6b7280;font-size:10px;margin:0;">Deriving cryptographic session token…</p>
           </div>
         </div>
         <div id="auth-step-row-3" class="auth-step pending">

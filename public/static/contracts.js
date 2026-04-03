@@ -2622,6 +2622,10 @@ async function cfRunTx(label, fn, contractId = null) {
 
 // ─── Ensure USDC approval ──────────────────────────────────────────────────────
 async function cfEnsureApproval(init, amountRaw, stepFn = null) {
+  // Safety: never approve zero amount — would indicate a bug upstream
+  if (!amountRaw || BigInt(amountRaw) === 0n) {
+    throw new Error('Safety: approval amount must be greater than zero.');
+  }
   const allowance = await cfReadAllowance(init.address, CF_FACTORY_ADDR);
   if (allowance >= amountRaw) {
     cfLog('Allowance already sufficient:', cfFmtUsdc(allowance), '>= required:', cfFmtUsdc(amountRaw));
