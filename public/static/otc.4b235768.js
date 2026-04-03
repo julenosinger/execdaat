@@ -65,7 +65,7 @@
 }());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260410e';
+const OTC_VERSION    = '20260410f';
 
 // ─── Startup check ───────────────────────────────────────────────────────────
 (function _otcStartupCheck() {
@@ -1862,13 +1862,30 @@ async function otcSyncFromChain(walletAddress) {
 
   // ── Show loading indicator ────────────────────────────────────────────────
   const container = _otcEl('otc-my-list');
-  if (container) {
+  // Only show full-screen spinner when there are no contracts yet to display.
+  // When contracts are already visible, add a small inline indicator instead
+  // so the existing cards remain on screen during the sync.
+  const hasLocalContracts = _otcContracts.some(c => {
+    const wallet = walletAddress.toLowerCase();
+    return c.buyer?.toLowerCase() === wallet || c.seller?.toLowerCase() === wallet;
+  });
+  if (container && !hasLocalContracts) {
     container.innerHTML = `
       <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-500" id="otc-sync-loading">
         <i class="fas fa-spinner fa-spin text-2xl text-indigo-400"></i>
         <p class="text-sm">Syncing trades from blockchain…</p>
         <p class="text-xs text-gray-600">Querying Arc Testnet (chain ${OTC_CHAIN_ID})</p>
       </div>`;
+  } else if (container && hasLocalContracts) {
+    // Inject a tiny non-blocking status badge without wiping the card list
+    let badge = document.getElementById('otc-sync-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'otc-sync-badge';
+      badge.className = 'flex items-center gap-1.5 px-3 py-1.5 mb-3 bg-indigo-900/30 border border-indigo-700/30 rounded-xl text-xs text-indigo-400';
+      badge.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px]"></i>Syncing with blockchain…';
+      container.insertBefore(badge, container.firstChild);
+    }
   }
 
   try {
@@ -1959,43 +1976,61 @@ async function otcSyncFromChain(walletAddress) {
         // Update the existing local record with fresh on-chain data
         const wasStatus = existing.status;
 
-        // ── Status merge rule ────────────────────────────────────────────
-        // Never regress local status if the user has already progressed it
-        // beyond what the chain knows (e.g. proof stored locally on v1 contract
-        // that has no submitProof function → chain stays AWAITING_PROOF but
-        // local should stay READY_TO_SETTLE so buttons remain visible).
+        // ── Status merge rule — DEFINITIVE ───────────────────────────────
+        // The deployed contract may be v1 whose state enum differs from the
+        // v3/v4 enum this stateMap was built for. As a result the mapped
+        // onChainStatus can be completely wrong (e.g. v1 Funded=1 maps to
+        // AWAITING_BUYER_DEPOSIT instead of FUNDED).
         //
-        // Precedence ladder (higher index = more advanced):
-        const _statusOrder = [
-          OTC_STATUS.ONCHAIN_CREATED,    // 0
-          OTC_STATUS.ONCHAIN_SIGNED,     // 1
-          'AWAITING_BUYER_DEPOSIT',      // 2
-          'AWAITING_SELLER_DEPOSIT',     // 3
-          OTC_STATUS.FUNDED,             // 4
-          'AWAITING_PROOF',              // 5
-          'READY_TO_SETTLE',             // 6
-          'IN_DISPUTE',                  // special — never overwrite with this from chain unless chain says so
-          OTC_STATUS.RELEASED,           // 7
-          OTC_STATUS.COMPLETED,          // 8
-          OTC_STATUS.CANCELLED,          // 9
+        // Rule: only update local status when ALL of the following hold:
+        //   1. The local contract does NOT have proofData  (seller hasn't
+        //      submitted proof locally — safe to accept chain state), OR
+        //      the chain is reporting a terminal state (RELEASED/CANCELLED/
+        //      COMPLETED — those must always win), OR in-dispute.
+        //   2. Additionally, the mapped chain status must actually be more
+        //      advanced than the current local status (prevent regressions
+        //      caused by wrong enum mappings on v1 contracts).
+        //
+        // Precedence ladder (higher index = more advanced in the happy path):
+        const _statusLadder = [
+          'ONCHAIN_CREATED',        // 0
+          'ONCHAIN_SIGNED',         // 1
+          'AWAITING_BUYER_DEPOSIT', // 2
+          'AWAITING_SELLER_DEPOSIT',// 3
+          'FUNDED',                 // 4
+          'AWAITING_PROOF',         // 5
+          'READY_TO_SETTLE',        // 6
         ];
-        const localRank  = _statusOrder.indexOf(existing.status);
-        const chainRank  = _statusOrder.indexOf(onChainStatus);
+        // Terminal states — always accepted from chain
+        const _terminalStates = ['RELEASED', 'COMPLETED', 'CANCELLED'];
 
-        // Only overwrite local status when:
-        //   (a) chain advances past local (chain rank > local rank), OR
-        //   (b) chain reports terminal state (RELEASED/CANCELLED/COMPLETED), OR
-        //   (c) chain reports IN_DISPUTE, OR
-        //   (d) local has no proofData (nothing worth preserving beyond chain state)
-        const chainIsTerminal  = [OTC_STATUS.RELEASED, OTC_STATUS.CANCELLED, OTC_STATUS.COMPLETED].includes(onChainStatus);
-        const chainIsDisputed  = onChainStatus === 'IN_DISPUTE';
         const localHasProof    = !!existing.proofData;
-        const shouldUpdate = chainIsTerminal || chainIsDisputed
-          || chainRank > localRank
-          || (!localHasProof && chainRank !== localRank);
+        const localHasAttestation = !!existing.buyerAttestedAt;
+        const chainIsTerminal  = _terminalStates.includes(onChainStatus);
+        const chainIsDisputed  = onChainStatus === 'IN_DISPUTE';
+
+        // If local has proof or attestation, only accept terminal/dispute transitions
+        const localProtected = localHasProof || localHasAttestation;
+
+        let shouldUpdate;
+        if (localProtected) {
+          // Proof or attestation exists locally — only accept terminal/dispute
+          shouldUpdate = chainIsTerminal || chainIsDisputed;
+        } else {
+          // No local proof — use ladder to prevent regressions from bad enum mappings
+          const localRank = _statusLadder.indexOf(existing.status);
+          const chainRank = _statusLadder.indexOf(onChainStatus);
+          // Accept if: chain is terminal, disputed, OR advances past local
+          // (chainRank=-1 means unknown status — skip to avoid regressions)
+          shouldUpdate = chainIsTerminal || chainIsDisputed
+            || (chainRank > localRank && chainRank >= 0);
+        }
 
         if (shouldUpdate) {
           existing.status = onChainStatus;
+        } else {
+          _otcLog('[SYNC] Keeping local status', existing.status,
+            '(chain reported', onChainStatus + ', localProtected=' + localProtected + ')');
         }
         // ─────────────────────────────────────────────────────────────────
 
@@ -2069,6 +2104,9 @@ async function otcSyncFromChain(walletAddress) {
     _otcLog('[SYNC] Error (local data preserved):', e.message);
   } finally {
     _otcSyncInProgress = false;
+    // Remove the inline sync badge (if shown) before re-rendering
+    const syncBadge = document.getElementById('otc-sync-badge');
+    if (syncBadge) syncBadge.remove();
     otcRenderMyContracts();
   }
 }
