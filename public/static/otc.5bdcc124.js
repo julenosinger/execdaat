@@ -65,7 +65,7 @@
 }());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260410d';
+const OTC_VERSION    = '20260410e';
 
 // ─── Startup check ───────────────────────────────────────────────────────────
 (function _otcStartupCheck() {
@@ -1958,15 +1958,55 @@ async function otcSyncFromChain(walletAddress) {
       if (existing) {
         // Update the existing local record with fresh on-chain data
         const wasStatus = existing.status;
+
+        // ── Status merge rule ────────────────────────────────────────────
+        // Never regress local status if the user has already progressed it
+        // beyond what the chain knows (e.g. proof stored locally on v1 contract
+        // that has no submitProof function → chain stays AWAITING_PROOF but
+        // local should stay READY_TO_SETTLE so buttons remain visible).
+        //
+        // Precedence ladder (higher index = more advanced):
+        const _statusOrder = [
+          OTC_STATUS.ONCHAIN_CREATED,    // 0
+          OTC_STATUS.ONCHAIN_SIGNED,     // 1
+          'AWAITING_BUYER_DEPOSIT',      // 2
+          'AWAITING_SELLER_DEPOSIT',     // 3
+          OTC_STATUS.FUNDED,             // 4
+          'AWAITING_PROOF',              // 5
+          'READY_TO_SETTLE',             // 6
+          'IN_DISPUTE',                  // special — never overwrite with this from chain unless chain says so
+          OTC_STATUS.RELEASED,           // 7
+          OTC_STATUS.COMPLETED,          // 8
+          OTC_STATUS.CANCELLED,          // 9
+        ];
+        const localRank  = _statusOrder.indexOf(existing.status);
+        const chainRank  = _statusOrder.indexOf(onChainStatus);
+
+        // Only overwrite local status when:
+        //   (a) chain advances past local (chain rank > local rank), OR
+        //   (b) chain reports terminal state (RELEASED/CANCELLED/COMPLETED), OR
+        //   (c) chain reports IN_DISPUTE, OR
+        //   (d) local has no proofData (nothing worth preserving beyond chain state)
+        const chainIsTerminal  = [OTC_STATUS.RELEASED, OTC_STATUS.CANCELLED, OTC_STATUS.COMPLETED].includes(onChainStatus);
+        const chainIsDisputed  = onChainStatus === 'IN_DISPUTE';
+        const localHasProof    = !!existing.proofData;
+        const shouldUpdate = chainIsTerminal || chainIsDisputed
+          || chainRank > localRank
+          || (!localHasProof && chainRank !== localRank);
+
+        if (shouldUpdate) {
+          existing.status = onChainStatus;
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         existing.onChain       = true;
         existing.escrowDealId  = dealIdHex;
-        existing.status        = onChainStatus;
         existing.updatedAt     = _otcNow();
         // Sync on-chain signature flags (bytes32 sig means signed on-chain)
         if (buyerSigned  && !existing.buyerSig)  existing.buyerSig  = '0x' + '0'.repeat(62) + '01';
         if (sellerSigned && !existing.sellerSig) existing.sellerSig = '0x' + '0'.repeat(62) + '01';
-        if (wasStatus !== onChainStatus) {
-          _otcLog('[SYNC] Updated', existing.contractId, wasStatus, '→', onChainStatus);
+        if (wasStatus !== existing.status) {
+          _otcLog('[SYNC] Updated', existing.contractId, wasStatus, '→', existing.status);
           changed = true;
         }
       } else {
@@ -2982,18 +3022,24 @@ function _otcContractCard(c, wallet) {
       </button>` : ''}
 
       <!-- Release funds (release) — SELLER ONLY in v4, BLOCKED by IN_DISPUTE and missing proof -->
-      ${isSeller && !isDisputed && !isTerminal && [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'READY_TO_SETTLE'].some(s => c.status === s) && tgePast ? `
+      <!-- Always show for seller in funded states — disabled when proof missing OR TGE not reached -->
+      ${isSeller && !isDisputed && !isTerminal && [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'READY_TO_SETTLE'].some(s => c.status === s) ? `
         ${canRelease ? `
         <button onclick="otcReleaseDeal('${c.contractId}')"
           title="Only the seller can release funds (v4 contract requirement)"
           class="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-emerald-900/30">
           <i class="fas fa-paper-plane"></i>Release Funds
-        </button>` : `
+        </button>` : (!hasProof ? `
         <span title="Submit delivery proof above before releasing funds"
           class="flex items-center gap-1.5 px-4 py-2 bg-gray-800/60 border border-gray-700/40 text-gray-500 rounded-xl text-xs font-semibold cursor-not-allowed select-none">
           <i class="fas fa-lock text-[10px]"></i>Release Funds
           <span class="text-[10px] text-amber-500/80 font-normal">(proof required)</span>
-        </span>`}
+        </span>` : `
+        <span title="TGE date not yet reached — release will be available after TGE"
+          class="flex items-center gap-1.5 px-4 py-2 bg-gray-800/60 border border-gray-700/40 text-gray-500 rounded-xl text-xs font-semibold cursor-not-allowed select-none">
+          <i class="fas fa-hourglass-half text-[10px]"></i>Release Funds
+          <span class="text-[10px] text-teal-500/80 font-normal">(TGE in ${tgeLabel})</span>
+        </span>`)}
       ` : ''}
 
       <!-- Buyer sees info badge when TGE reached but can't release (seller must) -->
