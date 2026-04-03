@@ -54,7 +54,7 @@ const ARC_CHAIN_HEX  = '0x4cef52';
 const ARC_EXPLORER   = 'https://testnet.arcscan.app';
 // CF_FACTORY removed — no on-chain tx during agent authorization (pure off-chain EIP-191)
 const USDC_ADDR      = '0x3600000000000000000000000000000000000000';
-const EURC_ADDR      = '0x89B5EF8FfF7e58BD6A1b7FcF04F1B6A2bbabD72a';
+const EURC_ADDR      = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ── State ──────────────────────────────────────────────────────────────────────
@@ -1836,13 +1836,21 @@ async function cmdSendPayment(amount, token, recipient) {
     `\n\n💡 *Full fee breakdown shown in the Payments form. Confirm to proceed.*`,
     'payments'
   );
-  // BRAIN → UI: queue the transfer (no Permit2, no wallet popup)
-  // Single recipient → always routes to Payments tab (never Multisend)
-  appendActionCard([
-    { label: `📥 Adicionar à Fila`, action: `_chatQueueTransfer('${amount}','${token}','${recipient}')`, primary: true },
-    { label: '📝 Pré-preencher Formulário', action: `_chatPrefillPaymentForm('${amount}','${token}','${recipient}')`, primary: false },
-    { label: '❌ Cancelar', action: `appendChatMessage('assistant','❌ Pagamento cancelado.','payments')`, primary: false },
-  ]);
+  // BRAIN → UI: route to AgentExecutor (if active) or manual queue
+  const agentReady = typeof AgentExecutor !== 'undefined' && isAgentActive();
+  if (agentReady) {
+    appendActionCard([
+      { label: `⚡ Execute via Agent`, action: `_chatAgentTransfer('${amount}','${token}','${recipient}')`, primary: true },
+      { label: '📥 Adicionar à Fila', action: `_chatQueueTransfer('${amount}','${token}','${recipient}')`, primary: false },
+      { label: '❌ Cancelar', action: `appendChatMessage('assistant','❌ Pagamento cancelado.','payments')`, primary: false },
+    ]);
+  } else {
+    appendActionCard([
+      { label: `📥 Adicionar à Fila`, action: `_chatQueueTransfer('${amount}','${token}','${recipient}')`, primary: true },
+      { label: '📝 Pré-preencher Formulário', action: `_chatPrefillPaymentForm('${amount}','${token}','${recipient}')`, primary: false },
+      { label: '❌ Cancelar', action: `appendChatMessage('assistant','❌ Pagamento cancelado.','payments')`, primary: false },
+    ]);
+  }
 }
 
 async function cmdBatchPayment(entries) {
@@ -1903,7 +1911,9 @@ async function cmdBatchPayment(entries) {
     'payments'
   );
   appendActionCard([
-    { label: '🚀 Abrir Multisend', action: `chatOpenMultisend(${JSON.stringify(parsed)})`, primary: true },
+    typeof AgentExecutor !== 'undefined' && isAgentActive()
+      ? { label: '⚡ Execute Batch via Agent', action: `AgentExecutor.queueMultisend(${JSON.stringify(parsed)},'USDC','batch via chat').then(i => appendChatMessage('assistant','🤖 Batch queued — agent will execute shortly.','payments')).catch(e => appendChatMessage('assistant','❌ ' + e.message,'error'))`, primary: true }
+      : { label: '🚀 Abrir Multisend', action: `chatOpenMultisend(${JSON.stringify(parsed)})`, primary: true },
     { label: '📥 Adicionar Lote à Fila', action: `_chatQueueBatch(${JSON.stringify(parsed)},'USDC')`, primary: false },
     { label: '❌ Cancelar',         action: `appendChatMessage('assistant','❌ Cancelado.','payments')`, primary: false },
   ]);
@@ -2063,8 +2073,48 @@ async function runGuardianValidation(params) {
 // It only prepares structured payment data and dispatches a 'arcPayQueue:add' event.
 // The UI (queue-engine.js) listens to this event and shows the Execute button.
 async function chatExecutePayment(amount, token, recipient) {
-  // Queue a single transfer — no Permit2, no wallet popup, no execution
-  _chatQueueTransfer(amount, token, recipient);
+  // If AgentExecutor is active, create an intent for autonomous execution
+  // Otherwise fall back to queue (manual Execute button)
+  if (typeof AgentExecutor !== 'undefined' && isAgentActive()) {
+    await _chatAgentTransfer(amount, token, recipient);
+  } else {
+    _chatQueueTransfer(amount, token, recipient);
+  }
+}
+
+// ── _chatAgentTransfer: create an intent → AgentExecutor executes automatically ─
+// Requires: AgentExecutor loaded + agent session active.
+// Shows live status badge in chat without requiring user to click Execute.
+async function _chatAgentTransfer(amount, token, recipient) {
+  try {
+    const intent = await AgentExecutor.queueTransfer(
+      String(amount),
+      token || 'USDC',
+      recipient
+    );
+
+    appendChatMessage('assistant',
+      `🤖 **Daat Agent queued your transfer!**\n\n` +
+      `| Campo | Valor |\n|---|---|\n` +
+      `| Token | **${intent.token}** |\n` +
+      `| Valor | **${intent.amount} ${intent.token}** |\n` +
+      `| Para | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n` +
+      `| Status | ${AgentExecutor.statusBadge(intent.id, 'pending')} |\n\n` +
+      `⚡ *Agent will prompt your wallet automatically in a moment.*`,
+      'payments'
+    );
+  } catch (err) {
+    // Fallback to manual queue if intent creation fails
+    _aeWarnFallback(err);
+    _chatQueueTransfer(amount, token, recipient);
+  }
+}
+
+function _aeWarnFallback(err) {
+  appendChatMessage('assistant',
+    `⚠️ Agent executor unavailable (${err?.message || 'unknown'}) — falling back to manual queue.`,
+    'warning'
+  );
 }
 
 // ── _chatQueueTransfer: enqueue a single transfer (Brain → UI, no execution) ──

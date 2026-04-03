@@ -130,6 +130,7 @@ function switchTab(tab) {
       loadAgentsDetails();
       if (window.loadGuardianStatus) window.loadGuardianStatus();
       if (window.loadYieldData) window.loadYieldData();
+      if (window.aeRefreshPanel) setTimeout(window.aeRefreshPanel, 300);
     }
     if (tab === 'dex') {
       if (window.ammInit && !window._ammInitialized) {
@@ -1061,3 +1062,170 @@ window.arcDismissBtnHtml = function(onClickJs, title) {
 };
 
 console.log('[APP] Local Dismiss system loaded');
+
+// ─── Agent Executor Intent Panel ─────────────────────────────────────────────
+// Functions to manage and display the agent intent history panel in the
+// Agents tab. Integrates with AgentExecutor (agent-executor.js).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Render an array of intent objects into the #ae-intents-list panel.
+ */
+window.aeRenderIntents = function(intents) {
+  const list    = document.getElementById('ae-intents-list');
+  const empty   = document.getElementById('ae-intents-empty');
+  const badge   = document.getElementById('ae-pending-badge');
+  const total   = document.getElementById('ae-stat-total');
+  const pending = document.getElementById('ae-stat-pending');
+  const compl   = document.getElementById('ae-stat-completed');
+  const failed  = document.getElementById('ae-stat-failed');
+  if (!list) return;
+
+  if (!intents || intents.length === 0) {
+    if (empty) empty.classList.remove('hidden');
+    if (total)   total.textContent   = '0';
+    if (pending) pending.textContent = '0';
+    if (compl)   compl.textContent   = '0';
+    if (failed)  failed.textContent  = '0';
+    if (badge)   badge.classList.add('hidden');
+    return;
+  }
+
+  if (empty) empty.classList.add('hidden');
+
+  // Stats
+  const nPending   = intents.filter(i => ['pending','processing','signing','broadcast'].includes(i.status)).length;
+  const nCompleted = intents.filter(i => i.status === 'completed').length;
+  const nFailed    = intents.filter(i => i.status === 'failed').length;
+  if (total)   total.textContent   = intents.length;
+  if (pending) pending.textContent = nPending;
+  if (compl)   compl.textContent   = nCompleted;
+  if (failed)  failed.textContent  = nFailed;
+  if (badge) {
+    if (nPending > 0) { badge.textContent = nPending; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+  }
+
+  const statusMap = {
+    pending:    { color: 'text-yellow-400',  bg: 'bg-yellow-900/20 border-yellow-800/30', icon: 'fa-clock',         label: 'Queued'     },
+    processing: { color: 'text-blue-400',    bg: 'bg-blue-900/20 border-blue-800/30',     icon: 'fa-cog fa-spin',   label: 'Processing' },
+    signing:    { color: 'text-purple-400',  bg: 'bg-purple-900/20 border-purple-800/30', icon: 'fa-pen',           label: 'Signing'    },
+    broadcast:  { color: 'text-cyan-400',    bg: 'bg-cyan-900/20 border-cyan-800/30',     icon: 'fa-paper-plane',   label: 'Sent'       },
+    completed:  { color: 'text-green-400',   bg: 'bg-green-900/20 border-green-800/30',   icon: 'fa-check-circle',  label: 'Completed'  },
+    failed:     { color: 'text-red-400',     bg: 'bg-red-900/20 border-red-800/30',       icon: 'fa-times-circle',  label: 'Failed'     },
+    cancelled:  { color: 'text-gray-500',    bg: 'bg-gray-800/30 border-gray-700/30',     icon: 'fa-ban',           label: 'Cancelled'  },
+  };
+
+  const explorer = 'https://testnet.arcscan.app';
+
+  const rows = intents.slice(0, 50).map(intent => {
+    const s = statusMap[intent.status] || statusMap.pending;
+    const time = new Date(intent.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const recipientShort = intent.to
+      ? intent.to.slice(0, 8) + '…' + intent.to.slice(-6)
+      : intent.receivers ? `${intent.receivers.length} recipients` : '—';
+    const txLink = intent.txHash
+      ? `<a href="${explorer}/tx/${intent.txHash}" target="_blank" class="underline font-mono text-[10px] text-cyan-400 truncate">${intent.txHash.slice(0,14)}…</a>`
+      : '';
+    const errorHtml = intent.error
+      ? `<div class="text-[10px] text-red-400 mt-0.5 truncate" title="${intent.error.replace(/"/g,'&quot;')}">${intent.error.slice(0,80)}</div>`
+      : '';
+
+    return `
+      <div class="flex items-start gap-3 p-3 bg-gray-800/40 border ${s.bg} rounded-lg"
+           data-intent-id="${intent.id}">
+        <div class="flex-shrink-0 mt-0.5">
+          <i class="fas ${s.icon} ${s.color} text-sm"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-white text-xs font-semibold capitalize">${intent.type}</span>
+            ${intent.amount ? `<span class="text-${s.color.split('-')[1]}-300 text-xs font-mono">${intent.amount} ${intent.token}</span>` : ''}
+            <span class="text-gray-500 text-[10px]">→ ${recipientShort}</span>
+            <span class="${s.color} text-[10px] font-semibold ml-auto flex-shrink-0">${s.label}</span>
+          </div>
+          <div class="flex items-center gap-3 mt-0.5 flex-wrap">
+            ${txLink}
+            ${intent.blockNumber ? `<span class="text-gray-600 text-[10px]">Block #${intent.blockNumber}</span>` : ''}
+            <span class="text-gray-700 text-[10px] ml-auto">${time}</span>
+          </div>
+          ${errorHtml}
+          ${intent.retries > 0 ? `<div class="text-[10px] text-orange-400 mt-0.5">Retry ${intent.retries}/${3}</div>` : ''}
+        </div>
+        ${['pending','failed','cancelled'].includes(intent.status) ? `
+          <button onclick="aeCancelIntent('${intent.id}')"
+            class="flex-shrink-0 text-[10px] text-gray-600 hover:text-red-400 transition-colors mt-0.5" title="Cancel intent">
+            <i class="fas fa-times"></i>
+          </button>` : ''}
+      </div>`;
+  }).join('');
+
+  // Replace everything except the empty placeholder
+  list.innerHTML = rows + (empty ? empty.outerHTML : '');
+};
+
+/**
+ * Refresh the intent panel by fetching from AgentExecutor API.
+ */
+window.aeRefreshPanel = async function() {
+  const btn = document.getElementById('ae-refresh-btn');
+  if (btn) { btn.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Refreshing…'; }
+  try {
+    if (typeof AgentExecutor !== 'undefined') {
+      const intents = await AgentExecutor.getIntents();
+      aeRenderIntents(intents);
+    } else {
+      // Fallback: direct API call
+      const wallet = window.walletState?.address;
+      if (!wallet) { aeRenderIntents([]); return; }
+      const r = await fetch(`/api/agent/intents?wallet=${encodeURIComponent(wallet)}&limit=50`);
+      const d = await r.json();
+      aeRenderIntents(d.success ? d.intents : []);
+    }
+  } catch(e) {
+    console.warn('[AE-PANEL] refresh error:', e);
+  } finally {
+    if (btn) btn.innerHTML = '<i class="fas fa-sync mr-1"></i> Refresh';
+  }
+};
+
+/**
+ * Cancel an intent from the panel.
+ */
+window.aeCancelIntent = async function(intentId) {
+  if (typeof AgentExecutor !== 'undefined') {
+    await AgentExecutor.cancelIntent(intentId);
+  } else {
+    await fetch(`/api/agent/intents/${intentId}`, { method: 'DELETE' });
+  }
+  await aeRefreshPanel();
+};
+
+/**
+ * Clear completed/failed/cancelled intents from the panel (local view only).
+ */
+window.aeClearCompleted = function() {
+  document.querySelectorAll('#ae-intents-list [data-intent-id]').forEach(el => {
+    const statusEl = el.querySelector('.text-green-400, .text-red-400, .text-gray-500');
+    if (statusEl) el.remove();
+  });
+  // Recount
+  const remaining = document.querySelectorAll('#ae-intents-list [data-intent-id]').length;
+  const total = document.getElementById('ae-stat-total');
+  if (total) total.textContent = remaining;
+  if (remaining === 0) {
+    const empty = document.getElementById('ae-intents-empty');
+    if (empty) empty.classList.remove('hidden');
+  }
+};
+
+// Auto-refresh panel when agentExecutor:update fires
+window.addEventListener('agentExecutor:update', function() {
+  // Debounce: only refresh if panel is visible
+  if (document.getElementById('ae-intents-panel')?.offsetParent !== null) {
+    clearTimeout(window._aePanelDebounce);
+    window._aePanelDebounce = setTimeout(aeRefreshPanel, 500);
+  }
+});
+
+console.log('[APP] Agent Executor panel functions loaded');

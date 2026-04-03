@@ -8,7 +8,7 @@
 const DB_RPC      = 'https://rpc.testnet.arc.network';
 const DB_EXPLORER = 'https://testnet.arcscan.app';
 const DB_USDC     = '0x3600000000000000000000000000000000000000';
-const DB_EURC     = '0x89B5EF8FfF7e58BD6A1b7FcF04F1B6A2bbabD72a';
+const DB_EURC     = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
 const DB_FACTORY  = '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A';
 
 // ── RPC helpers ─────────────────────────────────────────────────────────────

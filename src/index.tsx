@@ -9,6 +9,7 @@ import chatRouter from './routes/chat'
 import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
+import agentIntentsRouter from './routes/agent-intents'
 import { ARC_TESTNET } from './types/arc'
 import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 
@@ -106,6 +107,7 @@ app.route('/api/chat', chatRouter)
 app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
+app.route('/api/agent', agentIntentsRouter)  // Agent Intents CRUD + poll
 
 // ── CSV Validation API ────────────────────────────────────────────────────────
 // POST /api/csv/validate — validates a parsed CSV payload server-side
@@ -3358,6 +3360,81 @@ app.get('/', (c) => {
         </div>
       </div>
 
+      <!-- ── Agent Executor: Intent History Panel ─────────────────────────── -->
+      <div class="mt-6 bg-gray-900/60 border border-purple-700/30 rounded-xl p-6" id="ae-intents-panel">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-bolt text-white text-sm"></i>
+            </div>
+            <div>
+              <h3 class="text-white font-semibold flex items-center gap-2">
+                Agent Executor — Intents
+                <span id="ae-pending-badge" class="hidden bg-purple-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">0</span>
+              </h3>
+              <p class="text-purple-400 text-xs">Live on-chain execution status · polls every 2.5s</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="ae-refresh-btn" onclick="aeRefreshPanel()"
+              class="text-xs text-purple-400 hover:text-purple-300 bg-purple-900/20 border border-purple-700/30 rounded-lg px-3 py-1.5 transition-colors">
+              <i class="fas fa-sync mr-1"></i> Refresh
+            </button>
+            <button onclick="aeClearCompleted()"
+              class="text-xs text-gray-500 hover:text-red-400 bg-gray-800/40 border border-gray-700/30 rounded-lg px-3 py-1.5 transition-colors">
+              <i class="fas fa-trash mr-1"></i> Clear done
+            </button>
+          </div>
+        </div>
+
+        <!-- Stats bar -->
+        <div class="grid grid-cols-4 gap-2 mb-4">
+          <div class="bg-gray-800/50 rounded-lg p-2.5 text-center">
+            <p class="text-lg font-bold text-white" id="ae-stat-total">—</p>
+            <p class="text-[10px] text-gray-500">Total</p>
+          </div>
+          <div class="bg-yellow-900/20 rounded-lg p-2.5 text-center border border-yellow-800/30">
+            <p class="text-lg font-bold text-yellow-400" id="ae-stat-pending">—</p>
+            <p class="text-[10px] text-gray-500">Pending</p>
+          </div>
+          <div class="bg-green-900/20 rounded-lg p-2.5 text-center border border-green-800/30">
+            <p class="text-lg font-bold text-green-400" id="ae-stat-completed">—</p>
+            <p class="text-[10px] text-gray-500">Done</p>
+          </div>
+          <div class="bg-red-900/20 rounded-lg p-2.5 text-center border border-red-800/30">
+            <p class="text-lg font-bold text-red-400" id="ae-stat-failed">—</p>
+            <p class="text-[10px] text-gray-500">Failed</p>
+          </div>
+        </div>
+
+        <!-- Intents list -->
+        <div id="ae-intents-list" class="space-y-2 max-h-72 overflow-y-auto">
+          <div class="text-center text-gray-600 text-sm py-6" id="ae-intents-empty">
+            <i class="fas fa-inbox text-gray-700 text-3xl mb-2 block"></i>
+            No intents yet. Authorize the agent and ask the chat to send a payment.
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="mt-4 p-3 bg-gray-800/40 rounded-lg">
+          <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Quick actions via chat</p>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="sendQuickMessage('send 5 USDC to 0x1234567890123456789012345678901234567890'); toggleChat();"
+              class="text-xs bg-purple-900/30 border border-purple-700/30 rounded-lg px-3 py-1.5 text-purple-300 hover:border-purple-500/50 transition-colors">
+              ⚡ Test: send 5 USDC
+            </button>
+            <button onclick="if(window.AgentExecutor){AgentExecutor.getIntents().then(r=>aeRenderIntents(r));} "
+              class="text-xs bg-gray-800/50 border border-gray-700/30 rounded-lg px-3 py-1.5 text-gray-400 hover:text-gray-300 transition-colors">
+              <i class="fas fa-list mr-1"></i> Load all
+            </button>
+            <button onclick="AgentExecutor && AgentExecutor.startPolling(); showToast('Polling started','info');"
+              class="text-xs bg-gray-800/50 border border-gray-700/30 rounded-lg px-3 py-1.5 text-gray-400 hover:text-gray-300 transition-colors">
+              <i class="fas fa-play mr-1"></i> Start poll
+            </button>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /tab-content-agents -->
 
 
@@ -4864,7 +4941,7 @@ app.get('/', (c) => {
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
-  <script src="/static/app.js?v=20260327b"></script>
+  <script src="/static/app.js?v=20260403c"></script>
   <script src="/static/payments.js?v=20260330a"></script>
   <script src="/static/contracts.js?v=20250325a"></script>
   <script src="/static/settings.js?v=20250322"></script>
@@ -4881,8 +4958,9 @@ app.get('/', (c) => {
   <script src="/static/permit2-engine.js?v=20260328a"></script>
   <script src="/static/permit2-chat.js?v=20260328b"></script>
   <script src="/static/chat-csv.js?v=20260328a"></script>
-  <script src="/static/chat.js?v=20260330a"></script>
-  <script src="/static/queue-engine.js?v=20260402a"></script>
+  <script src="/static/chat.js?v=20260403b"></script>
+  <script src="/static/queue-engine.js?v=20260403a"></script>
+  <script src="/static/agent-executor.js?v=20260403b"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
     The query-string approach (?v=) does NOT invalidate browser cache when
