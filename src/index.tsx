@@ -2346,8 +2346,9 @@ app.get('/', (c) => {
                     </div>
                     <div class="flex flex-col gap-1">
                       <input id="otc-tge-time" type="time"
+                        placeholder="Optional"
                         class="bg-gray-800/60 border border-gray-700/60 hover:border-indigo-600/50 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-white outline-none transition">
-                      <span class="text-[10px] text-gray-600">TGE Time (UTC)</span>
+                      <span class="text-[10px] text-gray-600">TGE Time (UTC) — optional</span>
                     </div>
                     <div class="flex flex-col gap-1">
                       <input id="otc-tge-tz" type="text" value="UTC"
@@ -4890,12 +4891,12 @@ app.get('/', (c) => {
 
     Current hashes (updated 2026-04-09a — OTC_ESCROW_DEPLOYED fully removed, error stack traces on all critical functions):
       otc-escrow-abi.72e5bfc4.js  ← single source of truth for OTC_ESCROW_ADDRESS + getOTCEscrowContract()
-      otc.4b235768.js              ← OTC v20260410f: Proof Submission feature (seller add/buyer view, proofData, release gate)
+      otc.f5e54315.js              ← OTC v20260410g: Proof Submission feature (seller add/buyer view, proofData, release gate)
 
     ZERO references to OTC_ESCROW_DEPLOYED in any form.
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
-  <script src="/static/otc.4b235768.js"></script>
+  <script src="/static/otc.f5e54315.js"></script>
   <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────

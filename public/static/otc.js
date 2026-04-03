@@ -65,7 +65,7 @@
 }());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260410f';
+const OTC_VERSION    = '20260410g';
 
 // ─── Startup check ───────────────────────────────────────────────────────────
 (function _otcStartupCheck() {
@@ -84,7 +84,9 @@ const OTC_VERSION    = '20260410f';
 function _otcToUTCIso(dateYMD, timeHHMM) {
   // Inputs from <input type="date"> and <input type="time"> are already in the
   // format YYYY-MM-DD and HH:MM — treating them as UTC directly.
-  return dateYMD + 'T' + timeHHMM + ':00Z';
+  // Time is optional — default to 00:00 (midnight UTC) when not provided.
+  const t = (timeHHMM && timeHHMM.trim()) ? timeHHMM.trim() : '00:00';
+  return dateYMD + 'T' + t + ':00Z';
 }
 // Parse ISO UTC string → { dateYMD: 'YYYY-MM-DD', timeHHMM: 'HH:MM' } (always UTC)
 function _otcFromUTCIso(isoStr) {
@@ -406,7 +408,6 @@ async function otcCreateDeal() {
   if (!asset)               errors.push('Select a token/asset');
   if (!amount || isNaN(amount) || amount <= 0) errors.push('Enter a valid amount');
   if (!tgeDate)             errors.push('TGE date is required');
-  if (!tgeTime)             errors.push('TGE time is required');
 
   if (errors.length) {
     _otcShowFormError(errors.join(' · '));
