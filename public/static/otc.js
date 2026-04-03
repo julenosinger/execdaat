@@ -287,21 +287,101 @@ function _otcId() {
   return 'OTC-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,6).toUpperCase();
 }
 
-// ─── Storage ──────────────────────────────────────────────────────────────────
+// ─── Storage (dual-write: primary + backup key) ───────────────────────────────
+const OTC_BACKUP_KEY = 'execDaat_otc_contracts_bk'; // secondary backup key
+
 function otcSave() {
   try {
-    localStorage.setItem(OTC_STORE_KEY, JSON.stringify(_otcContracts));
-    localStorage.setItem(OTC_MKT_KEY,   JSON.stringify(_otcListings));
-  } catch(e) { _otcLog('Save error', e); }
+    const data    = JSON.stringify(_otcContracts);
+    const mktData = JSON.stringify(_otcListings);
+    // Primary write (synchronous — never skip)
+    localStorage.setItem(OTC_STORE_KEY,  data);
+    localStorage.setItem(OTC_MKT_KEY,    mktData);
+    // Backup write with timestamp (guards against partial writes / data loss)
+    localStorage.setItem(OTC_BACKUP_KEY, JSON.stringify({
+      ts:   Date.now(),
+      data: _otcContracts,
+    }));
+    // Also write to IndexedDB (async, non-blocking) if PERSIST module is ready
+    if (typeof window.arcSaveOTC === 'function') {
+      window.arcSaveOTC(_otcContracts).catch(e =>
+        console.warn('[OTC] arcSaveOTC failed (non-critical):', e.message)
+      );
+    }
+  } catch(e) {
+    console.error('[OTC SAVE ERROR]', e.stack || e.message);
+    _otcLog('Save error', e);
+  }
 }
 
 function otcLoad() {
   try {
-    const c = localStorage.getItem(OTC_STORE_KEY);
-    const m = localStorage.getItem(OTC_MKT_KEY);
-    _otcContracts = c ? JSON.parse(c) : [];
-    _otcListings  = m ? JSON.parse(m) : [];
-  } catch(e) { _otcContracts = []; _otcListings = []; }
+    const raw = localStorage.getItem(OTC_STORE_KEY);
+    const mkt = localStorage.getItem(OTC_MKT_KEY);
+
+    let contracts = null;
+    try { contracts = raw ? JSON.parse(raw) : null; } catch(_) {}
+
+    // If primary is empty/corrupt, try backup
+    if (!contracts || !Array.isArray(contracts) || contracts.length === 0) {
+      try {
+        const bkRaw = localStorage.getItem(OTC_BACKUP_KEY);
+        if (bkRaw) {
+          const bk = JSON.parse(bkRaw);
+          if (bk && Array.isArray(bk.data) && bk.data.length > 0) {
+            contracts = bk.data;
+            _otcLog('[LOAD] Restored', contracts.length, 'contracts from backup key');
+            // Restore primary from backup
+            localStorage.setItem(OTC_STORE_KEY, JSON.stringify(contracts));
+          }
+        }
+      } catch(_) {}
+    }
+
+    _otcContracts = Array.isArray(contracts) ? contracts : [];
+    _otcListings  = mkt ? (JSON.parse(mkt) || []) : [];
+    _otcLog('[LOAD]', _otcContracts.length, 'contracts,', _otcListings.length, 'listings');
+
+    // Async: also try to merge from IndexedDB (may have more recent data)
+    if (typeof window.arcLoadOTC === 'function' && window.arcPersist?.db) {
+      window.arcLoadOTC().then(idbContracts => {
+        if (!idbContracts || !idbContracts.length) return;
+        // Merge: IndexedDB records override localStorage if they are more recent
+        let changed = false;
+        for (const idbC of idbContracts) {
+          const idx = _otcContracts.findIndex(c => c.contractId === idbC.contractId);
+          if (idx < 0) {
+            // New record not in localStorage — add it
+            _otcContracts.push(idbC);
+            changed = true;
+          } else {
+            // Compare updatedAt — keep the newer copy
+            const lsTs  = new Date(_otcContracts[idx].updatedAt || 0).getTime();
+            const idbTs = new Date(idbC.updatedAt || 0).getTime();
+            if (idbTs > lsTs) {
+              _otcContracts[idx] = idbC;
+              changed = true;
+            }
+          }
+        }
+        if (changed) {
+          // Re-sort by createdAt descending
+          _otcContracts.sort((a, b) =>
+            new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+          // Sync back to localStorage
+          localStorage.setItem(OTC_STORE_KEY, JSON.stringify(_otcContracts));
+          localStorage.setItem(OTC_BACKUP_KEY, JSON.stringify({ ts: Date.now(), data: _otcContracts }));
+          _otcLog('[LOAD] Merged', idbContracts.length, 'IDB records; total now:', _otcContracts.length);
+          otcRenderMyContracts();
+        }
+      }).catch(e => console.warn('[OTC] arcLoadOTC merge failed:', e.message));
+    }
+  } catch(e) {
+    console.error('[OTC LOAD ERROR]', e.stack || e.message);
+    // NEVER reset to [] — preserve whatever is in memory
+    if (!Array.isArray(_otcContracts)) _otcContracts = [];
+    if (!Array.isArray(_otcListings))  _otcListings  = [];
+  }
 }
 
 // ─── Create OTC Deal ──────────────────────────────────────────────────────────
@@ -374,7 +454,7 @@ async function otcCreateDeal() {
     };
 
     _otcContracts.unshift(contract);
-    otcSave();
+    otcSave(); // ← PERSIST IMMEDIATELY before any async operation
 
     // Push to global history
     _otcPushHistory(contract, 'Created');
@@ -382,10 +462,22 @@ async function otcCreateDeal() {
     // ── Try on-chain createDeal if escrow is configured & wallet connected ───────
     if (otcIsDeployed() && window.walletState?.connected) {
       _otcToast('✅ OTC Deal created locally! Registering on-chain…', 'info');
-      // Non-blocking: try to push to chain in background
-      _otcCreateDealOnChain(contract).catch(e => {
-        _otcLog('On-chain createDeal failed (fallback to local):', e.message);
+      // Non-blocking: on-chain registration runs in background.
+      // Contract is already saved locally — it will NOT disappear if on-chain fails.
+      // Pass contractId (not the object) so _otcCreateDealOnChain always works
+      // with the canonical copy stored in _otcContracts.
+      _otcCreateDealOnChain(contractId).catch(e => {
+        console.error('[OTC ERROR LOCATION] _otcCreateDealOnChain (background) threw:', e.stack || e.message);
+        _otcLog('On-chain createDeal failed (deal is saved locally):', e.message);
+        // Mark onChain:false on the saved copy so UI shows correct state
+        const saved = _otcContracts.find(c => c.contractId === contractId);
+        if (saved) {
+          saved.onChain   = false;
+          saved.updatedAt = _otcNow();
+          otcSave();
+        }
         _otcToast('⚠️ On-chain registration failed. Deal saved locally.', 'warning');
+        otcRenderMyContracts();
       });
     } else {
       const chainNote = !otcIsDeployed()
@@ -692,7 +784,8 @@ async function otcRegisterOnChain(contractId) {
   }
 
   try {
-    await _otcCreateDealOnChain(contract);
+    // Pass contractId so _otcCreateDealOnChain fetches the canonical copy
+    await _otcCreateDealOnChain(contractId);
   } catch(e) {
     console.error('[OTC ERROR LOCATION] otcRegisterOnChain threw:', e.stack || e.message);
     const rej = e.code === 4001 || e.message?.includes('rejected');
@@ -723,11 +816,19 @@ async function _otcGetSigner() {
 }
 
 // ─── 1. Register deal on-chain (createDeal) ────────────────────────────────
-async function _otcCreateDealOnChain(contract) {
-  _otcLog('[TRACE] Entering _otcCreateDealOnChain()', contract?.contractId);
-  const signer  = await _otcGetSigner();
-  const escrow  = otcGetEscrowContract(signer);
-  if (!escrow) throw new Error('Escrow contract not available');
+// Accepts contractId (string) — always looks up the canonical copy from
+// _otcContracts so there is never a stale reference issue.
+async function _otcCreateDealOnChain(contractId) {
+  _otcLog('[TRACE] Entering _otcCreateDealOnChain()', contractId);
+
+  // Always work with the canonical copy from the in-memory list
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) throw new Error(`Contract not found in local store: ${contractId}`);
+
+  const signer = await _otcGetSigner();
+
+  // Use strict variant — throws if address is missing/invalid
+  const escrow = getOTCEscrowContract(signer);
 
   const tokenAddr = otcResolveToken(contract.asset);
   if (!tokenAddr) throw new Error(`Cannot resolve token address for: ${contract.asset}`);
@@ -739,6 +840,7 @@ async function _otcCreateDealOnChain(contract) {
 
   _otcLog(`createDeal on-chain: seller=${contract.seller} token=${tokenAddr} amount=${amountRaw} tge=${tgeTs}`);
 
+  _otcToast('⏳ Confirm createDeal in wallet…', 'info');
   const tx = await escrow.createDeal(
     contract.seller,
     tokenAddr,
@@ -748,6 +850,13 @@ async function _otcCreateDealOnChain(contract) {
   );
 
   _otcToast('⏳ createDeal tx sent — waiting for confirmation…', 'info');
+  _otcLog('createDeal tx hash:', tx.hash);
+
+  // Persist tx hash immediately so a page refresh won't lose the pending tx
+  contract.escrowTxHash = tx.hash;
+  contract.updatedAt    = _otcNow();
+  otcSave();
+
   const receipt = await tx.wait();
   _otcLog('createDeal confirmed:', receipt.hash);
 
@@ -766,14 +875,17 @@ async function _otcCreateDealOnChain(contract) {
 
   if (!dealId) throw new Error('Could not extract dealId from tx logs');
 
-  // Update local contract state
-  contract.onChain      = true;
-  contract.escrowDealId = dealId;
-  contract.escrowTxHash = receipt.hash;
-  contract.status       = OTC_STATUS.ONCHAIN_CREATED;
-  contract.updatedAt    = _otcNow();
-  otcSave();
-  _otcPushHistory(contract, `On-chain deal created (dealId: ${dealId.slice(0,10)}…)`);
+  // Update canonical copy in _otcContracts (re-fetch in case list was mutated)
+  const saved = _otcContracts.find(c => c.contractId === contractId);
+  if (!saved) throw new Error(`Contract disappeared from store after tx: ${contractId}`);
+
+  saved.onChain      = true;
+  saved.escrowDealId = dealId;
+  saved.escrowTxHash = receipt.hash;
+  saved.status       = OTC_STATUS.ONCHAIN_CREATED;
+  saved.updatedAt    = _otcNow();
+  otcSave(); // ← persist on-chain state
+  _otcPushHistory(saved, `On-chain deal created (dealId: ${dealId.slice(0,10)}…)`);
 
   const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
   _otcToast(`✅ Deal registered on-chain! <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');

@@ -4861,7 +4861,7 @@ app.get('/', (c) => {
 
   <script src="/static/wallet.js?v=20260327a"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
-  <script src="/static/persistence.js?v=20250323"></script>
+  <script src="/static/persistence.11b9066e.js"></script>
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
   <script src="/static/app.js?v=20260327b"></script>
   <script src="/static/payments.js?v=20260330a"></script>
@@ -4890,12 +4890,12 @@ app.get('/', (c) => {
 
     Current hashes (updated 2026-04-09a — OTC_ESCROW_DEPLOYED fully removed, error stack traces on all critical functions):
       otc-escrow-abi.72e5bfc4.js  ← single source of truth for OTC_ESCROW_ADDRESS + getOTCEscrowContract()
-      otc.f4dcbb9e.js              ← OTC v20260409a: ZERO OTC_ESCROW_DEPLOYED, 10x console.error stack traces
+      otc.48120870.js              ← OTC v20260409b: contractId-based createDeal, dual-write IDB+LS, backup key
 
     ZERO references to OTC_ESCROW_DEPLOYED in any form.
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
-  <script src="/static/otc.f4dcbb9e.js"></script>
+  <script src="/static/otc.48120870.js"></script>
   <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
