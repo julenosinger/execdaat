@@ -65,7 +65,7 @@
 }());
 // ─────────────────────────────────────────────────────────────────────────────
 
-const OTC_VERSION    = '20260410b';
+const OTC_VERSION    = '20260410c';
 
 // ─── Startup check ───────────────────────────────────────────────────────────
 (function _otcStartupCheck() {
@@ -1280,6 +1280,95 @@ async function otcReleaseDeal(contractId) {
   }
 }
 
+// ─── 4b. Submit Proof (Seller only, on-chain + local) ─────────────────────
+/**
+ * Seller submits delivery proof (tx hash, URL, or text).
+ * - Hashes the proofData with keccak256 via ethers.id() and calls submitProof(dealId, proofHash).
+ * - Stores the original proofData string locally so the buyer can see it.
+ * - After on-chain confirmation: status → READY_TO_SETTLE.
+ * - For off-chain deals (no escrowDealId): stores proof locally only and sets READY_TO_SETTLE.
+ */
+async function otcSubmitProof(contractId) {
+  _otcLog('[TRACE] Entering otcSubmitProof()', contractId);
+
+  const contract = _otcContracts.find(c => c.contractId === contractId);
+  if (!contract) return _otcToast('Contract not found', 'error');
+
+  // Gate: only seller
+  const wallet = window.walletState?.address?.toLowerCase();
+  if (!wallet || contract.seller.toLowerCase() !== wallet) {
+    return _otcToast('Only the seller can submit proof', 'error');
+  }
+
+  // Read input
+  const rawInput = (_otcEl(`otc-proof-input-${contractId}`)?.value || '').trim();
+  if (!rawInput) return _otcToast('Enter a transaction hash, URL, or description', 'warning');
+
+  const btn = _otcEl(`otc-proof-submit-btn-${contractId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Submitting…'; }
+
+  try {
+    // ── On-chain path ──────────────────────────────────────────────────────
+    if (contract.onChain && contract.escrowDealId && otcIsDeployed()) {
+      if (!window.ethereum || !window.walletState?.connected) {
+        _otcToast('Connect wallet to submit proof on-chain', 'warning');
+        if (typeof openWalletModal === 'function') openWalletModal();
+        return;
+      }
+
+      const signer  = await _otcGetSigner();
+      const escrow  = getOTCEscrowContract(signer);
+      const ethers  = window.ethers;
+      if (!ethers) throw new Error('ethers.js not loaded');
+
+      // keccak256 hash of the raw proof string → bytes32
+      const proofBytes32 = ethers.id(rawInput); // ethers.id() = keccak256(utf8(str))
+
+      _otcToast('⏳ Confirm submitProof in wallet…', 'info');
+      const tx = await escrow.submitProof(contract.escrowDealId, proofBytes32);
+
+      _otcToast('⏳ submitProof tx sent — waiting for confirmation…', 'info');
+      _otcLog('submitProof tx hash:', tx.hash);
+
+      const receipt = await tx.wait();
+      _otcLog('submitProof confirmed:', receipt.hash);
+
+      // Persist locally
+      contract.proofData      = rawInput;
+      contract.proofTxHash    = receipt.hash;
+      contract.proofSubmittedAt = _otcNow();
+      contract.status         = 'READY_TO_SETTLE';
+      contract.updatedAt      = _otcNow();
+      otcSave();
+      _otcPushHistory(contract, `Proof submitted on-chain (tx: ${_otcShort(receipt.hash)})`);
+
+      const explorerUrl = `${OTC_EXPLORER}/tx/${receipt.hash}`;
+      _otcToast(`✅ Proof submitted on-chain! <a href="${explorerUrl}" target="_blank" class="underline">View TX ↗</a>`, 'success');
+
+    } else {
+      // ── Off-chain / local-only path (no escrowDealId) ───────────────────
+      contract.proofData        = rawInput;
+      contract.proofTxHash      = null;
+      contract.proofSubmittedAt = _otcNow();
+      contract.status           = 'READY_TO_SETTLE';
+      contract.updatedAt        = _otcNow();
+      otcSave();
+      _otcPushHistory(contract, `Proof submitted locally`);
+      _otcToast('✅ Proof submitted! Status → Ready to Settle.', 'success');
+    }
+
+    otcRenderMyContracts();
+
+  } catch(e) {
+    console.error('[OTC ERROR LOCATION] otcSubmitProof threw:', e.stack || e.message);
+    const rej = e.code === 4001 || e.message?.includes('rejected');
+    _otcToast(rej ? '⚠️ Transaction rejected.' : `❌ Proof submission failed: ${e.message}`, rej ? 'warning' : 'error');
+    _otcLog('submitProof error:', e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload mr-1"></i>Submit Proof'; }
+  }
+}
+
 // ─── 4a-2. Deposit Seller (TRUSTLESS mode, v4) ────────────────────────────
 /**
  * Seller deposits their collateral in TRUSTLESS mode.
@@ -2348,7 +2437,9 @@ function _otcContractCard(c, wallet) {
     || c.onChainState === 5; // IN_DISPUTE=5 in v4 Status enum
 
   const canRelease = isOnChain && isSeller && !isTerminal && !isDisputed
-    && [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'READY_TO_SETTLE'].some(s => c.status === s) && tgePast;
+    && [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'READY_TO_SETTLE'].some(s => c.status === s)
+    && tgePast
+    && !!c.proofData; // ← Release BLOCKED until proof is submitted
   const canDispute  = isOnChain && isParty && !isTerminal && !isDisputed
     && [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'AWAITING_SELLER_DEPOSIT', 'READY_TO_SETTLE'].some(s => c.status === s);
 
@@ -2377,9 +2468,11 @@ function _otcContractCard(c, wallet) {
   // Local check for authorized (can't know on-chain from localStorage alone)
   const isAuthorizedLocal = false; // No local authorized check
 
-  // v4: Submit proof (seller or authorized) — advances to READY_TO_SETTLE
-  const canSubmitProof = isOnChain && (isSeller || isAuthorizedLocal) && !isTerminal && !isDisputed
-    && c.status === 'AWAITING_PROOF';
+  // v4: Submit proof (seller or authorized) — AWAITING_PROOF OR FUNDED (proof not yet submitted)
+  // Also allow proof on READY_TO_SETTLE so seller can update/re-submit
+  const hasProof      = !!c.proofData;
+  const canSubmitProof = isSeller && !isTerminal && !isDisputed && !hasProof
+    && ['AWAITING_PROOF', OTC_STATUS.FUNDED, 'READY_TO_SETTLE'].some(s => c.status === s);
 
   const tgeLabel = tgeIn > 0
     ? `in ${_otcFormatDuration(tgeIn)}`
@@ -2556,9 +2649,113 @@ function _otcContractCard(c, wallet) {
       <p class="text-gray-500 text-xs mt-1">
         <strong class="text-white">${_otcFmt(c.amount)} ${c.asset}</strong> locked until TGE.
         ${tgePast ? '<span class="text-emerald-400 font-semibold ml-2">TGE reached — release available!</span>' : `Releases ${tgeLabel}.`}
-        ${c.status === 'READY_TO_SETTLE' ? '<span class="text-emerald-300 font-semibold ml-2">✓ Proof submitted</span>' : ''}
+        ${hasProof ? '<span class="text-emerald-300 font-semibold ml-2">✓ Proof submitted</span>' : '<span class="text-amber-400 font-semibold ml-2">⚠ Proof required before release</span>'}
       </p>
     </div>` : ''}
+
+    <!-- ═══ PROOF PANEL — Seller: Add Proof / Buyer: View Proof ══════════════ -->
+    ${(() => {
+      // Show proof panel when deal is funded on-chain OR status requires proof
+      const showPanel = (c.status === OTC_STATUS.FUNDED || c.status === 'AWAITING_PROOF'
+        || c.status === 'READY_TO_SETTLE' || c.status === OTC_STATUS.RELEASED || c.status === OTC_STATUS.COMPLETED)
+        && (isParty || hasProof);
+      if (!showPanel) return '';
+
+      // Helper: render the stored proof value as a clickable link or plain text
+      function _renderProofValue(val) {
+        if (!val) return '<span class="text-gray-600 italic">No proof submitted yet</span>';
+        const trimmed = val.trim();
+        // Full tx hash: 0x + 64 hex chars
+        if (/^0x[0-9a-fA-F]{64}$/.test(trimmed)) {
+          const url = OTC_EXPLORER + '/tx/' + trimmed;
+          return `<a href="${url}" target="_blank" rel="noopener"
+            class="inline-flex items-center gap-1 text-indigo-300 hover:text-indigo-200 underline font-mono break-all">
+            <i class="fas fa-external-link-alt text-[10px]"></i>${trimmed.slice(0,12)}…${trimmed.slice(-8)}
+          </a><span class="text-gray-600 text-[10px] ml-1">(tx hash)</span>`;
+        }
+        // URL
+        if (/^https?:\/\//i.test(trimmed) || /^www\./i.test(trimmed)) {
+          return `<a href="${trimmed.startsWith('http') ? trimmed : 'https://' + trimmed}"
+            target="_blank" rel="noopener"
+            class="inline-flex items-center gap-1 text-indigo-300 hover:text-indigo-200 underline break-all">
+            <i class="fas fa-external-link-alt text-[10px]"></i>${trimmed}
+          </a>`;
+        }
+        // Short 0x hash (address-length or other)
+        if (/^0x[0-9a-fA-F]+$/.test(trimmed)) {
+          const url = OTC_EXPLORER + '/tx/' + trimmed;
+          return `<a href="${url}" target="_blank" rel="noopener"
+            class="inline-flex items-center gap-1 text-indigo-300 hover:text-indigo-200 underline font-mono break-all">
+            <i class="fas fa-external-link-alt text-[10px]"></i>${trimmed}
+          </a>`;
+        }
+        // Plain text
+        return `<span class="text-gray-200 break-all">${trimmed}</span>`;
+      }
+
+      if (hasProof) {
+        // ── Proof already submitted: show to BOTH parties ─────────────────
+        return `
+        <div class="px-5 py-3 bg-emerald-950/20 border-b border-emerald-800/30">
+          <div class="flex items-center gap-2 mb-2">
+            <i class="fas fa-shield-check text-emerald-400 text-xs"></i>
+            <span class="text-emerald-400 text-xs font-semibold">Delivery Proof</span>
+            ${c.proofSubmittedAt ? `<span class="text-gray-600 text-[10px] ml-auto">${new Date(c.proofSubmittedAt).toLocaleString()}</span>` : ''}
+          </div>
+          <div class="bg-gray-900/60 border border-emerald-800/30 rounded-xl px-4 py-3 text-xs leading-relaxed">
+            ${_renderProofValue(c.proofData)}
+          </div>
+          ${c.proofTxHash ? `
+          <div class="mt-2 flex items-center gap-1.5 text-[10px] text-gray-500">
+            <i class="fas fa-link text-[9px]"></i>submitProof on-chain:
+            <a href="${OTC_EXPLORER}/tx/${c.proofTxHash}" target="_blank"
+              class="text-indigo-400 hover:text-indigo-300 underline font-mono">${_otcShort(c.proofTxHash)}</a>
+          </div>` : ''}
+          ${isSeller ? `
+          <button onclick="window._otcClearProofInput('${c.contractId}')"
+            class="mt-2 text-[10px] text-gray-600 hover:text-gray-400 transition underline">
+            Update proof
+          </button>` : ''}
+        </div>`;
+      } else if (canSubmitProof) {
+        // ── No proof yet: show input to SELLER only ────────────────────────
+        return `
+        <div class="px-5 py-3 bg-amber-950/20 border-b border-amber-800/30" id="otc-proof-panel-${c.contractId}">
+          <div class="flex items-center gap-2 mb-2">
+            <i class="fas fa-upload text-amber-400 text-xs"></i>
+            <span class="text-amber-400 text-xs font-semibold">Add Delivery Proof</span>
+            <span class="text-[10px] text-gray-600 ml-auto">Required before releasing funds</span>
+          </div>
+          <div class="flex flex-col gap-2">
+            <input type="text" id="otc-proof-input-${c.contractId}"
+              placeholder="Tx hash (0x…), explorer URL, or description"
+              class="w-full bg-gray-900 border border-amber-700/40 focus:border-amber-500/70 rounded-xl px-3 py-2.5 text-xs text-white font-mono placeholder-gray-600 outline-none transition"
+              oninput="window._otcProofPreview('${c.contractId}')">
+            <div id="otc-proof-preview-${c.contractId}" class="text-[10px] text-gray-500 min-h-[16px] px-1"></div>
+            <div class="flex items-center gap-2">
+              <button id="otc-proof-submit-btn-${c.contractId}"
+                onclick="otcSubmitProof('${c.contractId}')"
+                class="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-amber-900/30">
+                <i class="fas fa-upload"></i>Submit Proof
+              </button>
+              <span class="text-[10px] text-gray-600">Buyer will see this immediately after submission</span>
+            </div>
+          </div>
+        </div>`;
+      } else if (isBuyer && !hasProof) {
+        // ── Buyer waiting for seller proof ─────────────────────────────────
+        return `
+        <div class="px-5 py-3 bg-amber-950/10 border-b border-amber-800/20">
+          <div class="flex items-center gap-2 text-xs text-amber-400">
+            <i class="fas fa-hourglass-half text-xs"></i>
+            <span class="font-semibold">Awaiting delivery proof from seller</span>
+            <span class="text-[10px] text-gray-600 ml-auto">Release is blocked until proof is submitted</span>
+          </div>
+        </div>`;
+      }
+      return '';
+    })()}
+    <!-- ═══ END PROOF PANEL ════════════════════════════════════════════════ -->
 
     <!-- AWAITING_SELLER_DEPOSIT (TRUSTLESS) info -->
     ${isOnChain && c.status === 'AWAITING_SELLER_DEPOSIT' ? `
@@ -2640,13 +2837,20 @@ function _otcContractCard(c, wallet) {
         <i class="fas fa-hand-holding-usd"></i>Deposit (Seller)
       </button>` : ''}
 
-      <!-- Release funds (release) — SELLER ONLY in v4, BLOCKED by IN_DISPUTE -->
-      ${canRelease && !isDisputed ? `
-      <button onclick="otcReleaseDeal('${c.contractId}')"
-        title="Only the seller can release funds (v4 contract requirement)"
-        class="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-emerald-900/30">
-        <i class="fas fa-paper-plane"></i>Release Funds
-      </button>` : ''}
+      <!-- Release funds (release) — SELLER ONLY in v4, BLOCKED by IN_DISPUTE and missing proof -->
+      ${isSeller && !isDisputed && !isTerminal && [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'READY_TO_SETTLE'].some(s => c.status === s) && tgePast ? `
+        ${canRelease ? `
+        <button onclick="otcReleaseDeal('${c.contractId}')"
+          title="Only the seller can release funds (v4 contract requirement)"
+          class="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-emerald-900/30">
+          <i class="fas fa-paper-plane"></i>Release Funds
+        </button>` : `
+        <span title="Submit delivery proof above before releasing funds"
+          class="flex items-center gap-1.5 px-4 py-2 bg-gray-800/60 border border-gray-700/40 text-gray-500 rounded-xl text-xs font-semibold cursor-not-allowed select-none">
+          <i class="fas fa-lock text-[10px]"></i>Release Funds
+          <span class="text-[10px] text-amber-500/80 font-normal">(proof required)</span>
+        </span>`}
+      ` : ''}
 
       <!-- Buyer sees info badge when TGE reached but can't release (seller must) -->
       ${isOnChain && isBuyer && !isSeller && ['FUNDED','AWAITING_PROOF','READY_TO_SETTLE'].some(s => c.status === s) && tgePast && !isDisputed ? `
@@ -2977,6 +3181,40 @@ function _otcInit() {
   window.otcRequestCancelOnChain = otcRequestCancelOnChain;
   window.otcSyncDealStatus     = otcSyncDealStatus;
   window.otcSyncFromChain      = otcSyncFromChain;
+  window.otcSubmitProof        = otcSubmitProof;
+
+  // ── Proof UI helpers (called inline from card HTML) ─────────────────────
+  // Live preview: shows what type of proof is detected as user types
+  window._otcProofPreview = function(contractId) {
+    const input   = _otcEl(`otc-proof-input-${contractId}`);
+    const preview = _otcEl(`otc-proof-preview-${contractId}`);
+    if (!input || !preview) return;
+    const val = input.value.trim();
+    if (!val) { preview.textContent = ''; return; }
+    if (/^0x[0-9a-fA-F]{64}$/.test(val)) {
+      preview.innerHTML = '<i class="fas fa-link text-indigo-400 mr-1"></i><span class="text-indigo-400">Transaction hash detected — will link to block explorer</span>';
+    } else if (/^https?:\/\//i.test(val) || /^www\./i.test(val)) {
+      preview.innerHTML = '<i class="fas fa-external-link-alt text-blue-400 mr-1"></i><span class="text-blue-400">URL detected — will render as clickable link</span>';
+    } else if (/^0x[0-9a-fA-F]+$/.test(val)) {
+      preview.innerHTML = '<i class="fas fa-link text-indigo-400 mr-1"></i><span class="text-indigo-400">Hex value detected — will link to block explorer</span>';
+    } else {
+      preview.innerHTML = '<i class="fas fa-align-left text-gray-400 mr-1"></i><span class="text-gray-400">Plain text — will be displayed as-is</span>';
+    }
+  };
+
+  // "Update proof" link resets proofData so seller can resubmit
+  window._otcClearProofInput = function(contractId) {
+    const contract = _otcContracts.find(c => c.contractId === contractId);
+    if (!contract) return;
+    if (!confirm('Clear the existing proof and submit a new one?')) return;
+    delete contract.proofData;
+    delete contract.proofTxHash;
+    delete contract.proofSubmittedAt;
+    contract.status    = contract.onChain ? 'AWAITING_PROOF' : OTC_STATUS.FUNDED;
+    contract.updatedAt = _otcNow();
+    otcSave();
+    otcRenderMyContracts();
+  };
 
   _otcLog(`Loaded | v${OTC_VERSION} | Chain ${OTC_CHAIN_ID} | Contract v4 (TradeMode, openDispute, arbiter)`);
 }

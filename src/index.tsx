@@ -4890,12 +4890,12 @@ app.get('/', (c) => {
 
     Current hashes (updated 2026-04-09a — OTC_ESCROW_DEPLOYED fully removed, error stack traces on all critical functions):
       otc-escrow-abi.72e5bfc4.js  ← single source of truth for OTC_ESCROW_ADDRESS + getOTCEscrowContract()
-      otc.7c48eb44.js              ← OTC v20260410b: fix TDZ isDisputed+isAuthorizedLocal in _otcContractCard
+      otc.174542a2.js              ← OTC v20260410c: Proof Submission feature (seller add/buyer view, proofData, release gate)
 
     ZERO references to OTC_ESCROW_DEPLOYED in any form.
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
-  <script src="/static/otc.7c48eb44.js"></script>
+  <script src="/static/otc.174542a2.js"></script>
   <script src="/static/autonoma.js?v=20260329a"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
