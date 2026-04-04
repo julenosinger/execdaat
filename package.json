@@ -9,6 +9,8 @@
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@noble/secp256k1": "^3.0.0",
     "ethers": "^6.16.0",
     "hono": "^4.12.7"
   },

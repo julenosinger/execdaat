@@ -1,38 +1,27 @@
 // ============================================================
-// AGENT RELAY — Meta-Transaction Relayer
+// AGENT RELAY — Meta-Transaction Relayer v2
 // ExecDaat · Arc Testnet · Chain ID 5042002
+// Build: 20260404h
 //
-// POST /api/agent/relay          — submit signed intent for gasless execution
-// GET  /api/agent/relay/:id      — poll relay job status
+// POST /api/agent/relay               — submit signed intent for gasless execution
+// GET  /api/agent/relay/:id           — poll relay job status
 // GET  /api/agent/relay/nonce/:wallet — get current nonce for wallet
+// POST /api/agent/relay/permit        — store signed permit (approve + EIP-712 sig)
+// GET  /api/agent/relay/permit/:wallet — check permit status for wallet
 //
-// Architecture:
-//   1. User signs EIP-712 typed data (TransferIntent or BatchIntent)
-//   2. Frontend POST /api/agent/relay with { request, signature }
-//   3. Relay validates signature, stores job in KV with status "queued"
-//   4. Relay executor loop (via /api/agent/relay/execute) picks queued jobs
-//      and calls AgentExecutor contract using the relayer private key
-//   5. Frontend polls GET /api/agent/relay/:id for status updates
+// GASLESS FLOW (no wallet popup after initial setup):
+//   1. User clicks "Setup gasless" → ONE-TIME approve() popup
+//   2. User types "send 10 USDC to 0x…" → ONE signTypedData popup (signs the intent)
+//   3. Frontend POSTs signed payload to /api/agent/relay
+//   4. Backend relayer (with RELAYER_PRIVATE_KEY) calls AgentExecutor.execute()
+//   5. No more wallet popups — relayer pays all gas
 //
-// Security:
-//   • RELAYER_PRIVATE_KEY stored as Cloudflare secret (never in client)
-//   • Signature re-validated before execution
-//   • Nonce fetched on-chain before submission
-//   • Rate limiting: max 10 relay requests per wallet per minute
-//   • Amount limits enforced server-side
-//
-// KV schema:
-//   relay:{id}              → RelayJob JSON  (TTL: 1 day)
-//   relay:wallet:{addr}:nonce → last known nonce (TTL: 1 hour)
-//   relay:ratelimit:{addr}  → request count (TTL: 60s)
-//
-// Note on private key:
-//   Set via: npx wrangler secret put RELAYER_PRIVATE_KEY
-//   The key should be a 0x-prefixed hex string for the relayer EOA.
-//   This EOA must be authorized as a relayer in the AgentExecutor contract.
+// KEY FIX: buildAndSignTx() now uses @noble/secp256k1 for real secp256k1 signing
 // ============================================================
 
 import { Hono } from 'hono'
+import * as secp from '@noble/secp256k1'
+import { keccak_256 } from '@noble/hashes/sha3.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Bindings = {
@@ -56,51 +45,61 @@ interface RelayJob {
   id:          string
   type:        RelayJobType
   status:      RelayJobStatus
-  // Intent data (from user)
-  from:        string           // user wallet (lowercase)
-  token:       string           // token address (lowercase)
-  to?:         string           // single recipient
-  amount?:     string           // human-readable or raw (depends on context)
-  amountRaw?:  string           // raw uint256 string
+  from:        string
+  token:       string
+  to?:         string
+  amount?:     string
+  amountRaw?:  string
   recipients?: Array<{ address: string; amount: string; amountRaw: string }>
-  nonce:       string           // on-chain nonce as string
-  deadline:    string           // unix timestamp as string
-  signature:   string           // EIP-712 signature (65 bytes hex)
-  // Execution result
+  nonce:       string
+  deadline:    string
+  signature:   string
   txHash?:     string
   blockNumber?: number
   gasUsed?:    string
   error?:      string
-  // Metadata
-  intentId?:   string           // linked AgentIntent id
+  intentId?:   string
   createdAt:   string
   updatedAt:   string
   completedAt?: string
 }
 
+interface StoredPermit {
+  wallet:      string
+  token:       string
+  amount:      string
+  amountRaw:   string
+  nonce:       string
+  deadline:    string
+  signature:   string  // EIP-712 signature of the permit
+  approvedAt:  string
+  expiresAt:   string  // ISO string
+}
+
 // ─── Constants ──────────────────────────────────────────────────────────────
-const RELAY_KV_TTL    = 24 * 60 * 60          // 1 day
-const RATE_LIMIT_TTL  = 60                     // 1 minute window
-const MAX_RATE        = 10                     // max 10 relay requests per wallet per minute
-const MAX_AMOUNT_USDC = 10_000 * 1_000_000     // 10,000 USDC (6 decimals)
-const MAX_BATCH_TOTAL = MAX_AMOUNT_USDC * 10   // 100,000 USDC for batch
+const RELAY_KV_TTL    = 24 * 60 * 60
+const PERMIT_KV_TTL   = 25 * 60 * 60   // 25h (permits last 24h)
+const RATE_LIMIT_TTL  = 60
+const MAX_RATE        = 20
+const MAX_AMOUNT_USDC = 10_000 * 1_000_000
+const MAX_BATCH_TOTAL = MAX_AMOUNT_USDC * 10
 
-// Chain config
-const CHAIN_ID      = 5042002
-const RPC_URL       = 'https://rpc.testnet.arc.network'
-const EXPLORER      = 'https://testnet.arcscan.app'
+const CHAIN_ID   = 5042002
+const RPC_URL    = 'https://rpc.testnet.arc.network'
+const EXPLORER   = 'https://testnet.arcscan.app'
 
-// Token whitelist
 const ALLOWED_TOKENS: Record<string, string> = {
   '0x3600000000000000000000000000000000000000': 'USDC',
   '0x89b50855aa3be2f677cd6303cec089b5f319d72a': 'EURC',
 }
 
-// AgentExecutor contract address on Arc Testnet
-// NOTE: Update this after deploying the contract
-const AGENT_EXECUTOR_ADDR = '0x3148E2807F172D1cC354F35fB4fC4104e8b6b561'  // placeholder
+// AgentExecutor contract — set after deploying AgentExecutor.sol
+// Override via localStorage("ae_contract_addr") on frontend or set here after deploy
+const AGENT_EXECUTOR_ADDR = (function () {
+  // Will be updated when contract is deployed
+  return '0x0000000000000000000000000000000000000000'
+})()
 
-// EIP-712 Domain
 const EIP712_DOMAIN = {
   name:              'AgentExecutor',
   version:           '1',
@@ -108,70 +107,44 @@ const EIP712_DOMAIN = {
   verifyingContract: AGENT_EXECUTOR_ADDR,
 }
 
-// ─── Minimal EIP-712 helpers (pure JS, no ethers.js on server) ──────────────
+// ─── Noble secp256k1 helpers ─────────────────────────────────────────────────
 
-/** keccak256 via native SubtleCrypto (Workers have Web Crypto) */
-async function keccak256Hex(data: Uint8Array): Promise<string> {
-  // Workers runtime exposes keccak256 via crypto.subtle in some environments
-  // As a reliable alternative, use a JSON-RPC eth_call that returns the hash
-  // or rely on the RPC to validate. Here we use a lightweight approach via
-  // the ethereum JSON-RPC debug_keccak256 is not standard, so we use
-  // a manual pure-JS implementation via TextEncoder.
-  // NOTE: For production, use the @noble/hashes library (lightweight, no node:crypto)
-  // This is a simplified version that delegates to the RPC for hashing needs.
-
-  // Since Workers don't have node:crypto, we use SubtleCrypto SHA-256 as a
-  // placeholder and rely on the contract to re-validate via ecrecover.
-  // The real signature verification is done ON-CHAIN — server just routes.
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('')
+/** keccak256 using @noble/hashes */
+function keccak256(data: Uint8Array): Uint8Array {
+  return keccak_256(data)
 }
 
-/** Recover signer from EIP-712 signature via eth_call (no server-side crypto needed) */
-async function recoverSignerRpc(hash: string, signature: string): Promise<string | null> {
-  // We call eth_accounts-like method using a signed message recovery via RPC
-  // The cleanest way in Workers: use a lightweight ECDSA lib OR delegate to
-  // an ecrecover precompile call via eth_call
-  try {
-    const body = {
-      jsonrpc: '2.0', id: 1,
-      method: 'eth_call',
-      params: [{
-        to:   '0x0000000000000000000000000000000000000001', // ecrecover precompile
-        data: encodeEcrecoverInput(hash, signature),
-      }, 'latest'],
-    }
-    const r = await fetch(RPC_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const d = await r.json() as { result?: string }
-    if (d.result && d.result.length >= 66) {
-      // result is padded: last 20 bytes = address
-      return '0x' + d.result.slice(-40)
-    }
-    return null
-  } catch {
-    return null
-  }
+function keccak256Hex(data: Uint8Array): string {
+  return bytesToHex(keccak256(data))
 }
 
-function encodeEcrecoverInput(hash: string, sig: string): string {
-  // ecrecover(bytes32 hash, uint8 v, bytes32 r, bytes32 s)
-  // Input: hash(32) + v(32, padded) + r(32) + s(32)
-  const h = hash.replace('0x', '').padStart(64, '0')
-  const s = sig.replace('0x', '')
-  if (s.length !== 130) return '0x'
-  const r   = s.slice(0, 64)
-  const sv  = s.slice(64, 128)
-  let v     = parseInt(s.slice(128, 130), 16)
-  if (v < 27) v += 27
-  const vPad = v.toString(16).padStart(64, '0')
-  return '0x' + h + vPad + r + sv
+/** Derive Ethereum address from private key */
+function privateKeyToAddress(privateKey: string): string {
+  const pkBytes = hexToBytes(privateKey.replace('0x', ''))
+  const pubKey  = secp.getPublicKey(pkBytes, false)  // uncompressed 65 bytes
+  // Remove prefix byte (0x04), keccak256 of the 64-byte x+y, take last 20 bytes
+  const pubKeyBody = pubKey.slice(1)
+  const hash = keccak256(pubKeyBody)
+  return '0x' + bytesToHex(hash.slice(-20))
 }
 
-// ─── RPC helpers ────────────────────────────────────────────────────────────
+/** Sign a 32-byte hash with secp256k1 private key, return r,s,v */
+async function ecSign(
+  hash: Uint8Array,
+  privateKey: string,
+  chainId: number,
+): Promise<{ r: bigint; s: bigint; v: bigint }> {
+  const pkBytes = hexToBytes(privateKey.replace('0x', ''))
+  const sig = await secp.signAsync(hash, pkBytes)
+  const r = sig.r
+  const s = sig.s
+  const recovery = sig.recovery
+  // EIP-155: v = chainId * 2 + 35 + recovery
+  const v = BigInt(chainId) * 2n + 35n + BigInt(recovery)
+  return { r, s, v }
+}
+
+// ─── RPC helpers ─────────────────────────────────────────────────────────────
 
 async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   const r = await fetch(RPC_URL, {
@@ -184,10 +157,9 @@ async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   return d.result
 }
 
-/** Get on-chain nonce for wallet from AgentExecutor contract */
 async function getOnChainNonce(wallet: string): Promise<bigint> {
+  if (AGENT_EXECUTOR_ADDR === '0x0000000000000000000000000000000000000000') return 0n
   try {
-    // nonces(address) — function selector keccak256("nonces(address)") = 0x7ecebe00
     const data = '0x7ecebe00' + wallet.replace('0x', '').padStart(64, '0')
     const result = await rpcCall('eth_call', [{ to: AGENT_EXECUTOR_ADDR, data }, 'latest']) as string
     return result && result !== '0x' ? BigInt(result) : 0n
@@ -196,13 +168,11 @@ async function getOnChainNonce(wallet: string): Promise<bigint> {
   }
 }
 
-/** Send raw transaction from relayer (using eth_sendRawTransaction) */
 async function sendRelayTx(signedTx: string): Promise<string> {
   const result = await rpcCall('eth_sendRawTransaction', [signedTx]) as string
   return result
 }
 
-/** Get transaction receipt */
 async function getTxReceipt(txHash: string): Promise<{ status: string; blockNumber: string; gasUsed: string } | null> {
   try {
     const result = await rpcCall('eth_getTransactionReceipt', [txHash]) as
@@ -215,7 +185,8 @@ async function getTxReceipt(txHash: string): Promise<{ status: string; blockNumb
 
 // ─── KV helpers ─────────────────────────────────────────────────────────────
 
-const _relayMem = new Map<string, RelayJob>()
+const _relayMem  = new Map<string, RelayJob>()
+const _permitMem = new Map<string, StoredPermit>()
 
 async function jobGet(kv: KVNamespace | undefined, id: string): Promise<RelayJob | null> {
   if (!kv) return _relayMem.get(id) ?? null
@@ -229,6 +200,20 @@ async function jobPut(kv: KVNamespace | undefined, job: RelayJob): Promise<void>
   await kv.put(`relay:${job.id}`, JSON.stringify(job), { expirationTtl: RELAY_KV_TTL })
 }
 
+async function permitGet(kv: KVNamespace | undefined, wallet: string, token: string): Promise<StoredPermit | null> {
+  const key = `permit:${wallet.toLowerCase()}:${token.toLowerCase()}`
+  if (!kv) return _permitMem.get(key) ?? null
+  const v = await kv.get(key)
+  if (!v) return null
+  try { return JSON.parse(v) as StoredPermit } catch { return null }
+}
+
+async function permitPut(kv: KVNamespace | undefined, permit: StoredPermit): Promise<void> {
+  const key = `permit:${permit.wallet.toLowerCase()}:${permit.token.toLowerCase()}`
+  if (!kv) { _permitMem.set(key, permit); return }
+  await kv.put(key, JSON.stringify(permit), { expirationTtl: PERMIT_KV_TTL })
+}
+
 async function checkRateLimit(kv: KVNamespace | undefined, wallet: string): Promise<boolean> {
   if (!kv) return true
   const key = `relay:ratelimit:${wallet.toLowerCase()}`
@@ -239,7 +224,6 @@ async function checkRateLimit(kv: KVNamespace | undefined, wallet: string): Prom
   return true
 }
 
-// ─── Intent DB update helper ─────────────────────────────────────────────────
 async function updateLinkedIntent(
   kv: KVNamespace | undefined,
   intentId: string,
@@ -258,22 +242,10 @@ async function updateLinkedIntent(
   } catch { /* ignore */ }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function _nowISO()  { return new Date().toISOString() }
-function _genId()   { return 'relay-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7) }
-function _isAddr(a: unknown): a is string {
-  return typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a)
-}
-function _isSig(a: unknown): a is string {
-  return typeof a === 'string' && /^0x[0-9a-fA-F]{130}$/.test(a)
-}
-
-// ─── Simple EIP-712 hash builder (pure, no dependencies) ────────────────────
-// Used for server-side signature pre-validation.
-// The contract performs authoritative ecrecover on-chain.
+// ─── Utility helpers ─────────────────────────────────────────────────────────
 
 function hexToBytes(hex: string): Uint8Array {
-  const h = hex.replace('0x', '')
+  const h = hex.replace('0x', '').padStart(hex.replace('0x','').length % 2 ? hex.replace('0x','').length+1 : hex.replace('0x','').length, '0')
   const arr = new Uint8Array(h.length / 2)
   for (let i = 0; i < arr.length; i++) arr[i] = parseInt(h.slice(i*2, i*2+2), 16)
   return arr
@@ -284,7 +256,303 @@ function bytesToHex(bytes: Uint8Array): string {
 }
 
 function padLeft32(hex: string): string {
-  return hex.replace('0x','').padStart(64,'0')
+  return hex.replace('0x','').toLowerCase().padStart(64,'0')
+}
+
+function toBigHex(val: string): string {
+  return BigInt(val).toString(16).padStart(64, '0')
+}
+
+function toUint256(n: number | bigint): string {
+  return BigInt(n).toString(16).padStart(64, '0')
+}
+
+function bigintToMinHex(n: bigint): string {
+  if (n === 0n) return ''
+  return n.toString(16).replace(/^0+/, '') || '0'
+}
+
+function bigintToBytes(n: bigint): Uint8Array {
+  if (n === 0n) return new Uint8Array(0)
+  const h = n.toString(16).padStart(n.toString(16).length % 2 ? n.toString(16).length + 1 : n.toString(16).length, '0')
+  return hexToBytes(h)
+}
+
+function _nowISO()  { return new Date().toISOString() }
+function _genId()   { return 'relay-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7) }
+function _isAddr(a: unknown): a is string {
+  return typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a)
+}
+function _isSig(a: unknown): a is string {
+  return typeof a === 'string' && /^0x[0-9a-fA-F]{130}$/.test(a)
+}
+
+// ─── ABI encoding for AgentExecutor calls ────────────────────────────────────
+
+function encodeExecute(job: RelayJob): string {
+  // execute(address from, address token, address to, uint256 amount, uint256 nonce, uint256 deadline, bytes sig)
+  // Selector keccak256("execute(address,address,address,uint256,uint256,uint256,bytes)") = first 4 bytes
+  // Precomputed: 0x9a8a0592
+  const selector = '9a8a0592'
+
+  const from     = padLeft32(job.from)
+  const token    = padLeft32(job.token)
+  const to       = padLeft32(job.to || '0x0000000000000000000000000000000000000000')
+  const amount   = toBigHex(job.amountRaw || '0')
+  const nonce    = toBigHex(job.nonce)
+  const deadline = toBigHex(job.deadline)
+
+  // bytes offset: 7 static params * 32 = 224
+  const sigOffset = toUint256(7 * 32)
+  const sigHex    = job.signature.replace('0x', '')
+  const sigLen    = toUint256(65)
+  // pad to 96 bytes (3 * 32)
+  const sigPadded = sigHex + '0'.repeat(192 - sigHex.length)
+
+  return '0x' + selector + from + token + to + amount + nonce + deadline + sigOffset + sigLen + sigPadded
+}
+
+function encodeExecuteBatch(job: RelayJob): string {
+  // executeBatch(address from, address token, address[] recipients, uint256[] amounts, uint256 nonce, uint256 deadline, bytes sig)
+  // Selector keccak256("executeBatch(address,address,address[],uint256[],uint256,uint256,bytes)") 
+  // Precomputed: 0xa3951c6b
+  const selector = 'a3951c6b'
+
+  if (!job.recipients || job.recipients.length === 0) {
+    throw new Error('No recipients for batch')
+  }
+
+  const n = job.recipients.length
+
+  const from     = padLeft32(job.from)
+  const token    = padLeft32(job.token)
+  const nonce    = toBigHex(job.nonce)
+  const deadline = toBigHex(job.deadline)
+
+  // Offsets for dynamic params (from, token are static 32-byte each → 2 params)
+  // param positions: from(0), token(1), recipients_offset(2), amounts_offset(3), nonce(4), deadline(5), sig_offset(6)
+  // Static section: 7 * 32 = 224 bytes
+  // recipients array: at offset 224 → length(32) + n*32
+  const recipientsOffset = toUint256(7 * 32)                         // 224
+  const amountsOffset    = toUint256(7 * 32 + 32 + n * 32)           // 224 + 32 + n*32
+  const sigOffset        = toUint256(7 * 32 + 32 + n * 32 + 32 + n * 32) // after amounts array
+
+  const recLen    = toUint256(n)
+  const recAddrs  = job.recipients.map(r => padLeft32(r.address)).join('')
+  const amtLen    = toUint256(n)
+  const recAmts   = job.recipients.map(r => toBigHex(r.amountRaw)).join('')
+
+  const sigHex    = job.signature.replace('0x', '')
+  const sigLen    = toUint256(65)
+  const sigPadded = sigHex + '0'.repeat(192 - sigHex.length)
+
+  return '0x' + selector +
+    from + token +
+    recipientsOffset + amountsOffset + nonce + deadline + sigOffset +
+    recLen + recAddrs +
+    amtLen + recAmts +
+    sigLen + sigPadded
+}
+
+// ─── RLP encoding ─────────────────────────────────────────────────────────────
+
+function rlpEncodeBytes(bytes: Uint8Array): Uint8Array {
+  if (bytes.length === 1 && bytes[0] < 0x80) return bytes
+  if (bytes.length === 0) return new Uint8Array([0x80])
+  const prefix = rlpStringPrefix(bytes.length)
+  const result = new Uint8Array(prefix.length + bytes.length)
+  result.set(prefix); result.set(bytes, prefix.length)
+  return result
+}
+
+function rlpEncodeString(hex: string): Uint8Array {
+  const h = hex.replace('0x', '').replace(/^0+/, '') || ''
+  if (h === '') return new Uint8Array([0x80])
+  const bytes = hexToBytes(h.length % 2 ? '0' + h : h)
+  return rlpEncodeBytes(bytes)
+}
+
+function rlpStringPrefix(len: number): Uint8Array {
+  if (len <= 55) return new Uint8Array([0x80 + len])
+  const lenBytes = bigintToBytes(BigInt(len))
+  return new Uint8Array([0xb7 + lenBytes.length, ...Array.from(lenBytes)])
+}
+
+function rlpListPrefix(len: number): Uint8Array {
+  if (len <= 55) return new Uint8Array([0xc0 + len])
+  const lenBytes = bigintToBytes(BigInt(len))
+  return new Uint8Array([0xf7 + lenBytes.length, ...Array.from(lenBytes)])
+}
+
+function rlpList(items: Uint8Array[]): Uint8Array {
+  const total = items.reduce((s, i) => s + i.length, 0)
+  const prefix = rlpListPrefix(total)
+  const result = new Uint8Array(prefix.length + total)
+  result.set(prefix)
+  let offset = prefix.length
+  for (const item of items) { result.set(item, offset); offset += item.length }
+  return result
+}
+
+// ─── Build & sign EIP-155 legacy transaction ─────────────────────────────────
+
+interface LegacyTxParams {
+  nonce: number; gasPrice: bigint; gas: bigint;
+  to: string; value: bigint; data: string; chainId: number;
+}
+
+async function buildAndSignTx(callData: string, privateKey: string): Promise<string> {
+  // Derive relayer address
+  const relayerAddr = privateKeyToAddress(privateKey)
+  console.log(`[RELAY] Signing tx from relayer: ${relayerAddr}`)
+
+  const [nonceHex, gasPriceHex] = await Promise.all([
+    rpcCall('eth_getTransactionCount', [relayerAddr, 'latest']) as Promise<string>,
+    rpcCall('eth_gasPrice', []) as Promise<string>,
+  ])
+
+  const txNonce  = parseInt(String(nonceHex), 16)
+  const gasPrice = BigInt(String(gasPriceHex)) * 110n / 100n  // +10% buffer
+
+  // Estimate gas
+  let gasLimit = 250_000n
+  try {
+    const estHex = await rpcCall('eth_estimateGas', [{
+      from: relayerAddr,
+      to:   AGENT_EXECUTOR_ADDR,
+      data: callData,
+    }]) as string
+    gasLimit = BigInt(String(estHex)) * 130n / 100n  // +30% buffer
+  } catch (e) {
+    console.warn('[RELAY] Gas estimation failed, using 250k default:', String(e))
+  }
+
+  const chainId = CHAIN_ID
+
+  // Build signing payload: RLP([nonce, gasPrice, gas, to, value, data, chainId, 0, 0])
+  const rlpForSigning = rlpList([
+    rlpEncodeString(bigintToMinHex(BigInt(txNonce))),
+    rlpEncodeString(bigintToMinHex(gasPrice)),
+    rlpEncodeString(bigintToMinHex(gasLimit)),
+    rlpEncodeBytes(hexToBytes(AGENT_EXECUTOR_ADDR.replace('0x', ''))),
+    rlpEncodeString(''),   // value = 0
+    // data as bytes
+    (function() {
+      const dataBytes = hexToBytes(callData.replace('0x', ''))
+      return rlpEncodeBytes(dataBytes)
+    })(),
+    rlpEncodeString(bigintToMinHex(BigInt(chainId))),
+    new Uint8Array([0x80]),  // v = 0
+    new Uint8Array([0x80]),  // r = 0
+  ])
+
+  // Hash for signing
+  const txHash = keccak256(rlpForSigning)
+
+  // Sign with secp256k1
+  const { r, s, v } = await ecSign(txHash, privateKey, chainId)
+
+  // Build signed transaction: RLP([nonce, gasPrice, gas, to, value, data, v, r, s])
+  const signedRlp = rlpList([
+    rlpEncodeString(bigintToMinHex(BigInt(txNonce))),
+    rlpEncodeString(bigintToMinHex(gasPrice)),
+    rlpEncodeString(bigintToMinHex(gasLimit)),
+    rlpEncodeBytes(hexToBytes(AGENT_EXECUTOR_ADDR.replace('0x', ''))),
+    rlpEncodeString(''),
+    (function() {
+      const dataBytes = hexToBytes(callData.replace('0x', ''))
+      return rlpEncodeBytes(dataBytes)
+    })(),
+    rlpEncodeString(bigintToMinHex(v)),
+    rlpEncodeString(bigintToMinHex(r)),
+    rlpEncodeString(bigintToMinHex(s)),
+  ])
+
+  return '0x' + bytesToHex(signedRlp)
+}
+
+// ─── Execute relay job ────────────────────────────────────────────────────────
+
+async function executeRelayJob(
+  kv: KVNamespace | undefined,
+  job: RelayJob,
+  privateKey: string,
+): Promise<void> {
+  try {
+    // Check if AgentExecutor is deployed
+    if (AGENT_EXECUTOR_ADDR === '0x0000000000000000000000000000000000000000') {
+      throw new Error(
+        'AgentExecutor contract not deployed. ' +
+        'Visit /static/deploy-agent to deploy it first. ' +
+        'Then update AGENT_EXECUTOR_ADDR in agent-relay.ts.'
+      )
+    }
+
+    job.status    = 'executing'
+    job.updatedAt = _nowISO()
+    await jobPut(kv, job)
+    if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'processing' })
+
+    let callData: string
+    if (job.type === 'transfer') {
+      callData = encodeExecute(job)
+    } else if (job.type === 'batch') {
+      callData = encodeExecuteBatch(job)
+    } else {
+      throw new Error(`Unsupported job type: ${job.type}`)
+    }
+
+    const signedTx = await buildAndSignTx(callData, privateKey)
+
+    job.status    = 'broadcast'
+    job.updatedAt = _nowISO()
+    await jobPut(kv, job)
+    if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'broadcast' })
+
+    const txHash = await sendRelayTx(signedTx)
+    job.txHash    = txHash
+    job.updatedAt = _nowISO()
+    await jobPut(kv, job)
+    if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'broadcast', txHash })
+
+    console.log(`[RELAY] Broadcast: ${job.id} → ${txHash}`)
+
+    // Wait for confirmation (up to 60s)
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 3000))
+      const receipt = await getTxReceipt(txHash)
+      if (receipt) {
+        const success = receipt.status === '0x1'
+        job.status      = success ? 'completed' : 'failed'
+        job.blockNumber = parseInt(receipt.blockNumber, 16)
+        job.gasUsed     = receipt.gasUsed
+        job.error       = success ? undefined : 'Transaction reverted on-chain'
+        job.completedAt = _nowISO()
+        job.updatedAt   = _nowISO()
+        await jobPut(kv, job)
+        if (job.intentId) {
+          await updateLinkedIntent(kv, job.intentId, {
+            status: job.status, txHash, blockNumber: job.blockNumber,
+          })
+        }
+        console.log(`[RELAY] ${success ? 'Completed ✅' : 'Failed ❌'}: ${job.id} block=${job.blockNumber}`)
+        return
+      }
+    }
+
+    // Still pending — leave as broadcast
+    console.log(`[RELAY] Still pending (not confirmed after 60s): ${job.id}`)
+
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    job.status      = 'failed'
+    job.error       = msg.slice(0, 400)
+    job.completedAt = _nowISO()
+    job.updatedAt   = _nowISO()
+    await jobPut(kv, job)
+    if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'failed', error: job.error })
+    console.error(`[RELAY] Failed: ${job.id} — ${msg}`)
+  }
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────
@@ -302,31 +570,26 @@ agentRelayRouter.post('/relay', async (c) => {
   const {
     type = 'transfer',
     from, token, to, amount, amountRaw,
-    recipients,
-    nonce, deadline, signature,
-    intentId,
+    recipients, nonce, deadline, signature, intentId,
   } = body as Record<string, unknown>
 
-  // ── Validations ──────────────────────────────────────────────────────────
-  if (!_isAddr(from)) return c.json({ success: false, error: '"from" must be a valid 0x address' }, 400)
-  if (!_isAddr(token)) return c.json({ success: false, error: '"token" must be a valid 0x address' }, 400)
+  // Validations
+  if (!_isAddr(from))    return c.json({ success: false, error: '"from" must be a valid 0x address' }, 400)
+  if (!_isAddr(token))   return c.json({ success: false, error: '"token" must be a valid 0x address' }, 400)
   if (!_isSig(signature)) return c.json({ success: false, error: '"signature" must be 65-byte hex (0x + 130 chars)' }, 400)
-  if (!nonce || isNaN(Number(nonce))) return c.json({ success: false, error: '"nonce" must be a number' }, 400)
+  if (!nonce || isNaN(Number(nonce)))       return c.json({ success: false, error: '"nonce" must be a number' }, 400)
   if (!deadline || isNaN(Number(deadline))) return c.json({ success: false, error: '"deadline" must be a unix timestamp' }, 400)
 
-  // Token whitelist check
   const tokenLower = (token as string).toLowerCase()
   if (!ALLOWED_TOKENS[tokenLower]) {
     return c.json({ success: false, error: 'Token not whitelisted. Only USDC and EURC are supported.' }, 400)
   }
 
-  // Deadline check
   const deadlineNum = Number(deadline)
   if (Date.now() / 1000 > deadlineNum) {
     return c.json({ success: false, error: 'Deadline has expired.' }, 400)
   }
 
-  // Type-specific validation
   if (type === 'transfer') {
     if (!_isAddr(to)) return c.json({ success: false, error: '"to" must be a valid 0x address for transfer type' }, 400)
     const rawAmt = amountRaw ? BigInt(String(amountRaw)) : 0n
@@ -350,24 +613,23 @@ agentRelayRouter.post('/relay', async (c) => {
     return c.json({ success: false, error: `Unsupported relay type: "${type}". Use "transfer" or "batch".` }, 400)
   }
 
-  // Rate limiting
   const allowed = await checkRateLimit(kv, from as string)
   if (!allowed) {
-    return c.json({ success: false, error: 'Rate limit exceeded. Max 10 relay requests per minute.' }, 429)
+    return c.json({ success: false, error: 'Rate limit exceeded. Max 20 relay requests per minute.' }, 429)
   }
 
-  // Validate on-chain nonce matches expected
-  const onChainNonce = await getOnChainNonce(from as string)
+  // Validate on-chain nonce
+  const onChainNonce   = await getOnChainNonce(from as string)
   const requestedNonce = BigInt(String(nonce))
-  if (requestedNonce !== onChainNonce) {
+  if (AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000' &&
+      requestedNonce !== onChainNonce) {
     return c.json({
       success: false,
-      error: `Nonce mismatch. On-chain nonce is ${onChainNonce}, you provided ${requestedNonce}. Please refresh and try again.`,
+      error: `Nonce mismatch. On-chain: ${onChainNonce}, provided: ${requestedNonce}. Refresh and retry.`,
       onChainNonce: onChainNonce.toString(),
     }, 409)
   }
 
-  // Store relay job
   const jobId = _genId()
   const job: RelayJob = {
     id:         jobId,
@@ -389,26 +651,124 @@ agentRelayRouter.post('/relay', async (c) => {
 
   await jobPut(kv, job)
 
-  // Update linked intent status to "signing" (relayer picked it up)
   if (job.intentId) {
     await updateLinkedIntent(kv, job.intentId, { status: 'signing', relayJobId: jobId })
   }
 
   console.log(`[RELAY] Queued: ${jobId} type=${type} from=${job.from.slice(0,10)}…`)
 
-  // Attempt immediate execution if private key is available
-  if (c.env?.RELAYER_PRIVATE_KEY) {
-    c.executionCtx?.waitUntil(executeRelayJob(kv, job, c.env.RELAYER_PRIVATE_KEY))
+  // Attempt immediate execution if private key is configured
+  const pk = c.env?.RELAYER_PRIVATE_KEY
+  if (pk) {
+    // Execute asynchronously (don't block the HTTP response)
+    if (c.executionCtx?.waitUntil) {
+      c.executionCtx.waitUntil(executeRelayJob(kv, job, pk))
+    } else {
+      // Fallback: fire and forget
+      executeRelayJob(kv, job, pk).catch(console.error)
+    }
   }
 
   return c.json({
     success:   true,
     jobId,
     status:    'queued',
-    message:   c.env?.RELAYER_PRIVATE_KEY
-      ? 'Intent queued for immediate execution. Poll /api/agent/relay/' + jobId + ' for updates.'
-      : 'Intent queued. Awaiting relayer. Poll /api/agent/relay/' + jobId + ' for status.',
+    relayerConfigured: !!pk,
+    agentContractDeployed: AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000',
+    message:   pk
+      ? `✅ Intent queued for immediate gasless execution. Poll /api/agent/relay/${jobId} for updates.`
+      : '⚠️ Intent queued but RELAYER_PRIVATE_KEY not set. Configure via: npx wrangler secret put RELAYER_PRIVATE_KEY',
   }, 201)
+})
+
+// ── GET /api/agent/relay/nonce/:wallet — Get on-chain nonce ───────────────
+// IMPORTANT: This route must come BEFORE /relay/:id to avoid param collision
+agentRelayRouter.get('/relay/nonce/:wallet', async (c) => {
+  const wallet = c.req.param('wallet')
+  if (!_isAddr(wallet)) return c.json({ success: false, error: 'Invalid wallet address' }, 400)
+  const nonce = await getOnChainNonce(wallet)
+  return c.json({
+    success: true,
+    wallet:  wallet.toLowerCase(),
+    nonce:   nonce.toString(),
+    domain:  EIP712_DOMAIN,
+    contractDeployed: AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000',
+    contractAddress:  AGENT_EXECUTOR_ADDR,
+  })
+})
+
+// ── POST /api/agent/relay/permit — Store signed permit ────────────────────
+// Called after user does one-time approve() + signTypedData for the permit
+// This stores the permit on the backend so future intents can reuse it
+agentRelayRouter.post('/relay/permit', async (c) => {
+  const kv = c.env?.AGENT_INTENTS as KVNamespace | undefined
+
+  let body: Record<string, unknown>
+  try { body = await c.req.json() } catch {
+    return c.json({ success: false, error: 'Invalid JSON body' }, 400)
+  }
+
+  const { wallet, token, amount, amountRaw, nonce, deadline, signature } = body
+
+  if (!_isAddr(wallet))    return c.json({ success: false, error: 'Invalid wallet address' }, 400)
+  if (!_isAddr(token))     return c.json({ success: false, error: 'Invalid token address' }, 400)
+  if (!_isSig(signature as string))  return c.json({ success: false, error: 'Invalid signature' }, 400)
+  if (!deadline || isNaN(Number(deadline))) return c.json({ success: false, error: 'Invalid deadline' }, 400)
+
+  const deadlineNum = Number(deadline)
+  if (Date.now() / 1000 > deadlineNum) {
+    return c.json({ success: false, error: 'Permit deadline already expired' }, 400)
+  }
+
+  const expiresAt = new Date(deadlineNum * 1000).toISOString()
+  const permit: StoredPermit = {
+    wallet:     (wallet as string).toLowerCase(),
+    token:      (token as string).toLowerCase(),
+    amount:     String(amount || '0'),
+    amountRaw:  String(amountRaw || '0'),
+    nonce:      String(nonce || '0'),
+    deadline:   String(deadline),
+    signature:  signature as string,
+    approvedAt: _nowISO(),
+    expiresAt,
+  }
+
+  await permitPut(kv, permit)
+  console.log(`[RELAY] Permit stored: wallet=${permit.wallet.slice(0,10)}… token=${permit.token.slice(0,10)}… expires=${expiresAt}`)
+
+  return c.json({
+    success:  true,
+    message:  'Permit stored. Future intents will be executed automatically without wallet popups.',
+    expiresAt,
+    wallet:   permit.wallet,
+  })
+})
+
+// ── GET /api/agent/relay/permit/:wallet — Check permit status ────────────
+agentRelayRouter.get('/relay/permit/:wallet', async (c) => {
+  const kv     = c.env?.AGENT_INTENTS as KVNamespace | undefined
+  const wallet = c.req.param('wallet')
+  if (!_isAddr(wallet)) return c.json({ success: false, error: 'Invalid wallet address' }, 400)
+
+  // Check both USDC and EURC
+  const usdcPermit = await permitGet(kv, wallet, '0x3600000000000000000000000000000000000000')
+  const eurcPermit = await permitGet(kv, wallet, '0x89b50855aa3be2f677cd6303cec089b5f319d72a')
+
+  const now = Date.now() / 1000
+  const activePermits = [usdcPermit, eurcPermit].filter(p => p && Number(p.deadline) > now) as StoredPermit[]
+
+  return c.json({
+    success:      true,
+    hasPermit:    activePermits.length > 0,
+    permits:      activePermits.map(p => ({
+      token:     p.token,
+      amount:    p.amount,
+      expiresAt: p.expiresAt,
+      approvedAt: p.approvedAt,
+    })),
+    contractDeployed: AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000',
+    contractAddress:  AGENT_EXECUTOR_ADDR,
+  })
 })
 
 // ── GET /api/agent/relay/:id — Poll job status ────────────────────────────
@@ -418,7 +778,7 @@ agentRelayRouter.get('/relay/:id', async (c) => {
   const job = await jobGet(kv, id)
   if (!job) return c.json({ success: false, error: 'Relay job not found' }, 404)
 
-  // If broadcast, check for receipt
+  // If broadcast, poll receipt
   if (job.status === 'broadcast' && job.txHash) {
     const receipt = await getTxReceipt(job.txHash)
     if (receipt) {
@@ -456,21 +816,31 @@ agentRelayRouter.get('/relay/:id', async (c) => {
   })
 })
 
-// ── GET /api/agent/relay/nonce/:wallet — Get on-chain nonce ───────────────
-agentRelayRouter.get('/relay/nonce/:wallet', async (c) => {
-  const wallet = c.req.param('wallet')
-  if (!_isAddr(wallet)) return c.json({ success: false, error: 'Invalid wallet address' }, 400)
-  const nonce = await getOnChainNonce(wallet)
+// ── GET /api/agent/relay/status — Relay system status ─────────────────────
+agentRelayRouter.get('/relay/status', async (c) => {
+  const pk = c.env?.RELAYER_PRIVATE_KEY
+  const relayerAddr = pk ? privateKeyToAddress(pk) : null
+
   return c.json({
-    success: true,
-    wallet:  wallet.toLowerCase(),
-    nonce:   nonce.toString(),
-    domain:  EIP712_DOMAIN,
+    success:              true,
+    relayerConfigured:    !!pk,
+    relayerAddress:       relayerAddr,
+    contractDeployed:     AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000',
+    contractAddress:      AGENT_EXECUTOR_ADDR,
+    chainId:              CHAIN_ID,
+    network:              'Arc Testnet',
+    capabilities:         !!pk && AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000'
+      ? ['gasless_transfer', 'gasless_batch']
+      : ['queued_only'],
+    message:
+      !pk                     ? '⚠️ RELAYER_PRIVATE_KEY not set — set via wrangler secret put' :
+      AGENT_EXECUTOR_ADDR === '0x0000000000000000000000000000000000000000'
+                              ? '⚠️ AgentExecutor not deployed — visit /static/deploy-agent' :
+                                '✅ Relay system fully operational',
   })
 })
 
-// ── POST /api/agent/relay/execute — Trigger executor loop (internal) ──────
-// Called by a Cloudflare Cron Trigger or scheduled worker (optional)
+// ── POST /api/agent/relay/execute — Trigger executor loop (cron/manual) ──
 agentRelayRouter.post('/relay/execute', async (c) => {
   const kv = c.env?.AGENT_INTENTS as KVNamespace | undefined
   const pk = c.env?.RELAYER_PRIVATE_KEY
@@ -478,20 +848,15 @@ agentRelayRouter.post('/relay/execute', async (c) => {
   if (!pk) {
     return c.json({
       success: false,
-      error:   'RELAYER_PRIVATE_KEY not configured. Set it via: npx wrangler secret put RELAYER_PRIVATE_KEY',
-      setup:   {
-        step1: 'Deploy AgentExecutor.sol to Arc Testnet',
+      error:   'RELAYER_PRIVATE_KEY not configured.',
+      setup: {
+        step1: 'Deploy AgentExecutor.sol via /static/deploy-agent',
         step2: 'npx wrangler secret put RELAYER_PRIVATE_KEY',
-        step3: 'Update AGENT_EXECUTOR_ADDR constant in this file',
-        step4: 'Call setRelayer(relayerAddress, true) on the contract',
-        step5: 'Approve AgentExecutor as spender in each user\'s token contract',
+        step3: 'Update AGENT_EXECUTOR_ADDR in agent-relay.ts',
       },
     }, 503)
   }
 
-  // Collect queued jobs
-  // Note: KV list is expensive; in production use a queue (Cloudflare Queues)
-  // For now we process jobs submitted to this worker's memory store
   const queued: RelayJob[] = []
   for (const job of _relayMem.values()) {
     if (job.status === 'queued') queued.push(job)
@@ -512,398 +877,4 @@ agentRelayRouter.post('/relay/execute', async (c) => {
   })
 })
 
-// ─── Execute relay job (builds + signs + broadcasts tx) ──────────────────────
-async function executeRelayJob(
-  kv: KVNamespace | undefined,
-  job: RelayJob,
-  privateKey: string,
-): Promise<void> {
-  try {
-    job.status    = 'executing'
-    job.updatedAt = _nowISO()
-    await jobPut(kv, job)
-    if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'processing' })
-
-    // Build the calldata for AgentExecutor.execute() or executeBatch()
-    let callData: string
-
-    if (job.type === 'transfer') {
-      callData = encodeExecute(job)
-    } else if (job.type === 'batch') {
-      callData = encodeExecuteBatch(job)
-    } else {
-      throw new Error(`Unsupported job type: ${job.type}`)
-    }
-
-    // Build and sign transaction using the relayer private key
-    const signedTx = await buildAndSignTx(callData, privateKey)
-
-    // Broadcast
-    job.status    = 'broadcast'
-    job.updatedAt = _nowISO()
-    await jobPut(kv, job)
-    if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'broadcast' })
-
-    const txHash = await sendRelayTx(signedTx)
-    job.txHash    = txHash
-    job.updatedAt = _nowISO()
-    await jobPut(kv, job)
-    if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'broadcast', txHash })
-
-    console.log(`[RELAY] Broadcast: ${job.id} → ${txHash}`)
-
-    // Wait for confirmation (up to 30s)
-    for (let i = 0; i < 10; i++) {
-      await new Promise(r => setTimeout(r, 3000))
-      const receipt = await getTxReceipt(txHash)
-      if (receipt) {
-        const success = receipt.status === '0x1'
-        job.status      = success ? 'completed' : 'failed'
-        job.blockNumber = parseInt(receipt.blockNumber, 16)
-        job.gasUsed     = receipt.gasUsed
-        job.error       = success ? undefined : 'Transaction reverted'
-        job.completedAt = _nowISO()
-        job.updatedAt   = _nowISO()
-        await jobPut(kv, job)
-        if (job.intentId) {
-          await updateLinkedIntent(kv, job.intentId, {
-            status: job.status, txHash, blockNumber: job.blockNumber,
-          })
-        }
-        console.log(`[RELAY] ${success ? 'Completed' : 'Failed'}: ${job.id} block=${job.blockNumber}`)
-        return
-      }
-    }
-
-    // Not confirmed yet — leave as broadcast, client will poll
-    console.log(`[RELAY] Broadcast pending (not confirmed yet): ${job.id}`)
-
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    job.status      = 'failed'
-    job.error       = msg.slice(0, 300)
-    job.completedAt = _nowISO()
-    job.updatedAt   = _nowISO()
-    await jobPut(kv, job)
-    if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'failed', error: job.error })
-    console.error(`[RELAY] Failed: ${job.id} — ${msg}`)
-  }
-}
-
-// ─── ABI encoding for AgentExecutor calls ────────────────────────────────────
-// Manual ABI encoding (no ethers.js on server side in Workers)
-// execute(address from, address token, address to, uint256 amount, uint256 nonce, uint256 deadline, bytes signature)
-// Function selector: keccak256("execute(address,address,address,uint256,uint256,uint256,bytes)") → first 4 bytes
-
-function encodeExecute(job: RelayJob): string {
-  // Selector for execute(address,address,address,uint256,uint256,uint256,bytes)
-  // Pre-computed: 0x9a8a0592  (calculated from keccak256 of the signature)
-  const selector = '9a8a0592'
-
-  const from      = padLeft32(job.from)
-  const token     = padLeft32(job.token)
-  const to        = padLeft32(job.to || '0x0000000000000000000000000000000000000000')
-  const amount    = toBigHex(job.amountRaw || '0')
-  const nonce     = toBigHex(job.nonce)
-  const deadline  = toBigHex(job.deadline)
-
-  // bytes signature: offset (224 = 7 * 32), length (65), data (padded to 96)
-  const sigOffset = toUint256(7 * 32)  // 7 params before bytes data
-  const sigHex    = job.signature.replace('0x', '')
-  const sigLen    = toUint256(65)
-  const sigPadded = sigHex.padEnd(128, '0')  // 65 bytes = 65*2=130 hex, pad to 32-byte boundary (96 bytes = 192 hex)
-  const sigData   = sigHex + '0'.repeat(192 - sigHex.length)
-
-  return '0x' + selector + from + token + to + amount + nonce + deadline + sigOffset + sigLen + sigData
-}
-
-// executeBatch(address from, address token, address[] recipients, uint256[] amounts, uint256 nonce, uint256 deadline, bytes sig)
-function encodeExecuteBatch(job: RelayJob): string {
-  const selector = 'a3951c6b'  // pre-computed selector for executeBatch
-
-  if (!job.recipients || job.recipients.length === 0) {
-    throw new Error('No recipients for batch')
-  }
-
-  const from    = padLeft32(job.from)
-  const token   = padLeft32(job.token)
-  const nonce   = toBigHex(job.nonce)
-  const deadline = toBigHex(job.deadline)
-
-  const recAddrs  = job.recipients.map(r => padLeft32(r.address))
-  const recAmts   = job.recipients.map(r => toBigHex(r.amountRaw))
-  const recLen    = toUint256(job.recipients.length)
-  const amtLen    = toUint256(job.recipients.length)
-
-  // Dynamic params: recipients offset, amounts offset, nonce, deadline, sig offset
-  // recipients at offset = 7*32 = 224
-  // amounts at offset    = 224 + 32 + N*32
-  const recipientsOffset = toUint256(7 * 32)
-  const amountsOffset    = toUint256(7 * 32 + 32 + job.recipients.length * 32)
-  const sigOffset        = toUint256(7 * 32 + 32 + job.recipients.length * 32 + 32 + job.recipients.length * 32)
-
-  const sigHex  = job.signature.replace('0x', '')
-  const sigLen  = toUint256(65)
-  const sigData = sigHex + '0'.repeat(192 - sigHex.length)
-
-  return '0x' + selector +
-    from + token +
-    recipientsOffset + amountsOffset + nonce + deadline + sigOffset +
-    recLen + recAddrs.join('') +
-    amtLen + recAmts.join('') +
-    sigLen + sigData
-}
-
-function toBigHex(val: string): string {
-  return BigInt(val).toString(16).padStart(64, '0')
-}
-
-function toUint256(n: number): string {
-  return n.toString(16).padStart(64, '0')
-}
-
-// ─── Build & sign raw transaction using relayer private key ──────────────────
-// NOTE: Cloudflare Workers do not have node:crypto.
-// We use the Web Crypto API (SubtleCrypto) to sign.
-// For ECDSA secp256k1 signatures, Workers support "ECDSA" with P-256 (not secp256k1).
-// Therefore, we use the @noble/secp256k1 approach via a fetch to a signing endpoint,
-// OR implement a minimal secp256k1 pure-JS signer.
-//
-// PRACTICAL APPROACH for production:
-//   Use Cloudflare Workers AI or a dedicated signing service.
-//   OR import @noble/secp256k1 (1KB gzipped, compatible with Workers).
-//
-// For this implementation, we use a WebCrypto-compatible approach:
-// The private key is used to derive the ECDSA signature via a minimal implementation.
-
-async function buildAndSignTx(callData: string, privateKey: string): Promise<string> {
-  // Get relayer address (derived from private key)
-  const relayerAddr = await deriveAddress(privateKey)
-
-  // Get nonce and gas price for relayer
-  const [nonceHex, gasPriceHex, chainIdHex] = await Promise.all([
-    rpcCall('eth_getTransactionCount', [relayerAddr, 'latest']) as Promise<string>,
-    rpcCall('eth_gasPrice', []) as Promise<string>,
-    rpcCall('eth_chainId', []) as Promise<string>,
-  ])
-
-  const txNonce   = parseInt(String(nonceHex), 16)
-  const gasPrice  = BigInt(String(gasPriceHex)) * 110n / 100n  // +10% buffer
-  const chainId   = parseInt(String(chainIdHex), 16)
-
-  // Estimate gas
-  let gasLimit = 200_000n
-  try {
-    const estHex = await rpcCall('eth_estimateGas', [{
-      from: relayerAddr,
-      to:   AGENT_EXECUTOR_ADDR,
-      data: callData,
-    }]) as string
-    gasLimit = BigInt(String(estHex)) * 130n / 100n  // +30% buffer
-  } catch { /* use default */ }
-
-  // Build EIP-1559 tx (type 2) or legacy tx
-  // For Arc Testnet, use legacy tx (type 0) for compatibility
-  const rlpTx = encodeLegacyTx({
-    nonce:    txNonce,
-    gasPrice: gasPrice,
-    gas:      gasLimit,
-    to:       AGENT_EXECUTOR_ADDR,
-    value:    0n,
-    data:     callData,
-    chainId,
-  })
-
-  // Sign the transaction
-  const signedTx = await signTransaction(rlpTx, privateKey, chainId)
-  return signedTx
-}
-
-// ─── Minimal RLP + transaction signing ───────────────────────────────────────
-// Pure JS implementation for Workers compatibility
-
-function rlpEncode(input: unknown): Uint8Array {
-  if (typeof input === 'string') {
-    return rlpEncodeString(input)
-  }
-  if (typeof input === 'bigint' || typeof input === 'number') {
-    return rlpEncodeString(bigintToHex(BigInt(input)))
-  }
-  if (Array.isArray(input)) {
-    const encoded = input.map(rlpEncode)
-    const total = encoded.reduce((sum, e) => sum + e.length, 0)
-    const prefix = rlpListPrefix(total)
-    const result = new Uint8Array(prefix.length + total)
-    result.set(prefix)
-    let offset = prefix.length
-    for (const e of encoded) { result.set(e, offset); offset += e.length }
-    return result
-  }
-  return new Uint8Array(0)
-}
-
-function rlpEncodeString(hex: string): Uint8Array {
-  const h = hex.replace('0x', '')
-  if (h === '' || h === '00') {
-    const v = h === '' ? 0 : parseInt(h, 16)
-    if (v === 0) return new Uint8Array([0x80])  // empty = 0x80
-    if (v < 0x80) return new Uint8Array([v])     // single byte
-  }
-  const bytes = hexToBytes(h)
-  const prefix = rlpStringPrefix(bytes.length)
-  const result = new Uint8Array(prefix.length + bytes.length)
-  result.set(prefix); result.set(bytes, prefix.length)
-  return result
-}
-
-function rlpStringPrefix(len: number): Uint8Array {
-  if (len <= 55) return new Uint8Array([0x80 + len])
-  const lenBytes = bigintToBytes(BigInt(len))
-  return new Uint8Array([0xb7 + lenBytes.length, ...lenBytes])
-}
-
-function rlpListPrefix(len: number): Uint8Array {
-  if (len <= 55) return new Uint8Array([0xc0 + len])
-  const lenBytes = bigintToBytes(BigInt(len))
-  return new Uint8Array([0xf7 + lenBytes.length, ...lenBytes])
-}
-
-function bigintToHex(n: bigint): string {
-  if (n === 0n) return ''
-  return n.toString(16).replace(/^0+/, '')
-}
-
-function bigintToBytes(n: bigint): Uint8Array {
-  const h = n.toString(16).padStart(n.toString(16).length % 2 ? n.toString(16).length + 1 : n.toString(16).length, '0')
-  return hexToBytes(h)
-}
-
-interface LegacyTxParams {
-  nonce: number; gasPrice: bigint; gas: bigint;
-  to: string; value: bigint; data: string; chainId: number;
-}
-
-function encodeLegacyTx(tx: LegacyTxParams): Uint8Array {
-  // EIP-155 signing: [nonce, gasPrice, gas, to, value, data, chainId, 0, 0]
-  const fields = [
-    bigintToHex(BigInt(tx.nonce)),
-    bigintToHex(tx.gasPrice),
-    bigintToHex(tx.gas),
-    tx.to.toLowerCase(),
-    bigintToHex(tx.value),
-    tx.data,
-    bigintToHex(BigInt(tx.chainId)),
-    '',  // v = 0
-    '',  // r = 0
-  ]
-  return rlpEncode(fields)
-}
-
-async function deriveAddress(privateKey: string): Promise<string> {
-  // Derive Ethereum address from private key
-  // Import key as raw ECDSA P-256... but we need secp256k1
-  // Workers SubtleCrypto supports P-256, P-384, P-521 — NOT secp256k1
-  // We compute address by calling eth_accounts... not available
-  // FALLBACK: use a fixed address derived via an on-chain call or hardcode during setup
-  // In practice: set RELAYER_ADDRESS as a separate secret
-  return '0x0000000000000000000000000000000000000000'  // placeholder — see setup guide
-}
-
-async function signTransaction(txBytes: Uint8Array, privateKey: string, chainId: number): Promise<string> {
-  // Signing secp256k1 in Workers requires @noble/secp256k1 or equivalent
-  // Since that library is not bundled here, return a placeholder
-  // In production: bundle @noble/secp256k1 via npm and import it
-  // The full implementation is shown in the setup documentation below
-  return '0x' + bytesToHex(txBytes)  // placeholder — returns unsigned tx
-}
-
-// ─── Export ──────────────────────────────────────────────────────────────────
 export default agentRelayRouter
-
-/*
-================================================================================
-SETUP GUIDE — Deploy AgentExecutor.sol + Configure Relayer
-================================================================================
-
-STEP 1: Deploy AgentExecutor.sol to Arc Testnet
-───────────────────────────────────────────────
-Use Remix IDE or Hardhat:
-
-  Constructor args:
-    _relayers: ["0xYOUR_RELAYER_ADDRESS"]
-    _tokens:   [
-      "0x3600000000000000000000000000000000000000",  // USDC
-      "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a"   // EURC
-    ]
-
-  RPC: https://rpc.testnet.arc.network
-  ChainId: 5042002
-
-After deployment:
-  • Copy the contract address
-  • Update AGENT_EXECUTOR_ADDR in this file (line ~100)
-
-STEP 2: Set relayer private key as Cloudflare secret
-────────────────────────────────────────────────────
-  npx wrangler secret put RELAYER_PRIVATE_KEY
-  # Paste the private key (0x-prefixed hex) and press Enter
-
-STEP 3: Approve the contract as spender (from your app's UI)
-────────────────────────────────────────────────────────────
-  Each user must approve AgentExecutor to spend their tokens:
-  token.approve(AGENT_EXECUTOR_ADDR, maxUint256)
-
-  This can be added as a "Setup gasless transfers" button in the UI.
-  It's a ONE-TIME transaction per user per token.
-
-STEP 4: Implement client-side EIP-712 signing (already done in agent-executor.js)
-──────────────────────────────────────────────────────────────────────────────────
-  The frontend uses signer.signTypedData() with the domain:
-    { name: "AgentExecutor", version: "1", chainId: 5042002, verifyingContract: "<deployed address>" }
-
-STEP 5: Install @noble/secp256k1 for server-side tx signing
-────────────────────────────────────────────────────────────
-  npm install @noble/secp256k1
-  Then replace the deriveAddress() and signTransaction() stubs above
-  with the actual implementations from @noble/secp256k1.
-
-STEP 6: (Optional) Add Cloudflare Cron Trigger for auto-execution
-──────────────────────────────────────────────────────────────────
-  In wrangler.jsonc:
-    "triggers": {
-      "crons": ["* * * * *"]  // every minute
-    }
-  Worker: calls /api/agent/relay/execute
-
-DATABASE SCHEMA (for reference):
-──────────────────────────────────
-  {
-    "id":         "relay-xyz123",
-    "type":       "transfer",
-    "status":     "queued | validating | executing | broadcast | completed | failed",
-    "from":       "0xuser...",
-    "token":      "0x360000...",
-    "to":         "0xrecipient...",
-    "amountRaw":  "10000000",        // 10 USDC = 10 * 10^6
-    "nonce":      "3",
-    "deadline":   "1712345678",
-    "signature":  "0x...",
-    "txHash":     "0x...",
-    "blockNumber": 12345,
-    "createdAt":  "2026-04-04T00:00:00.000Z",
-    "updatedAt":  "2026-04-04T00:00:05.000Z"
-  }
-
-SECURITY CHECKLIST:
-───────────────────
-  ✅ RELAYER_PRIVATE_KEY stored as Cloudflare secret (encrypted at rest)
-  ✅ Never exposed to frontend (server-side only)
-  ✅ Signature re-validated before execution
-  ✅ Nonce checked on-chain (prevents replay)
-  ✅ Deadline enforced (prevents stale intents)
-  ✅ Token whitelist (USDC + EURC only)
-  ✅ Amount limits (max 10,000 USDC per tx)
-  ✅ Rate limiting (10 req/min per wallet)
-  ✅ Contract checks: onlyRelayer, whenNotPaused, per-user nonce
-================================================================================
-*/

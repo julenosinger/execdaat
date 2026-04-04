@@ -1,6 +1,6 @@
 // ============================================================
 // AGENT EXECUTOR v4 — ExecDaat — Meta-Transaction System
-// Build: 20260404g
+// Build: 20260404h
 //
 // ┌─────────────────────────────────────────────────────────┐
 // │           GASLESS META-TRANSACTION ARCHITECTURE          │
@@ -48,7 +48,7 @@
 (function (global) {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const AE_VERSION = '20260404g';
+const AE_VERSION = '20260404h';
 const AE_API_BASE        = '/api/agent';
 const AE_POLL_MS         = 3000;
 const AE_MAX_RETRIES     = 3;
@@ -329,35 +329,41 @@ async function _ensureAgentContractApproval(signer, signerAddr, tokenAddr, amoun
 }
 
 // ─── GASLESS META-TX: Sign + Submit intent ────────────────────────────────────
-// This is the PRIMARY execution path.
-// User signs ONE EIP-712 message — relayer pays all gas.
+// PRIMARY execution path.
+//
+// POPUP FLOW:
+//   Popup 1 (one-time, per token): token.approve(AgentExecutor, MaxUint256)
+//   Popup 2 (per intent): signer.signTypedData() — sign only, NO gas
+//   After that: relayer automatically broadcasts — NO MORE POPUPS
+//
 async function _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRaw, ethers) {
   if (!AE_CONTRACT_ADDR || AE_CONTRACT_ADDR === '0x0000000000000000000000000000000000000000') {
     throw new Error('AgentExecutor contract not deployed. Using fallback path.');
   }
 
   await _ensureNetwork();
+
+  // ── POPUP 1: One-time approve (only if allowance < amountRaw) ────────────────
   await _ensureAgentContractApproval(signer, signerAddr, tokenAddr, amountRaw, ethers, intent.id);
 
-  // Get on-chain nonce for this wallet
+  // ── Fetch nonce from relay API (no popup) ────────────────────────────────────
   const nonce    = await _getRelayNonce(signerAddr);
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour
 
-  // Build EIP-712 typed data
+  // ── Build EIP-712 typed data ─────────────────────────────────────────────────
   let typedData, relayBody;
+
   if (intent.type === 'transfer') {
-    typedData = {
-      domain: AE_EIP712_DOMAIN,
-      types:  AE_TRANSFER_TYPES,
-      message: {
-        from:     signerAddr,
-        token:    tokenAddr,
-        to:       intent.to,
-        amount:   amountRaw,
-        nonce:    nonce,
-        deadline: deadline,
-      },
+    const domain  = { ...AE_EIP712_DOMAIN };
+    const message = {
+      from:     signerAddr,
+      token:    tokenAddr,
+      to:       intent.to,
+      amount:   amountRaw,
+      nonce:    nonce,
+      deadline: deadline,
     };
+    typedData = { domain, types: AE_TRANSFER_TYPES, message };
     relayBody = {
       type:      'transfer',
       from:      signerAddr,
@@ -369,22 +375,21 @@ async function _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRa
       deadline:  deadline.toString(),
       intentId:  intent.id,
     };
+
   } else if (intent.type === 'multisend') {
-    if (!intent.receivers || intent.receivers.length === 0) throw new Error('No receivers');
+    if (!intent.receivers || intent.receivers.length === 0) throw new Error('No receivers for multisend');
     const recipients = intent.receivers.map(r => r.address);
     const amounts    = intent.receivers.map(r => BigInt(Math.round(Number(r.amount) * 1_000_000)));
-    typedData = {
-      domain: AE_EIP712_DOMAIN,
-      types:  AE_BATCH_TYPES,
-      message: {
-        from:       signerAddr,
-        token:      tokenAddr,
-        recipients: recipients,
-        amounts:    amounts,
-        nonce:      nonce,
-        deadline:   deadline,
-      },
+    const domain  = { ...AE_EIP712_DOMAIN };
+    const message = {
+      from:       signerAddr,
+      token:      tokenAddr,
+      recipients: recipients,
+      amounts:    amounts,
+      nonce:      nonce,
+      deadline:   deadline,
     };
+    typedData = { domain, types: AE_BATCH_TYPES, message };
     relayBody = {
       type:       'batch',
       from:       signerAddr,
@@ -402,11 +407,15 @@ async function _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRa
     throw new Error(`Meta-tx not supported for type "${intent.type}"`);
   }
 
-  // Sign EIP-712 typed data (ONE wallet popup — signing only, no gas!)
+  // ── POPUP 2: Sign EIP-712 typed data (sign only — NO gas!) ───────────────────
   await _patch(intent.id, { status: 'signing' });
   _notify(intent.id, 'signing', { intent, step: 'sign_meta_tx' });
-  _toast('✍️ Sign intent (no gas needed) — wallet popup…', 'info');
-  _notifyMetaTx('✍️ **Signing intent** — please confirm the signature in your wallet (no gas required)…', 'info');
+  _toast('✍️ Sign intent (no gas) — wallet popup…', 'info');
+  _notifyMetaTx(
+    '✍️ **Sign intent** — confirm the signature in your wallet.\n\n' +
+    '*No gas required — just a cryptographic signature.*',
+    'info'
+  );
 
   const signature = await signer.signTypedData(
     typedData.domain,
@@ -415,16 +424,20 @@ async function _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRa
   );
 
   _log('EIP-712 signature obtained:', signature.slice(0, 20) + '…');
-  _notifyMetaTx('✅ **Signature received** — submitting to agent relayer…', 'success');
-  _toast('✍️ Signature received — submitting to relayer…', 'info');
+  _notifyMetaTx(
+    '✅ **Signature received** — submitting to agent relayer…\n\n' +
+    '*No more wallet popups — relayer will broadcast automatically.*',
+    'success'
+  );
+  _toast('✍️ Signed! Relayer is executing…', 'info');
 
-  // Submit to relay API
-  const r = await fetch(`${AE_API_BASE}/relay`, {
-    method: 'POST',
+  // ── Submit to relay API (no popup — backend signs + broadcasts) ──────────────
+  const resp = await fetch(`${AE_API_BASE}/relay`, {
+    method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...relayBody, signature }),
+    body:    JSON.stringify({ ...relayBody, signature }),
   });
-  const relayResult = await r.json();
+  const relayResult = await resp.json();
 
   if (!relayResult.success) {
     throw new Error(relayResult.error || 'Relay submission failed');
@@ -432,13 +445,33 @@ async function _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRa
 
   const jobId = relayResult.jobId;
   _log('Relay job created:', jobId);
-  _notifyMetaTx(`🤖 **Executing via agent** — Relay job \`${jobId}\`\n\n*Relayer is broadcasting your transaction (you pay no gas)…*`, 'agents');
-  _toast('🤖 Agent executing via relayer — no wallet popup!', 'info');
+
+  // Warn if relay is not fully configured
+  if (!relayResult.relayerConfigured) {
+    _notifyMetaTx(
+      '⚠️ **Relayer not configured** — intent queued but RELAYER_PRIVATE_KEY not set.\n\n' +
+      'Ask the dApp admin to run: `wrangler secret put RELAYER_PRIVATE_KEY`',
+      'error'
+    );
+  } else if (!relayResult.agentContractDeployed) {
+    _notifyMetaTx(
+      '⚠️ **AgentExecutor not deployed** — visit [Deploy Agent ↗](/static/deploy-agent) to deploy.',
+      'error'
+    );
+  } else {
+    _notifyMetaTx(
+      `🤖 **Relayer executing** — job \`${jobId}\`\n\n` +
+      '*Relayer is broadcasting your transaction. You pay no gas.*',
+      'agents'
+    );
+  }
+
+  _toast('🤖 Agent executing — no wallet popup!', 'info');
 
   await _patch(intent.id, { status: 'processing' });
   _notify(intent.id, 'processing', { intent, relayJobId: jobId });
 
-  // Poll relay job status
+  // ── Poll relay job status (no popup) ─────────────────────────────────────────
   await _pollRelayJob(intent, jobId);
 }
 
@@ -703,33 +736,29 @@ async function _executeTransfer(intent) {
     }
   }
 
-  // ── PATH 3: Direct ERC-20 transfer (fallback) ──────────────────────────────
-  _log('Using direct ERC-20 transfer (fallback)');
-  if (!spendingPermit) {
-    _toast('ℹ️ No spending permit — signing direct transfer…', 'info');
-  }
+  // ── PATH 3: No-popup fallback — inform user to set up gasless ────────────────
+  // We do NOT fall back to direct ERC-20 transfer because that requires a TX popup.
+  // Instead, we notify the user and fail gracefully.
+  _log('No gasless path available — AgentExecutor not deployed or Permit2 unavailable');
 
-  await _patch(intent.id, { status: 'signing' });
-  _notify(intent.id, 'signing', { intent, method: 'erc20_transfer' });
-  _toast(`⏳ Sign transfer: ${amount} ${intent.token} → wallet popup…`, 'info');
+  _notifyMetaTx(
+    '⚠️ **Gasless execution not available.**\n\n' +
+    'Options to enable gasless mode:\n' +
+    '1. Deploy AgentExecutor: open [Deploy Agent ↗](/static/deploy-agent)\n' +
+    '2. Or create a Permit2: type `allow agent to spend 100 USDC`\n\n' +
+    '*Once set up, all future transactions will require no wallet popup.*',
+    'error'
+  );
 
-  let gasLimit = 80_000n;
-  try {
-    const est = await token.transfer.estimateGas(intent.to, amountRaw);
-    gasLimit = BigInt(Math.ceil(Number(est) * 1.3));
-  } catch (_) {}
-
-  const tx = await token.transfer(intent.to, amountRaw, { gasLimit });
-  await _patch(intent.id, { status: 'broadcast', txHash: tx.hash });
-  _notify(intent.id, 'broadcast', { intent, txHash: tx.hash });
-  _toast(`📤 TX sent: ${tx.hash.slice(0,14)}…`, 'info');
-
-  const receipt = await tx.wait(1);
-  if (receipt.status !== 1) throw new Error(`Transaction reverted at block #${receipt.blockNumber}`);
-
-  await _patch(intent.id, { status: 'completed', txHash: tx.hash, blockNumber: receipt.blockNumber });
-  _notify(intent.id, 'completed', { intent, txHash: tx.hash, blockNumber: receipt.blockNumber });
-  _toast(`✅ Sent ${amount} ${intent.token}! Block #${receipt.blockNumber}`, 'success');
+  await _patch(intent.id, {
+    status: 'failed',
+    error:  'Gasless execution unavailable. Deploy AgentExecutor or create a Permit2 first.',
+  });
+  _notify(intent.id, 'failed', {
+    intent,
+    error: 'Deploy AgentExecutor contract to enable gasless execution. Visit /static/deploy-agent.',
+  });
+  _toast('⚠️ Deploy AgentExecutor to enable gasless. See chat for details.', 'error');
 }
 
 // ─── Permit2 availability ─────────────────────────────────────────────────────

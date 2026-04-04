@@ -1,6 +1,6 @@
 // ============================================================
 // AUTONOMA.JS — Subpage /agents/autonoma
-// Build: 20260404g
+// Build: 20260404h
 //
 // Layout: 2 columns
 //   LEFT  — Agent Executor Intents (live on-chain intent panel)
@@ -417,23 +417,23 @@
   function _metaTxStatusLine() {
     try {
       const status = window.AgentExecutor?.getMetaTxStatus?.();
-      // Also check localStorage directly
-      const contractAddr = localStorage.getItem('ae_contract_addr');
-      const isDeployed = (status?.contractDeployed) ||
+      // Also check localStorage directly (contract may have been deployed via deploy-agent.html)
+      const contractAddr = (function() {
+        try { return localStorage.getItem('ae_contract_addr'); } catch { return null; }
+      })();
+      const isDeployed =
+        (status?.contractDeployed) ||
         (contractAddr && contractAddr !== '0x0000000000000000000000000000000000000000');
 
-      if (!status && !isDeployed) {
-        return `🔧 **AgentExecutor não deployado** — [Fazer Deploy ↗](/static/deploy-agent.html)\n` +
-               `*Usando Permit2/direct como fallback*\n\n`;
-      }
       if (isDeployed) {
-        const addr = contractAddr || status?.contractAddress || '';
+        const addr  = contractAddr || status?.contractAddr || '';
         const short = addr ? ` (\`${addr.slice(0,6)}…${addr.slice(-4)}\`)` : '';
-        return `🚀 **Modo Gasless ativo** — contrato deployado${short}\n` +
-               `*Transações gasless — relayer paga o gas*\n\n`;
+        return `🚀 **Gasless mode active**${short} — relayer pays all gas\n` +
+               `*Sign once per intent — no TX popup, no gas cost.*\n\n`;
       }
-      return `⚡ **Setup de meta-tx pendente** — [deploy AgentExecutor.sol](/static/deploy-agent.html) para modo gasless\n` +
-             `*Usando Permit2/direct como fallback*\n\n`;
+
+      return `🔧 **AgentExecutor not deployed** — [Deploy now ↗](/static/deploy-agent)\n` +
+             `*Without it, sending requires a wallet TX popup.*\n\n`;
     } catch { return ''; }
   }
 
@@ -1000,7 +1000,7 @@
       _autonomaUpdateCsvBanner();
     }, 3000);
 
-    console.log('[Autonoma] Initialized v20260404g · Meta-Tx + Agent Executor Intents + CSV Upload + Status Hooks');
+    console.log('[Autonoma] Initialized v20260404h · Meta-Tx + Agent Executor Intents + CSV Upload + Status Hooks');
   }
 
   function autonomaDestroy() {
