@@ -928,23 +928,40 @@ agentRelayRouter.get('/relay/permit/:wallet', async (c) => {
 agentRelayRouter.get('/relay/status', async (c) => {
   const pk = c.env?.RELAYER_PRIVATE_KEY
   const relayerAddr = pk ? privateKeyToAddress(pk) : null
+  const contractDeployed = AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000'
+
+  // Mode A: contract deployed — gasless meta-tx
+  // Mode B: no contract — direct ERC-20 relay (transferFrom with user allowance)
+  // Neither: only queued (no private key)
+  const capabilities = !pk
+    ? ['queued_only']
+    : contractDeployed
+      ? ['gasless_transfer', 'gasless_batch', 'meta_tx']
+      : ['direct_relay_transfer', 'direct_relay_batch']
+
+  const mode = !pk
+    ? 'none'
+    : contractDeployed
+      ? 'A_agent_executor'
+      : 'B_direct_relay'
+
+  const message = !pk
+    ? '⚠️ RELAYER_PRIVATE_KEY not set — set via wrangler secret put'
+    : contractDeployed
+      ? '✅ Relay system fully operational (Mode A — AgentExecutor gasless)'
+      : '🔄 Mode B active — direct ERC-20 relay (transferFrom). Deploy AgentExecutor for full gasless mode.'
 
   return c.json({
     success:              true,
     relayerConfigured:    !!pk,
     relayerAddress:       relayerAddr,
-    contractDeployed:     AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000',
+    contractDeployed,
     contractAddress:      AGENT_EXECUTOR_ADDR,
     chainId:              CHAIN_ID,
     network:              'Arc Testnet',
-    capabilities:         !!pk && AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000'
-      ? ['gasless_transfer', 'gasless_batch']
-      : ['queued_only'],
-    message:
-      !pk                     ? '⚠️ RELAYER_PRIVATE_KEY not set — set via wrangler secret put' :
-      AGENT_EXECUTOR_ADDR === '0x0000000000000000000000000000000000000000'
-                              ? '⚠️ AgentExecutor not deployed — visit /static/deploy-agent' :
-                                '✅ Relay system fully operational',
+    mode,
+    capabilities,
+    message,
   })
 })
 
