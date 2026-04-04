@@ -3460,7 +3460,7 @@ app.get('/', (c) => {
 
     <!-- ══════════════════════════════════════════════════════════════
          AUTONOMA SUBPAGE — /agents/autonoma
-         2-column layout: Permit2 (left) + Embedded Chatbot (right)
+         2-column layout: Agent Executor Intents (left) + Embedded Chatbot (right)
     ═══════════════════════════════════════════════════════════════ -->
     <div id="tab-content-autonoma" class="tab-content hidden">
 
@@ -3478,7 +3478,7 @@ app.get('/', (c) => {
               </span>
               Autonoma
             </h2>
-            <p class="text-gray-500 text-xs mt-0.5 ml-11">Operações autônomas · Permit2 + Assistente IA</p>
+            <p class="text-gray-500 text-xs mt-0.5 ml-11">Operações autônomas · Agent Executor + Assistente IA</p>
           </div>
         </div>
         <!-- Status dot -->
@@ -3491,92 +3491,107 @@ app.get('/', (c) => {
       <!-- 2-column grid layout -->
       <div class="autonoma-grid">
 
-        <!-- ═══ LEFT COLUMN — Spending Permissions (Permit2) ═══ -->
+        <!-- ═══ LEFT COLUMN — Agent Executor Intents ═══ -->
         <div class="autonoma-col-left">
           <div class="autonoma-col-header">
-            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center flex-shrink-0">
-              <i class="fas fa-key text-white text-sm"></i>
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-bolt text-white text-sm"></i>
             </div>
             <div>
-              <h3 class="text-white font-semibold text-sm">Spending Permissions (Permit2)</h3>
-              <p class="text-yellow-400 text-xs">Limites autônomos · off-chain EIP-712 · sem gas</p>
+              <h3 class="text-white font-semibold text-sm">Agent Executor — Intents</h3>
+              <p class="text-purple-400 text-xs">Execução autônoma · on-chain · poll 3s</p>
             </div>
           </div>
 
-          <!-- Permit2 section (full content) -->
-          <div class="bg-gray-900/60 border border-yellow-500/30 rounded-xl p-5" id="autonoma-permit2-section">
+          <!-- Permit2 status banner -->
+          <div id="autonoma-permit-status-bar" class="mb-3 p-3 rounded-lg border text-xs flex items-center justify-between gap-2
+            bg-gray-800/50 border-gray-700/40 text-gray-400">
+            <div class="flex items-center gap-2 min-w-0">
+              <i class="fas fa-lock text-gray-500 text-[10px] flex-shrink-0"></i>
+              <span id="autonoma-permit-status-text" class="truncate">Verificando permissões…</span>
+            </div>
+            <button id="autonoma-permit-create-btn"
+              onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
+              class="hidden text-[11px] bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 rounded-lg px-2.5 py-1 hover:bg-yellow-500/30 transition-colors whitespace-nowrap flex-shrink-0">
+              <i class="fas fa-plus mr-1"></i> Criar Permit
+            </button>
+          </div>
 
-            <!-- Top actions -->
-            <div class="flex items-center justify-between mb-4">
-              <div class="flex items-center gap-2">
-                <span id="autonoma-permit2-badge" class="hidden bg-yellow-500 text-black text-xs font-bold rounded-full px-2 py-0.5">0 ativos</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <button onclick="if(window.renderPermit2Panel) renderPermit2Panel(); if(window.p2RefreshUI) p2RefreshUI();"
-                  class="text-xs text-yellow-400 hover:text-yellow-300 bg-yellow-900/20 border border-yellow-700/30 rounded-lg px-3 py-1.5 transition-colors">
+          <!-- Stats row -->
+          <div class="grid grid-cols-4 gap-1.5 mb-3">
+            <div class="bg-gray-800/50 rounded-lg p-2 text-center">
+              <p class="text-base font-bold text-white" id="autonoma-stat-total">—</p>
+              <p class="text-[10px] text-gray-500">Total</p>
+            </div>
+            <div class="bg-yellow-900/20 rounded-lg p-2 text-center border border-yellow-800/30">
+              <p class="text-base font-bold text-yellow-400" id="autonoma-stat-pending">—</p>
+              <p class="text-[10px] text-gray-500">Aceitos</p>
+            </div>
+            <div class="bg-green-900/20 rounded-lg p-2 text-center border border-green-800/30">
+              <p class="text-base font-bold text-green-400" id="autonoma-stat-completed">—</p>
+              <p class="text-[10px] text-gray-500">Concluídos</p>
+            </div>
+            <div class="bg-red-900/20 rounded-lg p-2 text-center border border-red-800/30">
+              <p class="text-base font-bold text-red-400" id="autonoma-stat-failed">—</p>
+              <p class="text-[10px] text-gray-500">Falhas</p>
+            </div>
+          </div>
+
+          <!-- Intents list -->
+          <div class="bg-gray-900/60 border border-purple-700/30 rounded-xl p-4" id="autonoma-intents-section">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                <i class="fas fa-list text-purple-400"></i> Histórico de intents
+                <span id="autonoma-pending-badge" class="hidden bg-purple-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none ml-1">0</span>
+              </span>
+              <div class="flex items-center gap-1.5">
+                <button onclick="autonomaRefreshIntents()"
+                  class="text-[11px] text-purple-400 hover:text-purple-300 bg-purple-900/20 border border-purple-700/30 rounded-lg px-2.5 py-1 transition-colors">
                   <i class="fas fa-sync mr-1"></i> Refresh
                 </button>
-                <button onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
-                  class="text-xs text-white bg-yellow-600 hover:bg-yellow-500 border border-yellow-500/50 rounded-lg px-3 py-1.5 transition-colors font-semibold">
-                  <i class="fas fa-plus mr-1"></i> New Permit
+                <button onclick="autonomaClearIntents()"
+                  class="text-[11px] text-gray-600 hover:text-red-400 bg-gray-800/40 border border-gray-700/30 rounded-lg px-2.5 py-1 transition-colors">
+                  <i class="fas fa-trash mr-1"></i> Limpar
                 </button>
               </div>
             </div>
 
-            <!-- Mirror of permit2-active-panel (synced via JS) -->
-            <div id="autonoma-permit2-mirror" class="space-y-2 mb-4">
-              <div class="text-center text-gray-600 text-sm py-6">
-                <i class="fas fa-lock text-gray-700 text-2xl mb-2 block"></i>
-                <span data-i18n="permit2_connect_prompt">Connect wallet to view permits</span>
+            <!-- Intents list body -->
+            <div id="autonoma-intents-list" class="space-y-1.5 max-h-52 overflow-y-auto">
+              <div class="text-center text-gray-600 text-xs py-5" id="autonoma-intents-empty">
+                <i class="fas fa-inbox text-gray-700 text-2xl mb-2 block"></i>
+                <span id="autonoma-empty-msg">Peça ao assistente para enviar um pagamento.</span>
               </div>
-            </div>
-
-            <!-- Quick permit commands (send to autonoma chat) -->
-            <div class="bg-gray-800/50 rounded-lg p-4">
-              <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3">
-                <i class="fas fa-terminal mr-1"></i> <span data-i18n="permit2_quick_cmds">Quick Commands</span>
-              </h4>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
-                  class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
-                  <div class="text-xs text-yellow-400 font-medium mb-0.5">Permit USDC (24h)</div>
-                  <div class="text-[11px] text-gray-500 font-mono">allow 100 USDC for 24 hours</div>
-                </button>
-                <button onclick="autonomaSendChat('give permission for swaps up to 50 EURC for 3 days')"
-                  class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
-                  <div class="text-xs text-yellow-400 font-medium mb-0.5">Permit Swap EURC (3d)</div>
-                  <div class="text-[11px] text-gray-500 font-mono">swap 50 EURC for 3 days</div>
-                </button>
-                <button onclick="autonomaSendChat('authorize payments of 200 USDC for 7 days')"
-                  class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
-                  <div class="text-xs text-yellow-400 font-medium mb-0.5" data-i18n="permit2_payments_7d">Payments (7 days)</div>
-                  <div class="text-[11px] text-gray-500 font-mono">200 USDC payments, 7 days</div>
-                </button>
-                <button onclick="autonomaSendChat('revoke all permits')"
-                  class="text-left bg-red-900/20 border border-red-700/20 rounded-lg p-2.5 hover:border-red-500/40 transition-colors">
-                  <div class="text-xs text-red-400 font-medium mb-0.5">Revogar Tudo</div>
-                  <div class="text-[11px] text-gray-500 font-mono">revoke all permits</div>
-                </button>
-              </div>
-            </div>
-
-            <!-- Info -->
-            <div class="mt-3 p-3 bg-yellow-900/10 border border-yellow-700/20 rounded-lg">
-              <p class="text-xs text-yellow-400/80">
-                <i class="fas fa-info-circle mr-1"></i>
-                <strong>Como funciona:</strong> Permits concedem ao agente IA direitos de gasto autônomo dentro do seu limite.
-                Requerem sua assinatura EIP-712 — <strong>sem custo de gas</strong>.
-                Duração máxima: <strong>7 dias</strong>.
-              </p>
             </div>
           </div>
 
-          <!-- Usage summary card -->
-          <div id="autonoma-usage-card" class="mt-4 bg-gray-900/40 border border-gray-700/40 rounded-xl p-4 hidden">
-            <h4 class="text-xs text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <i class="fas fa-chart-bar text-purple-400"></i> Uso de Permits
+          <!-- Quick intent actions -->
+          <div class="mt-3 bg-gray-900/40 border border-gray-700/40 rounded-xl p-4">
+            <h4 class="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <i class="fas fa-bolt text-purple-400"></i> Ações rápidas
             </h4>
-            <div id="autonoma-usage-bars" class="space-y-2"></div>
+            <div class="grid grid-cols-1 gap-2">
+              <button onclick="autonomaSendChat('send 10 USDC to 0x1234567890123456789012345678901234567890')"
+                class="text-left bg-purple-900/20 border border-purple-700/20 rounded-lg p-2.5 hover:border-purple-500/40 transition-colors">
+                <div class="text-xs text-purple-300 font-medium mb-0.5">⚡ Testar: send 10 USDC</div>
+                <div class="text-[11px] text-gray-500 font-mono">send 10 USDC to 0x1234…7890</div>
+              </button>
+              <button onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
+                class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
+                <div class="text-xs text-yellow-300 font-medium mb-0.5">🔐 Criar Permit USDC (24h)</div>
+                <div class="text-[11px] text-gray-500 font-mono">allow 100 USDC for 24 hours</div>
+              </button>
+              <button onclick="autonomaSendChat('show my intents')"
+                class="text-left bg-gray-800/50 border border-gray-700/30 rounded-lg p-2.5 hover:border-gray-500/40 transition-colors">
+                <div class="text-xs text-gray-300 font-medium mb-0.5">📋 Ver intents ativos</div>
+                <div class="text-[11px] text-gray-500 font-mono">show my intents</div>
+              </button>
+              <button onclick="autonomaSendChat('cancel all pending intents')"
+                class="text-left bg-red-900/20 border border-red-700/20 rounded-lg p-2.5 hover:border-red-500/40 transition-colors">
+                <div class="text-xs text-red-400 font-medium mb-0.5">🗑️ Cancelar pendentes</div>
+                <div class="text-[11px] text-gray-500 font-mono">cancel all pending intents</div>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -3588,7 +3603,7 @@ app.get('/', (c) => {
             </div>
             <div>
               <h3 class="text-white font-semibold text-sm">AI Execution Assistant</h3>
-              <p class="text-purple-400 text-xs">Assistente de operações autônomas · Brain-only mode</p>
+              <p class="text-purple-400 text-xs">Todas as funcionalidades · Agent Executor · Permit2 · Brain Mode</p>
             </div>
           </div>
 
@@ -3644,12 +3659,17 @@ app.get('/', (c) => {
 
             <!-- Quick actions -->
             <div class="px-2 pb-1 flex gap-1.5 overflow-x-auto flex-shrink-0 border-t border-gray-800/40 pt-1.5" style="scrollbar-width:none">
-              <button onclick="autonomaSendChat('my wallet')"       class="autonoma-quick-btn">💳 Wallet</button>
-              <button onclick="autonomaSendChat('check balance')"   class="autonoma-quick-btn" data-i18n="quick_balance">💰 Balance</button>
+              <button onclick="autonomaSendChat('my wallet')"         class="autonoma-quick-btn">💳 Wallet</button>
+              <button onclick="autonomaSendChat('check balance')"     class="autonoma-quick-btn">💰 Saldo</button>
+              <button onclick="autonomaSendChat('send 5 USDC to 0x1234567890123456789012345678901234567890')" class="autonoma-quick-btn">⚡ Enviar</button>
+              <button onclick="autonomaSendChat('swap 5 USDC to EURC')" class="autonoma-quick-btn">🔄 Swap</button>
+              <button onclick="autonomaSendChat('show my intents')"   class="autonoma-quick-btn">📋 Intents</button>
               <button onclick="autonomaSendChat('show my permissions')" class="autonoma-quick-btn">🔐 Permits</button>
-              <button onclick="autonomaSendChat('guardian')"        class="autonoma-quick-btn">🛡️ Guardian</button>
-              <button onclick="autonomaSendChat('network status')"  class="autonoma-quick-btn" data-i18n="quick_network">⛓️ Network</button>
-              <button onclick="autonomaSendChat('my transactions')" class="autonoma-quick-btn" data-i18n="quick_history">📜 History</button>
+              <button onclick="autonomaSendChat('my transactions')"   class="autonoma-quick-btn">📜 Histórico</button>
+              <button onclick="autonomaSendChat('guardian')"          class="autonoma-quick-btn">🛡️ Guardian</button>
+              <button onclick="autonomaSendChat('network status')"    class="autonoma-quick-btn">⛓️ Rede</button>
+              <button onclick="autonomaSendChat('show contracts')"    class="autonoma-quick-btn">📄 Contratos</button>
+              <button onclick="autonomaSendChat('help')"              class="autonoma-quick-btn">❓ Ajuda</button>
             </div>
 
             <!-- CSV banner (hidden by default) -->
@@ -3664,7 +3684,7 @@ app.get('/', (c) => {
             <div class="px-2 pb-2.5 flex-shrink-0">
               <div class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500 transition-all">
                 <input id="autonoma-chat-input" type="text"
-                  placeholder="Pergunte algo · permissões · enviar · analisar…"
+                  placeholder="send 10 USDC to 0x… · swap · intents · guardian · balance…"
                   class="flex-1 bg-transparent text-xs text-white placeholder-gray-600 focus:outline-none min-w-0"
                   onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();autonomaSendMessage();}">
                 <button onclick="autonomaSendMessage()" id="autonoma-send-btn"
@@ -3672,7 +3692,7 @@ app.get('/', (c) => {
                   <i class="fas fa-paper-plane text-xs"></i>
                 </button>
               </div>
-              <p class="text-center text-gray-700 text-[10px] mt-1">Enter para enviar · 🧠 Brain-only · wallet só com clique</p>
+              <p class="text-center text-gray-700 text-[10px] mt-1">Enter para enviar · 🤖 Agent Executor ativo · Permit2 · Brain Mode</p>
             </div>
           </div>
         </div>
@@ -4994,7 +5014,7 @@ app.get('/', (c) => {
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
   <script src="/static/otc.f5e54315.js"></script>
-  <script src="/static/autonoma.js?v=20260329a"></script>
+  <script src="/static/autonoma.js?v=20260404c"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner
