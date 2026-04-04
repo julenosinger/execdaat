@@ -1,6 +1,6 @@
 // ============================================================
 // AGENT EXECUTOR v4 — ExecDaat — Meta-Transaction System
-// Build: 20260404h
+// Build: 20260404i
 //
 // ┌─────────────────────────────────────────────────────────┐
 // │           GASLESS META-TRANSACTION ARCHITECTURE          │
@@ -48,7 +48,7 @@
 (function (global) {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const AE_VERSION = '20260404h';
+const AE_VERSION = '20260404i';
 const AE_API_BASE        = '/api/agent';
 const AE_POLL_MS         = 3000;
 const AE_MAX_RETRIES     = 3;

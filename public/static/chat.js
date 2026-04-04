@@ -112,7 +112,10 @@ function loadSession() {
 function saveSession(session) {
   localStorage.setItem(ARCPAY_SESSION_KEY, JSON.stringify(session));
   arcPaySession = session;
+  // Bridge hook fires here if installed — see chat-bridge.js
+  console.log(`[RESPONSE SENT] session_saved wallet=${session?.wallet?.slice(0,10)}`);
 }
+window.saveSession = saveSession;
 
 function clearSession() {
   localStorage.removeItem(ARCPAY_SESSION_KEY);
@@ -1123,8 +1126,12 @@ async function sendChatMessage() {
   if (sendBtn) sendBtn.disabled = true;
 
   try {
-    const handled = await handleLocalCommand(msg);
+    const handled = await (typeof window.handleUnifiedMessage === 'function'
+      ? window.handleUnifiedMessage(msg, 'main')
+      : handleLocalCommand(msg));
     if (handled) { hideTypingIndicator(); return; }
+
+    console.log(`[CHAT SOURCE] main→AI fallback sessionId=${CHAT_SESSION_ID.slice(0,20)}`);
 
     // Send to AI backend
     const res = await (async function() {
@@ -1146,6 +1153,7 @@ async function sendChatMessage() {
     if (res.data.success) {
       const reply = res.data.message;
       appendChatMessage('assistant', reply.content, reply.module);
+      console.log(`[RESPONSE SENT] ai_reply source=main module=${reply.module}`);
 
       // ── Render action card if LLM returned a blockchain action ─────────────
       const action = res.data.action || reply.action;
@@ -2083,9 +2091,14 @@ async function chatExecutePayment(amount, token, recipient) {
 }
 
 // ── _chatAgentTransfer: create an intent → AgentExecutor executes automatically ─
-// Requires: AgentExecutor loaded + agent session active.
-// Shows live status badge + updates in chat without requiring user to click Execute.
+// Delegates to unifiedAgentTransfer from chat-bridge.js when loaded.
 async function _chatAgentTransfer(amount, token, recipient) {
+  // If bridge is loaded, use it for consistent behavior across both chatbots
+  if (typeof window.unifiedAgentTransfer === 'function') {
+    return window.unifiedAgentTransfer(amount, token, recipient, 'main');
+  }
+
+  // Fallback: inline implementation (used before bridge loads)
   try {
     const tokenStr = (token || 'USDC').toUpperCase();
 
@@ -2127,16 +2140,15 @@ async function _chatAgentTransfer(amount, token, recipient) {
       'via chat'
     );
 
-    // Replace last message with confirmed intent + live badge
     appendChatMessage('assistant',
       `✅ **Intent queued — Agent Executor will process it shortly.**\n\n` +
       `| | |\n|---|---|\n` +
       `| Token | **${intent.token}** |\n` +
       `| Amount | **${intent.amount} ${intent.token}** |\n` +
       `| To | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n` +
-      `| Status | ${AgentExecutor.statusBadge(intent.id, 'pending')} |\n` +
+      `| Status | ${AgentExecutor.statusBadge ? AgentExecutor.statusBadge(intent.id, 'pending') : '⏳ pending'} |\n` +
       `| ID | \`${intent.id.slice(0,20)}…\` |\n\n` +
-      (permitInfo.includes('Permit2 spending') 
+      (permitInfo.includes('Permit2 spending')
         ? `🤖 *Executing autonomously via Permit2 spending permit…*`
         : `⚡ *Wallet popup will appear momentarily to sign the transfer.*`),
       'payments'

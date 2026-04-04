@@ -1,6 +1,6 @@
 // ============================================================
 // AUTONOMA.JS — Subpage /agents/autonoma
-// Build: 20260404h
+// Build: 20260404i
 //
 // Layout: 2 columns
 //   LEFT  — Agent Executor Intents (live on-chain intent panel)
@@ -185,28 +185,31 @@
     autonomaShowTyping();
 
     _patchCtx();
+    // Mark autonoma as active context for bridge event routing
+    window._autonomaActive = true;
     try {
       let localHandled = false;
 
-      // 1) Local intent commands
-      localHandled = await _handleAutonomaIntentCommand(msg);
+      console.log(`[CHAT SOURCE] autonoma input="${msg.slice(0,80)}"`);
 
-      // 2) Permit2 intents
-      if (!localHandled && typeof handlePermitIntent === 'function') {
-        localHandled = await handlePermitIntent(msg);
+      // ── Use unified message handler from chat-bridge.js (shared with main chat) ──
+      if (typeof window.handleUnifiedMessage === 'function') {
+        localHandled = await window.handleUnifiedMessage(msg, 'autonoma');
+      } else {
+        // Fallback if bridge not loaded yet: use legacy chain
+        localHandled = await _handleAutonomaIntentCommand(msg);
+        if (!localHandled && typeof handlePermitIntent === 'function') {
+          localHandled = await handlePermitIntent(msg);
+        }
+        if (!localHandled && typeof handleLocalCommand === 'function') {
+          localHandled = await handleLocalCommand(msg);
+        }
+        if (!localHandled && typeof handleLocalCommandWithCSV === 'function') {
+          localHandled = await handleLocalCommandWithCSV(msg);
+        }
       }
 
-      // 3) General local commands
-      if (!localHandled && typeof handleLocalCommand === 'function') {
-        localHandled = await handleLocalCommand(msg);
-      }
-
-      // 4) CSV extended handler
-      if (!localHandled && typeof handleLocalCommandWithCSV === 'function') {
-        localHandled = await handleLocalCommandWithCSV(msg);
-      }
-
-      // 5) Remote AI fallback
+      // ── Remote AI fallback (identical to main chat, with context='autonoma') ──
       if (!localHandled) {
         const CHAT_SESSION_KEY = 'arc-chat-session';
         const sessionId = 'arc-session-' + (localStorage.getItem(CHAT_SESSION_KEY) || (() => {
@@ -223,6 +226,8 @@
           context:       'autonoma',
         };
 
+        console.log(`[CHAT SOURCE] autonoma→AI fallback sessionId=${sessionId.slice(0,20)}`);
+
         const r = await fetch('/api/chat/message', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -237,6 +242,7 @@
         if (res.success) {
           const reply  = res.message;
           autonomaAppendMessage('assistant', reply.content, reply.module);
+          console.log(`[RESPONSE SENT] ai_reply source=autonoma module=${reply.module}`);
 
           const action = res.action || reply.action;
           if (action && action.type && action.type !== 'none') {
@@ -251,18 +257,21 @@
 
     } catch (err) {
       autonomaHideTyping();
-      autonomaAppendMessage('assistant', '❌ Network error. Please try again.', 'error');
+      console.error('[AUTONOMA] sendMessage error:', err);
+      autonomaAppendMessage('assistant', '❌ Error: ' + (err.message || 'Please try again.'), 'error');
     } finally {
       _unpatchCtx();
       autonomaTyping = false;
       if (sendBtn) sendBtn.disabled = false;
       input?.focus();
+      window._autonomaActive = autonomaActive;
       // After any message, refresh status panels
       setTimeout(() => {
         _updateAutonomaAgentStatus();
         _updateAutonomaPermitStatus();
         _autonomaUpdateCsvBanner();
-      }, 500);
+        if (typeof window.autonomaRefreshIntents === 'function') window.autonomaRefreshIntents();
+      }, 600);
     }
   };
 
@@ -971,6 +980,7 @@
   function autonomaInit() {
     if (autonomaActive) return;
     autonomaActive = true;
+    window._autonomaActive = true;
 
     _setFABVisibility(false);
     _closeFloatingChat();
@@ -1000,12 +1010,13 @@
       _autonomaUpdateCsvBanner();
     }, 3000);
 
-    console.log('[Autonoma] Initialized v20260404h · Meta-Tx + Agent Executor Intents + CSV Upload + Status Hooks');
+    console.log('[Autonoma] Initialized v20260404i · Unified Bridge + Agent Executor Intents + CSV Upload + Status Hooks');
   }
 
   function autonomaDestroy() {
     if (!autonomaActive) return;
     autonomaActive = false;
+    window._autonomaActive = false;
     _setFABVisibility(true);
     if (_autonomaPollTimer) { clearInterval(_autonomaPollTimer); _autonomaPollTimer = null; }
   }
@@ -1054,6 +1065,9 @@
     }, 300);
   });
 
-  console.log('[Autonoma] Module loaded · v20260404g · Meta-Tx + CSV Upload + Status Hooks');
+  // Expose active flag for bridge routing
+  window._autonomaActive = false;
+
+  console.log('[Autonoma] Module loaded · v20260404i · Unified bridge + CSV Upload + Status Hooks');
 
 })(); // IIFE
