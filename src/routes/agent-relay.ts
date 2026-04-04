@@ -771,6 +771,31 @@ agentRelayRouter.get('/relay/permit/:wallet', async (c) => {
   })
 })
 
+// ── GET /api/agent/relay/status — Relay system status ─────────────────────
+// IMPORTANT: Must come BEFORE /relay/:id to avoid "status" being captured as :id
+agentRelayRouter.get('/relay/status', async (c) => {
+  const pk = c.env?.RELAYER_PRIVATE_KEY
+  const relayerAddr = pk ? privateKeyToAddress(pk) : null
+
+  return c.json({
+    success:              true,
+    relayerConfigured:    !!pk,
+    relayerAddress:       relayerAddr,
+    contractDeployed:     AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000',
+    contractAddress:      AGENT_EXECUTOR_ADDR,
+    chainId:              CHAIN_ID,
+    network:              'Arc Testnet',
+    capabilities:         !!pk && AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000'
+      ? ['gasless_transfer', 'gasless_batch']
+      : ['queued_only'],
+    message:
+      !pk                     ? '⚠️ RELAYER_PRIVATE_KEY not set — set via wrangler secret put' :
+      AGENT_EXECUTOR_ADDR === '0x0000000000000000000000000000000000000000'
+                              ? '⚠️ AgentExecutor not deployed — visit /static/deploy-agent' :
+                                '✅ Relay system fully operational',
+  })
+})
+
 // ── GET /api/agent/relay/:id — Poll job status ────────────────────────────
 agentRelayRouter.get('/relay/:id', async (c) => {
   const kv  = c.env?.AGENT_INTENTS as KVNamespace | undefined
@@ -813,30 +838,6 @@ agentRelayRouter.get('/relay/:id', async (c) => {
       completedAt: job.completedAt,
       explorer:    job.txHash ? `${EXPLORER}/tx/${job.txHash}` : undefined,
     },
-  })
-})
-
-// ── GET /api/agent/relay/status — Relay system status ─────────────────────
-agentRelayRouter.get('/relay/status', async (c) => {
-  const pk = c.env?.RELAYER_PRIVATE_KEY
-  const relayerAddr = pk ? privateKeyToAddress(pk) : null
-
-  return c.json({
-    success:              true,
-    relayerConfigured:    !!pk,
-    relayerAddress:       relayerAddr,
-    contractDeployed:     AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000',
-    contractAddress:      AGENT_EXECUTOR_ADDR,
-    chainId:              CHAIN_ID,
-    network:              'Arc Testnet',
-    capabilities:         !!pk && AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000'
-      ? ['gasless_transfer', 'gasless_batch']
-      : ['queued_only'],
-    message:
-      !pk                     ? '⚠️ RELAYER_PRIVATE_KEY not set — set via wrangler secret put' :
-      AGENT_EXECUTOR_ADDR === '0x0000000000000000000000000000000000000000'
-                              ? '⚠️ AgentExecutor not deployed — visit /static/deploy-agent' :
-                                '✅ Relay system fully operational',
   })
 })
 
