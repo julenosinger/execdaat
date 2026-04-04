@@ -3373,7 +3373,7 @@ app.get('/', (c) => {
                 Agent Executor — Intents
                 <span id="ae-pending-badge" class="hidden bg-purple-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">0</span>
               </h3>
-              <p class="text-purple-400 text-xs">Live on-chain execution status · polls every 2.5s</p>
+              <p class="text-purple-400 text-xs">Live on-chain execution status · polls every 3s</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -3388,6 +3388,20 @@ app.get('/', (c) => {
           </div>
         </div>
 
+        <!-- Permit2 status banner — shows current spending permission state -->
+        <div id="ae-permit-status-bar" class="mb-4 p-3 rounded-lg border text-sm flex items-center justify-between gap-3
+          bg-gray-800/50 border-gray-700/40 text-gray-400">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-lock text-gray-500 text-xs"></i>
+            <span id="ae-permit-status-text">Checking spending permissions…</span>
+          </div>
+          <button id="ae-permit-create-btn"
+            onclick="sendQuickMessage('allow the agent to spend 100 USDC for 24 hours'); toggleChat();"
+            class="hidden text-xs bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 rounded-lg px-3 py-1 hover:bg-yellow-500/30 transition-colors whitespace-nowrap">
+            <i class="fas fa-plus mr-1"></i> Create Permit
+          </button>
+        </div>
+
         <!-- Stats bar -->
         <div class="grid grid-cols-4 gap-2 mb-4">
           <div class="bg-gray-800/50 rounded-lg p-2.5 text-center">
@@ -3396,11 +3410,11 @@ app.get('/', (c) => {
           </div>
           <div class="bg-yellow-900/20 rounded-lg p-2.5 text-center border border-yellow-800/30">
             <p class="text-lg font-bold text-yellow-400" id="ae-stat-pending">—</p>
-            <p class="text-[10px] text-gray-500">Pending</p>
+            <p class="text-[10px] text-gray-500">Accepted</p>
           </div>
           <div class="bg-green-900/20 rounded-lg p-2.5 text-center border border-green-800/30">
             <p class="text-lg font-bold text-green-400" id="ae-stat-completed">—</p>
-            <p class="text-[10px] text-gray-500">Done</p>
+            <p class="text-[10px] text-gray-500">Completed</p>
           </div>
           <div class="bg-red-900/20 rounded-lg p-2.5 text-center border border-red-800/30">
             <p class="text-lg font-bold text-red-400" id="ae-stat-failed">—</p>
@@ -3412,17 +3426,21 @@ app.get('/', (c) => {
         <div id="ae-intents-list" class="space-y-2 max-h-72 overflow-y-auto">
           <div class="text-center text-gray-600 text-sm py-6" id="ae-intents-empty">
             <i class="fas fa-inbox text-gray-700 text-3xl mb-2 block"></i>
-            No intents yet. Authorize the agent and ask the chat to send a payment.
+            <span id="ae-empty-msg">Authorize the agent, then ask the chat to send a payment.</span>
           </div>
         </div>
 
         <!-- Quick actions -->
         <div class="mt-4 p-3 bg-gray-800/40 rounded-lg">
-          <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Quick actions via chat</p>
+          <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Quick actions</p>
           <div class="flex flex-wrap gap-2">
             <button onclick="sendQuickMessage('send 5 USDC to 0x1234567890123456789012345678901234567890'); toggleChat();"
               class="text-xs bg-purple-900/30 border border-purple-700/30 rounded-lg px-3 py-1.5 text-purple-300 hover:border-purple-500/50 transition-colors">
               ⚡ Test: send 5 USDC
+            </button>
+            <button onclick="sendQuickMessage('allow the agent to spend 100 USDC for 24 hours'); toggleChat();"
+              class="text-xs bg-yellow-900/30 border border-yellow-700/30 rounded-lg px-3 py-1.5 text-yellow-300 hover:border-yellow-500/50 transition-colors">
+              🔐 Create Permit
             </button>
             <button onclick="if(window.AgentExecutor){AgentExecutor.getIntents().then(r=>aeRenderIntents(r));} "
               class="text-xs bg-gray-800/50 border border-gray-700/30 rounded-lg px-3 py-1.5 text-gray-400 hover:text-gray-300 transition-colors">

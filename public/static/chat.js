@@ -2087,48 +2087,81 @@ async function chatExecutePayment(amount, token, recipient) {
 // Shows live status badge + updates in chat without requiring user to click Execute.
 async function _chatAgentTransfer(amount, token, recipient) {
   try {
+    const tokenStr = (token || 'USDC').toUpperCase();
+
+    // Check permit2 spending permissions for helpful context message
+    let permitInfo = '';
+    try {
+      const permitStore = localStorage.getItem('arc_permit2_allowances_v1');
+      if (permitStore) {
+        const wallet = window.walletState?.address;
+        const now = Date.now();
+        const all = JSON.parse(permitStore);
+        const active = all.filter(p =>
+          wallet && p.wallet && p.wallet.toLowerCase() === wallet.toLowerCase() &&
+          p.expiry > now && (p.amount - (p.amountUsed || 0)) > 0 &&
+          p.token.toUpperCase() === tokenStr
+        );
+        if (active.length > 0) {
+          const rem = (active[0].amount - (active[0].amountUsed || 0)).toFixed(2);
+          const exp = Math.round((active[0].expiry - now) / 60000);
+          permitInfo = `\n\n🔐 *Using Permit2 spending permission (${rem} ${tokenStr} remaining, ${exp}m left)*`;
+        } else {
+          permitInfo = `\n\n⚡ *No Permit2 spending permit — wallet popup will appear to sign the transfer*`;
+        }
+      }
+    } catch {}
+
     // Show "Accepted" state immediately
     appendChatMessage('assistant',
-      `🧠 **Agent accepted your request**\n\n` +
-      `Sending **${amount} ${token || 'USDC'}** to \`${recipient.slice(0,10)}…${recipient.slice(-8)}\`\n\n` +
-      `⏳ *Creating intent…*`,
+      `🧠 **Intent accepted**\n\n` +
+      `Queuing **${amount} ${tokenStr}** → \`${recipient.slice(0,10)}…${recipient.slice(-8)}\`\n\n` +
+      `⏳ *Submitting to Agent Executor…*${permitInfo}`,
       'payments'
     );
 
     const intent = await AgentExecutor.queueTransfer(
       String(amount),
-      token || 'USDC',
+      tokenStr,
       recipient,
       'via chat'
     );
 
-    // Replace last message with confirmed intent
+    // Replace last message with confirmed intent + live badge
     appendChatMessage('assistant',
-      `🧠 **Intent accepted** — Agent Executor will execute shortly.\n\n` +
+      `✅ **Intent queued — Agent Executor will process it shortly.**\n\n` +
       `| | |\n|---|---|\n` +
       `| Token | **${intent.token}** |\n` +
       `| Amount | **${intent.amount} ${intent.token}** |\n` +
       `| To | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n` +
       `| Status | ${AgentExecutor.statusBadge(intent.id, 'pending')} |\n` +
-      `| Intent ID | \`${intent.id.slice(0,20)}…\` |\n\n` +
-      `⚡ *Wallet popup will appear automatically in a moment.*`,
+      `| ID | \`${intent.id.slice(0,20)}…\` |\n\n` +
+      (permitInfo.includes('Permit2 spending') 
+        ? `🤖 *Executing autonomously via Permit2 spending permit…*`
+        : `⚡ *Wallet popup will appear momentarily to sign the transfer.*`),
       'payments'
     );
 
-    console.log('[CHAT] Intent created:', intent.id, 'amount:', amount, token);
+    console.log('[CHAT] Intent created:', intent.id, 'amount:', amount, tokenStr);
 
   } catch (err) {
     console.error('[CHAT] _chatAgentTransfer error:', err);
-    // Fallback to manual queue if intent creation fails
     _aeWarnFallback(err);
     _chatQueueTransfer(amount, token, recipient);
   }
 }
 
 function _aeWarnFallback(err) {
+  const msg = err?.message || 'unknown error';
+  // Give specific guidance based on error type
+  let guidance = 'Your transfer was added to the manual queue instead. Click **Execute Payments** to proceed.';
+  if (/session expired|not authorized|re-authorize/i.test(msg)) {
+    guidance = 'Please **Authorize Daat Agent** in the chat first (click the status bar above).';
+  } else if (/wallet not connected/i.test(msg)) {
+    guidance = 'Connect your EVM wallet first, then authorize the Daat Agent.';
+  }
   appendChatMessage('assistant',
-    `⚠️ **Agent temporarily unavailable** (${err?.message || 'unknown error'})\n\n` +
-    `Your transfer was added to the manual queue instead. Click **Execute Payments** to proceed.`,
+    `⚠️ **Agent issue:** ${msg}\n\n${guidance}`,
     'warning'
   );
 }

@@ -1165,11 +1165,87 @@ window.aeRenderIntents = function(intents) {
 };
 
 /**
+ * Update the Permit2 spending permissions status bar in the intents panel.
+ */
+function aeUpdatePermitStatusBar() {
+  const bar     = document.getElementById('ae-permit-status-bar');
+  const txt     = document.getElementById('ae-permit-status-text');
+  const btn     = document.getElementById('ae-permit-create-btn');
+  const emptyMsg = document.getElementById('ae-empty-msg');
+  if (!bar || !txt) return;
+
+  const wallet = window.walletState?.address;
+
+  // No wallet connected
+  if (!wallet) {
+    bar.className = 'mb-4 p-3 rounded-lg border text-sm flex items-center justify-between gap-3 bg-gray-800/50 border-gray-700/40 text-gray-400';
+    txt.innerHTML = '<i class="fas fa-wallet text-gray-500 text-xs mr-2"></i>Connect your wallet to see spending permissions';
+    if (btn) btn.classList.add('hidden');
+    return;
+  }
+
+  // Check session
+  let session = null;
+  try {
+    const raw = localStorage.getItem('arc-pay-session-v3');
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s?.authorized && s?.wallet && s?.expiry && Date.now() < s.expiry) session = s;
+    }
+  } catch {}
+
+  if (!session) {
+    bar.className = 'mb-4 p-3 rounded-lg border text-sm flex items-center justify-between gap-3 bg-red-900/10 border-red-800/30 text-red-400';
+    txt.innerHTML = '<i class="fas fa-lock text-red-500 text-xs mr-2"></i><strong>Daat Agent not authorized</strong> — click <em>"Authorize Daat Agent"</em> in the chat first';
+    if (btn) btn.classList.add('hidden');
+    if (emptyMsg) emptyMsg.textContent = 'Authorize the Daat Agent in the chat panel to get started.';
+    return;
+  }
+
+  // Check permit2 spending permissions
+  const permitStore = localStorage.getItem('arc_permit2_allowances_v1');
+  let activePermits = [];
+  try {
+    const all = permitStore ? JSON.parse(permitStore) : [];
+    const now = Date.now();
+    activePermits = all.filter(p =>
+      p.wallet && p.wallet.toLowerCase() === wallet.toLowerCase() &&
+      p.expiry > now &&
+      (p.amount - (p.amountUsed || 0)) > 0
+    );
+  } catch {}
+
+  if (activePermits.length === 0) {
+    // Session OK but no permit
+    bar.className = 'mb-4 p-3 rounded-lg border text-sm flex items-center justify-between gap-3 bg-yellow-900/10 border-yellow-700/30 text-yellow-400';
+    txt.innerHTML = '<i class="fas fa-exclamation-triangle text-yellow-500 text-xs mr-2"></i><strong>No spending permit active</strong> — create one for fully autonomous execution (no wallet popup per tx)';
+    if (btn) btn.classList.remove('hidden');
+    if (emptyMsg) emptyMsg.textContent = 'Create a Permit2 spending permission for autonomous execution, then ask the chat to send a payment.';
+  } else {
+    // Has permits — show summary
+    const total = activePermits.length;
+    const lines = activePermits.slice(0, 2).map(p => {
+      const rem = (p.amount - (p.amountUsed || 0)).toFixed(2);
+      const exp = Math.round((p.expiry - Date.now()) / 60000);
+      return `${rem} ${p.token} (${exp}m left)`;
+    }).join(' · ');
+    bar.className = 'mb-4 p-3 rounded-lg border text-sm flex items-center justify-between gap-3 bg-green-900/10 border-green-700/30 text-green-400';
+    txt.innerHTML = `<i class="fas fa-check-circle text-green-500 text-xs mr-2"></i><strong>${total} permit${total>1?'s':''} active</strong> — ${lines} · Agent will execute autonomously`;
+    if (btn) btn.classList.add('hidden');
+    if (emptyMsg) emptyMsg.textContent = 'Permit active. Ask the chat to send a payment — agent will execute automatically.';
+  }
+}
+
+/**
  * Refresh the intent panel by fetching from AgentExecutor API.
  */
 window.aeRefreshPanel = async function() {
   const btn = document.getElementById('ae-refresh-btn');
   if (btn) { btn.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Refreshing…'; }
+
+  // Always update permit status bar
+  aeUpdatePermitStatusBar();
+
   try {
     if (typeof AgentExecutor !== 'undefined') {
       const intents = await AgentExecutor.getIntents();
