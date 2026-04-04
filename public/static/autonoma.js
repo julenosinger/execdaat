@@ -1,6 +1,6 @@
 // ============================================================
 // AUTONOMA.JS — Subpage /agents/autonoma
-// Build: 20260404e
+// Build: 20260404f
 //
 // Layout: 2 columns
 //   LEFT  — Agent Executor Intents (live on-chain intent panel)
@@ -957,7 +957,7 @@
       _autonomaUpdateCsvBanner();
     }, 3000);
 
-    console.log('[Autonoma] Initialized v20260404e · Agent Executor Intents + CSV Upload + Status Hooks');
+    console.log('[Autonoma] Initialized v20260404f · Meta-Tx + Agent Executor Intents + CSV Upload + Status Hooks');
   }
 
   function autonomaDestroy() {
@@ -1011,6 +1011,6 @@
     }, 300);
   });
 
-  console.log('[Autonoma] Module loaded · v20260404e · CSV Upload + Status Hooks');
+  console.log('[Autonoma] Module loaded · v20260404f · Meta-Tx + CSV Upload + Status Hooks');
 
 })(); // IIFE
