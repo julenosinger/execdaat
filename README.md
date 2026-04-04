@@ -1,4 +1,70 @@
-# ARC AI Agents — v5.2.0 (Multisend v5 + History v2 + ChainId Fix)
+# ExecDaat — Autonomous Payments dApp | v20260404i
+
+## Visão Geral
+Plataforma completa de pagamentos autônomos na **Arc Testnet** com chatbot unificado (main chat = autonoma tab), meta-transações gasless via AgentExecutor, Permit2 EIP-712, batch payments, DEX AMM e contratos inteligentes.
+
+## URLs
+- **Produção:** https://execdaat.pages.dev
+- **GitHub:** _(private)_
+
+---
+
+## 🔗 Rede Arc Testnet
+| Parâmetro | Valor |
+|-----------|-------|
+| Chain ID | `5042002` |
+| Chain Hex | `0x4cef52` |
+| RPC | `https://rpc.testnet.arc.network` |
+| Explorer | `https://testnet.arcscan.app` |
+| USDC | `0x3600000000000000000000000000000000000000` |
+| EURC | `0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a` |
+| Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
+| Relayer | `0xFAd3edb1aAe40C16cd30987fCEc3C3d68aEb7F45` |
+
+---
+
+## 🆕 v20260404i — Unified Chat Bridge
+
+### ✅ chat-bridge.js — Novo módulo compartilhado
+- `window.handleUnifiedMessage(msg, source)` — único ponto de entrada para AMBOS os chatbots
+- `window.unifiedAgentTransfer(amount, token, recipient, source)` — intent creation idêntica em ambos
+- `window.unifiedAgentMultisend(parsed, token, source)` — batch idêntico em ambos
+- Eventos `agentExecutor:update` e `agentMetaTx:message` → feedback em AMBOS os chats
+- Permit criado → `permit2Updated` dispatch → ambos os painéis atualizam
+- Autorização Daat Agent → `arcPayAuthorized` → mensagem de confirmação no Autonoma
+
+### ✅ Logs de debug unificados
+- `[CHAT SOURCE] source=main|autonoma input="..."` — rastreia origem de cada mensagem
+- `[RESPONSE SENT] type=... source=...` — rastreia cada resposta enviada
+
+### ✅ Fluxo de execução (sem popups após o permit)
+1. Usuário autoriza Daat Agent (sign EIP-191 uma vez)
+2. Usuário cria permit Permit2 (sign EIP-712 uma vez)
+3. Usuário digita "send 10 USDC to 0x..." em QUALQUER chat
+4. handleUnifiedMessage → cmdSendPayment → _chatAgentTransfer → unifiedAgentTransfer
+5. AgentExecutor.queueTransfer() → intent criado no backend
+6. Relayer detecta → assina meta-tx → broadcast
+7. agentExecutor:update → feedback em tempo real em AMBOS os chats
+
+### ✅ Versões anteriores incluídas
+- v20260404h: assinatura real secp256k1 no relayer, endpoints /relay/permit, /relay/status
+- v20260404g: fluxo meta-tx inicial, separação approve/sign
+
+## 📁 Arquitetura dos Scripts
+```
+chat.js          — Brain principal, handleLocalCommand, cmdSendPayment, etc.
+chat-bridge.js   — Ponte unificada (NEW), handleUnifiedMessage, eventos, logs
+autonoma.js      — Tab Autonoma, usa handleUnifiedMessage via bridge
+agent-executor.js — AgentExecutor v4, queueTransfer/queueMultisend, polling
+permit2-chat.js  — Criação de permits Permit2 EIP-712
+```
+
+## 🔄 Próximos passos
+1. Deploy do contrato AgentExecutor.sol via https://execdaat.pages.dev/static/deploy-agent.html
+2. Verificar status: GET https://execdaat.pages.dev/api/agent/relay/status
+3. Adicionar fundos ARC ao relayer 0xFAd3edb... para pagar gas
+
+
 
 ## Visão Geral
 Plataforma completa de DeFi na **Arc Testnet** com DEX AMM, pagamentos e contratos autônomos, 4 agentes de IA, swap USDC↔EURC, vaults de rendimento e chatbot inteligente. Todas as operações são assinadas e confirmadas na EVM via MetaMask/carteira EIP-1193.
