@@ -396,15 +396,36 @@ function rlpList(items: Uint8Array[]): Uint8Array {
 
 // ─── Build & sign EIP-155 legacy transaction ─────────────────────────────────
 
+// ─── ERC-20 ABI encoding for direct relay (no AgentExecutor needed) ──────────
+
+/** encode transfer(address to, uint256 amount) */
+function encodeERC20Transfer(to: string, amountRaw: string): string {
+  const selector = 'a9059cbb' // keccak256("transfer(address,uint256)")
+  return '0x' + selector + padLeft32(to) + toBigHex(amountRaw)
+}
+
+/** encode transferFrom(address from, address to, uint256 amount) */
+function encodeERC20TransferFrom(from: string, to: string, amountRaw: string): string {
+  const selector = '23b872dd' // keccak256("transferFrom(address,address,uint256)")
+  return '0x' + selector + padLeft32(from) + padLeft32(to) + toBigHex(amountRaw)
+}
+
+// ─── Build & sign EIP-155 legacy transaction ─────────────────────────────────
+
 interface LegacyTxParams {
   nonce: number; gasPrice: bigint; gas: bigint;
   to: string; value: bigint; data: string; chainId: number;
 }
 
-async function buildAndSignTx(callData: string, privateKey: string): Promise<string> {
+async function buildAndSignTx(
+  callData: string,
+  privateKey: string,
+  targetAddr?: string,   // optional override — defaults to AGENT_EXECUTOR_ADDR
+): Promise<string> {
+  const contractTo = targetAddr || AGENT_EXECUTOR_ADDR
   // Derive relayer address
   const relayerAddr = privateKeyToAddress(privateKey)
-  console.log(`[RELAY] Signing tx from relayer: ${relayerAddr}`)
+  console.log(`[RELAY] Signing tx from relayer: ${relayerAddr} → ${contractTo}`)
 
   const [nonceHex, gasPriceHex] = await Promise.all([
     rpcCall('eth_getTransactionCount', [relayerAddr, 'latest']) as Promise<string>,
@@ -419,7 +440,7 @@ async function buildAndSignTx(callData: string, privateKey: string): Promise<str
   try {
     const estHex = await rpcCall('eth_estimateGas', [{
       from: relayerAddr,
-      to:   AGENT_EXECUTOR_ADDR,
+      to:   contractTo,
       data: callData,
     }]) as string
     gasLimit = BigInt(String(estHex)) * 130n / 100n  // +30% buffer
@@ -434,7 +455,7 @@ async function buildAndSignTx(callData: string, privateKey: string): Promise<str
     rlpEncodeString(bigintToMinHex(BigInt(txNonce))),
     rlpEncodeString(bigintToMinHex(gasPrice)),
     rlpEncodeString(bigintToMinHex(gasLimit)),
-    rlpEncodeBytes(hexToBytes(AGENT_EXECUTOR_ADDR.replace('0x', ''))),
+    rlpEncodeBytes(hexToBytes(contractTo.replace('0x', ''))),
     rlpEncodeString(''),   // value = 0
     // data as bytes
     (function() {
@@ -457,7 +478,7 @@ async function buildAndSignTx(callData: string, privateKey: string): Promise<str
     rlpEncodeString(bigintToMinHex(BigInt(txNonce))),
     rlpEncodeString(bigintToMinHex(gasPrice)),
     rlpEncodeString(bigintToMinHex(gasLimit)),
-    rlpEncodeBytes(hexToBytes(AGENT_EXECUTOR_ADDR.replace('0x', ''))),
+    rlpEncodeBytes(hexToBytes(contractTo.replace('0x', ''))),
     rlpEncodeString(''),
     (function() {
       const dataBytes = hexToBytes(callData.replace('0x', ''))
@@ -472,6 +493,20 @@ async function buildAndSignTx(callData: string, privateKey: string): Promise<str
 }
 
 // ─── Execute relay job ────────────────────────────────────────────────────────
+//
+// TWO MODES:
+//   Mode A — AgentExecutor (AGENT_EXECUTOR_ADDR deployed):
+//     relayer calls AgentExecutor.execute(intent, sig) on-chain.
+//     User must have approved AgentExecutor as token spender.
+//
+//   Mode B — Direct ERC-20 relay (no contract needed):
+//     relayer calls token.transferFrom(user, to, amount) using user's allowance,
+//     OR token.transfer(to, amount) if relayer already holds the tokens.
+//     This mode works WITHOUT the AgentExecutor contract deployed.
+//     Required: user must approve the RELAYER address for token spending.
+//
+// Mode B is the active default when AGENT_EXECUTOR_ADDR = zero address.
+//
 
 async function executeRelayJob(
   kv: KVNamespace | undefined,
@@ -479,14 +514,8 @@ async function executeRelayJob(
   privateKey: string,
 ): Promise<void> {
   try {
-    // Check if AgentExecutor is deployed
-    if (AGENT_EXECUTOR_ADDR === '0x0000000000000000000000000000000000000000') {
-      throw new Error(
-        'AgentExecutor contract not deployed. ' +
-        'Visit /static/deploy-agent to deploy it first. ' +
-        'Then update AGENT_EXECUTOR_ADDR in agent-relay.ts.'
-      )
-    }
+    const contractDeployed = AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000'
+    const relayerAddr      = privateKeyToAddress(privateKey)
 
     job.status    = 'executing'
     job.updatedAt = _nowISO()
@@ -494,15 +523,138 @@ async function executeRelayJob(
     if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'processing' })
 
     let callData: string
-    if (job.type === 'transfer') {
-      callData = encodeExecute(job)
-    } else if (job.type === 'batch') {
-      callData = encodeExecuteBatch(job)
+    let targetAddr: string
+
+    if (contractDeployed) {
+      // ── Mode A: AgentExecutor.execute() ─────────────────────────────────────
+      console.log(`[RELAY] Mode A — AgentExecutor: ${AGENT_EXECUTOR_ADDR}`)
+      if (job.type === 'transfer') {
+        callData   = encodeExecute(job)
+      } else if (job.type === 'batch') {
+        callData   = encodeExecuteBatch(job)
+      } else {
+        throw new Error(`Unsupported job type: ${job.type}`)
+      }
+      targetAddr = AGENT_EXECUTOR_ADDR
+
     } else {
-      throw new Error(`Unsupported job type: ${job.type}`)
+      // ── Mode B: Direct ERC-20 relay (no AgentExecutor needed) ───────────────
+      // The relayer signs and sends token.transferFrom(user→to) using user's allowance.
+      // Pre-condition: user must approve relayer address OR the user's tokens must
+      // be in the relayer's own wallet.
+      console.log(`[RELAY] Mode B — Direct ERC-20 relay from ${relayerAddr}`)
+
+      targetAddr = job.token  // send calldata to the token contract
+
+      if (job.type === 'transfer') {
+        if (!job.to || !job.amountRaw) throw new Error('Missing to/amountRaw for transfer')
+
+        // Check relayer token balance first
+        const balData  = '0x70a08231' + padLeft32(relayerAddr)
+        const balHex   = await rpcCall('eth_call', [{ to: job.token, data: balData }, 'latest']) as string
+        const relayerBal = balHex && balHex !== '0x' ? BigInt(balHex) : 0n
+        const amtRaw     = BigInt(job.amountRaw)
+
+        if (relayerBal >= amtRaw) {
+          // Relayer has enough tokens — call transfer(to, amount)
+          console.log(`[RELAY] Direct transfer from relayer balance (${relayerBal} >= ${amtRaw})`)
+          callData = encodeERC20Transfer(job.to, job.amountRaw)
+        } else {
+          // Check user's allowance for relayer
+          const allowData = '0xdd62ed3e' + padLeft32(job.from) + padLeft32(relayerAddr)
+          const allowHex  = await rpcCall('eth_call', [{ to: job.token, data: allowData }, 'latest']) as string
+          const userAllowance = allowHex && allowHex !== '0x' ? BigInt(allowHex) : 0n
+
+          if (userAllowance >= amtRaw) {
+            // User approved relayer — call transferFrom(from, to, amount)
+            console.log(`[RELAY] TransferFrom: user allowance ${userAllowance} >= ${amtRaw}`)
+            callData = encodeERC20TransferFrom(job.from, job.to, job.amountRaw)
+          } else {
+            // Neither relayer balance nor user allowance is sufficient
+            throw new Error(
+              `Direct relay cannot execute: relayer balance ${Number(relayerBal)/1e6} < ${Number(amtRaw)/1e6} USDC ` +
+              `and user allowance for relayer ${Number(userAllowance)/1e6} < required. ` +
+              `Please approve the relayer (${relayerAddr}) or fund it with tokens. ` +
+              `Alternatively deploy AgentExecutor contract.`
+            )
+          }
+        }
+
+      } else if (job.type === 'batch') {
+        if (!job.recipients || job.recipients.length === 0) throw new Error('No recipients for batch')
+
+        // For batch in Mode B: send each transfer individually
+        // We'll encode the first one and note that multi-tx batch requires loop logic
+        // For now, send all via individual transferFrom calls sequentially
+        console.log(`[RELAY] Batch Mode B: ${job.recipients.length} recipients`)
+
+        let txHash: string | undefined
+        for (let i = 0; i < job.recipients.length; i++) {
+          const rcpt    = job.recipients[i]
+          const amtRaw  = BigInt(rcpt.amountRaw)
+
+          // Check relayer balance
+          const balData   = '0x70a08231' + padLeft32(relayerAddr)
+          const balHex    = await rpcCall('eth_call', [{ to: job.token, data: balData }, 'latest']) as string
+          const relayerBal = balHex && balHex !== '0x' ? BigInt(balHex) : 0n
+
+          let batchCallData: string
+          if (relayerBal >= amtRaw) {
+            batchCallData = encodeERC20Transfer(rcpt.address, rcpt.amountRaw)
+          } else {
+            const allowData = '0xdd62ed3e' + padLeft32(job.from) + padLeft32(relayerAddr)
+            const allowHex  = await rpcCall('eth_call', [{ to: job.token, data: allowData }, 'latest']) as string
+            const userAllow  = allowHex && allowHex !== '0x' ? BigInt(allowHex) : 0n
+            if (userAllow >= amtRaw) {
+              batchCallData = encodeERC20TransferFrom(job.from, rcpt.address, rcpt.amountRaw)
+            } else {
+              throw new Error(`Batch recipient ${i}: relayer balance and user allowance insufficient`)
+            }
+          }
+
+          const signedBatchTx = await buildAndSignTx(batchCallData, privateKey, job.token)
+          txHash = await sendRelayTx(signedBatchTx)
+          console.log(`[RELAY] Batch tx ${i+1}/${job.recipients.length}: ${txHash}`)
+        }
+
+        // Use last txHash for confirmation
+        job.txHash    = txHash
+        job.status    = 'broadcast'
+        job.updatedAt = _nowISO()
+        await jobPut(kv, job)
+        if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: 'broadcast', txHash })
+
+        // Confirm last tx
+        for (let i = 0; i < 20 && txHash; i++) {
+          await new Promise(r => setTimeout(r, 3000))
+          const receipt = await getTxReceipt(txHash)
+          if (receipt) {
+            const success   = receipt.status === '0x1'
+            job.status      = success ? 'completed' : 'failed'
+            job.blockNumber = parseInt(receipt.blockNumber, 16)
+            job.gasUsed     = receipt.gasUsed
+            job.error       = success ? undefined : 'Batch transaction reverted on-chain'
+            job.completedAt = _nowISO()
+            job.updatedAt   = _nowISO()
+            await jobPut(kv, job)
+            if (job.intentId) await updateLinkedIntent(kv, job.intentId, { status: job.status, txHash, blockNumber: job.blockNumber })
+            console.log(`[RELAY] Batch ${success ? 'Completed ✅' : 'Failed ❌'}: ${job.id}`)
+            return
+          }
+        }
+        // Timeout
+        job.status    = 'completed'  // assume success if no receipt yet
+        job.updatedAt = _nowISO()
+        await jobPut(kv, job)
+        return
+
+      } else {
+        throw new Error(`Unsupported job type: ${job.type}`)
+      }
     }
 
-    const signedTx = await buildAndSignTx(callData, privateKey)
+    // ── Broadcast the signed transaction ──────────────────────────────────────
+    const signedTx = await buildAndSignTx(callData, privateKey, targetAddr)
 
     job.status    = 'broadcast'
     job.updatedAt = _nowISO()

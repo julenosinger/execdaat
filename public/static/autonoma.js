@@ -1,6 +1,6 @@
 // ============================================================
 // AUTONOMA.JS — Subpage /agents/autonoma
-// Build: 20260404i
+// Build: 20260404j
 //
 // Layout: 2 columns
 //   LEFT  — Agent Executor Intents (live on-chain intent panel)
@@ -406,9 +406,15 @@
 
     // Meta-tx status
     const metaTx = window.AgentExecutor?.getMetaTxStatus?.() || null;
-    const metaTxRow = metaTx
-      ? `| Gasless Mode | ${metaTx.contractDeployed ? '✅ Active — relayer pays gas' : '⚠️ Pending contract deploy'} |\n`
-      : '';
+    let metaTxRow = '';
+    if (metaTx) {
+      const modeLabel = metaTx.contractDeployed
+        ? '✅ Modo A — gasless (AgentExecutor)'
+        : metaTx.relayerConfigured
+          ? `🔄 Modo B — direct relay (${metaTx.relayerAddress?.slice(0,10)}…)`
+          : '⚠️ Relay não configurado';
+      metaTxRow = `| Relay Mode | ${modeLabel} |\n`;
+    }
 
     autonomaAppendMessage('assistant',
       `🤖 **Agent Executor Status**\n\n` +
@@ -441,8 +447,16 @@
                `*Sign once per intent — no TX popup, no gas cost.*\n\n`;
       }
 
-      return `🔧 **AgentExecutor not deployed** — [Deploy now ↗](/static/deploy-agent)\n` +
-             `*Without it, sending requires a wallet TX popup.*\n\n`;
+      // Mode B: contract not deployed but relay may still work via transferFrom
+      const relayerConfigured = status?.relayerConfigured;
+      if (relayerConfigured) {
+        return `🔄 **Direct relay mode** — contrato AgentExecutor não deployado ainda.\n` +
+               `*O relayer executará via \`transferFrom\` — você precisará aprovar o relayer uma vez.*\n` +
+               `Para modo gasless completo: [Deploy AgentExecutor ↗](/static/deploy-agent)\n\n`;
+      }
+
+      return `🔧 **Relay não configurado** — [Deploy AgentExecutor ↗](/static/deploy-agent)\n` +
+             `*Configure RELAYER_PRIVATE_KEY para ativar execução automática.*\n\n`;
     } catch { return ''; }
   }
 
@@ -1010,7 +1024,7 @@
       _autonomaUpdateCsvBanner();
     }, 3000);
 
-    console.log('[Autonoma] Initialized v20260404i · Unified Bridge + Agent Executor Intents + CSV Upload + Status Hooks');
+    console.log('[Autonoma] Initialized v20260404j · Unified Bridge + Agent Executor Intents + CSV Upload + Status Hooks');
   }
 
   function autonomaDestroy() {
@@ -1068,6 +1082,6 @@
   // Expose active flag for bridge routing
   window._autonomaActive = false;
 
-  console.log('[Autonoma] Module loaded · v20260404i · Unified bridge + CSV Upload + Status Hooks');
+  console.log('[Autonoma] Module loaded · v20260404j · Unified bridge + CSV Upload + Status Hooks');
 
 })(); // IIFE

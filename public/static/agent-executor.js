@@ -1,6 +1,6 @@
 // ============================================================
 // AGENT EXECUTOR v4 — ExecDaat — Meta-Transaction System
-// Build: 20260404i
+// Build: 20260404j
 //
 // ┌─────────────────────────────────────────────────────────┐
 // │           GASLESS META-TRANSACTION ARCHITECTURE          │
@@ -48,7 +48,7 @@
 (function (global) {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const AE_VERSION = '20260404i';
+const AE_VERSION = '20260404j';
 const AE_API_BASE        = '/api/agent';
 const AE_POLL_MS         = 3000;
 const AE_MAX_RETRIES     = 3;
@@ -290,6 +290,42 @@ async function _agentContractAvailable() {
   } catch { return false; }
 }
 
+// ─── Fetch relayer address from relay status endpoint ────────────────────────
+let _cachedRelayerAddr = null;
+async function _getRelayerAddress() {
+  if (_cachedRelayerAddr) return _cachedRelayerAddr;
+  try {
+    const r = await fetch(`${AE_API_BASE}/relay/status`);
+    const d = await r.json();
+    if (d.success && d.relayerAddress) {
+      _cachedRelayerAddr = d.relayerAddress;
+      _log('Relayer address fetched:', _cachedRelayerAddr);
+      return _cachedRelayerAddr;
+    }
+  } catch (e) { _warn('Could not fetch relayer address:', e); }
+  return null;
+}
+
+// ─── Check if relayer has enough allowance OR check direct-relay feasibility ──
+async function _relayerDirectAvailable(signerAddr, tokenAddr, amountRaw) {
+  const relayerAddr = await _getRelayerAddress();
+  if (!relayerAddr) return false;
+  try {
+    // Check user's allowance for relayer
+    const encAllowance = '0xdd62ed3e' +
+      signerAddr.replace('0x','').toLowerCase().padStart(64,'0') +
+      relayerAddr.replace('0x','').toLowerCase().padStart(64,'0');
+    const r = await fetch(AE_RPC, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc:'2.0', method:'eth_call',
+        params:[{ to: tokenAddr, data: encAllowance }, 'latest'], id:1 }),
+    });
+    const d = await r.json();
+    const allowance = d.result && d.result !== '0x' ? BigInt(d.result) : 0n;
+    return allowance >= amountRaw;
+  } catch { return false; }
+}
+
 // ─── Get on-chain nonce from relay API ────────────────────────────────────────
 async function _getRelayNonce(wallet) {
   try {
@@ -305,27 +341,45 @@ async function _getRelayNonce(wallet) {
 
 // ─── Check & ensure AgentExecutor approval (ONE-TIME setup) ──────────────────
 // This is the only wallet popup in the gasless flow (one-time, per token)
+// In Mode B (no contract): approves the RELAYER address instead of AgentExecutor
 async function _ensureAgentContractApproval(signer, signerAddr, tokenAddr, amountRaw, ethers, intentId) {
   const token = new ethers.Contract(tokenAddr, AE_ERC20_ABI, signer);
-  const allowance = BigInt(await token.allowance(signerAddr, AE_CONTRACT_ADDR));
+  const contractDeployed = AE_CONTRACT_ADDR !== '0x0000000000000000000000000000000000000000';
 
+  // Determine the spender to approve
+  let spenderAddr = AE_CONTRACT_ADDR;
+  let spenderLabel = 'AgentExecutor contract';
+
+  if (!contractDeployed) {
+    // Mode B: approve the relayer address directly
+    const relayerAddr = await _getRelayerAddress();
+    if (!relayerAddr) {
+      _warn('No relayer address available — RELAYER_PRIVATE_KEY may not be set');
+      return; // proceed anyway, relay will fail with descriptive error
+    }
+    spenderAddr = relayerAddr;
+    spenderLabel = `Relayer (${relayerAddr.slice(0,10)}…)`;
+    _log('Mode B: approving relayer as spender:', relayerAddr);
+  }
+
+  const allowance = BigInt(await token.allowance(signerAddr, spenderAddr));
   if (allowance >= amountRaw) return; // Already approved ✓
 
-  _log('AgentExecutor not approved — requesting one-time setup approval…');
+  _log(`${spenderLabel} not approved — requesting one-time setup approval…`);
   if (intentId) {
     await _patch(intentId, { status: 'signing' });
     _notify(intentId, 'signing', { step: 'approve_agent_contract' });
   }
-  _toast('⚙️ One-time setup: Approve AgentExecutor contract — wallet popup (this is the last popup!)…', 'info');
+  _toast(`⚙️ One-time setup: Approve ${spenderLabel} — wallet popup (this is the last popup!)…`, 'info');
   _notifyMetaTx('⚙️ **One-time setup required** — approving AgentExecutor as spender…\n\n*This is the only wallet popup you will see. All future transactions will be gasless.*', 'info');
 
   const maxUint256 = 2n ** 256n - 1n;
-  const approveTx  = await token.approve(AE_CONTRACT_ADDR, maxUint256);
+  const approveTx  = await token.approve(spenderAddr, maxUint256);
   const approveRcpt = await approveTx.wait(1);
-  if (approveRcpt.status !== 1) throw new Error('AgentExecutor approval reverted');
-  _log('AgentExecutor approved (max allowance) — all future transfers will be gasless!');
-  _toast('✅ Agent contract approved! Future transfers will be gasless.', 'success');
-  _notifyMetaTx('✅ **Agent contract approved!** All future transfers will be gasless — no more wallet popups.', 'success');
+  if (approveRcpt.status !== 1) throw new Error('Approval reverted');
+  _log(`${spenderLabel} approved (max allowance) — all future transfers will be gasless!`);
+  _toast(`✅ ${spenderLabel} approved! Future transfers will be gasless.`, 'success');
+  _notifyMetaTx(`✅ **${spenderLabel} approved!** All future transfers will be gasless — no more wallet popups.`, 'success');
 }
 
 // ─── GASLESS META-TX: Sign + Submit intent ────────────────────────────────────
@@ -337,13 +391,26 @@ async function _ensureAgentContractApproval(signer, signerAddr, tokenAddr, amoun
 //   After that: relayer automatically broadcasts — NO MORE POPUPS
 //
 async function _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRaw, ethers) {
-  if (!AE_CONTRACT_ADDR || AE_CONTRACT_ADDR === '0x0000000000000000000000000000000000000000') {
-    throw new Error('AgentExecutor contract not deployed. Using fallback path.');
+  // Mode A: AgentExecutor deployed — use EIP-712 + AgentExecutor.execute()
+  // Mode B: No contract yet — relay uses transferFrom(user→to) with user's allowance
+  // Both modes use the same relay API — the backend decides which path to use.
+  const contractDeployed = AE_CONTRACT_ADDR !== '0x0000000000000000000000000000000000000000';
+
+  if (!contractDeployed) {
+    _log('Mode B active — AgentExecutor not deployed, using direct ERC-20 relay');
+    _notifyMetaTx(
+      '🔄 **Direct relay mode** — AgentExecutor not deployed yet.\n\n' +
+      'Your transfer will be executed by the relayer directly.\n' +
+      '*One-time approval popup to authorize the relayer as spender.*',
+      'info'
+    );
   }
 
   await _ensureNetwork();
 
   // ── POPUP 1: One-time approve (only if allowance < amountRaw) ────────────────
+  // Mode A: approves AgentExecutor contract
+  // Mode B: approves relayer address
   await _ensureAgentContractApproval(signer, signerAddr, tokenAddr, amountRaw, ethers, intent.id);
 
   // ── Fetch nonce from relay API (no popup) ────────────────────────────────────
@@ -703,21 +770,39 @@ async function _executeTransfer(intent) {
     throw new Error(`Insufficient ${intent.token}: have ${Number(balance)/1e6} need ${amount}`);
   }
 
-  // ── PATH 1: AgentExecutor Meta-Tx (GASLESS) ────────────────────────────────
+  // ── PATH 1A: AgentExecutor Meta-Tx (GASLESS — contract deployed) ──────────
   const contractReady = await _agentContractAvailable();
   if (contractReady) {
-    _log('Using AgentExecutor meta-tx path (gasless)');
+    _log('Using AgentExecutor meta-tx path (gasless, contract deployed)');
     _notifyMetaTx('🤖 **Gasless execution** — using Agent Executor meta-transaction system…', 'agents');
     try {
       await _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRaw, ethers);
       return;
     } catch (metaTxErr) {
       const msg = metaTxErr?.message || String(metaTxErr);
-      if (msg.includes('not deployed') || msg.includes('not supported')) {
-        _log('Meta-tx not available, trying Permit2 path:', msg);
-      } else {
-        _warn('Meta-tx failed, trying Permit2 fallback:', msg);
-        _notifyMetaTx(`⚠️ Meta-tx failed: ${msg}\n\nFalling back to Permit2…`, 'error');
+      _warn('Meta-tx failed, trying Permit2 fallback:', msg);
+      _notifyMetaTx(`⚠️ Meta-tx failed: ${msg}\n\nFalling back to Permit2…`, 'error');
+    }
+  }
+
+  // ── PATH 1B: Direct Relay Mode B (no AgentExecutor contract needed) ────────
+  // The relay uses transferFrom(user→to) with the user's allowance for the relayer.
+  if (!contractReady) {
+    const relayerAddr = await _getRelayerAddress();
+    if (relayerAddr) {
+      _log('Using Mode B direct relay path (no AgentExecutor contract)');
+      _notifyMetaTx(
+        '🔄 **Direct relay mode** — relayer will execute via `transferFrom`.\\n\\n' +
+        '*One-time approval required if you haven\'t approved the relayer yet.*',
+        'info'
+      );
+      try {
+        await _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRaw, ethers);
+        return;
+      } catch (relayErr) {
+        const msg = relayErr?.message || String(relayErr);
+        _warn('Direct relay Mode B failed:', msg);
+        _notifyMetaTx(`⚠️ Relay failed: ${msg}\n\nFalling back to Permit2…`, 'error');
       }
     }
   }
@@ -732,33 +817,35 @@ async function _executeTransfer(intent) {
       await _executeViaPermit2Single(signer, signerAddr, intent, tokenAddr, amountRaw, ethers, spendingPermit);
       return;
     } catch (p2err) {
-      _warn('Permit2 path failed, falling back to direct ERC-20:', p2err.message);
+      _warn('Permit2 path failed:', p2err.message);
     }
   }
 
-  // ── PATH 3: No-popup fallback — inform user to set up gasless ────────────────
-  // We do NOT fall back to direct ERC-20 transfer because that requires a TX popup.
-  // Instead, we notify the user and fail gracefully.
-  _log('No gasless path available — AgentExecutor not deployed or Permit2 unavailable');
+  // ── PATH 3: All gasless paths failed ──────────────────────────────────────
+  _log('All relay paths failed — no available execution route');
 
+  const relayerForMsg = await _getRelayerAddress();
   _notifyMetaTx(
-    '⚠️ **Gasless execution not available.**\n\n' +
-    'Options to enable gasless mode:\n' +
-    '1. Deploy AgentExecutor: open [Deploy Agent ↗](/static/deploy-agent)\n' +
-    '2. Or create a Permit2: type `allow agent to spend 100 USDC`\n\n' +
-    '*Once set up, all future transactions will require no wallet popup.*',
+    '⚠️ **Relay execution failed.**\n\n' +
+    (relayerForMsg
+      ? `The relayer (\`${relayerForMsg.slice(0,10)}…\`) needs to be funded with tokens, ` +
+        'OR you need to approve it as a spender.\n\n' +
+        '**Quick fix:** type `allow agent to spend 100 USDC` to create a Permit2, then retry.\n\n' +
+        'Or ask admin to fund the relayer wallet.'
+      : 'Configure **RELAYER_PRIVATE_KEY** via `wrangler secret put RELAYER_PRIVATE_KEY`.\n\n' +
+        'Or create a Permit2: type `allow agent to spend 100 USDC`.'),
     'error'
   );
 
   await _patch(intent.id, {
     status: 'failed',
-    error:  'Gasless execution unavailable. Deploy AgentExecutor or create a Permit2 first.',
+    error:  'All relay execution paths unavailable. Check relayer configuration.',
   });
   _notify(intent.id, 'failed', {
     intent,
-    error: 'Deploy AgentExecutor contract to enable gasless execution. Visit /static/deploy-agent.',
+    error: 'Relay execution failed. Try creating a Permit2 allowance or contact admin.',
   });
-  _toast('⚠️ Deploy AgentExecutor to enable gasless. See chat for details.', 'error');
+  _toast('⚠️ Relay failed. See chat for details.', 'error');
 }
 
 // ─── Permit2 availability ─────────────────────────────────────────────────────
@@ -952,16 +1039,25 @@ function aeGetPermitStatus(token) {
 // ─── Meta-tx status helper ────────────────────────────────────────────────────
 function aeGetMetaTxStatus() {
   const contractDeployed = AE_CONTRACT_ADDR !== '0x0000000000000000000000000000000000000000';
+  const relayerAddress   = _cachedRelayerAddr || null;
+  const relayerConfigured = !!relayerAddress;
   return {
     contractDeployed,
-    contractAddr:  AE_CONTRACT_ADDR,
-    domain:        AE_EIP712_DOMAIN,
-    capabilities:  contractDeployed
+    contractAddr:      AE_CONTRACT_ADDR,
+    relayerConfigured,
+    relayerAddress,
+    mode:              contractDeployed ? 'A_agent_executor' : relayerConfigured ? 'B_direct_relay' : 'none',
+    domain:            AE_EIP712_DOMAIN,
+    capabilities:      contractDeployed
       ? ['gasless_transfer', 'gasless_batch', 'eip712_signing']
-      : ['permit2_transfer', 'direct_transfer'],
+      : relayerConfigured
+        ? ['direct_relay_transfer', 'direct_relay_batch']
+        : ['permit2_transfer'],
     message: contractDeployed
       ? '✅ Gasless meta-transactions enabled — relayer pays all gas'
-      : '⚠️ AgentExecutor not deployed — using Permit2/direct fallback',
+      : relayerConfigured
+        ? '🔄 Direct relay mode — relayer uses transferFrom (one-time approval needed)'
+        : '⚠️ Relay not configured — set RELAYER_PRIVATE_KEY',
   };
 }
 
@@ -1086,7 +1182,18 @@ async function aeDeployContract(onProgress) {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 function _init() {
   _log(`Agent Executor v${AE_VERSION} loaded`);
-  _log('Meta-tx status:', aeGetMetaTxStatus().message);
+
+  // Pre-fetch relayer address so Mode B status is available immediately
+  _getRelayerAddress().then(addr => {
+    if (addr) {
+      _log(`Relayer address cached: ${addr}`);
+      _log('Meta-tx status:', aeGetMetaTxStatus().message);
+    } else {
+      _log('Meta-tx status:', aeGetMetaTxStatus().message);
+    }
+  }).catch(() => {
+    _log('Meta-tx status:', aeGetMetaTxStatus().message);
+  });
 
   setInterval(() => {
     const session = _getSession();

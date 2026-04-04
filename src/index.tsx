@@ -5029,8 +5029,8 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260404i"></script>
   <script src="/static/queue-engine.js?v=20260403a"></script>
-  <script src="/static/agent-executor.js?v=20260404i"></script>
-  <script src="/static/chat-bridge.js?v=20260404i"></script>
+  <script src="/static/agent-executor.js?v=20260404j"></script>
+  <script src="/static/chat-bridge.js?v=20260404j"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
     The query-string approach (?v=) does NOT invalidate browser cache when
@@ -5045,7 +5045,7 @@ app.get('/', (c) => {
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
   <script src="/static/otc.f5e54315.js"></script>
-  <script src="/static/autonoma.js?v=20260404i"></script>
+  <script src="/static/autonoma.js?v=20260404j"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner
