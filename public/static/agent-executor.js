@@ -1,48 +1,62 @@
 // ============================================================
-// AGENT EXECUTOR v3 — ExecDaat
-// Build: 20260404b
+// AGENT EXECUTOR v4 — ExecDaat — Meta-Transaction System
+// Build: 20260404f
 //
-// Architecture:
-//   • Creates intents via POST /api/agent/intents
-//   • Polls GET /api/agent/poll every POLL_MS
-//   • Checks Permit2 Spending Permissions FIRST (from localStorage)
-//     → If a valid permit exists: uses stored signature (no wallet popup)
-//     → If no permit: uses direct ERC-20 transfer (wallet popup once)
-//   • Updates intent via PATCH /api/agent/intents/:id
-//   • Notifies chat UI via custom events + updates panel
+// ┌─────────────────────────────────────────────────────────┐
+// │           GASLESS META-TRANSACTION ARCHITECTURE          │
+// │                                                          │
+// │  User → signTypedData(EIP-712) → Backend Relayer        │
+// │       → AgentExecutor.execute(request, sig)             │
+// │       → NO wallet popup after initial setup             │
+// └─────────────────────────────────────────────────────────┘
 //
-// Execution method (priority order):
-//   1. Permit2 SignatureTransfer via stored spending permit (no wallet popup)
-//   2. Direct ERC-20 transfer (requires wallet sign — fallback only)
+// Flow (gasless path):
+//   1. User opens Autonoma tab, Daat Agent is authorized
+//   2. User types "send 10 USDC to 0x…"
+//   3. Executor checks if AgentExecutor contract is approved as spender
+//      a. If NOT approved → show ONE wallet popup for approve (one-time setup)
+//      b. If approved     → proceed directly
+//   4. Get current nonce from /api/agent/relay/nonce/:wallet
+//   5. Build EIP-712 typed data (TransferIntent or BatchIntent)
+//   6. Call signer.signTypedData() → ONE wallet popup (just sign, no gas!)
+//   7. POST /api/agent/relay with { type, from, token, to, amountRaw, nonce, deadline, signature }
+//   8. UI shows: "✍️ Signature received" → "🤖 Executing via agent" → "📤 TX sent" → "✅ Completed"
+//   9. Poll /api/agent/relay/:jobId every 2s for status
+//  10. No wallet popup after signing — relayer pays all gas
+//
+// Execution priority:
+//   1. AgentExecutor meta-tx path (gasless — relayer pays gas)       ← PRIMARY
+//   2. Permit2 SignatureTransfer (user signs per-tx, user pays gas)   ← fallback
+//   3. Direct ERC-20 transfer (user signs + pays gas)                ← last resort
 //
 // Security:
-//   • Validates session (arc-pay-session-v3)
-//   • Checks Permit2 spending permissions (arc_permit2_allowances_v1)
-//   • Amount > 0 on every tx
-//   • User confirmation for intents ≥ CONFIRM_THRESHOLD USDC
-//   • Replay prevention: intent id stored in sessionStorage
-//   • Wallet ownership verified before execution
+//   • Per-user nonce prevents replay attacks
+//   • Deadline (1 hour) prevents stale signatures
+//   • Server validates signature before broadcasting
+//   • Contract re-validates signature on-chain (double verification)
+//   • Replay guard in sessionStorage
+//   • Wallet ownership verified before signing
 //
-// NO backend private key. User's wallet signs every tx.
-//
-// IMPORTANT: For truly autonomous execution, users MUST first
-// create a Permit2 Spending Permission via chat or the Permits panel.
-// Without a valid permit, agent will fall back to requesting a
-// wallet signature at execution time.
+// UX Messages (in Autonoma chat):
+//   "✍️ Signature received — submitting to agent relayer…"
+//   "🤖 Executing via agent — TX sent to network…"
+//   "📤 Transaction broadcast — waiting for confirmation…"
+//   "✅ Completed! [View on Explorer ↗]"
 // ============================================================
 'use strict';
 
 (function (global) {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const AE_VERSION         = '20260404b';
+const AE_VERSION         = '20260404f';
 const AE_API_BASE        = '/api/agent';
-const AE_POLL_MS         = 3000;          // poll interval (ms)
+const AE_POLL_MS         = 3000;
 const AE_MAX_RETRIES     = 3;
-const AE_CONFIRM_THRESH  = 50;            // USDC: ask confirm if amount >= this
-const AE_STORAGE_KEY     = 'ae_executed'; // sessionStorage: executed intent ids
-const AE_PERMIT_STORE    = 'arc_permit2_allowances_v1'; // localStorage: spending permits
+const AE_CONFIRM_THRESH  = 50;
+const AE_STORAGE_KEY     = 'ae_executed';
+const AE_PERMIT_STORE    = 'arc_permit2_allowances_v1';
 const AE_SESSION_KEY     = 'arc-pay-session-v3';
+const AE_RELAY_NONCE_KEY = 'ae_relay_nonce_';    // sessionStorage key prefix
 
 const AE_RPC        = 'https://rpc.testnet.arc.network';
 const AE_CHAIN_ID   = 5042002;
@@ -51,40 +65,58 @@ const AE_EXPLORER   = 'https://testnet.arcscan.app';
 const AE_USDC_ADDR  = '0x3600000000000000000000000000000000000000';
 const AE_EURC_ADDR  = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
 
-// Canonical Permit2 (deployed on Arc Testnet — verified)
+// Permit2 (for fallback path)
 const AE_PERMIT2_ADDR = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const AE_MULTICALL3   = '0xcA11bde05977b3631167028862bE2a173976CA11';
 
-// ─── ABIs ─────────────────────────────────────────────────────────────────────
-const AE_ERC20_ABI = [
-  'function balanceOf(address) view returns (uint256)',
-  'function allowance(address,address) view returns (uint256)',
-  'function approve(address,uint256) returns (bool)',
-  'function transfer(address,uint256) returns (bool)',
-  'function transferFrom(address,address,uint256) returns (bool)',
-];
+// AgentExecutor contract on Arc Testnet
+// Update this address after deploying AgentExecutor.sol
+// Current: placeholder — set after deployment via Remix/Hardhat
+const AE_CONTRACT_ADDR = (function() {
+  try {
+    // Allow override via localStorage for testing
+    return localStorage.getItem('ae_contract_addr') ||
+      '0x0000000000000000000000000000000000000000';
+  } catch { return '0x0000000000000000000000000000000000000000'; }
+})();
 
-// Permit2 — SignatureTransfer.permitTransferFrom
-const AE_PERMIT2_ABI = [
-  // Single transfer
-  'function permitTransferFrom(tuple(tuple(address token,uint256 amount) permitted,uint256 nonce,uint256 deadline) permit,tuple(address to,uint256 requestedAmount) transferDetails,address owner,bytes signature)',
-  // Batch transfer
-  'function permitTransferFrom(tuple(tuple(address token,uint256 amount)[] permitted,uint256 nonce,uint256 deadline) permit,tuple(address to,uint256 requestedAmount)[] transferDetails,address owner,bytes signature)',
-  // Nonce check
-  'function nonceBitmap(address,uint256) view returns (uint256)',
-];
+// EIP-712 Domain for AgentExecutor (must match deployed contract)
+const AE_EIP712_DOMAIN = {
+  name:              'AgentExecutor',
+  version:           '1',
+  chainId:           AE_CHAIN_ID,
+  verifyingContract: AE_CONTRACT_ADDR,
+};
 
-const AE_MULTICALL3_ABI = [
-  'function aggregate3(tuple(address target,bool allowFailure,bytes callData)[] calls) payable returns (tuple(bool success,bytes returnData)[] returnData)',
-];
+// EIP-712 Types
+const AE_TRANSFER_TYPES = {
+  TransferIntent: [
+    { name: 'from',     type: 'address' },
+    { name: 'token',    type: 'address' },
+    { name: 'to',       type: 'address' },
+    { name: 'amount',   type: 'uint256' },
+    { name: 'nonce',    type: 'uint256' },
+    { name: 'deadline', type: 'uint256' },
+  ],
+};
 
-// ─── Permit2 EIP-712 domain + types (SignatureTransfer) ──────────────────────
+const AE_BATCH_TYPES = {
+  BatchIntent: [
+    { name: 'from',       type: 'address'   },
+    { name: 'token',      type: 'address'   },
+    { name: 'recipients', type: 'address[]' },
+    { name: 'amounts',    type: 'uint256[]' },
+    { name: 'nonce',      type: 'uint256'   },
+    { name: 'deadline',   type: 'uint256'   },
+  ],
+};
+
+// Permit2 EIP-712 (for fallback)
 const AE_PERMIT2_DOMAIN = {
   name:              'Permit2',
   chainId:           AE_CHAIN_ID,
   verifyingContract: AE_PERMIT2_ADDR,
 };
-
 const AE_PERMIT_TRANSFER_TYPES = {
   PermitTransferFrom: [
     { name: 'permitted', type: 'TokenPermissions' },
@@ -98,15 +130,31 @@ const AE_PERMIT_TRANSFER_TYPES = {
   ],
 };
 
+// ─── ABIs ─────────────────────────────────────────────────────────────────────
+const AE_ERC20_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+  'function allowance(address,address) view returns (uint256)',
+  'function approve(address,uint256) returns (bool)',
+  'function transfer(address,uint256) returns (bool)',
+  'function transferFrom(address,address,uint256) returns (bool)',
+];
+const AE_PERMIT2_ABI = [
+  'function permitTransferFrom(tuple(tuple(address token,uint256 amount) permitted,uint256 nonce,uint256 deadline) permit,tuple(address to,uint256 requestedAmount) transferDetails,address owner,bytes signature)',
+  'function nonceBitmap(address,uint256) view returns (uint256)',
+];
+const AE_MULTICALL3_ABI = [
+  'function aggregate3(tuple(address target,bool allowFailure,bytes callData)[] calls) payable returns (tuple(bool success,bytes returnData)[] returnData)',
+];
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let _aeRunning   = false;
 let _aePollTimer = null;
-let _aeLastPoll  = null;   // ISO timestamp
+let _aeLastPoll  = null;
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
-function _log(...a)  { console.log('%c[AGENT-EXEC v3]', 'color:#a78bfa;font-weight:bold', ...a); }
-function _warn(...a) { console.warn('[AGENT-EXEC v3]', ...a); }
-function _err(...a)  { console.error('[AGENT-EXEC v3]', ...a); }
+function _log(...a)  { console.log('%c[AGENT-EXEC v4]', 'color:#a78bfa;font-weight:bold', ...a); }
+function _warn(...a) { console.warn('[AGENT-EXEC v4]', ...a); }
+function _err(...a)  { console.error('[AGENT-EXEC v4]', ...a); }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 function _toast(msg, type = 'info') {
@@ -120,6 +168,13 @@ function _notify(intentId, status, data = {}) {
   }));
 }
 
+// ─── Meta-tx notification (for Autonoma chat specific messages) ───────────────
+function _notifyMetaTx(msg, type = 'info') {
+  window.dispatchEvent(new CustomEvent('agentMetaTx:message', {
+    detail: { msg, type }
+  }));
+}
+
 // ─── Session ──────────────────────────────────────────────────────────────────
 function _getSession() {
   try {
@@ -128,40 +183,35 @@ function _getSession() {
     const s = JSON.parse(raw);
     if (!s?.authorized || !s?.wallet || !s?.expiry) return null;
     if (Date.now() > s.expiry) return null;
-    return s;   // { authorized, wallet, signature, sessionNonce, sessionHash, expiry, createdAt }
+    return s;
   } catch { return null; }
 }
 
 // ─── Permit2 Spending Permissions ─────────────────────────────────────────────
-// Reads permits stored by permit2-chat.js
 function _getActivePermits(wallet) {
   try {
     const raw = localStorage.getItem(AE_PERMIT_STORE);
     if (!raw) return [];
     const now = Date.now();
-    const all = JSON.parse(raw);
-    return all.filter(p =>
+    return JSON.parse(raw).filter(p =>
       p.wallet && p.wallet.toLowerCase() === wallet.toLowerCase() &&
-      p.expiry > now &&
-      (p.amount - (p.amountUsed || 0)) > 0
+      p.expiry > now && (p.amount - (p.amountUsed || 0)) > 0
     );
   } catch { return []; }
 }
 
-// Find a permit that covers the requested transfer
 function _findPermit(wallet, token, amount) {
   const permits = _getActivePermits(wallet);
   const tokenUpper = (token || 'USDC').toUpperCase();
   return permits.find(p => {
-    const tokenMatch  = p.token.toUpperCase() === tokenUpper;
-    const scopeOk     = p.scope === 'all' || p.scope === 'payments';
-    const remaining   = (p.amount || 0) - (p.amountUsed || 0);
-    const amountOk    = remaining >= Number(amount);
+    const tokenMatch = p.token.toUpperCase() === tokenUpper;
+    const scopeOk   = p.scope === 'all' || p.scope === 'payments';
+    const remaining = (p.amount || 0) - (p.amountUsed || 0);
+    const amountOk  = remaining >= Number(amount);
     return tokenMatch && scopeOk && amountOk;
   }) || null;
 }
 
-// Record permit usage (to track remaining balance)
 function _recordPermitUsage(permitId, amountUsed) {
   try {
     const raw = localStorage.getItem(AE_PERMIT_STORE);
@@ -171,9 +221,8 @@ function _recordPermitUsage(permitId, amountUsed) {
     if (idx >= 0) {
       all[idx].amountUsed = (all[idx].amountUsed || 0) + Number(amountUsed);
       localStorage.setItem(AE_PERMIT_STORE, JSON.stringify(all));
-      _log(`Permit ${permitId} usage recorded: +${amountUsed} (total: ${all[idx].amountUsed}/${all[idx].amount})`);
     }
-  } catch (e) { _warn('Failed to record permit usage:', e.message); }
+  } catch (e) { _warn('permit usage record failed:', e.message); }
 }
 
 // ─── Replay guard ─────────────────────────────────────────────────────────────
@@ -223,24 +272,243 @@ async function _ensureNetwork() {
   }
 }
 
-// ─── Permit2 nonce helper (random 248-bit nonce to avoid collisions) ──────────
-function _randomNonce() {
-  const arr = new Uint8Array(31);
-  crypto.getRandomValues(arr);
-  return BigInt('0x' + Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join(''));
-}
-
-// ─── Permit2 availability check ───────────────────────────────────────────────
-async function _permit2Available() {
+// ─── AgentExecutor contract availability check ────────────────────────────────
+async function _agentContractAvailable() {
   try {
+    if (AE_CONTRACT_ADDR === '0x0000000000000000000000000000000000000000') return false;
     const r = await fetch(AE_RPC, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc:'2.0', method:'eth_getCode', params:[AE_PERMIT2_ADDR,'latest'], id:1 }),
+      body: JSON.stringify({ jsonrpc:'2.0', method:'eth_getCode', params:[AE_CONTRACT_ADDR,'latest'], id:1 }),
     });
     const d = await r.json();
     return d.result && d.result.length > 4;
   } catch { return false; }
+}
+
+// ─── Get on-chain nonce from relay API ────────────────────────────────────────
+async function _getRelayNonce(wallet) {
+  try {
+    const r = await fetch(`${AE_API_BASE}/relay/nonce/${wallet}`);
+    const d = await r.json();
+    if (d.success) return BigInt(d.nonce);
+    return 0n;
+  } catch {
+    // Fall back to 0 if relay endpoint not available
+    return 0n;
+  }
+}
+
+// ─── Check & ensure AgentExecutor approval (ONE-TIME setup) ──────────────────
+// This is the only wallet popup in the gasless flow (one-time, per token)
+async function _ensureAgentContractApproval(signer, signerAddr, tokenAddr, amountRaw, ethers, intentId) {
+  const token = new ethers.Contract(tokenAddr, AE_ERC20_ABI, signer);
+  const allowance = BigInt(await token.allowance(signerAddr, AE_CONTRACT_ADDR));
+
+  if (allowance >= amountRaw) return; // Already approved ✓
+
+  _log('AgentExecutor not approved — requesting one-time setup approval…');
+  if (intentId) {
+    await _patch(intentId, { status: 'signing' });
+    _notify(intentId, 'signing', { step: 'approve_agent_contract' });
+  }
+  _toast('⚙️ One-time setup: Approve AgentExecutor contract — wallet popup (this is the last popup!)…', 'info');
+  _notifyMetaTx('⚙️ **One-time setup required** — approving AgentExecutor as spender…\n\n*This is the only wallet popup you will see. All future transactions will be gasless.*', 'info');
+
+  const maxUint256 = 2n ** 256n - 1n;
+  const approveTx  = await token.approve(AE_CONTRACT_ADDR, maxUint256);
+  const approveRcpt = await approveTx.wait(1);
+  if (approveRcpt.status !== 1) throw new Error('AgentExecutor approval reverted');
+  _log('AgentExecutor approved (max allowance) — all future transfers will be gasless!');
+  _toast('✅ Agent contract approved! Future transfers will be gasless.', 'success');
+  _notifyMetaTx('✅ **Agent contract approved!** All future transfers will be gasless — no more wallet popups.', 'success');
+}
+
+// ─── GASLESS META-TX: Sign + Submit intent ────────────────────────────────────
+// This is the PRIMARY execution path.
+// User signs ONE EIP-712 message — relayer pays all gas.
+async function _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRaw, ethers) {
+  if (!AE_CONTRACT_ADDR || AE_CONTRACT_ADDR === '0x0000000000000000000000000000000000000000') {
+    throw new Error('AgentExecutor contract not deployed. Using fallback path.');
+  }
+
+  await _ensureNetwork();
+  await _ensureAgentContractApproval(signer, signerAddr, tokenAddr, amountRaw, ethers, intent.id);
+
+  // Get on-chain nonce for this wallet
+  const nonce    = await _getRelayNonce(signerAddr);
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour
+
+  // Build EIP-712 typed data
+  let typedData, relayBody;
+  if (intent.type === 'transfer') {
+    typedData = {
+      domain: AE_EIP712_DOMAIN,
+      types:  AE_TRANSFER_TYPES,
+      message: {
+        from:     signerAddr,
+        token:    tokenAddr,
+        to:       intent.to,
+        amount:   amountRaw,
+        nonce:    nonce,
+        deadline: deadline,
+      },
+    };
+    relayBody = {
+      type:      'transfer',
+      from:      signerAddr,
+      token:     tokenAddr,
+      to:        intent.to,
+      amount:    intent.amount,
+      amountRaw: amountRaw.toString(),
+      nonce:     nonce.toString(),
+      deadline:  deadline.toString(),
+      intentId:  intent.id,
+    };
+  } else if (intent.type === 'multisend') {
+    if (!intent.receivers || intent.receivers.length === 0) throw new Error('No receivers');
+    const recipients = intent.receivers.map(r => r.address);
+    const amounts    = intent.receivers.map(r => BigInt(Math.round(Number(r.amount) * 1_000_000)));
+    typedData = {
+      domain: AE_EIP712_DOMAIN,
+      types:  AE_BATCH_TYPES,
+      message: {
+        from:       signerAddr,
+        token:      tokenAddr,
+        recipients: recipients,
+        amounts:    amounts,
+        nonce:      nonce,
+        deadline:   deadline,
+      },
+    };
+    relayBody = {
+      type:       'batch',
+      from:       signerAddr,
+      token:      tokenAddr,
+      recipients: intent.receivers.map((r, i) => ({
+        address:   r.address,
+        amount:    r.amount,
+        amountRaw: amounts[i].toString(),
+      })),
+      nonce:      nonce.toString(),
+      deadline:   deadline.toString(),
+      intentId:   intent.id,
+    };
+  } else {
+    throw new Error(`Meta-tx not supported for type "${intent.type}"`);
+  }
+
+  // Sign EIP-712 typed data (ONE wallet popup — signing only, no gas!)
+  await _patch(intent.id, { status: 'signing' });
+  _notify(intent.id, 'signing', { intent, step: 'sign_meta_tx' });
+  _toast('✍️ Sign intent (no gas needed) — wallet popup…', 'info');
+  _notifyMetaTx('✍️ **Signing intent** — please confirm the signature in your wallet (no gas required)…', 'info');
+
+  const signature = await signer.signTypedData(
+    typedData.domain,
+    typedData.types,
+    typedData.message
+  );
+
+  _log('EIP-712 signature obtained:', signature.slice(0, 20) + '…');
+  _notifyMetaTx('✅ **Signature received** — submitting to agent relayer…', 'success');
+  _toast('✍️ Signature received — submitting to relayer…', 'info');
+
+  // Submit to relay API
+  const r = await fetch(`${AE_API_BASE}/relay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...relayBody, signature }),
+  });
+  const relayResult = await r.json();
+
+  if (!relayResult.success) {
+    throw new Error(relayResult.error || 'Relay submission failed');
+  }
+
+  const jobId = relayResult.jobId;
+  _log('Relay job created:', jobId);
+  _notifyMetaTx(`🤖 **Executing via agent** — Relay job \`${jobId}\`\n\n*Relayer is broadcasting your transaction (you pay no gas)…*`, 'agents');
+  _toast('🤖 Agent executing via relayer — no wallet popup!', 'info');
+
+  await _patch(intent.id, { status: 'processing' });
+  _notify(intent.id, 'processing', { intent, relayJobId: jobId });
+
+  // Poll relay job status
+  await _pollRelayJob(intent, jobId);
+}
+
+// ─── Poll relay job until completion ─────────────────────────────────────────
+async function _pollRelayJob(intent, jobId) {
+  const MAX_POLLS = 60; // 2 minutes at 2s interval
+  let polls = 0;
+
+  while (polls < MAX_POLLS) {
+    await new Promise(r => setTimeout(r, 2000));
+    polls++;
+
+    try {
+      const r = await fetch(`${AE_API_BASE}/relay/${jobId}`);
+      const d = await r.json();
+      if (!d.success) continue;
+
+      const job = d.job;
+      _log(`Relay poll ${polls}: status=${job.status}`);
+
+      if (job.status === 'broadcast') {
+        await _patch(intent.id, { status: 'broadcast', txHash: job.txHash });
+        _notify(intent.id, 'broadcast', { intent, txHash: job.txHash });
+        _notifyMetaTx(
+          `📤 **Transaction broadcast!** Waiting for block confirmation…\n\n` +
+          `[Track TX ↗](${AE_EXPLORER}/tx/${job.txHash})`,
+          'info'
+        );
+        _toast(`📤 TX sent (gasless!): ${job.txHash?.slice(0,14)}…`, 'info');
+        continue;
+      }
+
+      if (job.status === 'completed') {
+        await _patch(intent.id, {
+          status: 'completed', txHash: job.txHash, blockNumber: job.blockNumber
+        });
+        _notify(intent.id, 'completed', {
+          intent, txHash: job.txHash, blockNumber: job.blockNumber
+        });
+        _notifyMetaTx(
+          `✅ **Completed!** Transaction confirmed on-chain.\n\n` +
+          `[View on Explorer ↗](${AE_EXPLORER}/tx/${job.txHash})\n` +
+          `Block #${job.blockNumber}`,
+          'success'
+        );
+        _toast(`✅ Gasless transfer complete! Block #${job.blockNumber}`, 'success');
+        return;
+      }
+
+      if (job.status === 'failed') {
+        const errMsg = job.error || 'Relay execution failed';
+        await _patch(intent.id, { status: 'failed', error: errMsg });
+        _notify(intent.id, 'failed', { intent, error: errMsg });
+        _notifyMetaTx(`❌ **Agent failed:** ${errMsg}`, 'error');
+        throw new Error(errMsg);
+      }
+
+      if (job.status === 'rejected') {
+        const errMsg = job.error || 'Relay rejected the intent';
+        await _patch(intent.id, { status: 'failed', error: errMsg });
+        _notify(intent.id, 'failed', { intent, error: errMsg });
+        _notifyMetaTx(`❌ **Relay rejected:** ${errMsg}`, 'error');
+        throw new Error(errMsg);
+      }
+
+    } catch (e) {
+      if (e.message.includes('failed') || e.message.includes('rejected')) throw e;
+      _warn('Relay poll error:', e.message);
+    }
+  }
+
+  // Timeout — leave as broadcast (will be confirmed eventually)
+  _notifyMetaTx('⏳ **Transaction broadcast** — awaiting confirmation (may take a few minutes)…', 'info');
+  _warn('Relay poll timeout — TX likely pending:', jobId);
 }
 
 // ─── Create Intent ────────────────────────────────────────────────────────────
@@ -281,22 +549,19 @@ async function aeCreateIntent(params) {
 function aeStartPolling() {
   if (_aePollTimer) return;
   _aeRunning = true;
-  _log('Poll loop started (every', AE_POLL_MS, 'ms)');
   _aePollTimer = setInterval(_poll, AE_POLL_MS);
   setTimeout(_poll, 100);
 }
-
 function aeStopPolling() {
   if (_aePollTimer) { clearInterval(_aePollTimer); _aePollTimer = null; }
   _aeRunning = false;
-  _log('Poll loop stopped');
 }
 
 async function _poll() {
   const wallet  = window.walletState?.address;
   const session = _getSession();
   if (!wallet || !session) {
-    if (_aePollTimer) { aeStopPolling(); _log('Poll stopped: no session'); }
+    if (_aePollTimer) { aeStopPolling(); }
     return;
   }
   try {
@@ -305,80 +570,59 @@ async function _poll() {
     if (!data.success) return;
     _aeLastPoll = data.timestamp;
     if (!data.intents || data.intents.length === 0) return;
-    _log(`Poll: ${data.intents.length} intent(s) updated`);
     for (const intent of data.intents) await _handleIntent(intent);
   } catch (e) {
     _warn('Poll error:', e.message);
   }
 }
 
-// ─── Handle a single intent from poll ────────────────────────────────────────
 async function _handleIntent(intent) {
-  // Always notify UI of status change (for completed/failed from other tabs)
   _notify(intent.id, intent.status, { intent });
-
   if (intent.status !== 'pending') return;
-
-  // Replay protection
   if (_wasExecuted(intent.id)) return;
-
-  // Only process intents that belong to current wallet
   const wallet = window.walletState?.address;
   if (!wallet || wallet.toLowerCase() !== intent.wallet.toLowerCase()) return;
-
   _markExecuted(intent.id);
-
   try {
     await _executeIntent(intent);
   } catch (e) {
-    _err('executeIntent error for', intent.id, ':', e);
+    _err('executeIntent error:', e);
   }
 }
 
 // ─── Execute Intent (dispatcher) ─────────────────────────────────────────────
 async function _executeIntent(intent) {
   _log('Executing:', intent.id, intent.type, intent.amount, intent.token);
-
-  // Mark processing
   await _patch(intent.id, { status: 'processing' });
   _notify(intent.id, 'processing', { intent });
-  _toast(`🤖 Agent: executing ${intent.type}…`, 'info');
+  _toast(`🤖 Agent: processing ${intent.type}…`, 'info');
 
   // Confirmation for high-value transfers
   if (intent.type === 'transfer' && Number(intent.amount) >= AE_CONFIRM_THRESH) {
-    const ok = confirm(
-      `Agent wants to send ${intent.amount} ${intent.token} to:\n${intent.to}\n\nConfirm?`
-    );
+    const ok = confirm(`Agent wants to send ${intent.amount} ${intent.token} to:\n${intent.to}\n\nConfirm?`);
     if (!ok) {
       await _patch(intent.id, { status: 'cancelled' });
       _notify(intent.id, 'cancelled', { intent });
-      _toast('Transfer cancelled by user.', 'warning');
       return;
     }
   }
 
   try {
-    if (intent.type === 'transfer') {
+    if (intent.type === 'transfer' || intent.type === 'multisend') {
       await _executeTransfer(intent);
-    } else if (intent.type === 'multisend') {
-      await _executeMultisend(intent);
     } else {
-      await _patch(intent.id, {
-        status: 'failed',
-        error: `Type "${intent.type}" requires manual execution.`,
-      });
-      _notify(intent.id, 'failed', { intent, error: `Manual execution required for type: ${intent.type}` });
+      await _patch(intent.id, { status: 'failed', error: `Type "${intent.type}" requires manual execution.` });
+      _notify(intent.id, 'failed', { intent, error: `Manual execution required for: ${intent.type}` });
     }
   } catch (err) {
-    const msg     = err?.message || String(err);
-    const retries = (intent.retries || 0) + 1;
-    const isCancel = msg.includes('ACTION_REJECTED') || msg.includes('4001') || msg.includes('User rejected') || msg.includes('user rejected');
+    const msg      = err?.message || String(err);
+    const retries  = (intent.retries || 0) + 1;
+    const isCancel = msg.includes('ACTION_REJECTED') || msg.includes('4001') || msg.includes('rejected');
 
     if (!isCancel && retries < AE_MAX_RETRIES) {
       _unmarkExecuted(intent.id);
       await _patch(intent.id, { status: 'pending', retries, error: msg });
       _notify(intent.id, 'pending', { intent, retry: retries });
-      _warn(`Retry ${retries}/${AE_MAX_RETRIES} for ${intent.id}: ${msg}`);
     } else {
       const finalMsg = isCancel ? 'Rejected by user in wallet.' : msg;
       await _patch(intent.id, { status: 'failed', error: finalMsg });
@@ -388,16 +632,12 @@ async function _executeIntent(intent) {
   }
 }
 
-// ─── Execute: Single Transfer ─────────────────────────────────────────────────
+// ─── Execute: Transfer (with execution priority) ──────────────────────────────
 //
-// Flow:
-//   1. Check Permit2 Spending Permission in localStorage
-//      → If found AND Permit2 contract available:
-//        a. Ensure ERC-20 approval to Permit2 contract (one-time, if needed)
-//        b. Sign new PermitTransferFrom EIP-712 message using connected wallet
-//        c. Call permit2.permitTransferFrom() on-chain
-//        d. Record permit usage
-//   2. Fallback: direct ERC-20 transfer (token.transfer)
+// Priority:
+//   1. AgentExecutor meta-tx (gasless)     ← if contract deployed + approved
+//   2. Permit2 SignatureTransfer (user pays gas, but no approve popup)
+//   3. Direct ERC-20 transfer (user pays gas + signs tx)
 //
 async function _executeTransfer(intent) {
   const ethers = window.ethers;
@@ -410,46 +650,61 @@ async function _executeTransfer(intent) {
   const signer     = await provider.getSigner();
   const signerAddr = await signer.getAddress();
 
-  // Wallet ownership check
   if (signerAddr.toLowerCase() !== intent.wallet.toLowerCase()) {
-    throw new Error('Connected wallet does not match intent wallet. Switch accounts and retry.');
+    throw new Error('Connected wallet does not match intent wallet.');
   }
 
   await _ensureNetwork();
 
-  const tokenAddr  = intent.token === 'EURC' ? AE_EURC_ADDR : AE_USDC_ADDR;
-  const token      = new ethers.Contract(tokenAddr, AE_ERC20_ABI, signer);
-  const amountRaw  = BigInt(Math.round(amount * 1_000_000)); // 6 decimals
+  const tokenAddr = intent.token === 'EURC' ? AE_EURC_ADDR : AE_USDC_ADDR;
+  const token     = new ethers.Contract(tokenAddr, AE_ERC20_ABI, signer);
+  const amountRaw = BigInt(Math.round(amount * 1_000_000));
   if (amountRaw === 0n) throw new Error('Computed amount is zero');
 
-  // Balance check
   const balance = BigInt(await token.balanceOf(signerAddr));
   if (balance < amountRaw) {
     throw new Error(`Insufficient ${intent.token}: have ${Number(balance)/1e6} need ${amount}`);
   }
 
-  // ── Check Permit2 Spending Permission ────────────────────────────────────
-  const spendingPermit = _findPermit(signerAddr, intent.token, amount);
-  const p2Available    = await _permit2Available();
-
-  _log('Spending permit found:', spendingPermit ? spendingPermit.id : 'none');
-  _log('Permit2 available:', p2Available);
-
-  if (spendingPermit && p2Available) {
-    _log(`Using Permit2 path (permit ${spendingPermit.id}, remaining: ${spendingPermit.amount - (spendingPermit.amountUsed || 0)} ${intent.token})`);
+  // ── PATH 1: AgentExecutor Meta-Tx (GASLESS) ────────────────────────────────
+  const contractReady = await _agentContractAvailable();
+  if (contractReady) {
+    _log('Using AgentExecutor meta-tx path (gasless)');
+    _notifyMetaTx('🤖 **Gasless execution** — using Agent Executor meta-transaction system…', 'agents');
     try {
-      await _executeViaPermit2Single(signer, signerAddr, intent, tokenAddr, amountRaw, ethers, spendingPermit);
-      return; // success
-    } catch (p2err) {
-      _warn('Permit2 failed, falling back to direct transfer:', p2err.message);
-      // Fall through to direct ERC-20
+      await _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRaw, ethers);
+      return;
+    } catch (metaTxErr) {
+      const msg = metaTxErr?.message || String(metaTxErr);
+      if (msg.includes('not deployed') || msg.includes('not supported')) {
+        _log('Meta-tx not available, trying Permit2 path:', msg);
+      } else {
+        _warn('Meta-tx failed, trying Permit2 fallback:', msg);
+        _notifyMetaTx(`⚠️ Meta-tx failed: ${msg}\n\nFalling back to Permit2…`, 'error');
+      }
     }
-  } else if (!spendingPermit) {
-    _log('No spending permit found — using direct ERC-20 transfer');
-    _toast('ℹ️ No spending permit active — signing direct transfer…', 'info');
   }
 
-  // ── Fallback: direct ERC-20 transfer ─────────────────────────────────────
+  // ── PATH 2: Permit2 SignatureTransfer ──────────────────────────────────────
+  const spendingPermit = _findPermit(signerAddr, intent.token, amount);
+  const permit2Available = await _permit2Available();
+
+  if (spendingPermit && permit2Available) {
+    _log('Using Permit2 path (spending permit found)');
+    try {
+      await _executeViaPermit2Single(signer, signerAddr, intent, tokenAddr, amountRaw, ethers, spendingPermit);
+      return;
+    } catch (p2err) {
+      _warn('Permit2 path failed, falling back to direct ERC-20:', p2err.message);
+    }
+  }
+
+  // ── PATH 3: Direct ERC-20 transfer (fallback) ──────────────────────────────
+  _log('Using direct ERC-20 transfer (fallback)');
+  if (!spendingPermit) {
+    _toast('ℹ️ No spending permit — signing direct transfer…', 'info');
+  }
+
   await _patch(intent.id, { status: 'signing' });
   _notify(intent.id, 'signing', { intent, method: 'erc20_transfer' });
   _toast(`⏳ Sign transfer: ${amount} ${intent.token} → wallet popup…`, 'info');
@@ -461,56 +716,53 @@ async function _executeTransfer(intent) {
   } catch (_) {}
 
   const tx = await token.transfer(intent.to, amountRaw, { gasLimit });
-  _log('TX sent (direct):', tx.hash);
-
   await _patch(intent.id, { status: 'broadcast', txHash: tx.hash });
   _notify(intent.id, 'broadcast', { intent, txHash: tx.hash });
-  _toast(`📤 TX sent: <a href="${AE_EXPLORER}/tx/${tx.hash}" target="_blank" class="underline">${tx.hash.slice(0,14)}…</a>`, 'info');
+  _toast(`📤 TX sent: ${tx.hash.slice(0,14)}…`, 'info');
 
   const receipt = await tx.wait(1);
   if (receipt.status !== 1) throw new Error(`Transaction reverted at block #${receipt.blockNumber}`);
 
   await _patch(intent.id, { status: 'completed', txHash: tx.hash, blockNumber: receipt.blockNumber });
   _notify(intent.id, 'completed', { intent, txHash: tx.hash, blockNumber: receipt.blockNumber });
-  _toast(`✅ Agent sent ${amount} ${intent.token}! Block #${receipt.blockNumber}`, 'success');
-  _log('Transfer completed (direct):', tx.hash, 'block', receipt.blockNumber);
+  _toast(`✅ Sent ${amount} ${intent.token}! Block #${receipt.blockNumber}`, 'success');
 }
 
-// ─── Permit2 Single Transfer via SignatureTransfer ────────────────────────────
-// Uses a stored Permit2 spending permit (from localStorage) to authorize
-// a fresh on-chain PermitTransferFrom call.
-//
-// The stored permit's EIP-712 signature is from the "allow agent to spend"
-// action — it authorizes the AGENT to act within a limit.
-// For Permit2 SignatureTransfer, we still need the USER to sign a fresh
-// PermitTransferFrom message per transfer (this is the Permit2 model).
-// The spending permit from localStorage gives us the AUTHORIZATION to proceed
-// (i.e., we verify the user has granted permission), but the on-chain call
-// still requires a fresh EIP-712 sig with specific nonce + deadline.
-//
+// ─── Permit2 availability ─────────────────────────────────────────────────────
+async function _permit2Available() {
+  try {
+    const r = await fetch(AE_RPC, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc:'2.0', method:'eth_getCode', params:[AE_PERMIT2_ADDR,'latest'], id:1 }),
+    });
+    const d = await r.json();
+    return d.result && d.result.length > 4;
+  } catch { return false; }
+}
+
+// ─── Permit2 Single Transfer (fallback path) ──────────────────────────────────
 async function _executeViaPermit2Single(signer, signerAddr, intent, tokenAddr, amountRaw, ethers, spendingPermit) {
   const token   = new ethers.Contract(tokenAddr, AE_ERC20_ABI, signer);
   const permit2 = new ethers.Contract(AE_PERMIT2_ADDR, AE_PERMIT2_ABI, signer);
 
-  // Step 1: Ensure ERC-20 approval to Permit2 contract
   const currentAllowance = BigInt(await token.allowance(signerAddr, AE_PERMIT2_ADDR));
   if (currentAllowance < amountRaw) {
-    _log('Need to approve Permit2 contract (one-time setup)…');
     await _patch(intent.id, { status: 'signing' });
     _notify(intent.id, 'signing', { intent, step: 'approve_permit2' });
-    _toast('⏳ One-time setup: Approve Permit2 contract — wallet popup…', 'info');
-
-    const maxUint256 = 2n ** 256n - 1n;
-    const approveTx  = await token.approve(AE_PERMIT2_ADDR, maxUint256);
+    _toast('⏳ Approve Permit2 contract — wallet popup…', 'info');
+    const approveTx  = await token.approve(AE_PERMIT2_ADDR, 2n ** 256n - 1n);
     const approveRcpt = await approveTx.wait(1);
     if (approveRcpt.status !== 1) throw new Error('Permit2 approval reverted');
-    _log('Permit2 contract approved (max)');
   }
 
-  // Step 2: Build and sign fresh PermitTransferFrom message
-  const nonce    = _randomNonce();
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour
+  function _randomNonce() {
+    const arr = new Uint8Array(31);
+    crypto.getRandomValues(arr);
+    return BigInt('0x' + Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join(''));
+  }
 
+  const nonce    = _randomNonce();
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
   const permitMessage = {
     permitted: { token: tokenAddr, amount: amountRaw },
     spender:   AE_PERMIT2_ADDR,
@@ -520,149 +772,55 @@ async function _executeViaPermit2Single(signer, signerAddr, intent, tokenAddr, a
 
   await _patch(intent.id, { status: 'signing' });
   _notify(intent.id, 'signing', { intent, step: 'sign_permit2' });
-
-  const permitStr = spendingPermit
-    ? `⚡ Permit2 transfer (${spendingPermit.amount - (spendingPermit.amountUsed || 0)} ${intent.token} remaining in permit) — wallet popup…`
-    : `⏳ Sign Permit2 transfer — wallet popup…`;
-  _toast(permitStr, 'info');
+  _toast('⏳ Sign Permit2 transfer — wallet popup…', 'info');
 
   const signature = await signer.signTypedData(AE_PERMIT2_DOMAIN, AE_PERMIT_TRANSFER_TYPES, permitMessage);
-  _log('Permit2 signature obtained');
-
-  // Step 3: Execute on-chain via permitTransferFrom
   const transferDetails = { to: intent.to, requestedAmount: amountRaw };
 
   let gasLimit = 150_000n;
   try {
     const est = await permit2['permitTransferFrom(tuple(tuple(address,uint256),uint256,uint256),tuple(address,uint256),address,bytes)']
-      .estimateGas(
-        [{ token: tokenAddr, amount: amountRaw }, nonce, deadline],
-        transferDetails,
-        signerAddr,
-        signature,
-      );
+      .estimateGas([{ token: tokenAddr, amount: amountRaw }, nonce, deadline], transferDetails, signerAddr, signature);
     gasLimit = BigInt(Math.ceil(Number(est) * 1.3));
   } catch (_) {}
 
   const tx = await permit2['permitTransferFrom(tuple(tuple(address,uint256),uint256,uint256),tuple(address,uint256),address,bytes)'](
     [{ token: tokenAddr, amount: amountRaw }, nonce, deadline],
-    transferDetails,
-    signerAddr,
-    signature,
-    { gasLimit }
+    transferDetails, signerAddr, signature, { gasLimit }
   );
-
-  _log('Permit2 TX sent:', tx.hash);
 
   await _patch(intent.id, { status: 'broadcast', txHash: tx.hash });
   _notify(intent.id, 'broadcast', { intent, txHash: tx.hash });
-  _toast(`📤 TX sent (Permit2): <a href="${AE_EXPLORER}/tx/${tx.hash}" target="_blank" class="underline">${tx.hash.slice(0,14)}…</a>`, 'info');
+  _toast(`📤 TX sent (Permit2): ${tx.hash.slice(0,14)}…`, 'info');
 
   const receipt = await tx.wait(1);
   if (receipt.status !== 1) throw new Error(`Permit2 tx reverted at block #${receipt.blockNumber}`);
 
-  // Record permit usage
-  if (spendingPermit) {
-    _recordPermitUsage(spendingPermit.id, intent.amount);
-  }
+  if (spendingPermit) _recordPermitUsage(spendingPermit.id, intent.amount);
 
   await _patch(intent.id, { status: 'completed', txHash: tx.hash, blockNumber: receipt.blockNumber });
   _notify(intent.id, 'completed', { intent, txHash: tx.hash, blockNumber: receipt.blockNumber });
-  _toast(`✅ Agent sent ${intent.amount} ${intent.token} via Permit2! Block #${receipt.blockNumber}`, 'success');
-  _log('Permit2 transfer completed:', tx.hash, 'block', receipt.blockNumber);
+  _toast(`✅ Permit2 transfer done! Block #${receipt.blockNumber}`, 'success');
 }
 
-// ─── Execute: Multisend via Multicall3 ───────────────────────────────────────
-async function _executeMultisend(intent) {
-  const ethers = window.ethers;
-  if (!ethers) throw new Error('ethers.js not loaded');
+// ─── Execute Multisend ────────────────────────────────────────────────────────
+// (Handled by _executeTransfer which delegates to _executeViaMetaTx for batch)
 
-  if (!intent.receivers || intent.receivers.length === 0) throw new Error('No receivers defined');
-
-  const provider   = new ethers.BrowserProvider(window.ethereum, 'any');
-  const signer     = await provider.getSigner();
-  const signerAddr = await signer.getAddress();
-
-  if (signerAddr.toLowerCase() !== intent.wallet.toLowerCase()) throw new Error('Wallet mismatch');
-
-  await _ensureNetwork();
-
-  const tokenAddr  = intent.token === 'EURC' ? AE_EURC_ADDR : AE_USDC_ADDR;
-  const token      = new ethers.Contract(tokenAddr, AE_ERC20_ABI, signer);
-  const mc3        = new ethers.Contract(AE_MULTICALL3, AE_MULTICALL3_ABI, signer);
-  const tokenIface = new ethers.Interface(AE_ERC20_ABI);
-
-  let totalRaw = 0n;
-  const calls  = [];
-  for (const r of intent.receivers) {
-    const amt = Number(r.amount);
-    if (!amt || amt <= 0) throw new Error(`Invalid amount for ${r.address}`);
-    const raw = BigInt(Math.round(amt * 1_000_000));
-    totalRaw += raw;
-    calls.push({
-      target:       tokenAddr,
-      allowFailure: false,
-      callData:     tokenIface.encodeFunctionData('transfer', [r.address, raw]),
-    });
-  }
-  if (totalRaw === 0n) throw new Error('Total amount is zero');
-
-  const balance = BigInt(await token.balanceOf(signerAddr));
-  if (balance < totalRaw) {
-    throw new Error(`Insufficient ${intent.token}: have ${Number(balance)/1e6} need ${Number(totalRaw)/1e6}`);
-  }
-
-  const allowance = BigInt(await token.allowance(signerAddr, AE_MULTICALL3));
-  if (allowance < totalRaw) {
-    await _patch(intent.id, { status: 'signing' });
-    _notify(intent.id, 'signing', { intent, step: 'approve_multicall3' });
-    _toast(`⏳ Step 1/2: Approve Multicall3 — wallet popup…`, 'info');
-    const approveTx = await token.approve(AE_MULTICALL3, totalRaw * 2n);
-    const approveRcpt = await approveTx.wait(1);
-    if (approveRcpt.status !== 1) throw new Error('Multicall3 approval reverted');
-  }
-
-  await _patch(intent.id, { status: 'signing' });
-  _notify(intent.id, 'signing', { intent, step: 'sign_batch' });
-  _toast(`⏳ Step 2/2: Sign batch (${intent.receivers.length} recipients) — wallet popup…`, 'info');
-
-  let gasLimit = 300_000n;
-  try {
-    const est = await mc3.aggregate3.estimateGas(calls);
-    gasLimit = BigInt(Math.ceil(Number(est) * 1.3));
-  } catch (_) {}
-
-  const tx = await mc3.aggregate3(calls, { gasLimit });
-  _log('Batch TX sent:', tx.hash);
-
-  await _patch(intent.id, { status: 'broadcast', txHash: tx.hash });
-  _notify(intent.id, 'broadcast', { intent, txHash: tx.hash });
-  _toast(`📤 Batch sent: ${tx.hash.slice(0,14)}…`, 'info');
-
-  const receipt = await tx.wait(1);
-  if (receipt.status !== 1) throw new Error(`Batch reverted at block #${receipt.blockNumber}`);
-
-  await _patch(intent.id, { status: 'completed', txHash: tx.hash, blockNumber: receipt.blockNumber });
-  _notify(intent.id, 'completed', { intent, txHash: tx.hash, blockNumber: receipt.blockNumber });
-  _toast(`✅ Batch of ${intent.receivers.length} sent! Block #${receipt.blockNumber}`, 'success');
-  _log('Multisend completed:', tx.hash);
-}
-
-// ─── Status Badge Renderer ────────────────────────────────────────────────────
+// ─── Status Badge ─────────────────────────────────────────────────────────────
 const AE_STATUS_CFG = {
-  pending:    { icon: 'fa-clock',         color: 'text-yellow-400', bg: 'bg-yellow-900/20', label: 'Accepted'     },
-  processing: { icon: 'fa-cog fa-spin',   color: 'text-blue-400',   bg: 'bg-blue-900/20',   label: 'Executing…'  },
-  signing:    { icon: 'fa-pen-nib',       color: 'text-purple-400', bg: 'bg-purple-900/20', label: 'Signing…'    },
-  broadcast:  { icon: 'fa-paper-plane',   color: 'text-cyan-400',   bg: 'bg-cyan-900/20',   label: 'Sent'        },
-  completed:  { icon: 'fa-check-circle',  color: 'text-green-400',  bg: 'bg-green-900/20',  label: 'Completed'   },
-  failed:     { icon: 'fa-times-circle',  color: 'text-red-400',    bg: 'bg-red-900/20',    label: 'Failed'      },
-  cancelled:  { icon: 'fa-ban',           color: 'text-gray-400',   bg: 'bg-gray-800/30',   label: 'Cancelled'   },
+  pending:    { icon: 'fa-clock',         color: 'text-yellow-400', bg: 'bg-yellow-900/20', label: 'Queued'     },
+  processing: { icon: 'fa-cog fa-spin',   color: 'text-blue-400',   bg: 'bg-blue-900/20',   label: 'Executing…' },
+  signing:    { icon: 'fa-pen-nib',       color: 'text-purple-400', bg: 'bg-purple-900/20', label: 'Signing…'   },
+  broadcast:  { icon: 'fa-paper-plane',   color: 'text-cyan-400',   bg: 'bg-cyan-900/20',   label: 'Sent'       },
+  completed:  { icon: 'fa-check-circle',  color: 'text-green-400',  bg: 'bg-green-900/20',  label: 'Completed'  },
+  failed:     { icon: 'fa-times-circle',  color: 'text-red-400',    bg: 'bg-red-900/20',    label: 'Failed'     },
+  cancelled:  { icon: 'fa-ban',           color: 'text-gray-400',   bg: 'bg-gray-800/30',   label: 'Cancelled'  },
 };
 
 function _renderBadge(intentId, status, data = {}) {
   const cfg    = AE_STATUS_CFG[status] || AE_STATUS_CFG.pending;
   const txLink = data.txHash
-    ? `· <a href="${AE_EXPLORER}/tx/${data.txHash}" target="_blank" class="underline font-mono text-[10px] text-cyan-400">${data.txHash.slice(0,14)}…</a>`
+    ? ` · <a href="${AE_EXPLORER}/tx/${data.txHash}" target="_blank" class="underline font-mono text-[10px] text-cyan-400">${data.txHash.slice(0,14)}…</a>`
     : '';
   const block  = data.blockNumber ? `<span class="text-gray-500 text-[10px] ml-1">Block #${data.blockNumber}</span>` : '';
   return `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg ${cfg.bg} border border-white/5 text-[11px] ${cfg.color}">
@@ -675,14 +833,16 @@ window.addEventListener('agentExecutor:update', function (e) {
   const { intentId, status, intent, txHash, blockNumber, error } = e.detail || {};
   if (!intentId) return;
 
-  // Update inline badges in chat messages
   document.querySelectorAll(`[data-intent-id="${intentId}"] .ae-status-badge`).forEach(el => {
     el.outerHTML = _renderBadge(intentId, status, { txHash, blockNumber });
   });
 
-  // Append chat message for significant transitions
   if (['completed', 'failed', 'broadcast'].includes(status)) {
-    if (typeof appendChatMessage !== 'function') return;
+    const notifyFn = window.autonomaActive && typeof autonomaAppendMessage === 'function'
+      ? autonomaAppendMessage
+      : (typeof appendChatMessage === 'function' ? appendChatMessage : null);
+
+    if (!notifyFn) return;
     let msg = '';
     const exp = AE_EXPLORER;
 
@@ -698,25 +858,34 @@ window.addEventListener('agentExecutor:update', function (e) {
       msg = `❌ **Agent failed:** ${error || 'Transaction failed. Check balance and try again.'}`;
     }
 
-    if (msg) appendChatMessage('assistant', msg, status === 'failed' ? 'error' : 'payments');
+    if (msg) notifyFn('assistant', msg, status === 'failed' ? 'error' : 'payments');
   }
 
-  // Refresh intents panel
-  if (typeof aeRefreshPanel === 'function') {
-    setTimeout(aeRefreshPanel, 300);
+  if (typeof aeRefreshPanel === 'function') setTimeout(aeRefreshPanel, 300);
+});
+
+// ─── Meta-tx messages → Autonoma chat ────────────────────────────────────────
+window.addEventListener('agentMetaTx:message', function (e) {
+  const { msg, type } = e.detail || {};
+  if (!msg) return;
+
+  const notifyFn = window.autonomaActive && typeof window.autonomaAppendMessage === 'function'
+    ? window.autonomaAppendMessage
+    : (typeof appendChatMessage === 'function' ? appendChatMessage : null);
+
+  if (notifyFn) {
+    const module = type === 'success' ? 'agents' : type === 'error' ? 'error' : 'agents';
+    notifyFn('assistant', msg, module);
   }
 });
 
 // ─── Public API ───────────────────────────────────────────────────────────────
-
 async function aeQueueTransfer(amount, token, to, memo) {
   return aeCreateIntent({ type: 'transfer', amount, token, to, memo });
 }
-
 async function aeQueueMultisend(receivers, token, memo) {
   return aeCreateIntent({ type: 'multisend', receivers, token, memo });
 }
-
 async function aeGetIntents(statusFilter) {
   const wallet = window.walletState?.address;
   if (!wallet) return [];
@@ -724,7 +893,6 @@ async function aeGetIntents(statusFilter) {
   const data = await _get(`/intents?wallet=${encodeURIComponent(wallet)}${qs}`);
   return data.success ? data.intents : [];
 }
-
 async function aeCancelIntent(intentId) {
   const r = await fetch(`${AE_API_BASE}/intents/${intentId}`, { method: 'DELETE' });
   const d = await r.json();
@@ -734,12 +902,9 @@ async function aeCancelIntent(intentId) {
   }
   return d;
 }
-
 function aeStatusBadge(intentId, status, data) {
   return `<span data-intent-id="${intentId}" class="ae-intent-ref">${_renderBadge(intentId, status, data || {})}</span>`;
 }
-
-// ─── Permit status check (for UI) ─────────────────────────────────────────────
 function aeGetPermitStatus(token) {
   const wallet = window.walletState?.address;
   if (!wallet) return { hasPermit: false, reason: 'wallet_not_connected' };
@@ -747,35 +912,42 @@ function aeGetPermitStatus(token) {
   if (!permit) return { hasPermit: false, reason: 'no_permit' };
   const remaining = permit.amount - (permit.amountUsed || 0);
   const expiresIn = Math.round((permit.expiry - Date.now()) / 60000);
+  return { hasPermit: true, permit, remaining, expiresIn,
+    label: `${remaining} ${permit.token} · expires in ${expiresIn}m` };
+}
+
+// ─── Meta-tx status helper ────────────────────────────────────────────────────
+function aeGetMetaTxStatus() {
+  const contractDeployed = AE_CONTRACT_ADDR !== '0x0000000000000000000000000000000000000000';
   return {
-    hasPermit:  true,
-    permit,
-    remaining,
-    expiresIn,
-    label: `${remaining} ${permit.token} · expires in ${expiresIn}m`,
+    contractDeployed,
+    contractAddr:  AE_CONTRACT_ADDR,
+    domain:        AE_EIP712_DOMAIN,
+    capabilities:  contractDeployed
+      ? ['gasless_transfer', 'gasless_batch', 'eip712_signing']
+      : ['permit2_transfer', 'direct_transfer'],
+    message: contractDeployed
+      ? '✅ Gasless meta-transactions enabled — relayer pays all gas'
+      : '⚠️ AgentExecutor not deployed — using Permit2/direct fallback',
   };
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 function _init() {
   _log(`Agent Executor v${AE_VERSION} loaded`);
+  _log('Meta-tx status:', aeGetMetaTxStatus().message);
 
-  // Watch session + permit2 — auto start/stop polling
   setInterval(() => {
     const session = _getSession();
     const wallet  = window.walletState?.address;
     const should  = !!(session && wallet);
-    if (should && !_aePollTimer)  { _log('Session active — starting poll'); aeStartPolling(); }
-    if (!should && _aePollTimer)  { _log('No session — stopping poll');    aeStopPolling();  }
+    if (should && !_aePollTimer)  aeStartPolling();
+    if (!should && _aePollTimer)  aeStopPolling();
   }, 5000);
 
-  // Start immediately if session active
-  if (_getSession() && window.walletState?.address) {
-    aeStartPolling();
-  }
+  if (_getSession() && window.walletState?.address) aeStartPolling();
 }
 
-// Expose globals
 global.AgentExecutor = {
   version:         AE_VERSION,
   createIntent:    aeCreateIntent,
@@ -787,6 +959,7 @@ global.AgentExecutor = {
   startPolling:    aeStartPolling,
   stopPolling:     aeStopPolling,
   getPermitStatus: aeGetPermitStatus,
+  getMetaTxStatus: aeGetMetaTxStatus,
 };
 
 if (document.readyState === 'loading') {

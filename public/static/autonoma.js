@@ -389,6 +389,12 @@
       }
     } catch {}
 
+    // Meta-tx status
+    const metaTx = window.AgentExecutor?.getMetaTxStatus?.() || null;
+    const metaTxRow = metaTx
+      ? `| Gasless Mode | ${metaTx.contractDeployed ? '✅ Active — relayer pays gas' : '⚠️ Pending contract deploy'} |\n`
+      : '';
+
     autonomaAppendMessage('assistant',
       `🤖 **Agent Executor Status**\n\n` +
       `| Field | Value |\n|---|---|\n` +
@@ -396,11 +402,27 @@
       `| Wallet | ${wallet ? `\`${wallet.slice(0,10)}…\`` : '—'} |\n` +
       `| Poll | ${polling} |\n` +
       `| Permits | ${permitInfo} |\n` +
+      metaTxRow +
       `| Version | ${window.AgentExecutor?.version || 'N/A'} |`,
       'agents');
   }
 
-  // ── Quick message ─────────────────────────────────────────────────────────────
+  // ── Meta-tx status line for welcome message ───────────────────────────────────
+  function _metaTxStatusLine() {
+    try {
+      const status = window.AgentExecutor?.getMetaTxStatus?.();
+      if (!status) return '';
+      if (status.contractDeployed) {
+        return `🚀 **Gasless mode active** — Agent Executor contract deployed\n` +
+               `*Transactions are gasless — relayer pays all fees*\n\n`;
+      }
+      return `⚡ **Meta-tx setup pending** — deploy AgentExecutor.sol for full gasless mode\n` +
+             `*Currently using Permit2/direct fallback*\n\n`;
+    } catch { return ''; }
+  }
+
+  // ── Agent status command (updated with meta-tx info) ──────────────────────────
+
   window.autonomaSendChat = function(text) {
     const input = document.getElementById('autonoma-chat-input');
     if (input) {
@@ -444,6 +466,7 @@
           `Daat Agent: ${active ? '✅ Authorized' : '⚠️ Not authorized — type `authorize arcpay`'}\n` +
           permitLine + '\n'
         : `⚠️ *Connect your wallet to use all features.*\n\n`) +
+      _metaTxStatusLine() +
       `**I can help with:**\n` +
       `• ⚡ *"send 10 USDC to 0x…"* — create intent, executor processes automatically\n` +
       `• 🔄 *"swap 5 USDC to EURC"* — token swap\n` +

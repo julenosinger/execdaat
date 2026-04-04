@@ -10,6 +10,7 @@ import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
 import agentIntentsRouter from './routes/agent-intents'
+import agentRelayRouter from './routes/agent-relay'
 import { ARC_TESTNET } from './types/arc'
 import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 
@@ -21,6 +22,7 @@ const app = new Hono<{
     CIRCLE_ENVIRONMENT?: string;
     CIRCLE_WEBHOOK_SECRET?: string;
     AGENT_INTENTS?: KVNamespace;
+    RELAYER_PRIVATE_KEY?: string;
   }
 }>()
 
@@ -109,6 +111,7 @@ app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
 app.route('/api/agent', agentIntentsRouter)  // Agent Intents CRUD + poll
+app.route('/api/agent', agentRelayRouter)    // Meta-tx relayer: POST /api/agent/relay
 
 // ── CSV Validation API ────────────────────────────────────────────────────────
 // POST /api/csv/validate — validates a parsed CSV payload server-side
@@ -5026,7 +5029,7 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260404a"></script>
   <script src="/static/queue-engine.js?v=20260403a"></script>
-  <script src="/static/agent-executor.js?v=20260404b"></script>
+  <script src="/static/agent-executor.js?v=20260404f"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
     The query-string approach (?v=) does NOT invalidate browser cache when
@@ -5041,7 +5044,7 @@ app.get('/', (c) => {
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
   <script src="/static/otc.f5e54315.js"></script>
-  <script src="/static/autonoma.js?v=20260404e"></script>
+  <script src="/static/autonoma.js?v=20260404f"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner
