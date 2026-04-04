@@ -2084,26 +2084,41 @@ async function chatExecutePayment(amount, token, recipient) {
 
 // ── _chatAgentTransfer: create an intent → AgentExecutor executes automatically ─
 // Requires: AgentExecutor loaded + agent session active.
-// Shows live status badge in chat without requiring user to click Execute.
+// Shows live status badge + updates in chat without requiring user to click Execute.
 async function _chatAgentTransfer(amount, token, recipient) {
   try {
+    // Show "Accepted" state immediately
+    appendChatMessage('assistant',
+      `🧠 **Agent accepted your request**\n\n` +
+      `Sending **${amount} ${token || 'USDC'}** to \`${recipient.slice(0,10)}…${recipient.slice(-8)}\`\n\n` +
+      `⏳ *Creating intent…*`,
+      'payments'
+    );
+
     const intent = await AgentExecutor.queueTransfer(
       String(amount),
       token || 'USDC',
-      recipient
+      recipient,
+      'via chat'
     );
 
+    // Replace last message with confirmed intent
     appendChatMessage('assistant',
-      `🤖 **Daat Agent queued your transfer!**\n\n` +
-      `| Campo | Valor |\n|---|---|\n` +
+      `🧠 **Intent accepted** — Agent Executor will execute shortly.\n\n` +
+      `| | |\n|---|---|\n` +
       `| Token | **${intent.token}** |\n` +
-      `| Valor | **${intent.amount} ${intent.token}** |\n` +
-      `| Para | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n` +
-      `| Status | ${AgentExecutor.statusBadge(intent.id, 'pending')} |\n\n` +
-      `⚡ *Agent will prompt your wallet automatically in a moment.*`,
+      `| Amount | **${intent.amount} ${intent.token}** |\n` +
+      `| To | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n` +
+      `| Status | ${AgentExecutor.statusBadge(intent.id, 'pending')} |\n` +
+      `| Intent ID | \`${intent.id.slice(0,20)}…\` |\n\n` +
+      `⚡ *Wallet popup will appear automatically in a moment.*`,
       'payments'
     );
+
+    console.log('[CHAT] Intent created:', intent.id, 'amount:', amount, token);
+
   } catch (err) {
+    console.error('[CHAT] _chatAgentTransfer error:', err);
     // Fallback to manual queue if intent creation fails
     _aeWarnFallback(err);
     _chatQueueTransfer(amount, token, recipient);
@@ -2112,10 +2127,12 @@ async function _chatAgentTransfer(amount, token, recipient) {
 
 function _aeWarnFallback(err) {
   appendChatMessage('assistant',
-    `⚠️ Agent executor unavailable (${err?.message || 'unknown'}) — falling back to manual queue.`,
+    `⚠️ **Agent temporarily unavailable** (${err?.message || 'unknown error'})\n\n` +
+    `Your transfer was added to the manual queue instead. Click **Execute Payments** to proceed.`,
     'warning'
   );
 }
+
 
 // ── _chatQueueTransfer: enqueue a single transfer (Brain → UI, no execution) ──
 // Dispatches 'arcPayQueue:add' event. The UI (queue-engine) picks it up and

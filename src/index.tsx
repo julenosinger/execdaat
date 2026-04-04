@@ -20,6 +20,7 @@ const app = new Hono<{
     CIRCLE_API_KEY?: string;
     CIRCLE_ENVIRONMENT?: string;
     CIRCLE_WEBHOOK_SECRET?: string;
+    AGENT_INTENTS?: KVNamespace;
   }
 }>()
 
@@ -4941,7 +4942,7 @@ app.get('/', (c) => {
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
-  <script src="/static/app.js?v=20260403c"></script>
+  <script src="/static/app.js?v=20260404a"></script>
   <script src="/static/payments.js?v=20260330a"></script>
   <script src="/static/contracts.js?v=20250325a"></script>
   <script src="/static/settings.js?v=20250322"></script>
@@ -4958,9 +4959,9 @@ app.get('/', (c) => {
   <script src="/static/permit2-engine.js?v=20260328a"></script>
   <script src="/static/permit2-chat.js?v=20260328b"></script>
   <script src="/static/chat-csv.js?v=20260328a"></script>
-  <script src="/static/chat.js?v=20260403b"></script>
+  <script src="/static/chat.js?v=20260404a"></script>
   <script src="/static/queue-engine.js?v=20260403a"></script>
-  <script src="/static/agent-executor.js?v=20260403b"></script>
+  <script src="/static/agent-executor.js?v=20260404a"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
     The query-string approach (?v=) does NOT invalidate browser cache when

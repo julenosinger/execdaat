@@ -1107,9 +1107,9 @@ window.aeRenderIntents = function(intents) {
   }
 
   const statusMap = {
-    pending:    { color: 'text-yellow-400',  bg: 'bg-yellow-900/20 border-yellow-800/30', icon: 'fa-clock',         label: 'Queued'     },
-    processing: { color: 'text-blue-400',    bg: 'bg-blue-900/20 border-blue-800/30',     icon: 'fa-cog fa-spin',   label: 'Processing' },
-    signing:    { color: 'text-purple-400',  bg: 'bg-purple-900/20 border-purple-800/30', icon: 'fa-pen',           label: 'Signing'    },
+    pending:    { color: 'text-yellow-400',  bg: 'bg-yellow-900/20 border-yellow-800/30', icon: 'fa-clock',         label: 'Accepted'   },
+    processing: { color: 'text-blue-400',    bg: 'bg-blue-900/20 border-blue-800/30',     icon: 'fa-cog fa-spin',   label: 'Executing…' },
+    signing:    { color: 'text-purple-400',  bg: 'bg-purple-900/20 border-purple-800/30', icon: 'fa-pen-nib',       label: 'Signing…'   },
     broadcast:  { color: 'text-cyan-400',    bg: 'bg-cyan-900/20 border-cyan-800/30',     icon: 'fa-paper-plane',   label: 'Sent'       },
     completed:  { color: 'text-green-400',   bg: 'bg-green-900/20 border-green-800/30',   icon: 'fa-check-circle',  label: 'Completed'  },
     failed:     { color: 'text-red-400',     bg: 'bg-red-900/20 border-red-800/30',       icon: 'fa-times-circle',  label: 'Failed'     },
