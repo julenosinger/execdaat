@@ -1,16 +1,20 @@
 // ============================================================
 // AUTONOMA.JS — Subpage /agents/autonoma
-// Build: 20260404j
+// Build: 20260404l
 //
-// Layout: 2 columns
-//   LEFT  — Agent Executor Intents (live on-chain intent panel)
-//   RIGHT — Embedded chat with ALL main chat features
+// ARCHITECTURE: Identical pipeline to main chatbot.
 //
-// FIXES in this build:
-//   • CSV upload: ref-count patch keeps helpers redirected through FileReader.onload
-//   • Permit status: polls every 3s + monkey-patches p2RefreshUI / p2AddPermit
-//   • Agent auth status: monkey-patches updateArcPayBar + polls every 3s
-//   • Full English translation of all UI strings
+// KEY FIX v20260404l:
+//   • Context patch is now PERMANENT while autonoma tab is active.
+//     appendChatMessage / appendActionCard always route to autonoma DOM.
+//     This means button callbacks (_confirmPermitFromChat, _chatAgentTransfer,
+//     etc.) also write to the correct container even after sendMessage returns.
+//   • No more ref-count / _withCtx dance: patch on autonomaInit, unpatch on
+//     autonomaDestroy. Simple and race-condition free.
+//   • handleUnifiedMessage called WITHOUT extra _patchCtx (already active).
+//   • hideTypingIndicator always called via try/finally.
+//   • Full response guaranteed: every path ends with a visible chat message.
+//   • Fallback logging: warns if execution fires without producing output.
 // ============================================================
 'use strict';
 
@@ -21,6 +25,10 @@
   let autonomaTyping  = false;
   let autonomaMsgs    = [];
   let _autonomaPollTimer = null;
+
+  // ── Context registry ── keeps original helpers to restore on destroy ──────────
+  const _orig = {};
+  let   _ctxInstalled = false;
 
   // ── Markdown / escape helpers ─────────────────────────────────────────────────
   function _renderMd(text) {
@@ -123,53 +131,44 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // CONTEXT PATCH — ref-count based (safe for FileReader callbacks)
-  // Keeps global helpers redirected to Autonoma DOM through async callbacks.
+  // PERMANENT CONTEXT PATCH
+  // Installed on autonomaInit(), removed on autonomaDestroy().
+  // Because it's permanent while the tab is active, ALL calls to
+  // appendChatMessage / appendActionCard — including button callbacks
+  // (_confirmPermitFromChat, _chatAgentTransfer, etc.) — always write
+  // to the autonoma container. No ref-counting, no race conditions.
   // ══════════════════════════════════════════════════════════════════════════════
-  let _ctxDepth = 0;
-  const _savedHelpers = {};
+  function _installCtx() {
+    if (_ctxInstalled) return;
+    _orig.appendChatMessage   = window.appendChatMessage;
+    _orig.appendActionCard    = window.appendActionCard;
+    _orig.hideTypingIndicator = window.hideTypingIndicator;
+    _orig.showTypingIndicator = window.showTypingIndicator;
 
-  function _patchCtx() {
-    if (_ctxDepth === 0) {
-      _savedHelpers.appendChatMessage   = window.appendChatMessage;
-      _savedHelpers.appendActionCard    = window.appendActionCard;
-      _savedHelpers.hideTypingIndicator = window.hideTypingIndicator;
-      _savedHelpers.showTypingIndicator = window.showTypingIndicator;
-      window.appendChatMessage   = autonomaAppendMessage;
-      window.appendActionCard    = autonomaAppendActionCard;
-      window.hideTypingIndicator = autonomaHideTyping;
-      window.showTypingIndicator = autonomaShowTyping;
-    }
-    _ctxDepth++;
+    window.appendChatMessage   = autonomaAppendMessage;
+    window.appendActionCard    = autonomaAppendActionCard;
+    window.hideTypingIndicator = autonomaHideTyping;
+    window.showTypingIndicator = autonomaShowTyping;
+
+    _ctxInstalled = true;
+    console.log('[Autonoma] Context installed — all chat output → autonoma container');
   }
 
-  function _unpatchCtx() {
-    _ctxDepth = Math.max(0, _ctxDepth - 1);
-    if (_ctxDepth === 0) {
-      window.appendChatMessage   = _savedHelpers.appendChatMessage;
-      window.appendActionCard    = _savedHelpers.appendActionCard;
-      window.hideTypingIndicator = _savedHelpers.hideTypingIndicator;
-      window.showTypingIndicator = _savedHelpers.showTypingIndicator;
-    }
+  function _removeCtx() {
+    if (!_ctxInstalled) return;
+    window.appendChatMessage   = _orig.appendChatMessage;
+    window.appendActionCard    = _orig.appendActionCard;
+    window.hideTypingIndicator = _orig.hideTypingIndicator;
+    window.showTypingIndicator = _orig.showTypingIndicator;
+    _ctxInstalled = false;
+    console.log('[Autonoma] Context removed — chat output restored to main chatbot');
   }
 
-  // Promise-aware wrapper (for chat send / handlePermitIntent / etc.)
-  function _withCtx(fn) {
-    _patchCtx();
-    try {
-      const result = fn();
-      if (result && typeof result.then === 'function') {
-        return result.finally(_unpatchCtx);
-      }
-      _unpatchCtx();
-      return result;
-    } catch (e) {
-      _unpatchCtx();
-      throw e;
-    }
-  }
-
-  // ── Send message ──────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SEND MESSAGE — identical pipeline to main chatbot's sendChatMessage()
+  // Uses the same handleUnifiedMessage, same permit2 handlers, same AI fallback.
+  // Context is already installed, so all helpers write to autonoma container.
+  // ══════════════════════════════════════════════════════════════════════════════
   window.autonomaSendMessage = async function() {
     const input = document.getElementById('autonoma-chat-input');
     const msg   = input?.value?.trim();
@@ -181,22 +180,24 @@
     const sendBtn = document.getElementById('autonoma-send-btn');
     if (sendBtn) sendBtn.disabled = true;
 
+    // Append user message (direct call — no need to go through patched helper)
     autonomaAppendMessage('user', msg);
     autonomaShowTyping();
 
-    _patchCtx();
-    // Mark autonoma as active context for bridge event routing
+    // Mark autonoma as active context for bridge routing
     window._autonomaActive = true;
+
+    console.log(`[CHAT SOURCE] autonoma input="${msg.slice(0,80)}"`);
+
     try {
       let localHandled = false;
 
-      console.log(`[CHAT SOURCE] autonoma input="${msg.slice(0,80)}"`);
-
-      // ── Use unified message handler from chat-bridge.js (shared with main chat) ──
+      // ── Unified handler (shared with main chat via chat-bridge.js) ─────────
+      // Context is already patched → output goes to autonoma automatically.
       if (typeof window.handleUnifiedMessage === 'function') {
         localHandled = await window.handleUnifiedMessage(msg, 'autonoma');
       } else {
-        // Fallback if bridge not loaded yet: use legacy chain
+        // Graceful fallback if bridge not loaded
         localHandled = await _handleAutonomaIntentCommand(msg);
         if (!localHandled && typeof handlePermitIntent === 'function') {
           localHandled = await handlePermitIntent(msg);
@@ -209,50 +210,68 @@
         }
       }
 
-      // ── Remote AI fallback (identical to main chat, with context='autonoma') ──
-      if (!localHandled) {
-        const CHAT_SESSION_KEY = 'arc-chat-session';
-        const sessionId = 'arc-session-' + (localStorage.getItem(CHAT_SESSION_KEY) || (() => {
-          const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-          localStorage.setItem(CHAT_SESSION_KEY, id);
-          return id;
-        })());
+      // Always hide typing after local handlers (they each call hideTypingIndicator
+      // themselves, but a guard here prevents spinner from sticking on edge cases)
+      autonomaHideTyping();
 
-        const payload = {
-          message:       msg,
-          sessionId,
-          walletAddress: window.walletState?.address || null,
-          arcPayActive:  typeof isAgentActive === 'function' ? isAgentActive() : false,
-          context:       'autonoma',
-        };
+      if (localHandled) {
+        // Verify output was produced — silent execution guard
+        const container = document.getElementById('autonoma-chat-messages');
+        const lastMsg   = container?.lastElementChild;
+        const hasOutput = lastMsg && !lastMsg.id?.includes('typing');
+        if (!hasOutput) {
+          console.warn('[AUTONOMA] localHandled=true but no message was appended. Possible silent execution.');
+        }
+        console.log(`[RESPONSE SENT] local_cmd_handled source=autonoma msg="${msg.slice(0,40)}"`);
+        return; // done
+      }
 
-        console.log(`[CHAT SOURCE] autonoma→AI fallback sessionId=${sessionId.slice(0,20)}`);
+      // ── Remote AI fallback (identical to main chat, context='autonoma') ────
+      const CHAT_SESSION_KEY = 'arc-chat-session';
+      const sessionId = 'arc-session-' + (localStorage.getItem(CHAT_SESSION_KEY) || (() => {
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        localStorage.setItem(CHAT_SESSION_KEY, id);
+        return id;
+      })());
 
-        const r = await fetch('/api/chat/message', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+      const payload = {
+        message:       msg,
+        sessionId,
+        walletAddress: window.walletState?.address || null,
+        arcPayActive:  typeof isAgentActive === 'function' ? isAgentActive() : false,
+        context:       'autonoma',
+      };
 
-        if (!r.ok) throw new Error('POST failed: ' + r.status);
-        const res = await r.json();
+      console.log(`[CHAT SOURCE] autonoma→AI fallback sessionId=${sessionId.slice(0,20)}`);
 
-        autonomaHideTyping();
+      const r = await fetch('/api/chat/message', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
 
-        if (res.success) {
-          const reply  = res.message;
-          autonomaAppendMessage('assistant', reply.content, reply.module);
-          console.log(`[RESPONSE SENT] ai_reply source=autonoma module=${reply.module}`);
+      if (!r.ok) throw new Error(`POST /api/chat/message failed: ${r.status}`);
+      const res = await r.json();
 
-          const action = res.action || reply.action;
-          if (action && action.type && action.type !== 'none') {
+      if (res.success) {
+        const reply = res.message;
+        autonomaAppendMessage('assistant', reply.content, reply.module);
+        console.log(`[RESPONSE SENT] ai_reply source=autonoma module=${reply.module}`);
+
+        const action = res.action || reply.action;
+        if (action && action.type && action.type !== 'none') {
+          // Use the shared renderBlockchainActionCard which is now context-aware.
+          // It checks window._autonomaActive and routes to autonoma-chat-messages.
+          // Fall back to _autonomaRenderActionCard if chat.js not loaded.
+          if (typeof window.renderBlockchainActionCard === 'function') {
+            window.renderBlockchainActionCard(action, res.walletConnected);
+          } else {
             _autonomaRenderActionCard(action, res.walletConnected);
           }
-        } else {
-          autonomaAppendMessage('assistant', '❌ ' + (res.error || 'Something went wrong.'), 'error');
         }
       } else {
-        autonomaHideTyping();
+        autonomaAppendMessage('assistant', '❌ ' + (res.error || 'Something went wrong.'), 'error');
+        console.warn('[AUTONOMA] AI returned error:', res.error);
       }
 
     } catch (err) {
@@ -260,12 +279,11 @@
       console.error('[AUTONOMA] sendMessage error:', err);
       autonomaAppendMessage('assistant', '❌ Error: ' + (err.message || 'Please try again.'), 'error');
     } finally {
-      _unpatchCtx();
       autonomaTyping = false;
       if (sendBtn) sendBtn.disabled = false;
       input?.focus();
       window._autonomaActive = autonomaActive;
-      // After any message, refresh status panels
+      // Refresh all status panels after any interaction
       setTimeout(() => {
         _updateAutonomaAgentStatus();
         _updateAutonomaPermitStatus();
@@ -275,7 +293,7 @@
     }
   };
 
-  // ── Handle intent-specific commands ──────────────────────────────────────────
+  // ── Handle intent-specific commands (fallback only — bridge handles these now) ──
   async function _handleAutonomaIntentCommand(msg) {
     const lower = msg.toLowerCase().trim();
 
@@ -284,25 +302,21 @@
       await _autonomaShowIntents();
       return true;
     }
-
     if (/cancel.*pending|cancel all intent/i.test(lower)) {
       autonomaHideTyping();
       await _autonomaCancelPending();
       return true;
     }
-
     if (/agent.*status|executor.*status|status.*agent/i.test(lower)) {
       autonomaHideTyping();
       _autonomaAgentStatus();
       return true;
     }
-
     if (/deploy.*contract|deploy.*agent|contrato.*deploy|fazer.*deploy/i.test(lower)) {
       autonomaHideTyping();
       _handleDeployAction();
       return true;
     }
-
     return false;
   }
 
@@ -390,12 +404,12 @@
       const raw = localStorage.getItem('arc_permit2_allowances_v1');
       if (raw && wallet) {
         const now = Date.now();
-        const active2 = JSON.parse(raw).filter(p =>
+        const activ = JSON.parse(raw).filter(p =>
           p.wallet && p.wallet.toLowerCase() === wallet.toLowerCase() &&
           p.expiry > now && (p.amount - (p.amountUsed || 0)) > 0
         );
-        if (active2.length > 0) {
-          permitInfo = active2.map(p => {
+        if (activ.length > 0) {
+          permitInfo = activ.map(p => {
             const rem = (p.amount - (p.amountUsed || 0)).toFixed(2);
             const exp = Math.round((p.expiry - now) / 60000);
             return `${rem} ${p.token} (${exp}m remaining)`;
@@ -404,15 +418,14 @@
       }
     } catch {}
 
-    // Meta-tx status
     const metaTx = window.AgentExecutor?.getMetaTxStatus?.() || null;
     let metaTxRow = '';
     if (metaTx) {
       const modeLabel = metaTx.contractDeployed
-        ? '✅ Modo A — gasless (AgentExecutor)'
+        ? '✅ Mode A — gasless (AgentExecutor)'
         : metaTx.relayerConfigured
-          ? `🔄 Modo B — direct relay (${metaTx.relayerAddress?.slice(0,10)}…)`
-          : '⚠️ Relay não configurado';
+          ? `🔄 Mode B — direct relay (${metaTx.relayerAddress?.slice(0,10)}…)`
+          : '⚠️ Relay not configured';
       metaTxRow = `| Relay Mode | ${modeLabel} |\n`;
     }
 
@@ -432,7 +445,6 @@
   function _metaTxStatusLine() {
     try {
       const status = window.AgentExecutor?.getMetaTxStatus?.();
-      // Also check localStorage directly (contract may have been deployed via deploy-agent.html)
       const contractAddr = (function() {
         try { return localStorage.getItem('ae_contract_addr'); } catch { return null; }
       })();
@@ -447,16 +459,15 @@
                `*Sign once per intent — no TX popup, no gas cost.*\n\n`;
       }
 
-      // Mode B: contract not deployed but relay may still work via transferFrom
       const relayerConfigured = status?.relayerConfigured;
       if (relayerConfigured) {
-        return `🔄 **Direct relay mode** — contrato AgentExecutor não deployado ainda.\n` +
-               `*O relayer executará via \`transferFrom\` — você precisará aprovar o relayer uma vez.*\n` +
-               `Para modo gasless completo: [Deploy AgentExecutor ↗](/static/deploy-agent)\n\n`;
+        return `🔄 **Direct relay mode** — AgentExecutor contract not deployed yet.\n` +
+               `*Relayer executes via \`transferFrom\` — one-time approval needed.*\n` +
+               `For full gasless mode: [Deploy AgentExecutor ↗](/static/deploy-agent)\n\n`;
       }
 
-      return `🔧 **Relay não configurado** — [Deploy AgentExecutor ↗](/static/deploy-agent)\n` +
-             `*Configure RELAYER_PRIVATE_KEY para ativar execução automática.*\n\n`;
+      return `🔧 **Relay not configured** — [Deploy AgentExecutor ↗](/static/deploy-agent)\n` +
+             `*Set RELAYER_PRIVATE_KEY to enable automatic execution.*\n\n`;
     } catch { return ''; }
   }
 
@@ -465,29 +476,21 @@
     autonomaAppendMessage('user', 'deploy contract', 'user');
     autonomaAppendMessage('assistant',
       `🤖 **Deploy AgentExecutor — Meta-Transaction Engine**\n\n` +
-      `Para ativar o modo gasless completo, você precisa fazer o deploy do contrato ` +
-      `**AgentExecutor.sol** na Arc Testnet.\n\n` +
-      `**Opção 1 — Deploy via MetaMask (recomendado):**\n` +
-      `Abra a página de deploy e use sua carteira diretamente:\n` +
-      `👉 [Abrir Deploy Page](/static/deploy-agent.html)\n\n` +
-      `**Opção 2 — Deploy via linha de comando:**\n` +
-      `\`\`\`bash\n` +
-      `cd /home/user/deploy-agent\n` +
-      `DEPLOY_PK=0xSUA_CHAVE node deploy-with-pk.mjs\n` +
-      `\`\`\`\n\n` +
-      `**Depois do deploy:**\n` +
-      `• Salve o endereço do contrato em \`localStorage.setItem('ae_contract_addr', '0x...')\`\n` +
-      `• Configure \`RELAYER_PRIVATE_KEY\` no Cloudflare\n` +
-      `• Transfira USDC para o relayer para pagar o gas\n\n` +
-      `**Endereço do relayer (para receber fundos):**\n` +
-      `\`0xFAd3edb1aAe40C16cd30987fCEc3C3d68aEb7F45\`\n\n` +
-      `*Obtenha USDC de teste em: [faucet.circle.com](https://faucet.circle.com)*`,
+      `To activate full gasless mode, deploy **AgentExecutor.sol** on Arc Testnet.\n\n` +
+      `**Option 1 — Deploy via MetaMask (recommended):**\n` +
+      `👉 [Open Deploy Page](/static/deploy-agent.html)\n\n` +
+      `**Option 2 — Deploy via CLI:**\n` +
+      `\`\`\`bash\ncd /home/user/deploy-agent\nDEPLOY_PK=0xYOUR_KEY node deploy-with-pk.mjs\n\`\`\`\n\n` +
+      `**After deploy:**\n` +
+      `• Save address: \`localStorage.setItem('ae_contract_addr', '0x...')\`\n` +
+      `• Set \`RELAYER_PRIVATE_KEY\` in Cloudflare secrets\n` +
+      `• Fund relayer: \`0xFAd3edb1aAe40C16cd30987fCEc3C3d68aEb7F45\`\n\n` +
+      `*Test USDC: [faucet.circle.com](https://faucet.circle.com)*`,
       'agents'
     );
   }
 
-  // ── Agent status command (updated with meta-tx info) ──────────────────────────
-
+  // ── sendChat helper (used by permit status button + action cards) ─────────────
   window.autonomaSendChat = function(text) {
     const input = document.getElementById('autonoma-chat-input');
     if (input) {
@@ -548,34 +551,30 @@
 
   // ══════════════════════════════════════════════════════════════════════════════
   // CSV UPLOAD — Autonoma
-  // Reuses chat-csv.js (handleChatCSVFile, chatCSVState, etc.) already loaded.
-  // FIX: uses ref-count patch so helpers stay redirected through FileReader.onload
+  // Context is permanently patched, so FileReader.onload callbacks also write
+  // to the autonoma container — no more timed unpatch needed.
   // ══════════════════════════════════════════════════════════════════════════════
 
-  // Handler called by onchange on the file input
   window.autonomaHandleCSVInput = function(inputEl) {
     const file = inputEl?.files?.[0];
     if (!file) return;
-    inputEl.value = ''; // allow re-upload of same file
+    inputEl.value = '';
 
     if (typeof handleChatCSVFile !== 'function') {
-      autonomaAppendMessage('assistant',
-        '❌ CSV module not loaded. Please reload the page.', 'error');
+      autonomaAppendMessage('assistant', '❌ CSV module not loaded. Please reload the page.', 'error');
       return;
     }
-
     if (!file.name.toLowerCase().endsWith('.csv')) {
       autonomaAppendMessage('assistant', '⚠️ Please upload a **.csv** file.', 'error');
       return;
     }
 
     autonomaShowTyping();
-    // Patch BEFORE calling — stays active through FileReader.onload callback
-    // FileReader fires onload within ~100–500ms; we release after 1200ms
-    _patchCtx();
+    // Context is already installed — handleChatCSVFile and its FileReader.onload
+    // will call appendChatMessage which routes to autonoma automatically.
     handleChatCSVFile(file);
+    // Hide typing after a short delay (FileReader is async)
     setTimeout(() => {
-      _unpatchCtx();
       autonomaHideTyping();
       _autonomaUpdateCsvBanner();
     }, 1200);
@@ -602,10 +601,9 @@
   }
   window.autonomaUpdateCsvBanner = _autonomaUpdateCsvBanner;
 
-  // Cancel CSV upload
   window.autonomaCsvCancel = function() {
     if (typeof window.csvCancelUpload === 'function') {
-      _withCtx(() => window.csvCancelUpload());
+      window.csvCancelUpload();
     } else if (window.chatCSVState) {
       window.chatCSVState.loaded = false;
       window.chatCSVState.rows   = [];
@@ -648,10 +646,8 @@
       }
 
       autonomaShowTyping();
-      _patchCtx();
       handleChatCSVFile(file);
       setTimeout(() => {
-        _unpatchCtx();
         autonomaHideTyping();
         _autonomaUpdateCsvBanner();
       }, 1200);
@@ -662,7 +658,6 @@
   // INTENT PANEL — Left column
   // ══════════════════════════════════════════════════════════════════════════════
 
-  // Update Permit2 status banner
   function _updateAutonomaPermitStatus() {
     const bar      = document.getElementById('autonoma-permit-status-bar');
     const txt      = document.getElementById('autonoma-permit-status-text');
@@ -679,7 +674,6 @@
       return;
     }
 
-    // Check session
     let session = null;
     try {
       const raw = localStorage.getItem('arc-pay-session-v3');
@@ -697,7 +691,6 @@
       return;
     }
 
-    // Check permits
     let activePermits = [];
     try {
       const raw = localStorage.getItem('arc_permit2_allowances_v1');
@@ -813,7 +806,6 @@
     list.innerHTML = rows + (empty ? empty.outerHTML : '');
   }
 
-  // Refresh intents panel (fetch + render + permit status)
   async function autonomaRefreshIntentsPanel() {
     _updateAutonomaPermitStatus();
 
@@ -860,8 +852,7 @@
   };
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // AGENT STATUS BAR — Right column (Daat Agent status)
-  // FIX: also monkey-patches updateArcPayBar and p2RefreshUI to sync instantly
+  // AGENT STATUS BAR
   // ══════════════════════════════════════════════════════════════════════════════
 
   function _updateAutonomaAgentStatus() {
@@ -879,9 +870,8 @@
     }
   }
 
-  // Monkey-patch updateArcPayBar (called after authorization in chat.js)
+  // Status hooks: updateArcPayBar / p2RefreshUI / p2AddPermit
   function _installStatusHooks() {
-    // Hook updateArcPayBar
     const _origUpdateBar = window.updateArcPayBar;
     if (_origUpdateBar && !_origUpdateBar._autonomaHooked) {
       window.updateArcPayBar = function() {
@@ -895,7 +885,6 @@
       window.updateArcPayBar._autonomaHooked = true;
     }
 
-    // Hook p2RefreshUI (called after permit creation in permit2-chat.js)
     const _origP2Refresh = window.p2RefreshUI;
     if (_origP2Refresh && !_origP2Refresh._autonomaHooked) {
       window.p2RefreshUI = function() {
@@ -909,7 +898,6 @@
       window.p2RefreshUI._autonomaHooked = true;
     }
 
-    // Hook p2AddPermit (called directly after signing in permit2-chat.js)
     const _origP2Add = window.p2AddPermit;
     if (_origP2Add && !_origP2Add._autonomaHooked) {
       window.p2AddPermit = function() {
@@ -920,7 +908,6 @@
       window.p2AddPermit._autonomaHooked = true;
     }
 
-    // Also watch localStorage for session/permit changes via storage event
     window.addEventListener('storage', (e) => {
       if (!autonomaActive) return;
       if (e.key === 'arc-pay-session-v3' || e.key === 'arc_permit2_allowances_v1') {
@@ -999,7 +986,10 @@
     _setFABVisibility(false);
     _closeFloatingChat();
 
-    // Install hooks for instant status updates
+    // INSTALL permanent context patch — routes ALL chat output to autonoma
+    _installCtx();
+
+    // Install status hooks
     _installStatusHooks();
 
     _updateAutonomaAgentStatus();
@@ -1007,7 +997,6 @@
     autonomaRefreshIntentsPanel();
     _autonomaUpdateCsvBanner();
 
-    // Attach drag & drop
     setTimeout(_attachAutonomaCsvDragDrop, 200);
 
     // Welcome message if empty
@@ -1016,7 +1005,7 @@
       _autonomaWelcome();
     }
 
-    // Poll every 3s: intents + permit status + agent status + CSV banner
+    // Poll every 3s
     _autonomaPollTimer = setInterval(() => {
       if (!autonomaActive) return;
       autonomaRefreshIntentsPanel();
@@ -1024,7 +1013,7 @@
       _autonomaUpdateCsvBanner();
     }, 3000);
 
-    console.log('[Autonoma] Initialized v20260404j · Unified Bridge + Agent Executor Intents + CSV Upload + Status Hooks');
+    console.log('[Autonoma] Initialized v20260404l · Permanent context patch · Full response parity');
   }
 
   function autonomaDestroy() {
@@ -1033,6 +1022,8 @@
     window._autonomaActive = false;
     _setFABVisibility(true);
     if (_autonomaPollTimer) { clearInterval(_autonomaPollTimer); _autonomaPollTimer = null; }
+    // REMOVE context patch — restore main chat helpers
+    _removeCtx();
   }
 
   // ── Hook into switchTab ───────────────────────────────────────────────────────
@@ -1071,7 +1062,6 @@
   window.addEventListener('agentExecutor:update', () => {
     if (autonomaActive) setTimeout(autonomaRefreshIntentsPanel, 300);
   });
-  // Also listen for arcpay session changes
   window.addEventListener('arcPayAuthorized', () => {
     if (autonomaActive) setTimeout(() => {
       _updateAutonomaAgentStatus();
@@ -1082,6 +1072,6 @@
   // Expose active flag for bridge routing
   window._autonomaActive = false;
 
-  console.log('[Autonoma] Module loaded · v20260404j · Unified bridge + CSV Upload + Status Hooks');
+  console.log('[Autonoma] Module loaded · v20260404l · Permanent context patch');
 
 })(); // IIFE

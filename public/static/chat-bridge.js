@@ -1,32 +1,37 @@
 // ============================================================
-// CHAT-BRIDGE.JS — Unified message handler v20260404i
+// CHAT-BRIDGE.JS — Unified message handler v20260404l
 // Shared logic between Main Chat and Autonoma Tab chatbots.
 //
 // ARCHITECTURE:
 //   • Both chatbots call window.handleUnifiedMessage(msg, source)
 //   • source: 'main' | 'autonoma'
-//   • All responses use the active UI context (patched by caller)
-//   • Debug logs: [CHAT SOURCE] and [RESPONSE SENT]
+//   • When source='autonoma', appendChatMessage is ALREADY permanently
+//     patched to autonoma container (by autonoma.js _installCtx).
+//     No temporary patching needed here — all helpers go to the right place.
+//   • When source='main', the global helpers point to main chat as normal.
 //
 // GUARANTEES:
 //   1. Identical command parsing for both chatbots
-//   2. Every action produces visible UI output
-//   3. Permit creation triggers visible confirmation
+//   2. Every action produces visible UI output — no silent execution
+//   3. Permit creation triggers visible confirmation in active container
 //   4. Intent creation → status tracking → async update
-//   5. agentMetaTx:message and agentExecutor:update → chat messages
-//   6. Single source of truth: backend DB + localStorage
+//   5. agentMetaTx:message and agentExecutor:update → correct chat container
+//   6. Button callbacks (_confirmPermitFromChat etc.) always write to the
+//      correct container because context patch is PERMANENT in autonoma
+//   7. Fallback logging if localHandled=true but no output produced
 // ============================================================
 'use strict';
 
 (function () {
 
-  const BRIDGE_VERSION = '20260404i';
+  const BRIDGE_VERSION = '20260404l';
   const AE_EXPLORER    = 'https://testnet.arcscan.app';
 
   // ─────────────────────────────────────────────────────────────────────────────
   // HELPERS — route output to the active context
-  // _msg() and _card() delegate to whatever appendChatMessage / appendActionCard
-  // is currently active (either main chat or autonoma, via context patch).
+  // _msg() / _card() / _hideTyping() delegate to the current global helpers.
+  // When autonoma is active, these globals are already patched → autonoma DOM.
+  // When main chat is active, they point to main chat DOM. No extra logic needed.
   // ─────────────────────────────────────────────────────────────────────────────
   function _msg(role, content, module) {
     if (typeof window.appendChatMessage === 'function') {
@@ -43,17 +48,7 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // STANDARD RESPONSE PIPELINE
-  // Every action returns { status, message, next } so both chatbots behave
-  // identically regardless of execution path.
-  // ─────────────────────────────────────────────────────────────────────────────
-  function _accepted(note) {
-    return { status: 'success', message: 'Agent accepted your request', next: 'processing', note };
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // PERMIT CONFIRMATION — broadcasts to both chatbot contexts
-  // Called after a permit is created from either chat.
+  // PERMIT CONFIRMATION — broadcasts to active context
   // ─────────────────────────────────────────────────────────────────────────────
   function _notifyPermitCreated(permit) {
     const token  = permit.token  || 'USDC';
@@ -76,7 +71,6 @@
       { label: '📋 Show intents', action: `autonomaSendChat && autonomaSendChat('show my intents') || sendQuickMessage('show my intents')`, primary: false },
     ]);
 
-    // Dispatch so both panels refresh
     window.dispatchEvent(new CustomEvent('permit2Updated', { detail: permit }));
     console.log(`[RESPONSE SENT] permit_created id=${permit.id} token=${token} amount=${amount}`);
   }
@@ -84,10 +78,9 @@
 
   // ─────────────────────────────────────────────────────────────────────────────
   // INTENT STATUS UPDATER — listens to agentExecutor:update and agentMetaTx:message
-  // Routes status messages to the active chat context when autonomaActive,
-  // otherwise to the main chat.
+  // Routes to autonoma container when autonoma is active.
   // ─────────────────────────────────────────────────────────────────────────────
-  const _intentMsgShown = new Set(); // prevent duplicate status messages
+  const _intentMsgShown = new Set();
 
   function _onAgentExecutorUpdate(evt) {
     const d = evt?.detail;
@@ -96,36 +89,30 @@
     if (_intentMsgShown.has(key)) return;
     _intentMsgShown.add(key);
 
-    // Pick the right output function
-    const isAutonoma = (typeof autonomaActive !== 'undefined' && window._autonomaActive) ||
-                       !!document.getElementById('autonoma-chat-messages')?.children?.length;
-
-    const addMsg = isAutonoma && typeof window.autonomaAppendMessage === 'function'
-      ? (r, c, m) => window.autonomaAppendMessage(r, c, m)
-      : _msg;
-
+    // When autonoma is active, appendChatMessage IS autonomaAppendMessage.
+    // When main chat is active, it goes to main chat. _msg() handles this.
     switch (d.status) {
       case 'processing':
-        addMsg('assistant', `⚙️ **Processing** intent \`${(d.intentId||'').slice(0,16)}…\` — relayer executing…`, 'intents');
+        _msg('assistant', `⚙️ **Processing** intent \`${(d.intentId||'').slice(0,16)}…\` — relayer executing…`, 'intents');
         break;
       case 'signing':
-        addMsg('assistant', `✍️ **Signing** — building meta-transaction…`, 'intents');
+        _msg('assistant', `✍️ **Signing** — building meta-transaction…`, 'intents');
         break;
       case 'broadcast':
-        addMsg('assistant',
+        _msg('assistant',
           `📤 **Broadcast!** TX sent to Arc Testnet.\n\n` +
           (d.txHash ? `🔗 [View on Explorer](${AE_EXPLORER}/tx/${d.txHash})` : ''),
           'intents');
         break;
       case 'completed':
-        addMsg('assistant',
+        _msg('assistant',
           `✅ **Transfer completed!**\n\n` +
           (d.txHash ? `🔗 [TX ${d.txHash.slice(0,12)}…](${AE_EXPLORER}/tx/${d.txHash})` : '') +
           (d.blockNumber ? ` · Block #${d.blockNumber}` : ''),
           'payments');
         break;
       case 'failed':
-        addMsg('assistant',
+        _msg('assistant',
           `❌ **Transfer failed** — ${d.error || 'Unknown error'}\n\nCheck your balance and try again.`,
           'error');
         break;
@@ -137,13 +124,8 @@
     const d = evt?.detail;
     if (!d?.message) return;
 
-    const isAutonoma = !!document.getElementById('autonoma-chat-messages')?.children?.length;
-    const addMsg = isAutonoma && typeof window.autonomaAppendMessage === 'function'
-      ? (r, c, m) => window.autonomaAppendMessage(r, c, m)
-      : _msg;
-
     const module = d.type === 'error' ? 'error' : (d.type === 'success' ? 'payments' : 'intents');
-    addMsg('assistant', d.message, module);
+    _msg('assistant', d.message, module);
     console.log(`[RESPONSE SENT] meta_tx_message type=${d.type} msg=${d.message.slice(0,60)}`);
   }
 
@@ -152,13 +134,11 @@
 
   // ─────────────────────────────────────────────────────────────────────────────
   // UNIFIED AGENT TRANSFER — creates an intent and shows live status in EITHER chat
-  // Replaces the bare _chatAgentTransfer call so autonoma also shows proper feedback
   // ─────────────────────────────────────────────────────────────────────────────
   async function unifiedAgentTransfer(amount, token, recipient, source) {
     const tokenStr = (token || 'USDC').toUpperCase();
     console.log(`[CHAT SOURCE] unifiedAgentTransfer source=${source} amount=${amount} token=${tokenStr}`);
 
-    // Permit context hint
     let permitInfo = '';
     try {
       const wallet = window.walletState?.address;
@@ -188,6 +168,7 @@
     );
 
     try {
+      if (!window.AgentExecutor) throw new Error('AgentExecutor not loaded');
       const intent = await AgentExecutor.queueTransfer(
         String(amount), tokenStr, recipient, `via chat (${source})`
       );
@@ -208,7 +189,6 @@
 
       console.log(`[RESPONSE SENT] intent_queued id=${intent.id} source=${source}`);
 
-      // Refresh autonoma panel if visible
       if (typeof window.autonomaRefreshIntents === 'function') {
         setTimeout(window.autonomaRefreshIntents, 800);
       }
@@ -219,7 +199,6 @@
         `⚠️ **Agent issue:** ${err.message}\n\nTransfer added to manual queue instead. Click **Execute Payments** to proceed.`,
         'error'
       );
-      // Fall back to queue
       window.dispatchEvent(new CustomEvent('arcPayQueue:add', {
         detail: { type: 'transfer', token: tokenStr, amount: parseFloat(amount), recipient }
       }));
@@ -248,6 +227,7 @@
     );
 
     try {
+      if (!window.AgentExecutor) throw new Error('AgentExecutor not loaded');
       const intent = await AgentExecutor.queueMultisend(parsed, tokenStr, `batch via chat (${source})`);
 
       _msg('assistant',
@@ -283,10 +263,12 @@
 
   // ─────────────────────────────────────────────────────────────────────────────
   // UNIFIED MESSAGE HANDLER
-  // Both chatbots call this AFTER patching appendChatMessage/appendActionCard.
-  // Returns true if handled locally, false to fall through to AI backend.
+  // Both chatbots call this AFTER their context is set up.
+  // - autonoma: context is PERMANENTLY patched → all helpers go to autonoma DOM
+  // - main: global helpers are untouched → all helpers go to main chat DOM
   //
-  // source: 'main' | 'autonoma'
+  // No temporary patching needed here. The ctx is already right.
+  // Returns true if handled locally, false to fall through to AI backend.
   // ─────────────────────────────────────────────────────────────────────────────
   async function handleUnifiedMessage(msg, source) {
     source = source || 'main';
@@ -294,7 +276,7 @@
 
     console.log(`[CHAT SOURCE] handleUnifiedMessage source=${source} msg="${msg.slice(0,80)}"`);
 
-    // ── 1. Intent-specific commands (autonoma specialties, also available in main) ──
+    // ── 1. Intent-specific commands ───────────────────────────────────────────
     if (/show.*intent|my intent|list.*intent/i.test(lower)) {
       _hideTyping();
       await _cmdShowIntents(source);
@@ -316,34 +298,31 @@
       return true;
     }
 
-    // ── 2. Permit2 intent handler ─────────────────────────────────────────────
-    if (typeof window.handlePermitIntent === 'function') {
-      const p2handled = await window.handlePermitIntent(msg);
-      if (p2handled) {
-        console.log(`[RESPONSE SENT] permit2_intent source=${source}`);
+    // ── 2. CSV extended handler (first — catches "send" commands when CSV is loaded) ─
+    // handleLocalCommandWithCSV wraps handleLocalCommand + CSV-specific overrides.
+    // When this returns true it means the command was handled (including transfer/batch/swap).
+    if (typeof window.handleLocalCommandWithCSV === 'function') {
+      const csvHandled = await window.handleLocalCommandWithCSV(msg);
+      if (csvHandled) {
+        console.log(`[RESPONSE SENT] local_or_csv_cmd source=${source} msg="${lower.slice(0,40)}"`);
         return true;
       }
-    }
-
-    // ── 3. Standard local commands (from chat.js) ─────────────────────────────
-    if (typeof window.handleLocalCommand === 'function') {
-      // Override action card payloads to use unified functions when called from autonoma
-      if (source === 'autonoma') {
-        _patchActionCards(source);
-      }
+    } else if (typeof window.handleLocalCommand === 'function') {
+      // Fallback: bridge loaded before chat.js CSV extension
       const handled = await window.handleLocalCommand(msg);
-      if (source === 'autonoma') _unpatchActionCards();
       if (handled) {
         console.log(`[RESPONSE SENT] local_cmd source=${source} msg="${lower.slice(0,40)}"`);
         return true;
       }
     }
 
-    // ── 4. CSV extended handler ────────────────────────────────────────────────
-    if (typeof window.handleLocalCommandWithCSV === 'function') {
-      const csvHandled = await window.handleLocalCommandWithCSV(msg);
-      if (csvHandled) {
-        console.log(`[RESPONSE SENT] csv_cmd source=${source}`);
+    // ── 3. Permit2 intent handler ─────────────────────────────────────────────
+    // Context is already set — handlePermitIntent calls appendChatMessage which
+    // routes to the right container automatically.
+    if (typeof window.handlePermitIntent === 'function') {
+      const p2handled = await window.handlePermitIntent(msg);
+      if (p2handled) {
+        console.log(`[RESPONSE SENT] permit2_intent source=${source}`);
         return true;
       }
     }
@@ -353,42 +332,8 @@
   window.handleUnifiedMessage = handleUnifiedMessage;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // ACTION CARD PATCH — when called from autonoma, override agent transfer actions
-  // so they route to unifiedAgentTransfer instead of _chatAgentTransfer.
-  // This ensures the output always goes to the currently active chat container.
-  // ─────────────────────────────────────────────────────────────────────────────
-  let _origChatAgentTransfer  = null;
-  let _origChatAgentBatch     = null;
-
-  function _patchActionCards(source) {
-    // Patch _chatAgentTransfer to use unified version
-    _origChatAgentTransfer = window._chatAgentTransfer;
-    window._chatAgentTransfer = function(amount, token, recipient) {
-      return unifiedAgentTransfer(amount, token, recipient, source);
-    };
-
-    // If AgentExecutor batch inline call is used, route through unified
-    if (window.AgentExecutor) {
-      _origChatAgentBatch = window._chatAgentBatch;
-      window._chatAgentBatch = function(parsed, token) {
-        return unifiedAgentMultisend(parsed, token, source);
-      };
-    }
-  }
-
-  function _unpatchActionCards() {
-    if (_origChatAgentTransfer !== null) {
-      window._chatAgentTransfer = _origChatAgentTransfer;
-      _origChatAgentTransfer = null;
-    }
-    if (_origChatAgentBatch !== null) {
-      window._chatAgentBatch = _origChatAgentBatch;
-      _origChatAgentBatch = null;
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
   // SHARED COMMAND IMPLEMENTATIONS
+  // These use _msg() which routes to the active container automatically.
   // ─────────────────────────────────────────────────────────────────────────────
 
   async function _cmdShowIntents(source) {
@@ -429,7 +374,6 @@
         `📋 **Your intents (${intents.length} total)**\n\n${lines}`,
         'intents');
 
-      // Refresh panel if in autonoma
       if (typeof window.autonomaRefreshIntents === 'function') setTimeout(window.autonomaRefreshIntents, 300);
       console.log(`[RESPONSE SENT] show_intents count=${intents.length} source=${source}`);
     } catch (e) {
@@ -493,9 +437,15 @@
       }
     } catch {}
 
-    const metaTxRow = metaTx
-      ? `| Gasless Mode | ${metaTx.contractDeployed ? '✅ Active — relayer pays gas' : '⚠️ Contract not deployed'} |\n`
-      : '';
+    const modeLabel = metaTx
+      ? (metaTx.contractDeployed
+          ? '✅ Mode A — gasless (AgentExecutor)'
+          : metaTx.relayerConfigured
+            ? `🔄 Mode B — direct relay (${metaTx.relayerAddress?.slice(0,10)}…)`
+            : '⚠️ Relay not configured')
+      : 'N/A';
+
+    const metaTxRow = metaTx ? `| Relay Mode | ${modeLabel} |\n` : '';
 
     _msg('assistant',
       `🤖 **Agent Status — ${source === 'autonoma' ? 'Autonoma' : 'Main Chat'}**\n\n` +
@@ -530,20 +480,22 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // PERMIT2 HOOK — intercept _confirmPermitFromChat to emit bridgeNotifyPermitCreated
-  // Works for BOTH chatbots.
+  // PERMIT2 HOOK — intercept _confirmPermitFromChat
+  // Because autonoma permanently patches appendChatMessage, the confirmation
+  // message from _confirmPermitFromChat automatically goes to autonoma DOM
+  // when that tab is active. No extra routing needed.
+  // We just add the permit2Updated event dispatch for panel refresh.
   // ─────────────────────────────────────────────────────────────────────────────
   function _installPermitHook() {
     const orig = window._confirmPermitFromChat;
     if (!orig || orig._bridgeHooked) return;
 
     window._confirmPermitFromChat = async function() {
+      // appendChatMessage is already patched (or not) based on active tab.
+      // Just call original and dispatch event for panel refresh.
       const result = await orig.apply(this, arguments);
-      // After permit is created, the existing code appends messages via appendChatMessage
-      // which is already patched to go to the active container.
-      // Additionally, dispatch the unified permit notification.
       try {
-        const raw = localStorage.getItem('arc_permit2_allowances_v1');
+        const raw    = localStorage.getItem('arc_permit2_allowances_v1');
         const wallet = window.walletState?.address;
         if (raw && wallet) {
           const now = Date.now();
@@ -553,7 +505,6 @@
           );
           if (permits.length > 0) {
             const latest = permits[permits.length - 1];
-            // Dispatch event so autonoma panel refreshes
             window.dispatchEvent(new CustomEvent('permit2Updated', { detail: latest }));
             console.log(`[RESPONSE SENT] permit_hook id=${latest.id} token=${latest.token}`);
           }
@@ -565,15 +516,13 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // ARCPAY AUTHORIZATION HOOK — notify both chatbots on success
+  // ARCPAY AUTHORIZATION HOOK
   // ─────────────────────────────────────────────────────────────────────────────
   function _installAuthHook() {
-    // We listen for the saveSession call by watching localStorage
     const _origSaveSession = window.saveSession;
     if (_origSaveSession && !_origSaveSession._bridgeHooked) {
       window.saveSession = function(session) {
         const result = _origSaveSession.apply(this, arguments);
-        // Dispatch event so both chatbots can show confirmation
         window.dispatchEvent(new CustomEvent('arcPayAuthorized', { detail: session }));
         console.log(`[RESPONSE SENT] arcpay_authorized wallet=${session?.wallet?.slice(0,10)}`);
         return result;
@@ -584,22 +533,25 @@
 
   // ─────────────────────────────────────────────────────────────────────────────
   // ARCPAY AUTHORIZED EVENT → show confirmation in autonoma chat
+  // Because context is permanently patched in autonoma, we can just call
+  // appendChatMessage directly and it routes correctly.
   // ─────────────────────────────────────────────────────────────────────────────
   window.addEventListener('arcPayAuthorized', (evt) => {
     const session = evt?.detail;
     if (!session?.wallet) return;
 
-    // Only show in autonoma container when it's active
+    // Only show the extra confirmation when autonoma is active.
+    // The main chat already shows it through its own flow.
+    if (!window._autonomaActive) return;
     if (typeof window.autonomaAppendMessage !== 'function') return;
-    if (!document.getElementById('autonoma-chat-messages')) return;
 
-    // Avoid duplicate messages
     const key = `arcPayAuthorized:${session.wallet}:${session.sessionNonce || ''}`;
     if (_intentMsgShown.has(key)) return;
     _intentMsgShown.add(key);
 
     const w = session.wallet;
-    window.autonomaAppendMessage('assistant',
+    // appendChatMessage is patched → goes to autonoma automatically
+    _msg('assistant',
       `✅ **Daat Agent authorized!**\n\n` +
       `Wallet: \`${w.slice(0,10)}…${w.slice(-6)}\`\n` +
       `Session expires: ${new Date(session.expiry).toLocaleTimeString()}\n\n` +
@@ -617,15 +569,19 @@
     _installPermitHook();
     _installAuthHook();
 
-    // Expose unified transfer/batch globally so action card buttons can call them
-    window._chatAgentTransferUnified = function(amount, token, recipient) {
-      return unifiedAgentTransfer(amount, token, recipient, 'action_card');
+    // Expose unified transfer/batch globally so action card buttons can call them.
+    // When the button is clicked in autonoma, appendChatMessage is already patched
+    // → response goes to autonoma container automatically.
+    window._chatAgentTransfer = function(amount, token, recipient) {
+      return unifiedAgentTransfer(amount, token, recipient, window._autonomaActive ? 'autonoma' : 'main');
     };
-    window._chatAgentBatchUnified = function(parsed, token) {
-      return unifiedAgentMultisend(parsed, token, 'action_card');
+    window._chatAgentBatch = function(parsed, token) {
+      return unifiedAgentMultisend(parsed, token, window._autonomaActive ? 'autonoma' : 'main');
     };
+    window._chatAgentTransferUnified = window._chatAgentTransfer;
+    window._chatAgentBatchUnified    = window._chatAgentBatch;
 
-    console.log(`[CHAT-BRIDGE] Loaded v${BRIDGE_VERSION} — unified handler active`);
+    console.log(`[CHAT-BRIDGE] Loaded v${BRIDGE_VERSION} — permanent ctx patch model`);
   }
 
   if (document.readyState === 'loading') {

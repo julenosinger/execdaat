@@ -1920,7 +1920,7 @@ async function cmdBatchPayment(entries) {
   );
   appendActionCard([
     typeof AgentExecutor !== 'undefined' && isAgentActive()
-      ? { label: '⚡ Execute Batch via Agent', action: `AgentExecutor.queueMultisend(${JSON.stringify(parsed)},'USDC','batch via chat').then(i => appendChatMessage('assistant','🤖 Batch queued — agent will execute shortly.','payments')).catch(e => appendChatMessage('assistant','❌ ' + e.message,'error'))`, primary: true }
+      ? { label: '⚡ Execute Batch via Agent', action: `_chatAgentBatch && _chatAgentBatch(${JSON.stringify(parsed)},'USDC') || (typeof unifiedAgentMultisend==='function'?unifiedAgentMultisend(${JSON.stringify(parsed)},'USDC','main'):AgentExecutor.queueMultisend(${JSON.stringify(parsed)},'USDC','batch via chat').then(i=>appendChatMessage('assistant','🤖 Batch queued.','payments')).catch(e=>appendChatMessage('assistant','❌ '+e.message,'error')))`, primary: true }
       : { label: '🚀 Abrir Multisend', action: `chatOpenMultisend(${JSON.stringify(parsed)})`, primary: true },
     { label: '📥 Adicionar Lote à Fila', action: `_chatQueueBatch(${JSON.stringify(parsed)},'USDC')`, primary: false },
     { label: '❌ Cancelar',         action: `appendChatMessage('assistant','❌ Cancelado.','payments')`, primary: false },
@@ -2092,10 +2092,12 @@ async function chatExecutePayment(amount, token, recipient) {
 
 // ── _chatAgentTransfer: create an intent → AgentExecutor executes automatically ─
 // Delegates to unifiedAgentTransfer from chat-bridge.js when loaded.
+// Context-aware: uses autonoma source when autonoma tab is active.
 async function _chatAgentTransfer(amount, token, recipient) {
+  const source = window._autonomaActive ? 'autonoma' : 'main';
   // If bridge is loaded, use it for consistent behavior across both chatbots
   if (typeof window.unifiedAgentTransfer === 'function') {
-    return window.unifiedAgentTransfer(amount, token, recipient, 'main');
+    return window.unifiedAgentTransfer(amount, token, recipient, source);
   }
 
   // Fallback: inline implementation (used before bridge loads)
@@ -2292,8 +2294,13 @@ function chatOpenContractForm(contractor, amount) {
   toggleChat();
 }
 
-// ── Quick message ──────────────────────────────────────────────────────────────
+// ── Quick message ── context-aware: routes to autonoma when that tab is active ──
 function sendQuickMessage(text) {
+  // If autonoma tab is active, use its input handler
+  if (window._autonomaActive && typeof window.autonomaSendChat === 'function') {
+    window.autonomaSendChat(text);
+    return;
+  }
   const input = document.getElementById('chat-input');
   if (input) { input.value = text; sendChatMessage(); }
 }
@@ -2347,9 +2354,19 @@ function appendActionCard(buttons) {
 }
 
 // ── Blockchain Action Card — renders structured action from LLM ────────────────
+// CONTEXT-AWARE: uses appendActionCard (patched by autonoma when that tab is active)
+// so the card always goes to the correct chat container.
 function renderBlockchainActionCard(action, walletConnected) {
-  const container = document.getElementById('chat-messages');
-  if (!container || !action || !action.type) return;
+  if (!action || !action.type) return;
+  // Resolve correct container: if autonoma is active AND autonomaAppendActionCard exists,
+  // we'll use it via appendActionCard (which is patched). Otherwise use main chat container.
+  const useNativeAppend = typeof window.appendActionCard === 'function' && window._autonomaActive;
+  // For main chat, we still need the container for the full card HTML.
+  // We handle autonoma by calling autonomaAppendMessage for the card itself.
+  const container = useNativeAppend
+    ? document.getElementById('autonoma-chat-messages')
+    : document.getElementById('chat-messages');
+  if (!container) return;
 
   const typeIcons = {
     transfer: '💳', swap: '🔄', multisend: '📤',
@@ -2459,7 +2476,8 @@ function renderBlockchainActionCard(action, walletConnected) {
   window._arcPendingActions[actionId] = action;
 
   container.appendChild(card);
-  scrollChatToBottom();
+  container.scrollTop = container.scrollHeight;
+  if (!window._autonomaActive) scrollChatToBottom();
 }
 
 // ── Execute Action: fill form + navigate to correct tab ────────────────────────
@@ -2937,7 +2955,11 @@ window.sendChatMessage = async function() {
   if (sendBtn) sendBtn.disabled = true;
 
   try {
-    const handled = await handleLocalCommandWithCSV(msg);
+    // Prefer unified handler (covers both chatbots identically).
+    // Falls back to CSV-extended handler if bridge not loaded.
+    const handled = typeof window.handleUnifiedMessage === 'function'
+      ? await window.handleUnifiedMessage(msg, 'main')
+      : await handleLocalCommandWithCSV(msg);
     if (handled) { hideTypingIndicator(); return; }
 
     // Send to AI backend
