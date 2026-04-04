@@ -1,6 +1,6 @@
 // ============================================================
 // AUTONOMA.JS — Subpágina /agents/autonoma
-// Build: 20260404c
+// Build: 20260404d
 //
 // Layout: 2 colunas
 //   LEFT  — Agent Executor Intents (painel live de intents on-chain)
@@ -370,6 +370,151 @@
       'agents');
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════
+  // CSV UPLOAD — Autonoma
+  // Reutiliza chat-csv.js (handleChatCSVFile, chatCSVState, etc.) já carregado.
+  // Apenas redireciona appendChatMessage / appendActionCard para o DOM da Autonoma.
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // ── Patch temporário dos helpers para redirecionar para DOM da Autonoma ───────
+  function _withAutonomaCtx(fn) {
+    const _origAppend = window.appendChatMessage;
+    const _origCard   = window.appendActionCard;
+    const _origHide   = window.hideTypingIndicator;
+    const _origShow   = window.showTypingIndicator;
+
+    window.appendChatMessage   = autonomaAppendMessage;
+    window.appendActionCard    = autonomaAppendActionCard;
+    window.hideTypingIndicator = autonomaHideTyping;
+    window.showTypingIndicator = autonomaShowTyping;
+
+    const restore = () => {
+      window.appendChatMessage   = _origAppend;
+      window.appendActionCard    = _origCard;
+      window.hideTypingIndicator = _origHide;
+      window.showTypingIndicator  = _origShow;
+    };
+
+    try {
+      const result = fn();
+      // Se retornar Promise, restaura depois que ela resolver/rejeitar
+      if (result && typeof result.then === 'function') {
+        return result.finally(restore);
+      }
+      restore();
+      return result;
+    } catch (e) {
+      restore();
+      throw e;
+    }
+  }
+
+  // ── Handler chamado pelo onchange do input file ───────────────────────────────
+  window.autonomaHandleCSVInput = function(inputEl) {
+    const file = inputEl?.files?.[0];
+    if (!file) return;
+    inputEl.value = ''; // reset para permitir re-upload do mesmo arquivo
+
+    if (typeof handleChatCSVFile !== 'function') {
+      autonomaAppendMessage('assistant',
+        '❌ Módulo CSV não carregado. Recarregue a página.', 'error');
+      return;
+    }
+
+    autonomaShowTyping();
+    _withAutonomaCtx(() => {
+      const r = handleChatCSVFile(file);
+      // handleChatCSVFile pode ser sync ou async
+      const finish = () => setTimeout(_autonomaUpdateCsvBanner, 300);
+      if (r && typeof r.then === 'function') r.then(finish).catch(finish);
+      else finish();
+    });
+  };
+
+  // ── Atualiza o banner de CSV dentro da Autonoma ───────────────────────────────
+  function _autonomaUpdateCsvBanner() {
+    const banner = document.getElementById('autonoma-csv-banner');
+    const text   = document.getElementById('autonoma-csv-banner-text');
+    const btn    = document.getElementById('autonoma-csv-btn');
+    const state  = window.chatCSVState;
+
+    if (!banner || !text) return;
+
+    if (state?.loaded && state?.rows?.length > 0) {
+      text.textContent = `${state.fileName || 'CSV'} · ${state.rows.length} linha(s) · ${state.token || 'USDC'}`;
+      banner.classList.remove('hidden');
+      if (btn) { btn.classList.add('text-purple-400'); btn.classList.remove('text-gray-500'); }
+    } else {
+      banner.classList.add('hidden');
+      if (btn) { btn.classList.remove('text-purple-400'); btn.classList.add('text-gray-500'); }
+    }
+  }
+  window.autonomaUpdateCsvBanner = _autonomaUpdateCsvBanner;
+
+  // ── Cancelar CSV carregado ────────────────────────────────────────────────────
+  window.autonomaCsvCancel = function() {
+    if (typeof window.csvCancelUpload === 'function') {
+      _withAutonomaCtx(() => window.csvCancelUpload());
+    } else if (window.chatCSVState) {
+      window.chatCSVState.loaded = false;
+      window.chatCSVState.rows   = [];
+    }
+    _autonomaUpdateCsvBanner();
+  };
+
+  // ── Drag & Drop no chat widget da Autonoma ────────────────────────────────────
+  function _attachAutonomaCsvDragDrop() {
+    const widget  = document.getElementById('autonoma-chat-widget');
+    const overlay = document.getElementById('autonoma-csv-drop-overlay');
+    if (!widget || widget._csvDragAttached) return;
+    widget._csvDragAttached = true;
+
+    widget.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.style.display = 'flex';
+      }
+    });
+
+    widget.addEventListener('dragleave', (e) => {
+      if (!widget.contains(e.relatedTarget)) {
+        if (overlay) {
+          overlay.classList.add('hidden');
+          overlay.style.display = '';
+        }
+      }
+    });
+
+    widget.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (overlay) { overlay.classList.add('hidden'); overlay.style.display = ''; }
+
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        autonomaAppendMessage('assistant',
+          '⚠️ Por favor, envie um arquivo **.csv**.', 'error');
+        return;
+      }
+
+      if (typeof handleChatCSVFile !== 'function') {
+        autonomaAppendMessage('assistant',
+          '❌ Módulo CSV não carregado.', 'error');
+        return;
+      }
+
+      autonomaShowTyping();
+      _withAutonomaCtx(() => {
+        const r = handleChatCSVFile(file);
+        const finish = () => setTimeout(_autonomaUpdateCsvBanner, 300);
+        if (r && typeof r.then === 'function') r.then(finish).catch(finish);
+        else finish();
+      });
+    });
+  }
+
   // ── Quick message ─────────────────────────────────────────────────────────────
   window.autonomaSendChat = function(text) {
     const input = document.getElementById('autonoma-chat-input');
@@ -712,6 +857,10 @@
 
     _updateAutonomaAgentStatus();
     autonomaRefreshIntentsPanel();
+    _autonomaUpdateCsvBanner();
+
+    // Attach drag & drop no chat widget
+    setTimeout(_attachAutonomaCsvDragDrop, 200);
 
     // Welcome message se vazio
     const container = document.getElementById('autonoma-chat-messages');
@@ -719,12 +868,15 @@
       _autonomaWelcome();
     }
 
-    // Poll de intents a cada 3s
+    // Poll de intents + CSV banner a cada 3s
     _autonomaPollTimer = setInterval(() => {
-      if (autonomaActive) autonomaRefreshIntentsPanel();
+      if (autonomaActive) {
+        autonomaRefreshIntentsPanel();
+        _autonomaUpdateCsvBanner();
+      }
     }, 3000);
 
-    console.log('[Autonoma] Inicializado v20260404c · Agent Executor Intents + Full Chat');
+    console.log('[Autonoma] Inicializado v20260404d · Agent Executor Intents + CSV Upload + Full Chat');
   }
 
   function autonomaDestroy() {
@@ -760,6 +912,6 @@
     if (autonomaActive) setTimeout(autonomaRefreshIntentsPanel, 300);
   });
 
-  console.log('[Autonoma] Módulo carregado · v20260404c');
+  console.log('[Autonoma] Módulo carregado · v20260404d · CSV Upload suportado');
 
 })(); // IIFE

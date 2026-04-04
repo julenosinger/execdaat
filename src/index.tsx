@@ -3672,19 +3672,46 @@ app.get('/', (c) => {
               <button onclick="autonomaSendChat('help')"              class="autonoma-quick-btn">❓ Ajuda</button>
             </div>
 
-            <!-- CSV banner (hidden by default) -->
+            <!-- CSV Drag-and-Drop Overlay -->
+            <div id="autonoma-csv-drop-overlay"
+              class="absolute inset-0 z-20 hidden flex-col items-center justify-center rounded-2xl pointer-events-none"
+              style="background:rgba(88,28,135,0.85);backdrop-filter:blur(4px);border:2px dashed #a855f7;">
+              <i class="fas fa-file-csv text-purple-300 text-4xl mb-3"></i>
+              <p class="text-white font-semibold text-sm">Solte o CSV aqui</p>
+              <p class="text-purple-300 text-xs mt-1">endereço, valor [, token]</p>
+            </div>
+
+            <!-- CSV Preview Banner (shows after upload) -->
             <div id="autonoma-csv-banner" class="hidden mx-2 mb-1 flex-shrink-0">
               <div class="flex items-center gap-2 bg-purple-900/30 border border-purple-700/40 rounded-lg px-3 py-1.5">
                 <i class="fas fa-file-csv text-purple-400 text-xs flex-shrink-0"></i>
                 <span id="autonoma-csv-banner-text" class="text-xs text-purple-200 flex-1 truncate"></span>
+                <button onclick="autonomaCsvCancel()" class="text-purple-400 hover:text-white transition-colors flex-shrink-0" title="Limpar CSV">
+                  <i class="fas fa-times text-xs"></i>
+                </button>
               </div>
             </div>
 
             <!-- Input area -->
             <div class="px-2 pb-2.5 flex-shrink-0">
+              <!-- Hidden file input for CSV -->
+              <input id="autonoma-csv-file-input" type="file" accept=".csv" class="hidden"
+                onchange="autonomaHandleCSVInput(this)">
+
               <div class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500 transition-all">
+                <!-- CSV Upload (+) button -->
+                <button id="autonoma-csv-btn"
+                  title="Upload CSV para pagamento em lote (drag & drop suportado)"
+                  onclick="document.getElementById('autonoma-csv-file-input').click()"
+                  class="w-6 h-6 flex items-center justify-center rounded-md text-gray-500 hover:text-purple-400 hover:bg-purple-900/30 transition-all flex-shrink-0 group relative">
+                  <i class="fas fa-plus text-xs"></i>
+                  <span class="absolute bottom-7 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 text-gray-300 text-[10px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    Upload CSV (.csv)
+                  </span>
+                </button>
+
                 <input id="autonoma-chat-input" type="text"
-                  placeholder="send 10 USDC to 0x… · swap · intents · guardian · balance…"
+                  placeholder="send · CSV · swap · intents · guardian · balance…"
                   class="flex-1 bg-transparent text-xs text-white placeholder-gray-600 focus:outline-none min-w-0"
                   onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();autonomaSendMessage();}">
                 <button onclick="autonomaSendMessage()" id="autonoma-send-btn"
@@ -3692,7 +3719,7 @@ app.get('/', (c) => {
                   <i class="fas fa-paper-plane text-xs"></i>
                 </button>
               </div>
-              <p class="text-center text-gray-700 text-[10px] mt-1">Enter para enviar · 🤖 Agent Executor ativo · Permit2 · Brain Mode</p>
+              <p class="text-center text-gray-700 text-[10px] mt-1">Enter para enviar · ➕ CSV batch · 🤖 Agent Executor · Permit2</p>
             </div>
           </div>
         </div>
@@ -5014,7 +5041,7 @@ app.get('/', (c) => {
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
   <script src="/static/otc.f5e54315.js"></script>
-  <script src="/static/autonoma.js?v=20260404c"></script>
+  <script src="/static/autonoma.js?v=20260404d"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner
