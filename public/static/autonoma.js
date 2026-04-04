@@ -1,30 +1,28 @@
 // ============================================================
-// AUTONOMA.JS — Subpágina /agents/autonoma
-// Build: 20260404d
+// AUTONOMA.JS — Subpage /agents/autonoma
+// Build: 20260404e
 //
-// Layout: 2 colunas
-//   LEFT  — Agent Executor Intents (painel live de intents on-chain)
-//   RIGHT — Chat embarcado com TODAS as funcionalidades do chat principal
+// Layout: 2 columns
+//   LEFT  — Agent Executor Intents (live on-chain intent panel)
+//   RIGHT — Embedded chat with ALL main chat features
 //
-// ARQUITETURA:
-//   • Chat embarcado reutiliza handleLocalCommand, handlePermitIntent,
-//     sendChatMessage — mesmo engine do chat flutuante
-//   • Agent Executor Intents: renderiza intents via AgentExecutor API
-//     e atualiza o status bar de Permit2 Spending Permissions
-//   • FAB flutuante ocultado quando Autonoma está ativa
-//   • auto-poll do painel de intents a cada 3s quando ativo
+// FIXES in this build:
+//   • CSV upload: ref-count patch keeps helpers redirected through FileReader.onload
+//   • Permit status: polls every 3s + monkey-patches p2RefreshUI / p2AddPermit
+//   • Agent auth status: monkey-patches updateArcPayBar + polls every 3s
+//   • Full English translation of all UI strings
 // ============================================================
 'use strict';
 
 (function() {
 
-  // ── Estado ───────────────────────────────────────────────────────────────────
+  // ── State ─────────────────────────────────────────────────────────────────────
   let autonomaActive  = false;
   let autonomaTyping  = false;
   let autonomaMsgs    = [];
   let _autonomaPollTimer = null;
 
-  // ── Formatação de markdown ───────────────────────────────────────────────────
+  // ── Markdown / escape helpers ─────────────────────────────────────────────────
   function _renderMd(text) {
     if (typeof renderMarkdown === 'function') return renderMarkdown(text);
     return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -33,23 +31,24 @@
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  // ── Append mensagem no chat da Autonoma ──────────────────────────────────────
+  // ── Append message to Autonoma chat ─────────────────────────────────────────
   function autonomaAppendMessage(role, content, module) {
     const container = document.getElementById('autonoma-chat-messages');
     if (!container) return;
 
-    const isUser  = role === 'user';
+    const isUser   = role === 'user';
     const rendered = isUser ? _esc(content) : _renderMd(content);
 
     const modColors = {
       payments:'text-green-400', swap:'text-blue-400', contracts:'text-orange-400',
       agents:'text-purple-400', permit2:'text-yellow-400', error:'text-red-400',
-      general:'text-gray-400', intents:'text-purple-400',
+      general:'text-gray-400', intents:'text-purple-400', csv:'text-purple-300',
+      batch:'text-indigo-400',
     };
     const modIcons = {
       payments:'fa-dollar-sign', swap:'fa-exchange-alt', contracts:'fa-file-contract',
       agents:'fa-robot', permit2:'fa-key', error:'fa-exclamation-circle',
-      general:'fa-comment', intents:'fa-bolt',
+      general:'fa-comment', intents:'fa-bolt', csv:'fa-file-csv', batch:'fa-layer-group',
     };
     const modColor = modColors[module] || 'text-gray-400';
     const modIcon  = modIcons[module]  || 'fa-comment';
@@ -81,7 +80,7 @@
   }
   window.autonomaAppendMessage = autonomaAppendMessage;
 
-  // ── Append action card no chat da Autonoma ───────────────────────────────────
+  // ── Append action card to Autonoma chat ──────────────────────────────────────
   function autonomaAppendActionCard(buttons) {
     const container = document.getElementById('autonoma-chat-messages');
     if (!container) return;
@@ -98,7 +97,7 @@
     container.scrollTop = container.scrollHeight;
   }
 
-  // ── Typing indicator ─────────────────────────────────────────────────────────
+  // ── Typing indicator ──────────────────────────────────────────────────────────
   function autonomaShowTyping() {
     const container = document.getElementById('autonoma-chat-messages');
     if (!container || document.getElementById('autonoma-typing')) return;
@@ -123,9 +122,54 @@
     document.getElementById('autonoma-typing')?.remove();
   }
 
-  // ── Enviar mensagem do chat da Autonoma ──────────────────────────────────────
-  // Reutiliza handleLocalCommand + handlePermitIntent + API /api/chat/message
-  // com DOM próprio — mesmas funcionalidades do chat flutuante
+  // ══════════════════════════════════════════════════════════════════════════════
+  // CONTEXT PATCH — ref-count based (safe for FileReader callbacks)
+  // Keeps global helpers redirected to Autonoma DOM through async callbacks.
+  // ══════════════════════════════════════════════════════════════════════════════
+  let _ctxDepth = 0;
+  const _savedHelpers = {};
+
+  function _patchCtx() {
+    if (_ctxDepth === 0) {
+      _savedHelpers.appendChatMessage   = window.appendChatMessage;
+      _savedHelpers.appendActionCard    = window.appendActionCard;
+      _savedHelpers.hideTypingIndicator = window.hideTypingIndicator;
+      _savedHelpers.showTypingIndicator = window.showTypingIndicator;
+      window.appendChatMessage   = autonomaAppendMessage;
+      window.appendActionCard    = autonomaAppendActionCard;
+      window.hideTypingIndicator = autonomaHideTyping;
+      window.showTypingIndicator = autonomaShowTyping;
+    }
+    _ctxDepth++;
+  }
+
+  function _unpatchCtx() {
+    _ctxDepth = Math.max(0, _ctxDepth - 1);
+    if (_ctxDepth === 0) {
+      window.appendChatMessage   = _savedHelpers.appendChatMessage;
+      window.appendActionCard    = _savedHelpers.appendActionCard;
+      window.hideTypingIndicator = _savedHelpers.hideTypingIndicator;
+      window.showTypingIndicator = _savedHelpers.showTypingIndicator;
+    }
+  }
+
+  // Promise-aware wrapper (for chat send / handlePermitIntent / etc.)
+  function _withCtx(fn) {
+    _patchCtx();
+    try {
+      const result = fn();
+      if (result && typeof result.then === 'function') {
+        return result.finally(_unpatchCtx);
+      }
+      _unpatchCtx();
+      return result;
+    } catch (e) {
+      _unpatchCtx();
+      throw e;
+    }
+  }
+
+  // ── Send message ──────────────────────────────────────────────────────────────
   window.autonomaSendMessage = async function() {
     const input = document.getElementById('autonoma-chat-input');
     const msg   = input?.value?.trim();
@@ -140,29 +184,19 @@
     autonomaAppendMessage('user', msg);
     autonomaShowTyping();
 
-    // Patch temporário: redireciona appendChatMessage e appendActionCard para Autonoma DOM
-    const _origAppend = window.appendChatMessage;
-    const _origCard   = window.appendActionCard;
-    const _origHide   = window.hideTypingIndicator;
-    const _origShow   = window.showTypingIndicator;
-
-    window.appendChatMessage = autonomaAppendMessage;
-    window.appendActionCard  = autonomaAppendActionCard;
-    window.hideTypingIndicator = autonomaHideTyping;
-    window.showTypingIndicator  = autonomaShowTyping;
-
+    _patchCtx();
     try {
       let localHandled = false;
 
-      // 1) Comandos locais de intent (show my intents / cancel intents)
+      // 1) Local intent commands
       localHandled = await _handleAutonomaIntentCommand(msg);
 
-      // 2) Permit2 intents (handlePermitIntent do permit2-chat.js)
+      // 2) Permit2 intents
       if (!localHandled && typeof handlePermitIntent === 'function') {
         localHandled = await handlePermitIntent(msg);
       }
 
-      // 3) Comandos locais gerais (handleLocalCommand do chat.js)
+      // 3) General local commands
       if (!localHandled && typeof handleLocalCommand === 'function') {
         localHandled = await handleLocalCommand(msg);
       }
@@ -172,7 +206,7 @@
         localHandled = await handleLocalCommandWithCSV(msg);
       }
 
-      // 5) Remote AI se nada tratou localmente
+      // 5) Remote AI fallback
       if (!localHandled) {
         const CHAT_SESSION_KEY = 'arc-chat-session';
         const sessionId = 'arc-session-' + (localStorage.getItem(CHAT_SESSION_KEY) || (() => {
@@ -209,7 +243,7 @@
             _autonomaRenderActionCard(action, res.walletConnected);
           }
         } else {
-          autonomaAppendMessage('assistant', '❌ ' + (res.error || 'Algo deu errado.'), 'error');
+          autonomaAppendMessage('assistant', '❌ ' + (res.error || 'Something went wrong.'), 'error');
         }
       } else {
         autonomaHideTyping();
@@ -217,39 +251,37 @@
 
     } catch (err) {
       autonomaHideTyping();
-      autonomaAppendMessage('assistant', '❌ Erro de rede. Tente novamente.', 'error');
+      autonomaAppendMessage('assistant', '❌ Network error. Please try again.', 'error');
     } finally {
-      // Restore original functions
-      window.appendChatMessage   = _origAppend;
-      window.appendActionCard    = _origCard;
-      window.hideTypingIndicator = _origHide;
-      window.showTypingIndicator  = _origShow;
-
+      _unpatchCtx();
       autonomaTyping = false;
       if (sendBtn) sendBtn.disabled = false;
       input?.focus();
+      // After any message, refresh status panels
+      setTimeout(() => {
+        _updateAutonomaAgentStatus();
+        _updateAutonomaPermitStatus();
+        _autonomaUpdateCsvBanner();
+      }, 500);
     }
   };
 
-  // ── Handle comandos de intent no chat da Autonoma ────────────────────────────
+  // ── Handle intent-specific commands ──────────────────────────────────────────
   async function _handleAutonomaIntentCommand(msg) {
     const lower = msg.toLowerCase().trim();
 
-    // "show my intents" / "ver intents" / "listar intents"
-    if (/show.*intent|my intent|listar intent|ver intent|list.*intent/i.test(lower)) {
+    if (/show.*intent|my intent|list.*intent/i.test(lower)) {
       autonomaHideTyping();
       await _autonomaShowIntents();
       return true;
     }
 
-    // "cancel all pending" / "cancelar pendentes"
-    if (/cancel.*pending|cancelar.*pend|cancel all intent/i.test(lower)) {
+    if (/cancel.*pending|cancel all intent/i.test(lower)) {
       autonomaHideTyping();
       await _autonomaCancelPending();
       return true;
     }
 
-    // "agent status" / "executor status"
     if (/agent.*status|executor.*status|status.*agent/i.test(lower)) {
       autonomaHideTyping();
       _autonomaAgentStatus();
@@ -262,7 +294,7 @@
   async function _autonomaShowIntents() {
     const wallet = window.walletState?.address;
     if (!wallet) {
-      autonomaAppendMessage('assistant', '⚠️ Conecte sua wallet para ver os intents.', 'error');
+      autonomaAppendMessage('assistant', '⚠️ Connect your wallet to view intents.', 'error');
       return;
     }
     try {
@@ -277,7 +309,7 @@
 
       if (intents.length === 0) {
         autonomaAppendMessage('assistant',
-          '📋 **Nenhum intent encontrado.**\n\nCrie um intent pedindo ao assistente:\n`send 10 USDC to 0x…`',
+          '📋 **No intents found.**\n\nCreate one by asking:\n`send 10 USDC to 0x…`',
           'intents');
         return;
       }
@@ -292,20 +324,19 @@
       }).join('\n');
 
       autonomaAppendMessage('assistant',
-        `📋 **Seus intents (${intents.length} total)**\n\n${lines}`,
+        `📋 **Your intents (${intents.length} total)**\n\n${lines}`,
         'intents');
 
-      // Refresh painel
       setTimeout(autonomaRefreshIntentsPanel, 300);
     } catch (e) {
-      autonomaAppendMessage('assistant', '❌ Erro ao buscar intents: ' + e.message, 'error');
+      autonomaAppendMessage('assistant', '❌ Error fetching intents: ' + e.message, 'error');
     }
   }
 
   async function _autonomaCancelPending() {
     const wallet = window.walletState?.address;
     if (!wallet) {
-      autonomaAppendMessage('assistant', '⚠️ Conecte sua wallet primeiro.', 'error');
+      autonomaAppendMessage('assistant', '⚠️ Connect your wallet first.', 'error');
       return;
     }
     try {
@@ -314,7 +345,7 @@
       const pending = d.success ? d.intents : [];
 
       if (pending.length === 0) {
-        autonomaAppendMessage('assistant', '✅ Nenhum intent pendente para cancelar.', 'intents');
+        autonomaAppendMessage('assistant', '✅ No pending intents to cancel.', 'intents');
         return;
       }
 
@@ -326,21 +357,20 @@
       }
 
       autonomaAppendMessage('assistant',
-        `🗑️ **${cancelled} intent(s) cancelado(s)** de ${pending.length} pendentes.`,
+        `🗑️ **${cancelled} intent(s) cancelled** out of ${pending.length} pending.`,
         'intents');
       setTimeout(autonomaRefreshIntentsPanel, 300);
     } catch (e) {
-      autonomaAppendMessage('assistant', '❌ Erro: ' + e.message, 'error');
+      autonomaAppendMessage('assistant', '❌ Error: ' + e.message, 'error');
     }
   }
 
   function _autonomaAgentStatus() {
     const active  = typeof isAgentActive === 'function' ? isAgentActive() : false;
     const wallet  = window.walletState?.address;
-    const polling = window.AgentExecutor ? (window._aePollTimer ? 'ativo' : 'parado') : 'N/A';
+    const polling = window.AgentExecutor ? (window._aePollTimer ? 'active' : 'stopped') : 'N/A';
 
-    // Check permits
-    let permitInfo = 'Nenhum permit ativo';
+    let permitInfo = 'No active permits';
     try {
       const raw = localStorage.getItem('arc_permit2_allowances_v1');
       if (raw && wallet) {
@@ -353,166 +383,21 @@
           permitInfo = active2.map(p => {
             const rem = (p.amount - (p.amountUsed || 0)).toFixed(2);
             const exp = Math.round((p.expiry - now) / 60000);
-            return `${rem} ${p.token} (${exp}m restantes)`;
+            return `${rem} ${p.token} (${exp}m remaining)`;
           }).join(' · ');
         }
       }
     } catch {}
 
     autonomaAppendMessage('assistant',
-      `🤖 **Status do Agent Executor**\n\n` +
-      `| Campo | Valor |\n|---|---|\n` +
-      `| Daat Agent | ${active ? '✅ Autorizado' : '⚠️ Não autorizado'} |\n` +
+      `🤖 **Agent Executor Status**\n\n` +
+      `| Field | Value |\n|---|---|\n` +
+      `| Daat Agent | ${active ? '✅ Authorized' : '⚠️ Not authorized'} |\n` +
       `| Wallet | ${wallet ? `\`${wallet.slice(0,10)}…\`` : '—'} |\n` +
       `| Poll | ${polling} |\n` +
       `| Permits | ${permitInfo} |\n` +
-      `| Versão | ${window.AgentExecutor?.version || 'N/A'} |`,
+      `| Version | ${window.AgentExecutor?.version || 'N/A'} |`,
       'agents');
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════════
-  // CSV UPLOAD — Autonoma
-  // Reutiliza chat-csv.js (handleChatCSVFile, chatCSVState, etc.) já carregado.
-  // Apenas redireciona appendChatMessage / appendActionCard para o DOM da Autonoma.
-  // ══════════════════════════════════════════════════════════════════════════════
-
-  // ── Patch temporário dos helpers para redirecionar para DOM da Autonoma ───────
-  function _withAutonomaCtx(fn) {
-    const _origAppend = window.appendChatMessage;
-    const _origCard   = window.appendActionCard;
-    const _origHide   = window.hideTypingIndicator;
-    const _origShow   = window.showTypingIndicator;
-
-    window.appendChatMessage   = autonomaAppendMessage;
-    window.appendActionCard    = autonomaAppendActionCard;
-    window.hideTypingIndicator = autonomaHideTyping;
-    window.showTypingIndicator = autonomaShowTyping;
-
-    const restore = () => {
-      window.appendChatMessage   = _origAppend;
-      window.appendActionCard    = _origCard;
-      window.hideTypingIndicator = _origHide;
-      window.showTypingIndicator  = _origShow;
-    };
-
-    try {
-      const result = fn();
-      // Se retornar Promise, restaura depois que ela resolver/rejeitar
-      if (result && typeof result.then === 'function') {
-        return result.finally(restore);
-      }
-      restore();
-      return result;
-    } catch (e) {
-      restore();
-      throw e;
-    }
-  }
-
-  // ── Handler chamado pelo onchange do input file ───────────────────────────────
-  window.autonomaHandleCSVInput = function(inputEl) {
-    const file = inputEl?.files?.[0];
-    if (!file) return;
-    inputEl.value = ''; // reset para permitir re-upload do mesmo arquivo
-
-    if (typeof handleChatCSVFile !== 'function') {
-      autonomaAppendMessage('assistant',
-        '❌ Módulo CSV não carregado. Recarregue a página.', 'error');
-      return;
-    }
-
-    autonomaShowTyping();
-    _withAutonomaCtx(() => {
-      const r = handleChatCSVFile(file);
-      // handleChatCSVFile pode ser sync ou async
-      const finish = () => setTimeout(_autonomaUpdateCsvBanner, 300);
-      if (r && typeof r.then === 'function') r.then(finish).catch(finish);
-      else finish();
-    });
-  };
-
-  // ── Atualiza o banner de CSV dentro da Autonoma ───────────────────────────────
-  function _autonomaUpdateCsvBanner() {
-    const banner = document.getElementById('autonoma-csv-banner');
-    const text   = document.getElementById('autonoma-csv-banner-text');
-    const btn    = document.getElementById('autonoma-csv-btn');
-    const state  = window.chatCSVState;
-
-    if (!banner || !text) return;
-
-    if (state?.loaded && state?.rows?.length > 0) {
-      text.textContent = `${state.fileName || 'CSV'} · ${state.rows.length} linha(s) · ${state.token || 'USDC'}`;
-      banner.classList.remove('hidden');
-      if (btn) { btn.classList.add('text-purple-400'); btn.classList.remove('text-gray-500'); }
-    } else {
-      banner.classList.add('hidden');
-      if (btn) { btn.classList.remove('text-purple-400'); btn.classList.add('text-gray-500'); }
-    }
-  }
-  window.autonomaUpdateCsvBanner = _autonomaUpdateCsvBanner;
-
-  // ── Cancelar CSV carregado ────────────────────────────────────────────────────
-  window.autonomaCsvCancel = function() {
-    if (typeof window.csvCancelUpload === 'function') {
-      _withAutonomaCtx(() => window.csvCancelUpload());
-    } else if (window.chatCSVState) {
-      window.chatCSVState.loaded = false;
-      window.chatCSVState.rows   = [];
-    }
-    _autonomaUpdateCsvBanner();
-  };
-
-  // ── Drag & Drop no chat widget da Autonoma ────────────────────────────────────
-  function _attachAutonomaCsvDragDrop() {
-    const widget  = document.getElementById('autonoma-chat-widget');
-    const overlay = document.getElementById('autonoma-csv-drop-overlay');
-    if (!widget || widget._csvDragAttached) return;
-    widget._csvDragAttached = true;
-
-    widget.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (overlay) {
-        overlay.classList.remove('hidden');
-        overlay.style.display = 'flex';
-      }
-    });
-
-    widget.addEventListener('dragleave', (e) => {
-      if (!widget.contains(e.relatedTarget)) {
-        if (overlay) {
-          overlay.classList.add('hidden');
-          overlay.style.display = '';
-        }
-      }
-    });
-
-    widget.addEventListener('drop', (e) => {
-      e.preventDefault();
-      if (overlay) { overlay.classList.add('hidden'); overlay.style.display = ''; }
-
-      const file = e.dataTransfer?.files?.[0];
-      if (!file) return;
-
-      if (!file.name.toLowerCase().endsWith('.csv')) {
-        autonomaAppendMessage('assistant',
-          '⚠️ Por favor, envie um arquivo **.csv**.', 'error');
-        return;
-      }
-
-      if (typeof handleChatCSVFile !== 'function') {
-        autonomaAppendMessage('assistant',
-          '❌ Módulo CSV não carregado.', 'error');
-        return;
-      }
-
-      autonomaShowTyping();
-      _withAutonomaCtx(() => {
-        const r = handleChatCSVFile(file);
-        const finish = () => setTimeout(_autonomaUpdateCsvBanner, 300);
-        if (r && typeof r.then === 'function') r.then(finish).catch(finish);
-        else finish();
-      });
-    });
   }
 
   // ── Quick message ─────────────────────────────────────────────────────────────
@@ -524,7 +409,7 @@
     }
   };
 
-  // ── Limpar chat da Autonoma ───────────────────────────────────────────────────
+  // ── Clear chat ────────────────────────────────────────────────────────────────
   window.autonomaClearChat = function() {
     const container = document.getElementById('autonoma-chat-messages');
     if (container) container.innerHTML = '';
@@ -532,12 +417,11 @@
     _autonomaWelcome();
   };
 
-  // ── Mensagem de boas-vindas ───────────────────────────────────────────────────
+  // ── Welcome message ───────────────────────────────────────────────────────────
   function _autonomaWelcome() {
     const wallet = window.walletState?.address;
     const active = typeof isAgentActive === 'function' ? isAgentActive() : false;
 
-    // Check permits
     let permitLine = '';
     try {
       const raw = localStorage.getItem('arc_permit2_allowances_v1');
@@ -548,37 +432,152 @@
           p.expiry > now && (p.amount - (p.amountUsed || 0)) > 0
         );
         permitLine = permits.length > 0
-          ? `🔐 **${permits.length} Permit(s) ativo(s)** — execução autônoma disponível\n`
-          : `⚡ Sem permit ativo — cada tx precisará de assinatura da wallet\n`;
+          ? `🔐 **${permits.length} active permit(s)** — autonomous execution available\n`
+          : `⚡ No active permit — each transaction will require a wallet signature\n`;
       }
     } catch {}
 
     autonomaAppendMessage('assistant',
-      `🤖 **Autonoma — Assistente de Execução Autônoma**\n\n` +
+      `🤖 **Autonoma — Autonomous Execution Assistant**\n\n` +
       (wallet
         ? `Wallet: \`${wallet.slice(0,10)}…\`\n` +
-          `Daat Agent: ${active ? '✅ Autorizado' : '⚠️ Não autorizado — digite `authorize arcpay`'}\n` +
+          `Daat Agent: ${active ? '✅ Authorized' : '⚠️ Not authorized — type `authorize arcpay`'}\n` +
           permitLine + '\n'
-        : `⚠️ *Conecte sua wallet para usar todas as funcionalidades.*\n\n`) +
-      `**Posso ajudar com:**\n` +
-      `• ⚡ *"send 10 USDC to 0x…"* — cria intent, executor processa automaticamente\n` +
-      `• 🔄 *"swap 5 USDC to EURC"* — swap de tokens\n` +
-      `• 📤 *"pay 0x…:10, 0x…:20"* — pagamento em lote\n` +
-      `• 🔐 *"allow agent to spend 100 USDC for 24 hours"* — criar Permit2\n` +
-      `• 📋 *"show my intents"* — ver intents ativos\n` +
+        : `⚠️ *Connect your wallet to use all features.*\n\n`) +
+      `**I can help with:**\n` +
+      `• ⚡ *"send 10 USDC to 0x…"* — create intent, executor processes automatically\n` +
+      `• 🔄 *"swap 5 USDC to EURC"* — token swap\n` +
+      `• 📤 *"pay 0x…:10, 0x…:20"* — batch payments\n` +
+      `• 🔐 *"allow agent to spend 100 USDC for 24 hours"* — create Permit2\n` +
+      `• 📋 *"show my intents"* — view active intents\n` +
+      `• ➕ *Click + button* — upload CSV for batch payments\n` +
       `• 💳 *"my wallet"* · *"check balance"* · *"my transactions"*\n` +
       `• 🛡️ *"guardian"* · *"network status"* · *"show contracts"*`,
       'agents'
     );
   }
 
-  // ── Painel de Intents na coluna esquerda ─────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // CSV UPLOAD — Autonoma
+  // Reuses chat-csv.js (handleChatCSVFile, chatCSVState, etc.) already loaded.
+  // FIX: uses ref-count patch so helpers stay redirected through FileReader.onload
+  // ══════════════════════════════════════════════════════════════════════════════
 
-  // Atualiza o status bar de Permit2 na coluna esquerda
+  // Handler called by onchange on the file input
+  window.autonomaHandleCSVInput = function(inputEl) {
+    const file = inputEl?.files?.[0];
+    if (!file) return;
+    inputEl.value = ''; // allow re-upload of same file
+
+    if (typeof handleChatCSVFile !== 'function') {
+      autonomaAppendMessage('assistant',
+        '❌ CSV module not loaded. Please reload the page.', 'error');
+      return;
+    }
+
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      autonomaAppendMessage('assistant', '⚠️ Please upload a **.csv** file.', 'error');
+      return;
+    }
+
+    autonomaShowTyping();
+    // Patch BEFORE calling — stays active through FileReader.onload callback
+    // FileReader fires onload within ~100–500ms; we release after 1200ms
+    _patchCtx();
+    handleChatCSVFile(file);
+    setTimeout(() => {
+      _unpatchCtx();
+      autonomaHideTyping();
+      _autonomaUpdateCsvBanner();
+    }, 1200);
+  };
+
+  // Update CSV banner
+  function _autonomaUpdateCsvBanner() {
+    const banner = document.getElementById('autonoma-csv-banner');
+    const text   = document.getElementById('autonoma-csv-banner-text');
+    const btn    = document.getElementById('autonoma-csv-btn');
+    const state  = window.chatCSVState;
+
+    if (!banner || !text) return;
+
+    if (state?.loaded && state?.rows?.length > 0) {
+      const rows = state.rows.length;
+      text.textContent = `${state.fileName || 'CSV'} · ${rows} row${rows !== 1 ? 's' : ''} · ${state.token || 'USDC'}`;
+      banner.classList.remove('hidden');
+      if (btn) { btn.classList.add('text-purple-400'); btn.classList.remove('text-gray-500'); }
+    } else {
+      banner.classList.add('hidden');
+      if (btn) { btn.classList.remove('text-purple-400'); btn.classList.add('text-gray-500'); }
+    }
+  }
+  window.autonomaUpdateCsvBanner = _autonomaUpdateCsvBanner;
+
+  // Cancel CSV upload
+  window.autonomaCsvCancel = function() {
+    if (typeof window.csvCancelUpload === 'function') {
+      _withCtx(() => window.csvCancelUpload());
+    } else if (window.chatCSVState) {
+      window.chatCSVState.loaded = false;
+      window.chatCSVState.rows   = [];
+    }
+    _autonomaUpdateCsvBanner();
+  };
+
+  // Drag & Drop on the Autonoma chat widget
+  function _attachAutonomaCsvDragDrop() {
+    const widget  = document.getElementById('autonoma-chat-widget');
+    const overlay = document.getElementById('autonoma-csv-drop-overlay');
+    if (!widget || widget._csvDragAttached) return;
+    widget._csvDragAttached = true;
+
+    widget.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (overlay) { overlay.classList.remove('hidden'); overlay.style.display = 'flex'; }
+    });
+
+    widget.addEventListener('dragleave', (e) => {
+      if (!widget.contains(e.relatedTarget)) {
+        if (overlay) { overlay.classList.add('hidden'); overlay.style.display = ''; }
+      }
+    });
+
+    widget.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (overlay) { overlay.classList.add('hidden'); overlay.style.display = ''; }
+
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        autonomaAppendMessage('assistant', '⚠️ Please drop a **.csv** file.', 'error');
+        return;
+      }
+      if (typeof handleChatCSVFile !== 'function') {
+        autonomaAppendMessage('assistant', '❌ CSV module not loaded.', 'error');
+        return;
+      }
+
+      autonomaShowTyping();
+      _patchCtx();
+      handleChatCSVFile(file);
+      setTimeout(() => {
+        _unpatchCtx();
+        autonomaHideTyping();
+        _autonomaUpdateCsvBanner();
+      }, 1200);
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // INTENT PANEL — Left column
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // Update Permit2 status banner
   function _updateAutonomaPermitStatus() {
-    const bar  = document.getElementById('autonoma-permit-status-bar');
-    const txt  = document.getElementById('autonoma-permit-status-text');
-    const btn  = document.getElementById('autonoma-permit-create-btn');
+    const bar      = document.getElementById('autonoma-permit-status-bar');
+    const txt      = document.getElementById('autonoma-permit-status-text');
+    const btn      = document.getElementById('autonoma-permit-create-btn');
     const emptyMsg = document.getElementById('autonoma-empty-msg');
     if (!bar || !txt) return;
 
@@ -586,12 +585,12 @@
 
     if (!wallet) {
       bar.className = 'mb-3 p-3 rounded-lg border text-xs flex items-center justify-between gap-2 bg-gray-800/50 border-gray-700/40 text-gray-400';
-      txt.innerHTML = '<i class="fas fa-wallet text-gray-500 mr-1.5"></i>Conecte sua wallet';
+      txt.innerHTML = '<i class="fas fa-wallet text-gray-500 mr-1.5"></i>Connect your wallet';
       if (btn) btn.classList.add('hidden');
       return;
     }
 
-    // Verifica sessão
+    // Check session
     let session = null;
     try {
       const raw = localStorage.getItem('arc-pay-session-v3');
@@ -603,13 +602,13 @@
 
     if (!session) {
       bar.className = 'mb-3 p-3 rounded-lg border text-xs flex items-center justify-between gap-2 bg-red-900/10 border-red-800/30 text-red-400';
-      txt.innerHTML = '<i class="fas fa-lock text-red-500 mr-1.5"></i><strong>Daat Agent não autorizado</strong>';
+      txt.innerHTML = '<i class="fas fa-lock text-red-500 mr-1.5"></i><strong>Daat Agent not authorized</strong>';
       if (btn) btn.classList.add('hidden');
-      if (emptyMsg) emptyMsg.textContent = 'Autorize o Daat Agent primeiro: "authorize arcpay"';
+      if (emptyMsg) emptyMsg.textContent = 'Authorize Daat Agent first: type "authorize arcpay"';
       return;
     }
 
-    // Verifica permits
+    // Check permits
     let activePermits = [];
     try {
       const raw = localStorage.getItem('arc_permit2_allowances_v1');
@@ -622,9 +621,9 @@
 
     if (activePermits.length === 0) {
       bar.className = 'mb-3 p-3 rounded-lg border text-xs flex items-center justify-between gap-2 bg-yellow-900/10 border-yellow-700/30 text-yellow-400';
-      txt.innerHTML = '<i class="fas fa-exclamation-triangle text-yellow-500 mr-1.5"></i>Sem permit — cada tx precisará de assinatura';
+      txt.innerHTML = '<i class="fas fa-exclamation-triangle text-yellow-500 mr-1.5"></i>No permit — each transaction will require a signature';
       if (btn) btn.classList.remove('hidden');
-      if (emptyMsg) emptyMsg.textContent = 'Crie um Permit2 para execução autônoma, depois peça um envio.';
+      if (emptyMsg) emptyMsg.textContent = 'Create a Permit2 for autonomous execution, then request a payment.';
     } else {
       const sum = activePermits.slice(0,2).map(p => {
         const rem = (p.amount - (p.amountUsed || 0)).toFixed(2);
@@ -632,13 +631,13 @@
         return `${rem} ${p.token} (${exp}m)`;
       }).join(' · ');
       bar.className = 'mb-3 p-3 rounded-lg border text-xs flex items-center justify-between gap-2 bg-green-900/10 border-green-700/30 text-green-400';
-      txt.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-1.5"></i><strong>${activePermits.length} permit(s)</strong> — ${sum}`;
+      txt.innerHTML = `<i class="fas fa-check-circle text-green-500 mr-1.5"></i><strong>${activePermits.length} active permit(s)</strong> — ${sum}`;
       if (btn) btn.classList.add('hidden');
-      if (emptyMsg) emptyMsg.textContent = 'Permit ativo. Peça um pagamento — agente executa automaticamente.';
+      if (emptyMsg) emptyMsg.textContent = 'Permit active. Request a payment — agent executes automatically.';
     }
   }
 
-  // Renderiza intents na coluna esquerda
+  // Render intents list
   function _renderAutonomaIntents(intents) {
     const list    = document.getElementById('autonoma-intents-list');
     const empty   = document.getElementById('autonoma-intents-empty');
@@ -675,13 +674,13 @@
     }
 
     const statusMap = {
-      pending:    { color:'text-yellow-400', bg:'bg-yellow-900/20 border-yellow-800/30', icon:'fa-clock',        label:'Aceito'    },
-      processing: { color:'text-blue-400',   bg:'bg-blue-900/20 border-blue-800/30',     icon:'fa-cog fa-spin',  label:'Executando'},
-      signing:    { color:'text-purple-400', bg:'bg-purple-900/20 border-purple-800/30', icon:'fa-pen-nib',      label:'Assinando' },
-      broadcast:  { color:'text-cyan-400',   bg:'bg-cyan-900/20 border-cyan-800/30',     icon:'fa-paper-plane',  label:'Enviado'   },
-      completed:  { color:'text-green-400',  bg:'bg-green-900/20 border-green-800/30',   icon:'fa-check-circle', label:'Concluído' },
-      failed:     { color:'text-red-400',    bg:'bg-red-900/20 border-red-800/30',       icon:'fa-times-circle', label:'Falhou'    },
-      cancelled:  { color:'text-gray-500',   bg:'bg-gray-800/30 border-gray-700/30',     icon:'fa-ban',          label:'Cancelado' },
+      pending:    { color:'text-yellow-400', bg:'bg-yellow-900/20 border-yellow-800/30', icon:'fa-clock',        label:'Queued'    },
+      processing: { color:'text-blue-400',   bg:'bg-blue-900/20 border-blue-800/30',     icon:'fa-cog fa-spin',  label:'Running'   },
+      signing:    { color:'text-purple-400', bg:'bg-purple-900/20 border-purple-800/30', icon:'fa-pen-nib',      label:'Signing'   },
+      broadcast:  { color:'text-cyan-400',   bg:'bg-cyan-900/20 border-cyan-800/30',     icon:'fa-paper-plane',  label:'Broadcast' },
+      completed:  { color:'text-green-400',  bg:'bg-green-900/20 border-green-800/30',   icon:'fa-check-circle', label:'Done'      },
+      failed:     { color:'text-red-400',    bg:'bg-red-900/20 border-red-800/30',       icon:'fa-times-circle', label:'Failed'    },
+      cancelled:  { color:'text-gray-500',   bg:'bg-gray-800/30 border-gray-700/30',     icon:'fa-ban',          label:'Cancelled' },
     };
 
     const explorer = 'https://testnet.arcscan.app';
@@ -690,7 +689,7 @@
       const time = new Date(intent.createdAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
       const to   = intent.to
         ? intent.to.slice(0,8) + '…' + intent.to.slice(-6)
-        : (intent.receivers ? `${intent.receivers.length} dest.` : '—');
+        : (intent.receivers ? `${intent.receivers.length} recipients` : '—');
       const txLink = intent.txHash
         ? `<a href="${explorer}/tx/${intent.txHash}" target="_blank" class="underline text-cyan-400 font-mono">${intent.txHash.slice(0,12)}…</a>`
         : '';
@@ -725,7 +724,7 @@
     list.innerHTML = rows + (empty ? empty.outerHTML : '');
   }
 
-  // Atualiza o painel de intents (fetch + render + permit status)
+  // Refresh intents panel (fetch + render + permit status)
   async function autonomaRefreshIntentsPanel() {
     _updateAutonomaPermitStatus();
 
@@ -750,8 +749,8 @@
 
   window.autonomaClearIntents = function() {
     document.querySelectorAll('#autonoma-intents-list [data-intent-id]').forEach(el => {
-      const statusEl = el.querySelector('.text-green-400, .text-red-400, .text-gray-500');
-      if (statusEl) el.remove();
+      const s = el.querySelector('.text-green-400, .text-red-400, .text-gray-500');
+      if (s) el.remove();
     });
     const remaining = document.querySelectorAll('#autonoma-intents-list [data-intent-id]').length;
     const total = document.getElementById('autonoma-stat-total');
@@ -771,7 +770,11 @@
     await autonomaRefreshIntentsPanel();
   };
 
-  // ── Atualizar status bar do chat (Daat Agent) ─────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // AGENT STATUS BAR — Right column (Daat Agent status)
+  // FIX: also monkey-patches updateArcPayBar and p2RefreshUI to sync instantly
+  // ══════════════════════════════════════════════════════════════════════════════
+
   function _updateAutonomaAgentStatus() {
     const statusEl = document.getElementById('autonoma-arcpay-status-text');
     const authBtn  = document.getElementById('autonoma-arcpay-auth-btn');
@@ -779,12 +782,63 @@
 
     const active = typeof isAgentActive === 'function' ? isAgentActive() : false;
     if (active) {
-      statusEl.innerHTML = '<i class="fas fa-robot text-green-400 text-[9px] mr-1"></i> Daat Agent · <span class="text-green-400">✅ Autorizado</span>';
+      statusEl.innerHTML = '<i class="fas fa-robot text-green-400 text-[9px] mr-1"></i> Daat Agent · <span class="text-green-400">✅ Authorized</span>';
       if (authBtn) authBtn.classList.add('hidden');
     } else {
-      statusEl.innerHTML = '<i class="fas fa-robot text-purple-400 text-[9px] mr-1"></i> Daat Agent · <span class="text-yellow-400">⚠️ Não autorizado</span>';
+      statusEl.innerHTML = '<i class="fas fa-robot text-purple-400 text-[9px] mr-1"></i> Daat Agent · <span class="text-yellow-400">⚠️ Not authorized</span>';
       if (authBtn) authBtn.classList.remove('hidden');
     }
+  }
+
+  // Monkey-patch updateArcPayBar (called after authorization in chat.js)
+  function _installStatusHooks() {
+    // Hook updateArcPayBar
+    const _origUpdateBar = window.updateArcPayBar;
+    if (_origUpdateBar && !_origUpdateBar._autonomaHooked) {
+      window.updateArcPayBar = function() {
+        const result = _origUpdateBar.apply(this, arguments);
+        if (autonomaActive) {
+          _updateAutonomaAgentStatus();
+          _updateAutonomaPermitStatus();
+        }
+        return result;
+      };
+      window.updateArcPayBar._autonomaHooked = true;
+    }
+
+    // Hook p2RefreshUI (called after permit creation in permit2-chat.js)
+    const _origP2Refresh = window.p2RefreshUI;
+    if (_origP2Refresh && !_origP2Refresh._autonomaHooked) {
+      window.p2RefreshUI = function() {
+        const result = _origP2Refresh.apply(this, arguments);
+        if (autonomaActive) {
+          _updateAutonomaPermitStatus();
+          autonomaRefreshIntentsPanel();
+        }
+        return result;
+      };
+      window.p2RefreshUI._autonomaHooked = true;
+    }
+
+    // Hook p2AddPermit (called directly after signing in permit2-chat.js)
+    const _origP2Add = window.p2AddPermit;
+    if (_origP2Add && !_origP2Add._autonomaHooked) {
+      window.p2AddPermit = function() {
+        const result = _origP2Add ? _origP2Add.apply(this, arguments) : undefined;
+        if (autonomaActive) setTimeout(_updateAutonomaPermitStatus, 200);
+        return result;
+      };
+      window.p2AddPermit._autonomaHooked = true;
+    }
+
+    // Also watch localStorage for session/permit changes via storage event
+    window.addEventListener('storage', (e) => {
+      if (!autonomaActive) return;
+      if (e.key === 'arc-pay-session-v3' || e.key === 'arc_permit2_allowances_v1') {
+        _updateAutonomaAgentStatus();
+        _updateAutonomaPermitStatus();
+      }
+    });
   }
 
   // ── FAB visibility ────────────────────────────────────────────────────────────
@@ -806,7 +860,7 @@
     }
   }
 
-  // ── Action card para a Autonoma ───────────────────────────────────────────────
+  // ── Action card renderer ──────────────────────────────────────────────────────
   function _autonomaRenderActionCard(action, walletConnected) {
     const typeLabels = {
       transfer:'💳 Transfer', swap:'🔄 Swap', multisend:'📤 Multisend',
@@ -821,8 +875,8 @@
 
     const needsWallet = !walletConnected || action.status === 'requires_wallet';
     const ctaHtml = needsWallet
-      ? `<button onclick="openWalletModal()" class="arc-action-cta arc-action-cta-wallet">🔗 Conectar Wallet</button>`
-      : `<button onclick="arcExecuteAction('${actionId}')" class="arc-action-cta arc-action-cta-execute">⚡ Ir para ${label} →</button>`;
+      ? `<button onclick="openWalletModal()" class="arc-action-cta arc-action-cta-wallet">🔗 Connect Wallet</button>`
+      : `<button onclick="arcExecuteAction('${actionId}')" class="arc-action-cta arc-action-cta-execute">⚡ Go to ${label} →</button>`;
 
     const container = document.getElementById('autonoma-chat-messages');
     if (!container) return;
@@ -834,12 +888,12 @@
         <div class="arc-action-header">
           <span class="arc-action-type-badge">${label}</span>
           <span class="arc-action-status" style="color:${needsWallet ? '#f59e0b' : '#22c55e'}">
-            ● ${needsWallet ? 'Wallet necessária' : 'Pronto'}
+            ● ${needsWallet ? 'Wallet required' : 'Ready'}
           </span>
         </div>
         <div class="arc-action-params">
-          ${d.amount ? `<div class="arc-action-param"><span>Valor</span><b>${d.amount} ${d.token || 'USDC'}</b></div>` : ''}
-          ${d.to     ? `<div class="arc-action-param"><span>Para</span><b class="font-mono text-xs">${d.to.slice(0,10)}…</b></div>` : ''}
+          ${d.amount ? `<div class="arc-action-param"><span>Amount</span><b>${d.amount} ${d.token || 'USDC'}</b></div>` : ''}
+          ${d.to     ? `<div class="arc-action-param"><span>To</span><b class="font-mono text-xs">${d.to.slice(0,10)}…</b></div>` : ''}
         </div>
         ${ctaHtml}
       </div>`;
@@ -847,7 +901,7 @@
     container.scrollTop = container.scrollHeight;
   }
 
-  // ── Init ao entrar na página ──────────────────────────────────────────────────
+  // ── Init / Destroy ────────────────────────────────────────────────────────────
   function autonomaInit() {
     if (autonomaActive) return;
     autonomaActive = true;
@@ -855,28 +909,32 @@
     _setFABVisibility(false);
     _closeFloatingChat();
 
+    // Install hooks for instant status updates
+    _installStatusHooks();
+
     _updateAutonomaAgentStatus();
+    _updateAutonomaPermitStatus();
     autonomaRefreshIntentsPanel();
     _autonomaUpdateCsvBanner();
 
-    // Attach drag & drop no chat widget
+    // Attach drag & drop
     setTimeout(_attachAutonomaCsvDragDrop, 200);
 
-    // Welcome message se vazio
+    // Welcome message if empty
     const container = document.getElementById('autonoma-chat-messages');
     if (container && !container.children.length) {
       _autonomaWelcome();
     }
 
-    // Poll de intents + CSV banner a cada 3s
+    // Poll every 3s: intents + permit status + agent status + CSV banner
     _autonomaPollTimer = setInterval(() => {
-      if (autonomaActive) {
-        autonomaRefreshIntentsPanel();
-        _autonomaUpdateCsvBanner();
-      }
+      if (!autonomaActive) return;
+      autonomaRefreshIntentsPanel();
+      _updateAutonomaAgentStatus();
+      _autonomaUpdateCsvBanner();
     }, 3000);
 
-    console.log('[Autonoma] Inicializado v20260404d · Agent Executor Intents + CSV Upload + Full Chat');
+    console.log('[Autonoma] Initialized v20260404e · Agent Executor Intents + CSV Upload + Status Hooks');
   }
 
   function autonomaDestroy() {
@@ -886,7 +944,7 @@
     if (_autonomaPollTimer) { clearInterval(_autonomaPollTimer); _autonomaPollTimer = null; }
   }
 
-  // ── Hook no switchTab ─────────────────────────────────────────────────────────
+  // ── Hook into switchTab ───────────────────────────────────────────────────────
   const _origSwitchTab = window.switchTab;
   window.switchTab = function(tab) {
     if (tab === 'autonoma') {
@@ -898,20 +956,38 @@
     }
   };
 
-  // ── Listeners de wallet/permit/intent ────────────────────────────────────────
+  // ── Wallet / permit / intent event listeners ──────────────────────────────────
   window.addEventListener('walletConnected', () => {
-    if (autonomaActive) { autonomaRefreshIntentsPanel(); _updateAutonomaAgentStatus(); }
+    if (autonomaActive) {
+      autonomaRefreshIntentsPanel();
+      _updateAutonomaAgentStatus();
+      _updateAutonomaPermitStatus();
+    }
   });
   window.addEventListener('walletDisconnected', () => {
-    if (autonomaActive) { autonomaRefreshIntentsPanel(); _updateAutonomaAgentStatus(); }
+    if (autonomaActive) {
+      autonomaRefreshIntentsPanel();
+      _updateAutonomaAgentStatus();
+      _updateAutonomaPermitStatus();
+    }
   });
   window.addEventListener('permit2Updated', () => {
-    if (autonomaActive) autonomaRefreshIntentsPanel();
+    if (autonomaActive) {
+      _updateAutonomaPermitStatus();
+      autonomaRefreshIntentsPanel();
+    }
   });
   window.addEventListener('agentExecutor:update', () => {
     if (autonomaActive) setTimeout(autonomaRefreshIntentsPanel, 300);
   });
+  // Also listen for arcpay session changes
+  window.addEventListener('arcPayAuthorized', () => {
+    if (autonomaActive) setTimeout(() => {
+      _updateAutonomaAgentStatus();
+      _updateAutonomaPermitStatus();
+    }, 300);
+  });
 
-  console.log('[Autonoma] Módulo carregado · v20260404d · CSV Upload suportado');
+  console.log('[Autonoma] Module loaded · v20260404e · CSV Upload + Status Hooks');
 
 })(); // IIFE

@@ -3478,7 +3478,7 @@ app.get('/', (c) => {
               </span>
               Autonoma
             </h2>
-            <p class="text-gray-500 text-xs mt-0.5 ml-11">Operações autônomas · Agent Executor + Assistente IA</p>
+            <p class="text-gray-500 text-xs mt-0.5 ml-11">Autonomous operations · Agent Executor + AI Assistant</p>
           </div>
         </div>
         <!-- Status dot -->
@@ -3499,7 +3499,7 @@ app.get('/', (c) => {
             </div>
             <div>
               <h3 class="text-white font-semibold text-sm">Agent Executor — Intents</h3>
-              <p class="text-purple-400 text-xs">Execução autônoma · on-chain · poll 3s</p>
+              <p class="text-purple-400 text-xs">Autonomous execution · on-chain · 3s poll</p>
             </div>
           </div>
 
@@ -3508,12 +3508,12 @@ app.get('/', (c) => {
             bg-gray-800/50 border-gray-700/40 text-gray-400">
             <div class="flex items-center gap-2 min-w-0">
               <i class="fas fa-lock text-gray-500 text-[10px] flex-shrink-0"></i>
-              <span id="autonoma-permit-status-text" class="truncate">Verificando permissões…</span>
+              <span id="autonoma-permit-status-text" class="truncate">Checking permissions…</span>
             </div>
             <button id="autonoma-permit-create-btn"
               onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
               class="hidden text-[11px] bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 rounded-lg px-2.5 py-1 hover:bg-yellow-500/30 transition-colors whitespace-nowrap flex-shrink-0">
-              <i class="fas fa-plus mr-1"></i> Criar Permit
+              <i class="fas fa-plus mr-1"></i> Create Permit
             </button>
           </div>
 
@@ -3525,15 +3525,15 @@ app.get('/', (c) => {
             </div>
             <div class="bg-yellow-900/20 rounded-lg p-2 text-center border border-yellow-800/30">
               <p class="text-base font-bold text-yellow-400" id="autonoma-stat-pending">—</p>
-              <p class="text-[10px] text-gray-500">Aceitos</p>
+              <p class="text-[10px] text-gray-500">Queued</p>
             </div>
             <div class="bg-green-900/20 rounded-lg p-2 text-center border border-green-800/30">
               <p class="text-base font-bold text-green-400" id="autonoma-stat-completed">—</p>
-              <p class="text-[10px] text-gray-500">Concluídos</p>
+              <p class="text-[10px] text-gray-500">Done</p>
             </div>
             <div class="bg-red-900/20 rounded-lg p-2 text-center border border-red-800/30">
               <p class="text-base font-bold text-red-400" id="autonoma-stat-failed">—</p>
-              <p class="text-[10px] text-gray-500">Falhas</p>
+              <p class="text-[10px] text-gray-500">Failed</p>
             </div>
           </div>
 
@@ -3541,7 +3541,7 @@ app.get('/', (c) => {
           <div class="bg-gray-900/60 border border-purple-700/30 rounded-xl p-4" id="autonoma-intents-section">
             <div class="flex items-center justify-between mb-3">
               <span class="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                <i class="fas fa-list text-purple-400"></i> Histórico de intents
+                <i class="fas fa-list text-purple-400"></i> Intent History
                 <span id="autonoma-pending-badge" class="hidden bg-purple-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none ml-1">0</span>
               </span>
               <div class="flex items-center gap-1.5">
@@ -3551,7 +3551,7 @@ app.get('/', (c) => {
                 </button>
                 <button onclick="autonomaClearIntents()"
                   class="text-[11px] text-gray-600 hover:text-red-400 bg-gray-800/40 border border-gray-700/30 rounded-lg px-2.5 py-1 transition-colors">
-                  <i class="fas fa-trash mr-1"></i> Limpar
+                  <i class="fas fa-trash mr-1"></i> Clear
                 </button>
               </div>
             </div>
@@ -3560,7 +3560,7 @@ app.get('/', (c) => {
             <div id="autonoma-intents-list" class="space-y-1.5 max-h-52 overflow-y-auto">
               <div class="text-center text-gray-600 text-xs py-5" id="autonoma-intents-empty">
                 <i class="fas fa-inbox text-gray-700 text-2xl mb-2 block"></i>
-                <span id="autonoma-empty-msg">Peça ao assistente para enviar um pagamento.</span>
+                <span id="autonoma-empty-msg">Ask the assistant to send a payment.</span>
               </div>
             </div>
           </div>
@@ -3568,27 +3568,27 @@ app.get('/', (c) => {
           <!-- Quick intent actions -->
           <div class="mt-3 bg-gray-900/40 border border-gray-700/40 rounded-xl p-4">
             <h4 class="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <i class="fas fa-bolt text-purple-400"></i> Ações rápidas
+              <i class="fas fa-bolt text-purple-400"></i> Quick Actions
             </h4>
             <div class="grid grid-cols-1 gap-2">
               <button onclick="autonomaSendChat('send 10 USDC to 0x1234567890123456789012345678901234567890')"
                 class="text-left bg-purple-900/20 border border-purple-700/20 rounded-lg p-2.5 hover:border-purple-500/40 transition-colors">
-                <div class="text-xs text-purple-300 font-medium mb-0.5">⚡ Testar: send 10 USDC</div>
+                <div class="text-xs text-purple-300 font-medium mb-0.5">⚡ Test: send 10 USDC</div>
                 <div class="text-[11px] text-gray-500 font-mono">send 10 USDC to 0x1234…7890</div>
               </button>
               <button onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
                 class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
-                <div class="text-xs text-yellow-300 font-medium mb-0.5">🔐 Criar Permit USDC (24h)</div>
+                <div class="text-xs text-yellow-300 font-medium mb-0.5">🔐 Create USDC Permit (24h)</div>
                 <div class="text-[11px] text-gray-500 font-mono">allow 100 USDC for 24 hours</div>
               </button>
               <button onclick="autonomaSendChat('show my intents')"
                 class="text-left bg-gray-800/50 border border-gray-700/30 rounded-lg p-2.5 hover:border-gray-500/40 transition-colors">
-                <div class="text-xs text-gray-300 font-medium mb-0.5">📋 Ver intents ativos</div>
+                <div class="text-xs text-gray-300 font-medium mb-0.5">📋 View active intents</div>
                 <div class="text-[11px] text-gray-500 font-mono">show my intents</div>
               </button>
               <button onclick="autonomaSendChat('cancel all pending intents')"
                 class="text-left bg-red-900/20 border border-red-700/20 rounded-lg p-2.5 hover:border-red-500/40 transition-colors">
-                <div class="text-xs text-red-400 font-medium mb-0.5">🗑️ Cancelar pendentes</div>
+                <div class="text-xs text-red-400 font-medium mb-0.5">🗑️ Cancel pending</div>
                 <div class="text-[11px] text-gray-500 font-mono">cancel all pending intents</div>
               </button>
             </div>
@@ -3603,7 +3603,7 @@ app.get('/', (c) => {
             </div>
             <div>
               <h3 class="text-white font-semibold text-sm">AI Execution Assistant</h3>
-              <p class="text-purple-400 text-xs">Todas as funcionalidades · Agent Executor · Permit2 · Brain Mode</p>
+              <p class="text-purple-400 text-xs">All features · Agent Executor · Permit2 · Brain Mode</p>
             </div>
           </div>
 
@@ -3627,11 +3627,11 @@ app.get('/', (c) => {
                 </div>
               </div>
               <div class="flex items-center gap-1">
-                <button onclick="autonomaClearChat()" title="Limpar conversa"
+                <button onclick="autonomaClearChat()" title="Clear conversation"
                   class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
                   <i class="fas fa-trash text-xs"></i>
                 </button>
-                <button onclick="if(typeof toggleChat==='function')toggleChat()" title="Abrir chat flutuante"
+                <button onclick="if(typeof toggleChat==='function')toggleChat()" title="Open floating chat"
                   class="text-gray-500 hover:text-purple-400 p-1 rounded hover:bg-gray-800 transition-all" title="Pop-out">
                   <i class="fas fa-external-link-alt text-xs"></i>
                 </button>
@@ -3643,13 +3643,13 @@ app.get('/', (c) => {
               <div class="flex items-center justify-between gap-2">
                 <span class="text-[10px] flex items-center gap-1.5 flex-1 min-w-0 truncate text-gray-400">
                   <i class="fas fa-robot text-purple-400 text-[9px]"></i>
-                  <span id="autonoma-arcpay-status-text">Daat Agent · verificando...</span>
+                  <span id="autonoma-arcpay-status-text">Daat Agent · checking…</span>
                 </span>
                 <button id="autonoma-arcpay-auth-btn"
                   onclick="if(typeof executeArcPayAuthorization==='function')executeArcPayAuthorization()"
                   class="flex-shrink-0 text-[11px] font-bold text-white px-2.5 py-0.5 rounded-lg border border-purple-500/40 transition-all hidden"
                   style="background:linear-gradient(135deg,#6d28d9,#3b82f6);">
-                  <i class="fas fa-shield-alt mr-1"></i>Autorizar
+                  <i class="fas fa-shield-alt mr-1"></i>Authorize
                 </button>
               </div>
             </div>
@@ -3660,16 +3660,16 @@ app.get('/', (c) => {
             <!-- Quick actions -->
             <div class="px-2 pb-1 flex gap-1.5 overflow-x-auto flex-shrink-0 border-t border-gray-800/40 pt-1.5" style="scrollbar-width:none">
               <button onclick="autonomaSendChat('my wallet')"         class="autonoma-quick-btn">💳 Wallet</button>
-              <button onclick="autonomaSendChat('check balance')"     class="autonoma-quick-btn">💰 Saldo</button>
-              <button onclick="autonomaSendChat('send 5 USDC to 0x1234567890123456789012345678901234567890')" class="autonoma-quick-btn">⚡ Enviar</button>
+              <button onclick="autonomaSendChat('check balance')"     class="autonoma-quick-btn">💰 Balance</button>
+              <button onclick="autonomaSendChat('send 5 USDC to 0x1234567890123456789012345678901234567890')" class="autonoma-quick-btn">⚡ Send</button>
               <button onclick="autonomaSendChat('swap 5 USDC to EURC')" class="autonoma-quick-btn">🔄 Swap</button>
               <button onclick="autonomaSendChat('show my intents')"   class="autonoma-quick-btn">📋 Intents</button>
               <button onclick="autonomaSendChat('show my permissions')" class="autonoma-quick-btn">🔐 Permits</button>
-              <button onclick="autonomaSendChat('my transactions')"   class="autonoma-quick-btn">📜 Histórico</button>
+              <button onclick="autonomaSendChat('my transactions')"   class="autonoma-quick-btn">📜 History</button>
               <button onclick="autonomaSendChat('guardian')"          class="autonoma-quick-btn">🛡️ Guardian</button>
-              <button onclick="autonomaSendChat('network status')"    class="autonoma-quick-btn">⛓️ Rede</button>
-              <button onclick="autonomaSendChat('show contracts')"    class="autonoma-quick-btn">📄 Contratos</button>
-              <button onclick="autonomaSendChat('help')"              class="autonoma-quick-btn">❓ Ajuda</button>
+              <button onclick="autonomaSendChat('network status')"    class="autonoma-quick-btn">⛓️ Network</button>
+              <button onclick="autonomaSendChat('show contracts')"    class="autonoma-quick-btn">📄 Contracts</button>
+              <button onclick="autonomaSendChat('help')"              class="autonoma-quick-btn">❓ Help</button>
             </div>
 
             <!-- CSV Drag-and-Drop Overlay -->
@@ -3677,8 +3677,8 @@ app.get('/', (c) => {
               class="absolute inset-0 z-20 hidden flex-col items-center justify-center rounded-2xl pointer-events-none"
               style="background:rgba(88,28,135,0.85);backdrop-filter:blur(4px);border:2px dashed #a855f7;">
               <i class="fas fa-file-csv text-purple-300 text-4xl mb-3"></i>
-              <p class="text-white font-semibold text-sm">Solte o CSV aqui</p>
-              <p class="text-purple-300 text-xs mt-1">endereço, valor [, token]</p>
+              <p class="text-white font-semibold text-sm">Drop CSV here</p>
+              <p class="text-purple-300 text-xs mt-1">address, amount [, token]</p>
             </div>
 
             <!-- CSV Preview Banner (shows after upload) -->
@@ -3686,7 +3686,7 @@ app.get('/', (c) => {
               <div class="flex items-center gap-2 bg-purple-900/30 border border-purple-700/40 rounded-lg px-3 py-1.5">
                 <i class="fas fa-file-csv text-purple-400 text-xs flex-shrink-0"></i>
                 <span id="autonoma-csv-banner-text" class="text-xs text-purple-200 flex-1 truncate"></span>
-                <button onclick="autonomaCsvCancel()" class="text-purple-400 hover:text-white transition-colors flex-shrink-0" title="Limpar CSV">
+                <button onclick="autonomaCsvCancel()" class="text-purple-400 hover:text-white transition-colors flex-shrink-0" title="Clear CSV">
                   <i class="fas fa-times text-xs"></i>
                 </button>
               </div>
@@ -3701,7 +3701,7 @@ app.get('/', (c) => {
               <div class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500 transition-all">
                 <!-- CSV Upload (+) button -->
                 <button id="autonoma-csv-btn"
-                  title="Upload CSV para pagamento em lote (drag & drop suportado)"
+                  title="Upload CSV for batch payment (drag & drop supported)"
                   onclick="document.getElementById('autonoma-csv-file-input').click()"
                   class="w-6 h-6 flex items-center justify-center rounded-md text-gray-500 hover:text-purple-400 hover:bg-purple-900/30 transition-all flex-shrink-0 group relative">
                   <i class="fas fa-plus text-xs"></i>
@@ -3719,7 +3719,7 @@ app.get('/', (c) => {
                   <i class="fas fa-paper-plane text-xs"></i>
                 </button>
               </div>
-              <p class="text-center text-gray-700 text-[10px] mt-1">Enter para enviar · ➕ CSV batch · 🤖 Agent Executor · Permit2</p>
+              <p class="text-center text-gray-700 text-[10px] mt-1">Enter to send · ➕ CSV batch · 🤖 Agent Executor · Permit2</p>
             </div>
           </div>
         </div>
@@ -5041,7 +5041,7 @@ app.get('/', (c) => {
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
   <script src="/static/otc.f5e54315.js"></script>
-  <script src="/static/autonoma.js?v=20260404d"></script>
+  <script src="/static/autonoma.js?v=20260404e"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner
