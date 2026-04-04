@@ -1,6 +1,6 @@
 // ============================================================
 // AUTONOMA.JS — Subpage /agents/autonoma
-// Build: 20260404f
+// Build: 20260404g
 //
 // Layout: 2 columns
 //   LEFT  — Agent Executor Intents (live on-chain intent panel)
@@ -288,6 +288,12 @@
       return true;
     }
 
+    if (/deploy.*contract|deploy.*agent|contrato.*deploy|fazer.*deploy/i.test(lower)) {
+      autonomaHideTyping();
+      _handleDeployAction();
+      return true;
+    }
+
     return false;
   }
 
@@ -411,14 +417,50 @@
   function _metaTxStatusLine() {
     try {
       const status = window.AgentExecutor?.getMetaTxStatus?.();
-      if (!status) return '';
-      if (status.contractDeployed) {
-        return `🚀 **Gasless mode active** — Agent Executor contract deployed\n` +
-               `*Transactions are gasless — relayer pays all fees*\n\n`;
+      // Also check localStorage directly
+      const contractAddr = localStorage.getItem('ae_contract_addr');
+      const isDeployed = (status?.contractDeployed) ||
+        (contractAddr && contractAddr !== '0x0000000000000000000000000000000000000000');
+
+      if (!status && !isDeployed) {
+        return `🔧 **AgentExecutor não deployado** — [Fazer Deploy ↗](/static/deploy-agent.html)\n` +
+               `*Usando Permit2/direct como fallback*\n\n`;
       }
-      return `⚡ **Meta-tx setup pending** — deploy AgentExecutor.sol for full gasless mode\n` +
-             `*Currently using Permit2/direct fallback*\n\n`;
+      if (isDeployed) {
+        const addr = contractAddr || status?.contractAddress || '';
+        const short = addr ? ` (\`${addr.slice(0,6)}…${addr.slice(-4)}\`)` : '';
+        return `🚀 **Modo Gasless ativo** — contrato deployado${short}\n` +
+               `*Transações gasless — relayer paga o gas*\n\n`;
+      }
+      return `⚡ **Setup de meta-tx pendente** — [deploy AgentExecutor.sol](/static/deploy-agent.html) para modo gasless\n` +
+             `*Usando Permit2/direct como fallback*\n\n`;
     } catch { return ''; }
+  }
+
+  // ── Deploy contract action ────────────────────────────────────────────────────
+  function _handleDeployAction() {
+    autonomaAppendMessage('user', 'deploy contract', 'user');
+    autonomaAppendMessage('assistant',
+      `🤖 **Deploy AgentExecutor — Meta-Transaction Engine**\n\n` +
+      `Para ativar o modo gasless completo, você precisa fazer o deploy do contrato ` +
+      `**AgentExecutor.sol** na Arc Testnet.\n\n` +
+      `**Opção 1 — Deploy via MetaMask (recomendado):**\n` +
+      `Abra a página de deploy e use sua carteira diretamente:\n` +
+      `👉 [Abrir Deploy Page](/static/deploy-agent.html)\n\n` +
+      `**Opção 2 — Deploy via linha de comando:**\n` +
+      `\`\`\`bash\n` +
+      `cd /home/user/deploy-agent\n` +
+      `DEPLOY_PK=0xSUA_CHAVE node deploy-with-pk.mjs\n` +
+      `\`\`\`\n\n` +
+      `**Depois do deploy:**\n` +
+      `• Salve o endereço do contrato em \`localStorage.setItem('ae_contract_addr', '0x...')\`\n` +
+      `• Configure \`RELAYER_PRIVATE_KEY\` no Cloudflare\n` +
+      `• Transfira USDC para o relayer para pagar o gas\n\n` +
+      `**Endereço do relayer (para receber fundos):**\n` +
+      `\`0xFAd3edb1aAe40C16cd30987fCEc3C3d68aEb7F45\`\n\n` +
+      `*Obtenha USDC de teste em: [faucet.circle.com](https://faucet.circle.com)*`,
+      'agents'
+    );
   }
 
   // ── Agent status command (updated with meta-tx info) ──────────────────────────
@@ -475,7 +517,8 @@
       `• 📋 *"show my intents"* — view active intents\n` +
       `• ➕ *Click + button* — upload CSV for batch payments\n` +
       `• 💳 *"my wallet"* · *"check balance"* · *"my transactions"*\n` +
-      `• 🛡️ *"guardian"* · *"network status"* · *"show contracts"*`,
+      `• 🛡️ *"guardian"* · *"network status"* · *"show contracts"*\n` +
+      `• 🚀 *"deploy contract"* — deploy AgentExecutor for full gasless mode`,
       'agents'
     );
   }
@@ -957,7 +1000,7 @@
       _autonomaUpdateCsvBanner();
     }, 3000);
 
-    console.log('[Autonoma] Initialized v20260404f · Meta-Tx + Agent Executor Intents + CSV Upload + Status Hooks');
+    console.log('[Autonoma] Initialized v20260404g · Meta-Tx + Agent Executor Intents + CSV Upload + Status Hooks');
   }
 
   function autonomaDestroy() {
@@ -1011,6 +1054,6 @@
     }, 300);
   });
 
-  console.log('[Autonoma] Module loaded · v20260404f · Meta-Tx + CSV Upload + Status Hooks');
+  console.log('[Autonoma] Module loaded · v20260404g · Meta-Tx + CSV Upload + Status Hooks');
 
 })(); // IIFE
