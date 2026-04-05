@@ -1,7 +1,7 @@
 // ============================================================
 // AGENT RELAY — Meta-Transaction Relayer v2
 // ExecDaat · Arc Testnet · Chain ID 5042002
-// Build: 20260404h
+// Build: 20260405a
 //
 // POST /api/agent/relay               — submit signed intent for gasless execution
 // GET  /api/agent/relay/:id           — poll relay job status
@@ -154,7 +154,9 @@ async function rpcCall(method: string, params: unknown[]): Promise<unknown> {
   })
   const d = await r.json() as { result?: unknown; error?: { message: string } }
   if (d.error) throw new Error(`RPC ${method}: ${d.error.message}`)
-  return d.result
+  // Note: result can be null for eth_getTransactionReceipt (not yet mined)
+  // but for methods like eth_gasPrice, eth_getTransactionCount we need a valid hex string
+  return d.result ?? null
 }
 
 async function getOnChainNonce(wallet: string): Promise<bigint> {
@@ -340,7 +342,12 @@ function encodeExecuteBatch(job: RelayJob): string {
   const recLen    = toUint256(n)
   const recAddrs  = job.recipients.map(r => padLeft32(r.address)).join('')
   const amtLen    = toUint256(n)
-  const recAmts   = job.recipients.map(r => toBigHex(r.amountRaw)).join('')
+  const recAmts   = job.recipients.map((r, i) => {
+    if (!r.amountRaw || !/^\d+$/.test(r.amountRaw)) {
+      throw new Error(`Batch recipient ${i} missing/invalid amountRaw: "${r.amountRaw}"`)
+    }
+    return toBigHex(r.amountRaw)
+  }).join('')
 
   const sigHex    = job.signature.replace('0x', '')
   const sigLen    = toUint256(65)
@@ -428,12 +435,18 @@ async function buildAndSignTx(
   console.log(`[RELAY] Signing tx from relayer: ${relayerAddr} → ${contractTo}`)
 
   const [nonceHex, gasPriceHex] = await Promise.all([
-    rpcCall('eth_getTransactionCount', [relayerAddr, 'latest']) as Promise<string>,
-    rpcCall('eth_gasPrice', []) as Promise<string>,
+    rpcCall('eth_getTransactionCount', [relayerAddr, 'latest']),
+    rpcCall('eth_gasPrice', []),
   ])
 
-  const txNonce  = parseInt(String(nonceHex), 16)
-  const gasPrice = BigInt(String(gasPriceHex)) * 110n / 100n  // +10% buffer
+  if (!nonceHex || typeof nonceHex !== 'string') {
+    throw new Error(`Invalid nonce from RPC: ${JSON.stringify(nonceHex)}`)
+  }
+  if (!gasPriceHex || typeof gasPriceHex !== 'string' || gasPriceHex === '0x') {
+    throw new Error(`Invalid gasPrice from RPC: ${JSON.stringify(gasPriceHex)}`)
+  }
+  const txNonce  = parseInt(nonceHex, 16)
+  const gasPrice = BigInt(gasPriceHex) * 110n / 100n  // +10% buffer
 
   // Estimate gas
   let gasLimit = 250_000n
@@ -443,7 +456,9 @@ async function buildAndSignTx(
       to:   contractTo,
       data: callData,
     }]) as string
-    gasLimit = BigInt(String(estHex)) * 130n / 100n  // +30% buffer
+    if (estHex && typeof estHex === 'string' && estHex !== '0x') {
+      gasLimit = BigInt(estHex) * 130n / 100n  // +30% buffer
+    }
   } catch (e) {
     console.warn('[RELAY] Gas estimation failed, using 250k default:', String(e))
   }
@@ -548,11 +563,15 @@ async function executeRelayJob(
 
       if (job.type === 'transfer') {
         if (!job.to || !job.amountRaw) throw new Error('Missing to/amountRaw for transfer')
+        if (!/^\d+$/.test(job.amountRaw)) throw new Error(`Invalid amountRaw format: "${job.amountRaw}"`)
 
         // Check relayer token balance first
         const balData  = '0x70a08231' + padLeft32(relayerAddr)
-        const balHex   = await rpcCall('eth_call', [{ to: job.token, data: balData }, 'latest']) as string
-        const relayerBal = balHex && balHex !== '0x' ? BigInt(balHex) : 0n
+        let balHex: string
+        try {
+          balHex = await rpcCall('eth_call', [{ to: job.token, data: balData }, 'latest']) as string
+        } catch { balHex = '0x0' }
+        const relayerBal = balHex && balHex !== '0x' && balHex !== '0x0' ? BigInt(balHex) : 0n
         const amtRaw     = BigInt(job.amountRaw)
 
         if (relayerBal >= amtRaw) {
@@ -562,8 +581,11 @@ async function executeRelayJob(
         } else {
           // Check user's allowance for relayer
           const allowData = '0xdd62ed3e' + padLeft32(job.from) + padLeft32(relayerAddr)
-          const allowHex  = await rpcCall('eth_call', [{ to: job.token, data: allowData }, 'latest']) as string
-          const userAllowance = allowHex && allowHex !== '0x' ? BigInt(allowHex) : 0n
+          let allowHex: string
+          try {
+            allowHex = await rpcCall('eth_call', [{ to: job.token, data: allowData }, 'latest']) as string
+          } catch { allowHex = '0x0' }
+          const userAllowance = allowHex && allowHex !== '0x' && allowHex !== '0x0' ? BigInt(allowHex) : 0n
 
           if (userAllowance >= amtRaw) {
             // User approved relayer — call transferFrom(from, to, amount)
@@ -591,20 +613,27 @@ async function executeRelayJob(
         let txHash: string | undefined
         for (let i = 0; i < job.recipients.length; i++) {
           const rcpt    = job.recipients[i]
+          if (!rcpt.amountRaw || !/^\d+$/.test(rcpt.amountRaw)) throw new Error(`Invalid batch recipient amountRaw: "${rcpt.amountRaw}"`)
           const amtRaw  = BigInt(rcpt.amountRaw)
 
           // Check relayer balance
           const balData   = '0x70a08231' + padLeft32(relayerAddr)
-          const balHex    = await rpcCall('eth_call', [{ to: job.token, data: balData }, 'latest']) as string
-          const relayerBal = balHex && balHex !== '0x' ? BigInt(balHex) : 0n
+          let balHex: string
+          try {
+            balHex = await rpcCall('eth_call', [{ to: job.token, data: balData }, 'latest']) as string
+          } catch { balHex = '0x0' }
+          const relayerBal = balHex && balHex !== '0x' && balHex !== '0x0' ? BigInt(balHex) : 0n
 
           let batchCallData: string
           if (relayerBal >= amtRaw) {
             batchCallData = encodeERC20Transfer(rcpt.address, rcpt.amountRaw)
           } else {
             const allowData = '0xdd62ed3e' + padLeft32(job.from) + padLeft32(relayerAddr)
-            const allowHex  = await rpcCall('eth_call', [{ to: job.token, data: allowData }, 'latest']) as string
-            const userAllow  = allowHex && allowHex !== '0x' ? BigInt(allowHex) : 0n
+            let allowHex: string
+            try {
+              allowHex = await rpcCall('eth_call', [{ to: job.token, data: allowData }, 'latest']) as string
+            } catch { allowHex = '0x0' }
+            const userAllow  = allowHex && allowHex !== '0x' && allowHex !== '0x0' ? BigInt(allowHex) : 0n
             if (userAllow >= amtRaw) {
               batchCallData = encodeERC20TransferFrom(job.from, rcpt.address, rcpt.amountRaw)
             } else {
