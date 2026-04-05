@@ -1,6 +1,6 @@
 // ============================================================
 // AGENT EXECUTOR v4 — ExecDaat — Meta-Transaction System
-// Build: 20260404j
+// Build: 20260405b
 //
 // ┌─────────────────────────────────────────────────────────┐
 // │           GASLESS META-TRANSACTION ARCHITECTURE          │
@@ -48,7 +48,7 @@
 (function (global) {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const AE_VERSION = '20260404j';
+const AE_VERSION = '20260405b';
 const AE_API_BASE        = '/api/agent';
 const AE_POLL_MS         = 3000;
 const AE_MAX_RETRIES     = 3;
@@ -521,9 +521,11 @@ async function _executeViaMetaTx(signer, signerAddr, intent, tokenAddr, amountRa
       'error'
     );
   } else if (!relayResult.agentContractDeployed) {
+    // Mode B is active — this is NORMAL operation, not an error
     _notifyMetaTx(
-      '⚠️ **AgentExecutor not deployed** — visit [Deploy Agent ↗](/static/deploy-agent) to deploy.',
-      'error'
+      `🤖 **Relayer executing** (Mode B — direct relay) — job \`${jobId}\`\n\n` +
+      '*Relayer is broadcasting your transaction via transferFrom. No more wallet popups.*',
+      'agents'
     );
   } else {
     _notifyMetaTx(
@@ -788,11 +790,17 @@ async function _executeTransfer(intent) {
   // ── PATH 1B: Direct Relay Mode B (no AgentExecutor contract needed) ────────
   // The relay uses transferFrom(user→to) with the user's allowance for the relayer.
   if (!contractReady) {
-    const relayerAddr = await _getRelayerAddress();
+    // Try up to 2 times to get the relayer address (handles cold-start cache miss)
+    let relayerAddr = await _getRelayerAddress();
+    if (!relayerAddr) {
+      _log('Relayer address not cached yet — retrying fetch…');
+      await new Promise(r => setTimeout(r, 800));
+      relayerAddr = await _getRelayerAddress();
+    }
     if (relayerAddr) {
       _log('Using Mode B direct relay path (no AgentExecutor contract)');
       _notifyMetaTx(
-        '🔄 **Direct relay mode** — relayer will execute via `transferFrom`.\\n\\n' +
+        `🔄 **Direct relay mode active** — relayer \`${relayerAddr.slice(0,10)}…\` will execute via \`transferFrom\`.\n\n` +
         '*One-time approval required if you haven\'t approved the relayer yet.*',
         'info'
       );
@@ -802,8 +810,22 @@ async function _executeTransfer(intent) {
       } catch (relayErr) {
         const msg = relayErr?.message || String(relayErr);
         _warn('Direct relay Mode B failed:', msg);
+        // If user rejected the wallet popup, don't fall through to PATH 3 silently
+        if (msg.includes('ACTION_REJECTED') || msg.includes('4001') || msg.includes('rejected') || msg.includes('denied')) {
+          _notifyMetaTx(`🚫 **Wallet signature rejected.** Transaction cancelled.`, 'error');
+          await _patch(intent.id, { status: 'cancelled', error: 'User rejected wallet signature' });
+          _notify(intent.id, 'cancelled', { intent, error: 'User rejected wallet signature' });
+          return;
+        }
         _notifyMetaTx(`⚠️ Relay failed: ${msg}\n\nFalling back to Permit2…`, 'error');
       }
+    } else {
+      _warn('Relayer address unavailable — RELAYER_PRIVATE_KEY may not be set on server');
+      _notifyMetaTx(
+        '⚠️ **Relay not reachable** — could not fetch relayer address from server.\n\n' +
+        'Falling back to Permit2 signing…',
+        'error'
+      );
     }
   }
 
@@ -824,18 +846,41 @@ async function _executeTransfer(intent) {
   // ── PATH 3: All gasless paths failed ──────────────────────────────────────
   _log('All relay paths failed — no available execution route');
 
-  const relayerForMsg = await _getRelayerAddress();
-  _notifyMetaTx(
-    '⚠️ **Relay execution failed.**\n\n' +
-    (relayerForMsg
-      ? `The relayer (\`${relayerForMsg.slice(0,10)}…\`) needs to be funded with tokens, ` +
-        'OR you need to approve it as a spender.\n\n' +
-        '**Quick fix:** type `allow agent to spend 100 USDC` to create a Permit2, then retry.\n\n' +
-        'Or ask admin to fund the relayer wallet.'
-      : 'Configure **RELAYER_PRIVATE_KEY** via `wrangler secret put RELAYER_PRIVATE_KEY`.\n\n' +
-        'Or create a Permit2: type `allow agent to spend 100 USDC`.'),
-    'error'
-  );
+  // Try to get relayer address for a helpful message (use cache or re-fetch)
+  const relayerForMsg = _cachedRelayerAddr || await _getRelayerAddress().catch(() => null);
+
+  let failMsg;
+  if (relayerForMsg) {
+    failMsg =
+      `⚠️ **Execution failed** — all relay paths unavailable.\n\n` +
+      `**Relayer:** \`${relayerForMsg.slice(0,10)}…\`\n\n` +
+      `**Most likely cause:** The relayer does not have enough token balance, ` +
+      `OR your wallet has not approved the relayer as a token spender.\n\n` +
+      `**Fix options:**\n` +
+      `1. Type \`allow agent to spend 100 USDC\` to create a Permit2 spending permission\n` +
+      `2. Or contact the dApp admin to fund the relayer wallet`;
+  } else {
+    // Fetch status directly from API for a definitive answer
+    let statusData = null;
+    try {
+      const sr = await fetch(`${AE_API_BASE}/relay/status`);
+      statusData = await sr.json();
+    } catch (_) {}
+
+    if (statusData?.relayerConfigured) {
+      failMsg =
+        `⚠️ **Relay execution failed** — relayer is configured but execution failed.\n\n` +
+        `**Relayer:** \`${statusData.relayerAddress?.slice(0,10) || 'unknown'}…\`\n\n` +
+        `Try: type \`allow agent to spend 100 USDC\` to create a Permit2, then retry.`;
+    } else {
+      failMsg =
+        `⚠️ **Relay not configured** — RELAYER_PRIVATE_KEY not set on server.\n\n` +
+        `Contact the dApp admin to configure the relayer.\n\n` +
+        `*Alternative: type \`allow agent to spend 100 USDC\` to use Permit2 signing.*`;
+    }
+  }
+
+  _notifyMetaTx(failMsg, 'error');
 
   await _patch(intent.id, {
     status: 'failed',
@@ -958,8 +1003,10 @@ window.addEventListener('agentExecutor:update', function (e) {
   });
 
   if (['completed', 'failed', 'broadcast'].includes(status)) {
-    const notifyFn = window.autonomaActive && typeof autonomaAppendMessage === 'function'
-      ? autonomaAppendMessage
+    // Use window._autonomaActive (set by autonoma.js) — NOT window.autonomaActive (local var)
+    const isAutonoma = !!window._autonomaActive;
+    const notifyFn = isAutonoma && typeof window.appendChatMessage === 'function'
+      ? window.appendChatMessage   // patched by autonoma context
       : (typeof appendChatMessage === 'function' ? appendChatMessage : null);
 
     if (!notifyFn) return;
@@ -989,8 +1036,10 @@ window.addEventListener('agentMetaTx:message', function (e) {
   const { msg, type } = e.detail || {};
   if (!msg) return;
 
-  const notifyFn = window.autonomaActive && typeof window.autonomaAppendMessage === 'function'
-    ? window.autonomaAppendMessage
+  // Use window._autonomaActive (set by autonoma.js) — NOT window.autonomaActive (local var)
+  const isAutonoma = !!window._autonomaActive;
+  const notifyFn = isAutonoma && typeof window.appendChatMessage === 'function'
+    ? window.appendChatMessage   // patched by autonoma context — routes to autonoma container
     : (typeof appendChatMessage === 'function' ? appendChatMessage : null);
 
   if (notifyFn) {
