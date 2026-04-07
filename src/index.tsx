@@ -5036,7 +5036,9 @@ app.get('/', (c) => {
   </footer>
 
   <script src="/static/wallet.js?v=20260327a"></script>
-  <script src="/static/wallet-create.js?v=20260407a"></script>
+  <script src="/static/evm-tx.js?v=20260407b"></script>
+  <script src="/static/wallet-create.js?v=20260407b"></script>
+  <script src="/static/wallet-provider.js?v=20260407b"></script>
   <script src="/static/router.js?v=20260407a"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
@@ -5047,7 +5049,7 @@ app.get('/', (c) => {
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250325b"></script>
-  <script src="/static/multisend.js?v=20260327b"></script>
+  <script src="/static/multisend.js?v=20260407b"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>
@@ -5060,7 +5062,7 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260404l"></script>
   <script src="/static/queue-engine.js?v=20260403a"></script>
-  <script src="/static/agent-executor.js?v=20260405b"></script>
+  <script src="/static/agent-executor.js?v=20260407b"></script>
   <script src="/static/chat-bridge.js?v=20260404l"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
