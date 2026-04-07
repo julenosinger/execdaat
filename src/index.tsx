@@ -461,6 +461,27 @@ app.get('/api/status', (c) => {
   })
 })
 
+// ─── SPA Route Aliases — redirect path-based URLs to hash-based SPA ──────────
+// e.g. /payments → /#/payments (preserves wallet state, no reload of JS)
+const SPA_ROUTES: Record<string, string> = {
+  '/dashboard': 'dashboard',
+  '/payments':  'payments',
+  '/contracts': 'contracts',
+  '/autonoma':  'autonoma',
+  '/settings':  'settings',
+  '/otc':       'otc',
+  '/swap':      'swap',
+  '/multisend': 'multisend',
+  '/history':   'history',
+}
+
+for (const [routePath, tab] of Object.entries(SPA_ROUTES)) {
+  app.get(routePath, (c) => {
+    // Redirect to SPA with hash so the JS router picks it up
+    return c.redirect(`/#/${tab}`, 302)
+  })
+}
+
 // GET / - Interface principal
 app.get('/', (c) => {
   return c.html(`<!DOCTYPE html>
@@ -749,6 +770,14 @@ app.get('/', (c) => {
           <i class="fas fa-wallet"></i>
           <span class="hidden sm:inline" data-i18n="btn_connect">Connect</span>
         </button>
+
+        <!-- Create Wallet Button -->
+        <button id="wallet-create-btn" onclick="if(typeof openCreateWalletModal==='function'){openCreateWalletModal();}else{alert('Loading…');}" title="Create a new non-custodial wallet"
+          class="hidden sm:flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-purple-700/40 hover:border-purple-500/70 text-purple-300 hover:text-purple-200 rounded-xl px-3 py-2 text-sm font-semibold transition-all">
+          <i class="fas fa-plus-circle text-xs"></i>
+          <span class="hidden lg:inline">Create Wallet</span>
+        </button>
+
         <div id="wallet-badge" class="hidden sm:hidden w-2 h-2 rounded-full bg-green-400"></div>
       </div>
     </div>
@@ -5007,6 +5036,8 @@ app.get('/', (c) => {
   </footer>
 
   <script src="/static/wallet.js?v=20260327a"></script>
+  <script src="/static/wallet-create.js?v=20260407a"></script>
+  <script src="/static/router.js?v=20260407a"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
@@ -5199,6 +5230,30 @@ app.get('/', (c) => {
       const link = document.createElement('link');
       link.rel = 'preconnect'; link.href = 'https://rpc.testnet.arc.network';
       document.head.appendChild(link);
+
+      // 7. Soft-wallet session restore (wallet-create.js)
+      if (typeof wcTryRestoreSession === 'function') {
+        wcTryRestoreSession();
+      }
+
+      // 8. Init SPA router (router.js) — handle #/route on load
+      if (typeof daatRouterInit === 'function') {
+        daatRouterInit();
+      }
+
+      // 9. Hide "Create Wallet" btn when wallet already connected
+      window.addEventListener('walletConnected', () => {
+        const cwBtn = document.getElementById('wallet-create-btn');
+        if (cwBtn) cwBtn.style.display = 'none';
+      });
+      window.addEventListener('walletDisconnected', () => {
+        const cwBtn = document.getElementById('wallet-create-btn');
+        if (cwBtn) cwBtn.style.display = '';
+      });
+      if (window.walletState?.connected) {
+        const cwBtn = document.getElementById('wallet-create-btn');
+        if (cwBtn) cwBtn.style.display = 'none';
+      }
     });
   </script>
 </body>

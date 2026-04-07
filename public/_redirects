@@ -1,0 +1,15 @@
+# ExecDaat — Cloudflare Pages SPA Redirects
+# Routes all direct-URL navigations to the SPA (index / Worker)
+# The JS router then reads location.hash and activates the right tab.
+# These must come AFTER /api/* and /static/* (Cloudflare evaluates top-to-bottom,
+# but _worker.js takes priority for /api/*, so this only matters for HTML routes).
+
+/dashboard    /    200
+/payments     /    200
+/contracts    /    200
+/autonoma     /    200
+/settings     /    200
+/otc          /    200
+/swap         /    200
+/multisend    /    200
+/history      /    200
