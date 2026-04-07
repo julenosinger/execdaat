@@ -266,15 +266,9 @@ async function _patch(id, body) {
 
 // ─── Network helpers ──────────────────────────────────────────────────────────
 async function _ensureNetwork() {
-  // Usar provider ativo (interno ou externo)
-  const _prov = (typeof global.getActiveProvider === 'function')
-    ? global.getActiveProvider()
-    : global.ethereum;
-  if (!_prov) throw new Error('No wallet provider available');
-
-  const chainHex = await _prov.request({ method: 'eth_chainId' });
+  const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
   if (parseInt(chainHex, 16) !== AE_CHAIN_ID) {
-    await _prov.request({
+    await window.ethereum.request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: AE_CHAIN_HEX }],
     });
@@ -752,30 +746,15 @@ async function _executeIntent(intent) {
 //   3. Direct ERC-20 transfer (user pays gas + signs tx)
 //
 async function _executeTransfer(intent) {
-  const ethers = global.ethers;
+  const ethers = window.ethers;
   if (!ethers) throw new Error('ethers.js not loaded');
 
   const amount = Number(intent.amount);
   if (!amount || amount <= 0) throw new Error('Amount must be > 0');
 
-  // — Usar signer ativo (interno ou externo) —
-  let provider, signer, signerAddr;
-
-  const _useInternal = typeof global.isInternalWalletActive === 'function' && global.isInternalWalletActive();
-  if (_useInternal) {
-    _log('_executeTransfer: usando carteira INTERNA (sem popup externo)');
-    signer     = await global.getActiveSigner();
-    signerAddr = await signer.getAddress();
-    provider   = signer.provider;
-    _log('Signer interno:', signerAddr);
-  } else {
-    _log('_executeTransfer: usando carteira EXTERNA');
-    const _prov = (typeof global.getActiveProvider === 'function') ? global.getActiveProvider() : global.ethereum;
-    if (!_prov) throw new Error('No provider available — connect or create a wallet');
-    provider   = new ethers.BrowserProvider(_prov, 'any');
-    signer     = await provider.getSigner();
-    signerAddr = await signer.getAddress();
-  }
+  const provider   = new ethers.BrowserProvider(window.ethereum, 'any');
+  const signer     = await provider.getSigner();
+  const signerAddr = await signer.getAddress();
 
   if (signerAddr.toLowerCase() !== intent.wallet.toLowerCase()) {
     throw new Error('Connected wallet does not match intent wallet.');
@@ -1136,24 +1115,22 @@ function aeGetMetaTxStatus() {
 async function aeDeployContract(onProgress) {
   const log = (msg) => { _log(msg); if (onProgress) onProgress(msg); };
 
-  // Usar provider ativo (interno ou externo)
-  const _deployProv = (typeof global.getActiveProvider === 'function') ? global.getActiveProvider() : global.ethereum;
-  if (!_deployProv) throw new Error('No wallet provider found — connect or create a wallet first');
+  if (!window.ethereum) throw new Error('MetaMask not found');
 
   // Get deployer address
-  const accounts = await _deployProv.request({ method: 'eth_requestAccounts' });
+  const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
   const deployer  = accounts[0];
   log(`Deployer: ${deployer}`);
 
   // Switch to Arc Testnet
   try {
-    await _deployProv.request({
+    await window.ethereum.request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: AE_CHAIN_HEX }],
     });
   } catch (e) {
     if (e.code === 4902) {
-      await _deployProv.request({
+      await window.ethereum.request({
         method: 'wallet_addEthereumChain',
         params: [{
           chainId: AE_CHAIN_HEX,
@@ -1207,7 +1184,7 @@ async function aeDeployContract(onProgress) {
   }
 
   log('Sending deploy transaction...');
-  const txHash = await _deployProv.request({
+  const txHash = await window.ethereum.request({
     method: 'eth_sendTransaction',
     params: [{ from: deployer, data: deployData, gas: gasHex }]
   });

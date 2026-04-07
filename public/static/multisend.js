@@ -392,15 +392,13 @@ function msDownloadTemplate() {
 
 // ─── Network switch ───────────────────────────────────────────────────────────
 async function msSwitchToArc() {
-  const _prov = (typeof getActiveProvider === 'function') ? getActiveProvider() : window.ethereum;
-  if (!_prov) return false;
   try {
-    await _prov.request({ method:'wallet_switchEthereumChain', params:[{chainId:MS_CHAIN_HEX}] });
+    await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{chainId:MS_CHAIN_HEX}] });
     return true;
   } catch (e) {
     if (e.code === 4902) {
       try {
-        await _prov.request({ method:'wallet_addEthereumChain', params:[{
+        await window.ethereum.request({ method:'wallet_addEthereumChain', params:[{
           chainId: MS_CHAIN_HEX, chainName:'Arc Testnet',
           nativeCurrency:{name:'USDC',symbol:'USDC',decimals:6},
           rpcUrls:['https://rpc.testnet.arc.network'],
@@ -729,15 +727,8 @@ async function msExecute() {
   const finEl   = msEl('ms-final-result');
 
   if (!msValidatedRows.length)        { showToast('No validated recipients.','warning'); return; }
-  // Verificar carteira interna ou externa
-  const _activeProvider = (typeof getActiveProvider === 'function') ? getActiveProvider() : window.ethereum;
-  const _isInternal = (typeof isInternalWalletActive === 'function') && isInternalWalletActive();
-  if (!_activeProvider && !_isInternal) {
-    showToast('Wallet not detected. Connect or create a wallet.','error');
-    if (typeof openWalletModal === 'function') openWalletModal();
-    return;
-  }
-  if (!window.walletState?.connected && !_isInternal) {
+  if (!window.ethereum)               { showToast('Wallet not detected. Install MetaMask.','error'); return; }
+  if (!window.walletState?.connected) {
     showToast('Connect your wallet first.','warning');
     if (typeof openWalletModal === 'function') openWalletModal();
     return;
@@ -777,13 +768,8 @@ async function msExecute() {
     // ── Step 1: Network validation + provider + balance check ─────────────────
     msTxStep(1, 'active', 'Checking network and USDC balance…');
 
-    // Usar provider ativo (interno ou externo)
-    const _msProvider = (typeof getActiveProvider === 'function') ? getActiveProvider() : window.ethereum;
-    if (!_msProvider) throw new Error('No wallet provider available');
-    msLog(`[MultiSend] Usando ${(typeof isInternalWalletActive === 'function' && isInternalWalletActive()) ? 'carteira INTERNA' : 'carteira externa'}`);
-
     // Network check
-    const chainHex        = await _msProvider.request({ method:'eth_chainId' });
+    const chainHex        = await window.ethereum.request({ method:'eth_chainId' });
     const currentChainId  = parseInt(chainHex, 16);
     msLog(`Current chain: ${currentChainId} | Required: ${MS_CHAIN_ID}`);
 
@@ -799,23 +785,11 @@ async function msExecute() {
       await new Promise(r => setTimeout(r, 1200)); // let provider settle
     }
 
-    // Init provider + signer — usa carteira interna se disponível
-    let provider, signer, senderAddr;
-    if (typeof getActiveSigner === 'function' && (typeof isInternalWalletActive === 'function') && isInternalWalletActive()) {
-      msLog('[MultiSend] Obtendo signer da carteira INTERNA…');
-      signer     = await getActiveSigner();
-      senderAddr = await signer.getAddress();
-      // Para chamadas de leitura, usar JsonRpcProvider
-      const ethers = window.ethers;
-      provider = new ethers.JsonRpcProvider(window.ARC_RPC || 'https://rpc.testnet.arc.network');
-      msLog(`[MultiSend] Signer interno: ${senderAddr}`);
-    } else {
-      msLog('[MultiSend] Obtendo signer da carteira EXTERNA…');
-      provider   = new ethers.BrowserProvider(_msProvider, 'any');
-      signer     = await provider.getSigner();
-      senderAddr = await signer.getAddress();
-    }
-    const usdc = new ethers.Contract(MS_USDC_ADDR, MS_ERC20_ABI, signer);
+    // Init provider + signer
+    const provider   = new ethers.BrowserProvider(window.ethereum, 'any');
+    const signer     = await provider.getSigner();
+    const senderAddr = await signer.getAddress();
+    const usdc       = new ethers.Contract(MS_USDC_ADDR, MS_ERC20_ABI, signer);
 
     msLog(`Sender: ${senderAddr}`);
 

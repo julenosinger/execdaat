@@ -62,17 +62,8 @@ window.evmTx = {
 
 // ─── Core: sign & send transaction via wallet ─────────────────────────────────
 async function evmSignAndSend({ to, data, value = '0x0', description = '' }) {
-  // Prioridade: carteira interna > carteira externa
-  const provider = (typeof getActiveProvider === 'function')
-    ? getActiveProvider()
-    : window.walletState?.provider;
-  const from = (typeof getActiveAddress === 'function')
-    ? getActiveAddress()
-    : window.walletState?.address;
-
-  if (typeof isInternalWalletActive === 'function' && isInternalWalletActive()) {
-    console.log('[EVM] Usando carteira interna para transação — sem popups externos');
-  }
+  const provider = window.walletState?.provider;
+  const from = window.walletState?.address;
 
   if (!provider || !from) {
     throw new Error('Wallet not connected. Please connect your EVM wallet first.');
@@ -191,9 +182,7 @@ async function evmWaitForReceipt(txHash, provider, maxAttempts = 30) {
 
 // ─── eth_call helper ──────────────────────────────────────────────────────────
 async function evmCall({ to, data }) {
-  const provider = (typeof getActiveProvider === 'function')
-    ? getActiveProvider()
-    : window.walletState?.provider;
+  const provider = window.walletState?.provider;
   if (!provider) throw new Error('Wallet not connected');
   return await provider.request({
     method: 'eth_call',
@@ -246,12 +235,8 @@ async function evmApproveToken(spender, amountUSDC, token = 'USDC') {
 
 // ─── EIP-712 Typed Signature (for off-chain signing) ─────────────────────────
 async function evmSignTypedMessage(domain, types, message) {
-  const provider = (typeof getActiveProvider === 'function')
-    ? getActiveProvider()
-    : window.walletState?.provider;
-  const from = (typeof getActiveAddress === 'function')
-    ? getActiveAddress()
-    : window.walletState?.address;
+  const provider = window.walletState?.provider;
+  const from = window.walletState?.address;
   if (!provider || !from) throw new Error('Wallet not connected');
 
   const typedData = { domain, types, primaryType: Object.keys(types).find(k => k !== 'EIP712Domain') || 'Message', message };
@@ -266,12 +251,8 @@ async function evmSignTypedMessage(domain, types, message) {
 
 // ─── EIP-191 Personal Sign ────────────────────────────────────────────────────
 async function evmPersonalSign(message) {
-  const provider = (typeof getActiveProvider === 'function')
-    ? getActiveProvider()
-    : window.walletState?.provider;
-  const from = (typeof getActiveAddress === 'function')
-    ? getActiveAddress()
-    : window.walletState?.address;
+  const provider = window.walletState?.provider;
+  const from = window.walletState?.address;
   if (!provider || !from) throw new Error('Wallet not connected');
 
   const msgHex = '0x' + Array.from(new TextEncoder().encode(message))
@@ -288,9 +269,7 @@ async function evmPersonalSign(message) {
 // ─── Sign Operation (off-chain authorization for backend) ─────────────────────
 async function evmSignOperation(operationType, params) {
   const timestamp = Date.now();
-  const from = (typeof getActiveAddress === 'function')
-    ? getActiveAddress()
-    : window.walletState?.address;
+  const from = window.walletState?.address;
   if (!from) throw new Error('Wallet not connected');
 
   const message = `ExecDaat\nOperation: ${operationType}\nFrom: ${from}\nTimestamp: ${timestamp}\nParams: ${JSON.stringify(params)}`;

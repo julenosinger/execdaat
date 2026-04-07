@@ -238,9 +238,6 @@ async function wcActivateWallet(walletData) {
   const provider = _buildLocalProvider(walletData.privateKey);
   const address  = walletData.address;
 
-  // Expor o provider interno para wallet-provider.js usar
-  window._wcInternalProvider = provider;
-
   window.walletState = {
     connected:    true,
     address,
@@ -256,25 +253,20 @@ async function wcActivateWallet(walletData) {
   // Save session
   wcSaveSession(walletData);
 
-  // Fire walletUnlocked (para wallet-provider.js ativar prioridade interna)
-  window.dispatchEvent(new CustomEvent('walletUnlocked', { detail: { address, chainId: 5042002 } }));
   // Fire the same events the external wallet connection fires
   window.dispatchEvent(new CustomEvent('walletConnected', { detail: { address, chainId: 5042002 } }));
   if (typeof window.updateWalletUI === 'function') window.updateWalletUI();
   if (typeof window.refreshBalance  === 'function') setTimeout(() => window.refreshBalance(), 600);
 
-  // Update arc-pay-session (com authorized=true para agent-executor reconhecer)
+  // Update arc-pay-session
   const ARC_SESSION_KEY = 'arc-pay-session-v3';
-  const session = {
-    wallet: address, ts: Date.now(), network: 'arc-testnet', source: 'soft-wallet',
-    authorized: true, sessionHash: 'soft-' + address.slice(-8),
-    signature: 'internal', expiry: Date.now() + 86400000,
-  };
+  const session = { wallet: address, ts: Date.now(), network: 'arc-testnet', source: 'soft-wallet' };
   sessionStorage.setItem(ARC_SESSION_KEY, JSON.stringify(session));
   localStorage.setItem(ARC_SESSION_KEY, JSON.stringify(session));
 
   console.log('[WC] Soft-wallet activated:', address);
 }
+
 /* ──────────────────────────────────────────────────────────────
    UI — CSS (injected once)
    ────────────────────────────────────────────────────────────── */
@@ -902,16 +894,6 @@ document.addEventListener('DOMContentLoaded', () => {
   window.wcHasKeystore         = wcHasKeystore;
   window.wcClearSession        = wcClearSession;
   window.wcTryRestoreSession   = wcTryRestoreSession;
-
-  // Expor wcIsUnlocked para wallet-provider.js
-  window.wcIsUnlocked = function() {
-    try {
-      const sess = sessionStorage.getItem('execdaat_wallet_session');
-      if (!sess) return false;
-      const p = JSON.parse(sess);
-      return !!(p && p.privateKey && p.address);
-    } catch { return false; }
-  };
 
   // Try to restore from session (e.g. page reload)
   setTimeout(wcTryRestoreSession, 1200);
