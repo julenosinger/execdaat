@@ -2,14 +2,25 @@
 // ExecDaat — Decentralized Wallet Creation (Feature 1)
 // Client-side only: private key / seed phrase NEVER sent to server
 // Uses Web Crypto API (AES-GCM 256) + ethers.js HDNode
-// Build: 20260407a
+// Build: 20260407b  (fix: HTML-attribute injection broke onclick)
 // ============================================================
 'use strict';
 
 /* ── Constants ─────────────────────────────────────────────── */
 const WC_STORAGE_KEY  = 'execdaat_wallet_enc_v1';   // localStorage key for encrypted keystore
 const WC_SESSION_KEY  = 'execdaat_wallet_session';  // sessionStorage key for in-memory session
-const WC_VERSION      = '20260407a';
+const WC_VERSION      = '20260407b';
+
+/* ── In-memory pending wallet ────────────────────────────────
+   CRITICAL FIX: wallet data (JSON with double-quotes) must NOT
+   be embedded inside an HTML onclick="..." attribute.
+   The double-quotes in JSON.stringify() break the HTML parser
+   and silently truncate the onclick handler, making the button
+   appear clickable but doing nothing.
+   Solution: store wallet + password in a module-level variable
+   and reference it from onclick via a zero-arg wrapper.         */
+let _wcPendingWallet = null;   // { address, privateKey, mnemonic }
+let _wcPendingPw     = null;   // password string (in memory only, never persisted here)
 
 /* ── Helpers: sanitise / escape ──────────────────────────────
    All user-supplied strings are escaped before insertion into
@@ -568,12 +579,17 @@ async function _wcGenerate() {
   if (pw !== pw2)    { _wcShakeErr(err, 'Passwords do not match.'); return; }
   if (err) err.textContent = '';
 
+  // Clear any previous pending state
+  _wcPendingWallet = null;
+  _wcPendingPw     = null;
+
   const area = document.getElementById('wc-content-area');
   if (area) area.innerHTML = `<div style="padding:32px 0;text-align:center;"><div class="wc-spinner"></div><p style="color:#9ca3af;margin-top:14px;font-size:13px;">Generating wallet…</p></div>`;
 
   try {
     const wallet = _generateWallet();
-    // Show seed phrase
+    console.log('[WC] wallet generated:', wallet.address);
+    // Show seed phrase — also stores wallet + pw in _wcPendingWallet / _wcPendingPw
     area.innerHTML = _wcSeedPhraseHTML(wallet, pw);
   } catch(e) {
     if (area) area.innerHTML = `<p style="color:#f87171;font-size:13px;">Error: ${_esc(e.message)}</p>`;
@@ -581,14 +597,20 @@ async function _wcGenerate() {
 }
 
 function _wcSeedPhraseHTML(wallet, pw) {
+  // ── CRITICAL FIX: store wallet + pw in module variables ──────
+  // DO NOT embed wallet JSON or password inside an HTML onclick attribute.
+  // JSON.stringify produces double-quotes which break the HTML attribute parser,
+  // silently truncating the onclick and making the button do nothing.
+  _wcPendingWallet = wallet;
+  _wcPendingPw     = pw;
+  console.log('[WC] _wcSeedPhraseHTML: pending wallet stored', wallet.address);
+
   const words = (wallet.mnemonic || '').split(' ');
   const wordGrid = words.map((w, i) => `
     <div class="wc-seed-word">
       <span class="num">${i + 1}.</span>
       <span class="word">${_esc(w)}</span>
     </div>`).join('');
-
-  const shortAddr = wallet.address.slice(0,10) + '…' + wallet.address.slice(-8);
 
   return `
     <div style="margin-bottom:14px;">
@@ -624,7 +646,7 @@ function _wcSeedPhraseHTML(wallet, pw) {
     <div id="wc-seed-err" style="color:#f87171;font-size:12px;min-height:18px;margin-bottom:8px;"></div>
 
     <div style="display:flex;flex-direction:column;gap:8px;">
-      <button class="wc-btn-primary" onclick="window._wcFinishCreate(${_escAttr(JSON.stringify(wallet))}, ${_escAttr(pw)})">
+      <button class="wc-btn-primary" id="wc-finish-btn" onclick="window._wcFinishCreate()">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l4 4 6-7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         I've saved it — Create Wallet
       </button>
@@ -635,26 +657,41 @@ function _wcSeedPhraseHTML(wallet, pw) {
   `;
 }
 
-// Safely encode a value for use in an onclick attribute
-function _escAttr(str) {
-  return "'" + str.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "'";
-}
+async function _wcFinishCreate() {
+  console.log('[WC] button clicked — _wcFinishCreate()');
 
-async function _wcFinishCreate(walletJSON, pw) {
+  // ── Read from module-level pending state (not from onclick args) ──
+  const wallet = _wcPendingWallet;
+  const pw     = _wcPendingPw;
+
   const err = document.getElementById('wc-seed-err');
   const confirmed = document.getElementById('wc-seed-confirm')?.checked;
+
+  console.log('[WC] seed confirmed?', confirmed);
+  console.log('[WC] wallet exists?',  !!wallet, wallet?.address);
+  console.log('[WC] password set?',   !!pw, pw?.length, 'chars');
+
   if (!confirmed) { _wcShakeErr(err, 'Please confirm you have saved your seed phrase.'); return; }
+  if (!wallet)    { _wcShakeErr(err, 'Wallet data lost — please go back and regenerate.'); console.error('[WC] _wcPendingWallet is null!'); return; }
+  if (!pw)        { _wcShakeErr(err, 'Password missing — please go back and try again.'); console.error('[WC] _wcPendingPw is null!'); return; }
+
   if (err) err.textContent = '';
 
   const area = document.getElementById('wc-content-area');
-  if (area) area.innerHTML = `<div style="padding:32px 0;text-align:center;"><div class="wc-spinner"></div><p style="color:#9ca3af;margin-top:14px;font-size:13px;">Encrypting & saving…</p></div>`;
+  if (area) area.innerHTML = `<div style="padding:32px 0;text-align:center;"><div class="wc-spinner"></div><p style="color:#9ca3af;margin-top:14px;font-size:13px;">Encrypting &amp; saving…</p></div>`;
 
   try {
-    const wallet = typeof walletJSON === 'string' ? JSON.parse(walletJSON) : walletJSON;
+    console.log('[WC] encrypting keystore…');
     await wcSaveKeystore(wallet, pw);
+    console.log('[WC] encryption success — activating wallet…');
     await wcActivateWallet(wallet);
+    console.log('[WC] wallet activated — showing success screen');
+    // Clear pending state after successful use
+    _wcPendingWallet = null;
+    _wcPendingPw     = null;
     _wcShowSuccess(wallet.address);
   } catch(e) {
+    console.error('[WC] _wcFinishCreate error:', e);
     if (area) area.innerHTML = `<p style="color:#f87171;font-size:13px;">Error: ${_esc(e.message)}</p><button class="wc-btn-secondary" style="margin-top:12px;" onclick="window._wcShowTab('create')">← Back</button>`;
   }
 }
