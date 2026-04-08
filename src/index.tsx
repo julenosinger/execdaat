@@ -489,26 +489,31 @@ app.get('/', (c) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-  <title>ExecDaat — Testnet dApp | Payments, Swap &amp; Contracts on Arc Network</title>
+  <title>ExecDaat — Autonomous Payments & Smart Contracts on Arc Network</title>
 
   <!-- ── SEO & Trust Meta Tags ─────────────────────────────────────────── -->
-  <meta name="description" content="ExecDaat is an open-source testnet dApp on Arc Network. Explore autonomous payments, token swaps, smart contracts, and liquidity pools — all on testnet. No real funds involved.">
-  <meta name="keywords" content="ARC Network, testnet, dApp, USDC, EURC, swap, AMM, Web3, blockchain, open source">
+  <meta name="description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
+  <meta name="keywords" content="ARC Network, testnet, dApp, USDC, EURC, swap, AMM, Web3, blockchain, smart contracts, autonomous payments, DeFi">
   <meta name="author" content="ExecDaat — Open Source Project">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#1e1b4b">
 
-  <!-- ── Open Graph (Facebook/LinkedIn) ──────────────────────────────── -->
+  <!-- ── Open Graph (Facebook/LinkedIn/Discord/WhatsApp) ──────────────── -->
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://arc-ai-agents.pages.dev/">
-  <meta property="og:title" content="ExecDaat — Testnet dApp">
-  <meta property="og:description" content="Open-source testnet application on Arc Network. Autonomous payments, token swaps, AMM liquidity pools. No real funds — testnet only.">
+  <meta property="og:url" content="https://execdaatplataform.pages.dev/">
+  <meta property="og:title" content="ExecDaat – Autonomous Payments & Smart Contracts">
+  <meta property="og:description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
+  <meta property="og:image" content="https://execdaatplataform.pages.dev/static/og-preview.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/jpeg">
   <meta property="og:site_name" content="ExecDaat">
 
   <!-- ── Twitter Card ─────────────────────────────────────────────────── -->
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="ExecDaat — Testnet dApp">
-  <meta name="twitter:description" content="Open-source testnet dApp on Arc Network. No real funds involved.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ExecDaat – Autonomous Payments & Smart Contracts">
+  <meta name="twitter:description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
+  <meta name="twitter:image" content="https://execdaatplataform.pages.dev/static/og-preview.jpg">
 
   <!-- ── Security & Anti-Phishing ─────────────────────────────────────── -->
   <meta name="application-name" content="ExecDaat">
@@ -520,7 +525,7 @@ app.get('/', (c) => {
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%237c3aed'/><text y='72' x='50' text-anchor='middle' font-size='58'>⚡</text></svg>">
 
   <!-- ── Canonical ────────────────────────────────────────────────────── -->
-  <link rel="canonical" href="https://arc-ai-agents.pages.dev/">
+  <link rel="canonical" href="https://execdaatplataform.pages.dev/">
 
   <!-- ── Schema.org structured data ──────────────────────────────────── -->
   <script type="application/ld+json">
@@ -529,7 +534,7 @@ app.get('/', (c) => {
     "@type": "WebApplication",
     "name": "ExecDaat",
     "description": "Open-source testnet dApp on Arc Network for autonomous payments, token swaps and smart contracts.",
-    "url": "https://arc-ai-agents.pages.dev",
+    "url": "https://execdaatplataform.pages.dev",
     "applicationCategory": "FinanceApplication",
     "operatingSystem": "Web Browser",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
