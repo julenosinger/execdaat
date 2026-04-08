@@ -5059,7 +5059,7 @@ app.get('/', (c) => {
   <script src="/static/chat.js?v=20260404l"></script>
   <script src="/static/queue-engine.js?v=20260403a"></script>
   <script src="/static/agent-executor.js?v=20260405b"></script>
-  <script src="/static/chatbot-agent-bridge.js?v=20260408a"></script>
+  <script src="/static/chatbot-agent-bridge-v2.js?v=20260408b"></script>
   <script src="/static/chat-bridge.js?v=20260404l"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
