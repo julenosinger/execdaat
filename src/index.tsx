@@ -5062,15 +5062,21 @@ app.get('/', (c) => {
   
   <!-- ═══════════════════════════════════════════════════════════════════════════
        DAAT AGENT CORE ENGINE v2.0 — UNIFIED EXECUTION ARCHITECTURE
-       Build: 20260408c
+       Build: 20260408d (Direct Transfer Mode)
        
        Loading order (CRITICAL):
          1. daat-agent-core.js           ← Core engine (IntentEngine, Permit2Manager, ExecutionEngine)
          2. payments-core-integration.js ← Payments tab → Core bridge
          3. chatbot-core-integration.js  ← Autonoma chatbot → Core bridge
        
-       Purpose: Replace fragmented execution with single unified layer.
-       All payments and chatbot actions now route through DaatAgentCore.processIntent()
+       Purpose: Unified execution layer with direct ERC-20 transfers.
+       All payments and chatbot actions route through DaatAgentCore.processIntent()
+       
+       Execution Mode: DIRECT TRANSFER (User pays gas)
+         - No gasless meta-transactions
+         - No relayer API calls
+         - Direct ERC-20 transfer() method
+         - Permit2 not required
        
        Architecture:
          ┌─────────────┐
@@ -5078,13 +5084,12 @@ app.get('/', (c) => {
          └─────────────┘    │
                             ▼
          ┌─────────────┐  ┌──────────────────┐
-         │  Autonoma   │─▶│  DAAT AGENT CORE │─▶ On-Chain
-         │   Chatbot   │  │  • IntentEngine  │
-         └─────────────┘  │  • Permit2Manager│
-                          │  • ExecutionEngine│
+         │  Autonoma   │─▶│  DAAT AGENT CORE │─▶ Direct ERC-20 Transfer
+         │   Chatbot   │  │  • IntentEngine  │   (User pays gas)
+         └─────────────┘  │  • ExecutionEngine│
                           └──────────────────┘
        ═══════════════════════════════════════════════════════════════════════════ -->
-  <script src="/static/daat-agent-core.js?v=20260408c"></script>
+  <script src="/static/daat-agent-core.js?v=20260408d"></script>
   <script src="/static/payments-core-integration.js?v=20260408c"></script>
   <script src="/static/chatbot-core-integration.js?v=20260408c"></script>
   
