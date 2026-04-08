@@ -5062,36 +5062,31 @@ app.get('/', (c) => {
   
   <!-- ═══════════════════════════════════════════════════════════════════════════
        DAAT AGENT CORE ENGINE v2.0 — UNIFIED EXECUTION ARCHITECTURE
-       Build: 20260408d (Direct Transfer Mode)
+       Build: 20260408f (Integration DISABLED)
        
-       Loading order (CRITICAL):
-         1. daat-agent-core.js           ← Core engine (IntentEngine, Permit2Manager, ExecutionEngine)
-         2. payments-core-integration.js ← Payments tab → Core bridge
-         3. chatbot-core-integration.js  ← Autonoma chatbot → Core bridge
+       IMPORTANT: Chatbot integration is DISABLED to preserve original intelligence.
        
-       Purpose: Unified execution layer with direct ERC-20 transfers.
-       All payments and chatbot actions route through DaatAgentCore.processIntent()
+       Original chatbot features preserved:
+         • Natural language understanding
+         • Context-aware responses
+         • Multi-turn conversations
+         • Rich feedback messages
+         • Status updates during execution
+         • Error handling with helpful suggestions
        
-       Execution Mode: DIRECT TRANSFER (User pays gas)
-         - No gasless meta-transactions
-         - No relayer API calls
-         - Direct ERC-20 transfer() method
-         - Permit2 not required
+       Both chatbots use their ORIGINAL logic:
+         - Main chatbot: chat.js → handleLocalCommand()
+         - Autonoma chatbot: autonoma.js → handleUnifiedMessage() → chat-bridge.js
        
-       Architecture:
-         ┌─────────────┐
-         │ Payments UI │────┐
-         └─────────────┘    │
-                            ▼
-         ┌─────────────┐  ┌──────────────────┐
-         │  Autonoma   │─▶│  DAAT AGENT CORE │─▶ Direct ERC-20 Transfer
-         │   Chatbot   │  │  • IntentEngine  │   (User pays gas)
-         └─────────────┘  │  • ExecutionEngine│
-                          └──────────────────┘
+       The DAAT Agent Core and Payments integration remain active:
+         - Payments tab → payments-core-integration.js → DaatAgentCore
+         - Direct ERC-20 transfers (user pays gas)
+       
+       Chatbots are INDEPENDENT and use their own execution logic.
        ═══════════════════════════════════════════════════════════════════════════ -->
   <script src="/static/daat-agent-core.js?v=20260408d"></script>
   <script src="/static/payments-core-integration.js?v=20260408c"></script>
-  <script src="/static/chatbot-core-integration.js?v=20260408e"></script>
+  <script src="/static/chatbot-core-integration.js?v=20260408f"></script>
   
   <!-- Legacy bridge (deprecated, will be removed in future version) -->
   <script src="/static/chat-bridge.js?v=20260404l"></script>
