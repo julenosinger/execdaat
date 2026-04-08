@@ -871,19 +871,39 @@ const DATPaymentModule = {
 // ============================================================
 const DATTransferModule = {
   /**
-   * Execute direct transfer using DaatAgentCore (if available)
+   * Execute direct transfer using SafeDaatAgentCore (with auto-initialization)
    */
   async executeTransfer(intent) {
     DATLog('Executing transfer:', intent);
     
-    // Check if DaatAgentCore is available
-    if (typeof window.DaatAgentCore === 'undefined' || 
-        typeof window.DaatAgentCore.ExecutionEngine === 'undefined') {
-      throw new Error('❌ DaatAgentCore not loaded. Cannot execute transfer.');
-    }
-    
     try {
-      const result = await window.DaatAgentCore.ExecutionEngine._executeDirectTransfer(intent);
+      // Use SafeDaatAgentCore which auto-initializes if needed
+      const SafeCore = window.SafeDaatAgentCore || window.DaatAgentCore;
+      
+      if (!SafeCore) {
+        // Fallback: try to initialize manually
+        if (typeof window.DaatAgentCoreInit !== 'undefined') {
+          DATLog('Initializing DAAT Agent Core...');
+          await window.DaatAgentCoreInit.ensureCore();
+        } else {
+          throw new Error('❌ DAAT Agent Core initialization failed. Please refresh the page.');
+        }
+      }
+      
+      // Execute transfer with safe wrapper
+      let result;
+      
+      if (window.SafeDaatAgentCore) {
+        // Use safe wrapper (auto-retry)
+        DATLog('Using SafeDaatAgentCore.executeTransfer()');
+        result = await window.SafeDaatAgentCore.executeTransfer(intent);
+      } else if (window.DaatAgentCore && window.DaatAgentCore.ExecutionEngine) {
+        // Direct call (legacy fallback)
+        DATLog('Using DaatAgentCore.ExecutionEngine._executeDirectTransfer()');
+        result = await window.DaatAgentCore.ExecutionEngine._executeDirectTransfer(intent);
+      } else {
+        throw new Error('❌ DAAT Agent Core is not available. Cannot execute transfer.');
+      }
       
       return {
         status: result.status === 'completed' ? DAT_STATUS.COMPLETED : DAT_STATUS.FAILED,
@@ -898,6 +918,7 @@ const DATTransferModule = {
         nextStep: null,
       };
     } catch (err) {
+      DATError('Transfer execution error:', err);
       throw new Error(`❌ Transfer failed: ${err.message}`);
     }
   },

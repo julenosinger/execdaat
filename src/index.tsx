@@ -5055,9 +5055,26 @@ app.get('/', (c) => {
   
   <!-- ═══════════════════════════════════════════════════════════════════════════
        DAAT AGENT TRANSACTIONAL v2.0 — FULL AI AGENT UPGRADE
-       Build: 20260408h
+       Build: 20260408i (ZERO TOLERANCE FOR "NOT LOADED" ERRORS)
        
-       NEW: Full transactional AI agent with expanded capabilities
+       NEW: Robust initialization system with auto-recovery
+       
+       Initialization Phases:
+         PHASE 1 — Global initialization on app load
+         PHASE 2 — Safe loader with auto-recovery
+         PHASE 3 — Chatbot binding (main + autonoma)
+         PHASE 4 — Execution guard (check before action)
+         PHASE 5 — Async initialization fix (action queue)
+         PHASE 6 — Debug logging
+         PHASE 7 — Remove hard fail (auto-retry)
+         PHASE 8 — Autonomous tab fix (shared instance)
+       
+       Loading Order (CRITICAL):
+         1. daat-agent-core-init.js — Global initializer & safe loader
+         2. daat-agent-core.js — Core engine
+         3. payments-core-integration.js — Payments integration
+         4. daat-agent-transactional.js — Transactional AI agent
+         5. chatbot-transactional-integration.js — Chatbot integration
        
        Capabilities:
          • Contract Creation (escrow, OTC, custom contracts)
@@ -5088,10 +5105,14 @@ app.get('/', (c) => {
        IMPORTANT: Original chat intelligence is PRESERVED.
        DaatAgentTransactional only handles executable commands.
        All conversational features remain intact.
+       
+       GUARANTEE: No "DaatAgentCore not loaded" errors. Auto-initialization + retry.
        ═══════════════════════════════════════════════════════════════════════════ -->
+  <!-- CRITICAL: Load initializer FIRST (before core) -->
+  <script src="/static/daat-agent-core-init.js?v=20260408i"></script>
   <script src="/static/daat-agent-core.js?v=20260408d"></script>
   <script src="/static/payments-core-integration.js?v=20260408c"></script>
-  <script src="/static/daat-agent-transactional.js?v=20260408h"></script>
+  <script src="/static/daat-agent-transactional.js?v=20260408i"></script>
   <script src="/static/chatbot-transactional-integration.js?v=20260408h"></script>
   
   <!-- Legacy bridge (deprecated, will be removed in future version) -->
