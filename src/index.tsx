@@ -9,8 +9,6 @@ import chatRouter from './routes/chat'
 import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
-import agentIntentsRouter from './routes/agent-intents'
-import agentRelayRouter from './routes/agent-relay'
 import { ARC_TESTNET } from './types/arc'
 import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 
@@ -21,8 +19,6 @@ const app = new Hono<{
     CIRCLE_API_KEY?: string;
     CIRCLE_ENVIRONMENT?: string;
     CIRCLE_WEBHOOK_SECRET?: string;
-    AGENT_INTENTS?: KVNamespace;
-    RELAYER_PRIVATE_KEY?: string;
   }
 }>()
 
@@ -110,8 +106,6 @@ app.route('/api/chat', chatRouter)
 app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
-app.route('/api/agent', agentIntentsRouter)  // Agent Intents CRUD + poll
-app.route('/api/agent', agentRelayRouter)    // Meta-tx relayer: POST /api/agent/relay
 
 // ── CSV Validation API ────────────────────────────────────────────────────────
 // POST /api/csv/validate — validates a parsed CSV payload server-side
@@ -5058,13 +5052,14 @@ app.get('/', (c) => {
   <script src="/static/chat-csv.js?v=20260328a"></script>
   <script src="/static/chat.js?v=20260404l"></script>
   <script src="/static/queue-engine.js?v=20260403a"></script>
-  <script src="/static/agent-executor.js?v=20260405b"></script>
   
   <!-- ═══════════════════════════════════════════════════════════════════════════
        DAAT AGENT CORE ENGINE v2.0 — UNIFIED EXECUTION ARCHITECTURE
-       Build: 20260408f (Integration DISABLED)
+       Build: 20260408g (Agent Executor REMOVED)
        
-       IMPORTANT: Chatbot integration is DISABLED to preserve original intelligence.
+       REMOVED: Agent Executor — Intents system completely removed
+       
+       Chatbot integration: DISABLED to preserve original intelligence
        
        Original chatbot features preserved:
          • Natural language understanding
@@ -5086,7 +5081,7 @@ app.get('/', (c) => {
        ═══════════════════════════════════════════════════════════════════════════ -->
   <script src="/static/daat-agent-core.js?v=20260408d"></script>
   <script src="/static/payments-core-integration.js?v=20260408c"></script>
-  <script src="/static/chatbot-core-integration.js?v=20260408f"></script>
+  <script src="/static/chatbot-core-integration.js?v=20260408g"></script>
   
   <!-- Legacy bridge (deprecated, will be removed in future version) -->
   <script src="/static/chat-bridge.js?v=20260404l"></script>
