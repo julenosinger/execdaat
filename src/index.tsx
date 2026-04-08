@@ -771,13 +771,6 @@ app.get('/', (c) => {
           <span class="hidden sm:inline" data-i18n="btn_connect">Connect</span>
         </button>
 
-        <!-- Create Wallet Button -->
-        <button id="wallet-create-btn" onclick="if(typeof openCreateWalletModal==='function'){openCreateWalletModal();}else{alert('Loading…');}" title="Create a new non-custodial wallet"
-          class="hidden sm:flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-purple-700/40 hover:border-purple-500/70 text-purple-300 hover:text-purple-200 rounded-xl px-3 py-2 text-sm font-semibold transition-all">
-          <i class="fas fa-plus-circle text-xs"></i>
-          <span class="hidden lg:inline">Create Wallet</span>
-        </button>
-
         <div id="wallet-badge" class="hidden sm:hidden w-2 h-2 rounded-full bg-green-400"></div>
       </div>
     </div>
@@ -5241,19 +5234,7 @@ app.get('/', (c) => {
         daatRouterInit();
       }
 
-      // 9. Hide "Create Wallet" btn when wallet already connected
-      window.addEventListener('walletConnected', () => {
-        const cwBtn = document.getElementById('wallet-create-btn');
-        if (cwBtn) cwBtn.style.display = 'none';
-      });
-      window.addEventListener('walletDisconnected', () => {
-        const cwBtn = document.getElementById('wallet-create-btn');
-        if (cwBtn) cwBtn.style.display = '';
-      });
-      if (window.walletState?.connected) {
-        const cwBtn = document.getElementById('wallet-create-btn');
-        if (cwBtn) cwBtn.style.display = 'none';
-      }
+      // (wallet-create-btn removed)
     });
   </script>
 </body>
