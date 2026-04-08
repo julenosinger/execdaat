@@ -5059,7 +5059,36 @@ app.get('/', (c) => {
   <script src="/static/chat.js?v=20260404l"></script>
   <script src="/static/queue-engine.js?v=20260403a"></script>
   <script src="/static/agent-executor.js?v=20260405b"></script>
-  <script src="/static/chatbot-agent-bridge-v2.js?v=20260408b"></script>
+  
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       DAAT AGENT CORE ENGINE v2.0 — UNIFIED EXECUTION ARCHITECTURE
+       Build: 20260408c
+       
+       Loading order (CRITICAL):
+         1. daat-agent-core.js           ← Core engine (IntentEngine, Permit2Manager, ExecutionEngine)
+         2. payments-core-integration.js ← Payments tab → Core bridge
+         3. chatbot-core-integration.js  ← Autonoma chatbot → Core bridge
+       
+       Purpose: Replace fragmented execution with single unified layer.
+       All payments and chatbot actions now route through DaatAgentCore.processIntent()
+       
+       Architecture:
+         ┌─────────────┐
+         │ Payments UI │────┐
+         └─────────────┘    │
+                            ▼
+         ┌─────────────┐  ┌──────────────────┐
+         │  Autonoma   │─▶│  DAAT AGENT CORE │─▶ On-Chain
+         │   Chatbot   │  │  • IntentEngine  │
+         └─────────────┘  │  • Permit2Manager│
+                          │  • ExecutionEngine│
+                          └──────────────────┘
+       ═══════════════════════════════════════════════════════════════════════════ -->
+  <script src="/static/daat-agent-core.js?v=20260408c"></script>
+  <script src="/static/payments-core-integration.js?v=20260408c"></script>
+  <script src="/static/chatbot-core-integration.js?v=20260408c"></script>
+  
+  <!-- Legacy bridge (deprecated, will be removed in future version) -->
   <script src="/static/chat-bridge.js?v=20260404l"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
