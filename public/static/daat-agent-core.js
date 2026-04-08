@@ -962,6 +962,14 @@ const DaatAgentCore = {
     
     _log('info', 'Core state reset');
   },
+  
+  /**
+   * Expose internal modules for advanced usage
+   * CRITICAL: Required by daat-agent-transactional.js
+   */
+  ExecutionEngine,
+  Permit2Manager,
+  IntentEngine,
 };
 
 // ─── STATE PERSISTENCE ────────────────────────────────────────────────────────

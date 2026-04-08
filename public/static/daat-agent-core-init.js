@@ -363,6 +363,31 @@ const SafeDaatAgentCore = {
       coreAvailable: typeof global.DaatAgentCore !== 'undefined',
     };
   },
+  
+  /**
+   * Expose internal modules (pass-through to DaatAgentCore)
+   * CRITICAL: Required by daat-agent-transactional.js
+   */
+  get ExecutionEngine() {
+    if (typeof global.DaatAgentCore !== 'undefined' && global.DaatAgentCore.ExecutionEngine) {
+      return global.DaatAgentCore.ExecutionEngine;
+    }
+    return undefined;
+  },
+  
+  get Permit2Manager() {
+    if (typeof global.DaatAgentCore !== 'undefined' && global.DaatAgentCore.Permit2Manager) {
+      return global.DaatAgentCore.Permit2Manager;
+    }
+    return undefined;
+  },
+  
+  get IntentEngine() {
+    if (typeof global.DaatAgentCore !== 'undefined' && global.DaatAgentCore.IntentEngine) {
+      return global.DaatAgentCore.IntentEngine;
+    }
+    return undefined;
+  },
 };
 
 // ─── PHASE 8: Autonomous Tab Fix ──────────────────────────────────────────────
