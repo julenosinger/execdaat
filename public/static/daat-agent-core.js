@@ -163,14 +163,6 @@ const TOKEN_REGISTRY = {
   EURC: { address: EURC_ADDR, decimals: 6, symbol: 'EURC' },
 };
 
-// Agent Executor contract (meta-transaction relayer)
-const AGENT_EXECUTOR_ADDR = (function() {
-  try {
-    return localStorage.getItem('ae_contract_addr') || 
-           '0x0000000000000000000000000000000000000000';
-  } catch { return '0x0000000000000000000000000000000000000000'; }
-})();
-
 // Permit2 canonical address
 const PERMIT2_ADDR        = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 
@@ -565,140 +557,37 @@ const Permit2Manager = {
   /**
    * Check if Permit2 approval exists and is sufficient
    * 
+   * NOTE: Permit2 not required for direct ERC-20 transfers.
+   * This function returns authorized=true by default.
+   * 
    * @param {String} token - Token symbol (USDC, EURC)
    * @param {String} amount - Amount needed (human-readable)
    * @returns {Object} { authorized: bool, reason?: string, allowance?, deadline? }
    */
   async checkAuthorization(token, amount) {
-    _log('info', 'Permit2 Manager: Checking authorization for', amount, token);
+    _log('info', 'Permit2 Manager: Direct transfer mode - no Permit2 required');
     
-    updateStatus(EXEC_STATUS.CHECKING_AUTH);
-    
-    try {
-      const walletAddr = await getWalletAddress();
-      const tokenAddr = TOKEN_REGISTRY[token].address;
-      const amountRaw = parseUnits(amount);
-      
-      // Check cache first (valid for 5 minutes)
-      const cached = this._getCached(token);
-      if (cached && cached.timestamp > Date.now() - 300_000) {
-        _log('info', 'Using cached Permit2 status:', cached);
-        
-        // Verify cached data is still valid
-        if (cached.authorized && cached.allowance >= amountRaw && cached.deadline > Date.now()) {
-          return { authorized: true, cached: true, ...cached };
-        }
-      }
-      
-      // Query on-chain allowance
-      const PERMIT2_ABI = [
-        'function allowance(address owner, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)'
-      ];
-      
-      const provider = getProvider();
-      const permit2Contract = new window.ethers.Contract(PERMIT2_ADDR, PERMIT2_ABI, provider);
-      
-      const [allowance, expiration, nonce] = await permit2Contract.allowance(
-        walletAddr,
-        tokenAddr,
-        AGENT_EXECUTOR_ADDR
-      );
-      
-      const deadline = Number(expiration) * 1000; // Convert to milliseconds
-      const isAuthorized = allowance >= amountRaw && deadline > Date.now();
-      
-      const result = {
-        authorized: isAuthorized,
-        allowance: allowance.toString(),
-        deadline,
-        nonce: nonce.toString(),
-        walletAddr,
-        tokenAddr,
-        spender: AGENT_EXECUTOR_ADDR,
-      };
-      
-      // Cache result
-      this._setCached(token, result);
-      
-      if (!isAuthorized) {
-        if (allowance < amountRaw) {
-          result.reason = `Insufficient Permit2 allowance. Need ${formatUnits(amountRaw)} ${token}, have ${formatUnits(allowance)} ${token}`;
-        } else if (deadline <= Date.now()) {
-          result.reason = 'Permit2 approval expired';
-        }
-      }
-      
-      _log('info', 'Permit2 authorization result:', result);
-      return result;
-      
-    } catch (err) {
-      _log('error', 'Permit2 check failed:', err);
-      
-      // Check if Permit2 contract exists
-      if (err.message.includes('call revert exception')) {
-        return {
-          authorized: false,
-          reason: 'Permit2 contract not found on Arc Testnet. Using fallback execution.',
-          fallback: true,
-        };
-      }
-      
-      throw new Error(`Failed to check Permit2 status: ${err.message}`);
-    }
+    // Direct ERC-20 transfers don't need Permit2 approval
+    return {
+      authorized: true,
+      reason: 'Direct transfer mode - Permit2 not required',
+      mode: 'direct',
+    };
   },
   
   /**
    * Request Permit2 approval from user
+   * 
+   * NOTE: Not needed for direct ERC-20 transfers.
+   * Returns success immediately.
    */
   async requestApproval(token, amount, duration = 86400) {
-    _log('info', 'Requesting Permit2 approval for', amount, token);
+    _log('info', 'Permit2 approval not required for direct transfers');
     
-    try {
-      const walletAddr = await getWalletAddress();
-      const tokenAddr = TOKEN_REGISTRY[token].address;
-      const amountRaw = parseUnits(amount);
-      const deadline = Math.floor(Date.now() / 1000) + duration;
-      
-      // Build EIP-712 typed data for Permit2
-      const PERMIT2_ABI = [
-        'function approve(address token, address spender, uint160 amount, uint48 expiration)'
-      ];
-      
-      const signer = await getSigner();
-      const permit2Contract = new window.ethers.Contract(PERMIT2_ADDR, PERMIT2_ABI, signer);
-      
-      // Send approval transaction
-      const tx = await permit2Contract.approve(
-        tokenAddr,
-        AGENT_EXECUTOR_ADDR,
-        amountRaw,
-        deadline
-      );
-      
-      _log('info', 'Approval transaction sent:', tx.hash);
-      
-      // Wait for confirmation
-      await tx.wait();
-      
-      _log('info', 'Permit2 approval confirmed');
-      
-      // Update cache
-      this._setCached(token, {
-        authorized: true,
-        allowance: amountRaw.toString(),
-        deadline: deadline * 1000,
-        timestamp: Date.now(),
-      });
-      
-      // Emit event
-      emitEvent('permit2:approved', { token, amount, txHash: tx.hash });
-      
-      return { success: true, txHash: tx.hash };
-      
-    } catch (err) {
-      _log('error', 'Permit2 approval failed:', err);
-      throw new Error(`Failed to approve Permit2: ${err.message}`);
-    }
+    return {
+      success: true,
+      message: 'Permit2 not required for direct transfers',
+    };
   },
   
   /**
@@ -783,103 +672,9 @@ const ExecutionEngine = {
     
     updateStatus(EXEC_STATUS.PREPARING);
     
-    // Check if Agent Executor is available
-    if (AGENT_EXECUTOR_ADDR !== '0x0000000000000000000000000000000000000000') {
-      _log('info', 'Using Agent Executor (gasless meta-transaction)');
-      return await this._executeViaAgentExecutor(intent);
-    }
-    
-    // Fallback: direct ERC-20 transfer
-    _log('info', 'Agent Executor not available, using direct transfer');
+    // Direct ERC-20 transfer
+    _log('info', 'Executing direct ERC-20 transfer');
     return await this._executeDirectTransfer(intent);
-  },
-  
-  /**
-   * Execute via Agent Executor (gasless meta-transaction)
-   */
-  async _executeViaAgentExecutor(intent) {
-    const { token, amount, recipient } = intent;
-    const walletAddr = await getWalletAddress();
-    const tokenAddr = TOKEN_REGISTRY[token].address;
-    const amountRaw = parseUnits(amount);
-    
-    // Get nonce from relayer API
-    const nonceResp = await fetch(`/api/agent/relay/nonce/${walletAddr}`);
-    const { nonce } = await nonceResp.json();
-    
-    // Build EIP-712 typed data
-    const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour
-    
-    const domain = {
-      name: 'AgentExecutor',
-      version: '1',
-      chainId: ARC_CHAIN_ID,
-      verifyingContract: AGENT_EXECUTOR_ADDR,
-    };
-    
-    const types = {
-      TransferIntent: [
-        { name: 'from', type: 'address' },
-        { name: 'token', type: 'address' },
-        { name: 'to', type: 'address' },
-        { name: 'amount', type: 'uint256' },
-        { name: 'nonce', type: 'uint256' },
-        { name: 'deadline', type: 'uint256' },
-      ],
-    };
-    
-    const value = {
-      from: walletAddr,
-      token: tokenAddr,
-      to: recipient,
-      amount: amountRaw.toString(),
-      nonce,
-      deadline,
-    };
-    
-    // Request signature
-    updateStatus(EXEC_STATUS.AWAITING_SIG);
-    
-    const signer = await getSigner();
-    const signature = await signer.signTypedData(domain, types, value);
-    
-    // Submit to relayer
-    updateStatus(EXEC_STATUS.SENDING);
-    
-    const submitResp = await fetch('/api/agent/relay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'transfer',
-        from: walletAddr,
-        token: tokenAddr,
-        to: recipient,
-        amountRaw: amountRaw.toString(),
-        nonce,
-        deadline,
-        signature,
-      }),
-    });
-    
-    if (!submitResp.ok) {
-      const error = await submitResp.json();
-      throw new Error(error.error || 'Relayer submission failed');
-    }
-    
-    const { jobId } = await submitResp.json();
-    
-    _log('info', 'Meta-transaction submitted, job ID:', jobId);
-    
-    // Poll for result
-    updateStatus(EXEC_STATUS.CONFIRMING);
-    
-    const txHash = await this._pollRelayerStatus(jobId);
-    
-    return {
-      status: EXEC_STATUS.COMPLETED,
-      txHash,
-      message: `Transfer completed! ${amount} ${token} sent to ${shortAddr(recipient)}`,
-    };
   },
   
   /**
@@ -995,28 +790,6 @@ const ExecutionEngine = {
   async _executePermit2Approve(intent) {
     const { token, amount } = intent;
     return await Permit2Manager.requestApproval(token, amount);
-  },
-  
-  /**
-   * Poll relayer status until transaction is confirmed
-   */
-  async _pollRelayerStatus(jobId, maxAttempts = 40, interval = 3000) {
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(resolve => setTimeout(resolve, interval));
-      
-      const resp = await fetch(`/api/agent/relay/${jobId}`);
-      const data = await resp.json();
-      
-      if (data.status === 'completed' && data.txHash) {
-        return data.txHash;
-      }
-      
-      if (data.status === 'failed') {
-        throw new Error(data.error || 'Transaction failed on relayer');
-      }
-    }
-    
-    throw new Error('Transaction confirmation timeout');
   },
 };
 
