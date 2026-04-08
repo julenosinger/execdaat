@@ -5054,34 +5054,45 @@ app.get('/', (c) => {
   <script src="/static/queue-engine.js?v=20260403a"></script>
   
   <!-- ═══════════════════════════════════════════════════════════════════════════
-       DAAT AGENT CORE ENGINE v2.0 — UNIFIED EXECUTION ARCHITECTURE
-       Build: 20260408g (Agent Executor REMOVED)
+       DAAT AGENT TRANSACTIONAL v2.0 — FULL AI AGENT UPGRADE
+       Build: 20260408h
        
-       REMOVED: Agent Executor — Intents system completely removed
+       NEW: Full transactional AI agent with expanded capabilities
        
-       Chatbot integration: DISABLED to preserve original intelligence
+       Capabilities:
+         • Contract Creation (escrow, OTC, custom contracts)
+         • Token Swaps (with slippage control)
+         • Payments Tab Control (auto-fill + execute)
+         • Multi-step Orchestration (swap + pay, create + deposit)
+         • Smart Field Inference (ask only missing fields)
+         • Context Memory (remember last actions)
+         • Balance & Status Queries
        
-       Original chatbot features preserved:
-         • Natural language understanding
-         • Context-aware responses
-         • Multi-turn conversations
-         • Rich feedback messages
-         • Status updates during execution
-         • Error handling with helpful suggestions
+       Architecture:
+         User Message → Intent Engine (NLU) → Validation → Module Router → Execution
        
-       Both chatbots use their ORIGINAL logic:
-         - Main chatbot: chat.js → handleLocalCommand()
-         - Autonoma chatbot: autonoma.js → handleUnifiedMessage() → chat-bridge.js
+       Modules:
+         1. Intent Engine — parse natural language to structured intent
+         2. Contract Creator — escrow, OTC, custom contracts
+         3. Swap Executor — token swaps with balance checks
+         4. Payment Controller — Payments tab automation
+         5. Multi-step Orchestrator — sequential actions
+         6. Validation Engine — wallet, balance, input checks
+         7. Query Handler — balance, history, context, status
        
-       The DAAT Agent Core and Payments integration remain active:
-         - Payments tab → payments-core-integration.js → DaatAgentCore
-         - Direct ERC-20 transfers (user pays gas)
+       Integration:
+         - Main chatbot: chat.js → DaatAgentTransactional (preserves original NLU)
+         - Autonoma chatbot: autonoma.js → DaatAgentTransactional (preserves original NLU)
+         - Payments tab: payments-core-integration.js → DaatAgentCore
        
-       Chatbots are INDEPENDENT and use their own execution logic.
+       IMPORTANT: Original chat intelligence is PRESERVED.
+       DaatAgentTransactional only handles executable commands.
+       All conversational features remain intact.
        ═══════════════════════════════════════════════════════════════════════════ -->
   <script src="/static/daat-agent-core.js?v=20260408d"></script>
   <script src="/static/payments-core-integration.js?v=20260408c"></script>
-  <script src="/static/chatbot-core-integration.js?v=20260408g"></script>
+  <script src="/static/daat-agent-transactional.js?v=20260408h"></script>
+  <script src="/static/chatbot-transactional-integration.js?v=20260408h"></script>
   
   <!-- Legacy bridge (deprecated, will be removed in future version) -->
   <script src="/static/chat-bridge.js?v=20260404l"></script>
