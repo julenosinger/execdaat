@@ -23,18 +23,17 @@
 
 console.log('[CHAT-CORE] Autonoma → Core integration loading...');
 
-// Wait for Core and Chat to be ready
+// Wait for Core to be ready (handleLocalCommand and handleUnifiedMessage may load later)
 function waitForDependencies(callback, maxAttempts = 50) {
   let attempts = 0;
   const interval = setInterval(() => {
-    if (global.DaatAgentCore && global.handleLocalCommand) {
+    if (global.DaatAgentCore) {
       clearInterval(interval);
-      console.log('[CHAT-CORE] Dependencies ready, initializing integration');
+      console.log('[CHAT-CORE] DAAT Agent Core ready, initializing integration');
       callback();
     } else if (++attempts >= maxAttempts) {
       clearInterval(interval);
-      console.error('[CHAT-CORE] Dependencies not found after', maxAttempts, 'attempts');
-      console.error('[CHAT-CORE] DaatAgentCore:', !!global.DaatAgentCore, 'handleLocalCommand:', !!global.handleLocalCommand);
+      console.error('[CHAT-CORE] DAAT Agent Core not found after', maxAttempts, 'attempts');
     }
   }, 100);
 }
@@ -230,8 +229,9 @@ waitForDependencies(function() {
   
   // ─── Hook into handleLocalCommand ───────────────────────────────────────────
   
-  // Store original function
+  // Store original functions
   const _originalHandleLocalCommand = global.handleLocalCommand;
+  const _originalHandleUnifiedMessage = global.handleUnifiedMessage;
   
   /**
    * Override handleLocalCommand to route through Core
@@ -305,6 +305,84 @@ Try these commands:
 • allow 100 USDC for 24 hours
 • repeat last
 • send max USDC to 0x...
+      `.trim());
+      
+      return false;
+    }
+  };
+  
+  /**
+   * Override handleUnifiedMessage to route through Core (for autonoma compatibility)
+   */
+  global.handleUnifiedMessage = async function(message, source) {
+    console.log('[CHAT-CORE] handleUnifiedMessage() called:', message, 'source:', source);
+    
+    const msg = message.trim().toLowerCase();
+    
+    // Check if message looks like an executable command
+    const isExecutableCommand = 
+      /^(send|transfer|pay|swap|exchange|multisend|batch|allow|approve|repeat|again)/i.test(msg) ||
+      /send\s+(?:to\s+)?(?:last|previous)/i.test(msg) ||
+      /send\s+(?:max|all)/i.test(msg);
+    
+    if (!isExecutableCommand) {
+      // Not an executable command, use original handler
+      console.log('[CHAT-CORE] Not an executable command, using original unified handler');
+      
+      if (_originalHandleUnifiedMessage && typeof _originalHandleUnifiedMessage === 'function') {
+        return await _originalHandleUnifiedMessage.call(this, message, source);
+      }
+      
+      // Fallback to handleLocalCommand if unified handler doesn't exist
+      if (_originalHandleLocalCommand && typeof _originalHandleLocalCommand === 'function') {
+        return await _originalHandleLocalCommand.call(this, message);
+      }
+      
+      addAssistantMessage("I don't understand that command. Try: 'send 10 USDC to 0x...'");
+      return false;
+    }
+    
+    // Executable command - route through Core
+    console.log('[CHAT-CORE] Routing unified message to Core (source:', source, ')');
+    
+    try {
+      // Process via Core (Core will parse natural language)
+      const result = await global.DaatAgentCore.processIntent(message, source || 'chatbot');
+      
+      console.log('[CHAT-CORE] Core execution result:', result);
+      
+      if (result.requiresApproval) {
+        // Permit2 approval required - event listener will show approval UI
+        return true;
+      }
+      
+      if (result.status === 'completed') {
+        // Success - event listener will show success card
+        return true;
+      }
+      
+      if (result.status === 'failed') {
+        // Error already shown by event listener
+        return false;
+      }
+      
+      // Unexpected status
+      addErrorMessage(result.message || 'Unexpected execution status');
+      return false;
+      
+    } catch (err) {
+      console.error('[CHAT-CORE] Unified message execution error:', err);
+      
+      addErrorMessage(err.message || 'Failed to execute command');
+      
+      // Show help message
+      addAssistantMessage(`
+Try these commands:
+• send 10 USDC to 0x...
+• send 5 USDC to last
+• swap 10 USDC to EURC
+• multisend: 0xA:10, 0xB:20
+• repeat last
       `.trim());
       
       return false;
@@ -421,14 +499,16 @@ Try these commands:
   };
   
   console.log('[CHAT-CORE] ✓ Integration complete');
-  console.log('[CHAT-CORE] ─ handleLocalCommand() hooked');
+  console.log('[CHAT-CORE] ─ handleLocalCommand() hooked (main chatbot)');
+  console.log('[CHAT-CORE] ─ handleUnifiedMessage() hooked (autonoma chatbot)');
   console.log('[CHAT-CORE] ─ Event listeners registered');
   console.log('[CHAT-CORE] ─ All chatbot commands now routed through DAAT Agent Core');
   console.log('[CHAT-CORE] ─ New commands: context, history');
+  console.log('[CHAT-CORE] ─ FULL FEATURE PARITY: Main and Autonoma chatbots use identical logic');
   
   // Emit ready event
   window.dispatchEvent(new CustomEvent('chatbot-core:ready', {
-    detail: { version: '20260408c' }
+    detail: { version: '20260408c', parity: true }
   }));
   
 });

@@ -5091,7 +5091,7 @@ app.get('/', (c) => {
        ═══════════════════════════════════════════════════════════════════════════ -->
   <script src="/static/daat-agent-core.js?v=20260408d"></script>
   <script src="/static/payments-core-integration.js?v=20260408c"></script>
-  <script src="/static/chatbot-core-integration.js?v=20260408c"></script>
+  <script src="/static/chatbot-core-integration.js?v=20260408e"></script>
   
   <!-- Legacy bridge (deprecated, will be removed in future version) -->
   <script src="/static/chat-bridge.js?v=20260404l"></script>
