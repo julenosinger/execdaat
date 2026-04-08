@@ -940,33 +940,7 @@ function _renderWalletModal() {
         `}
       </div>
 
-      <!-- Create Wallet divider -->
-      <div style="padding:0 24px 14px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <div style="flex:1;height:1px;background:rgba(255,255,255,.07);"></div>
-          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#374151;">Don&apos;t have a wallet?</span>
-          <div style="flex:1;height:1px;background:rgba(255,255,255,.07);"></div>
-        </div>
-        <button onclick="if(typeof openCreateWalletModal==='function'){openCreateWalletModal();}else{alert('Loading wallet creator…');}"
-          style="
-            display:flex;align-items:center;justify-content:center;gap:10px;
-            width:100%;padding:12px 18px;border-radius:14px;
-            background:linear-gradient(135deg,rgba(124,58,237,.15),rgba(79,70,229,.1));
-            border:1px solid rgba(124,58,237,.3);
-            color:#c4b5fd;font-size:14px;font-weight:700;cursor:pointer;
-            transition:all .18s;letter-spacing:.01em;"
-          onmouseover="this.style.background='linear-gradient(135deg,rgba(124,58,237,.3),rgba(79,70,229,.2))';this.style.borderColor='rgba(124,58,237,.6)'"
-          onmouseout="this.style.background='linear-gradient(135deg,rgba(124,58,237,.15),rgba(79,70,229,.1))';this.style.borderColor='rgba(124,58,237,.3)'">
-          <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
-            <rect x="1.5" y="4.5" width="14" height="10" rx="2" stroke="#a78bfa" stroke-width="1.4"/>
-            <path d="M1.5 8h14" stroke="#a78bfa" stroke-width="1.4"/>
-            <circle cx="12.5" cy="11.5" r="1.5" fill="#a78bfa"/>
-            <path d="M5.5 2.5l3-1 3 1" stroke="#a78bfa" stroke-width="1.2" stroke-linecap="round"/>
-          </svg>
-          Create New Wallet
-          <span style="font-size:10px;font-weight:600;background:rgba(124,58,237,.25);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:2px 7px;">Non-custodial</span>
-        </button>
-      </div>
+
 
       <!-- Footer -->
       <div style="
