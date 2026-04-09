@@ -5134,6 +5134,17 @@ app.get('/', (c) => {
   
   <!-- Legacy bridge (deprecated, will be removed in future version) -->
   <script src="/static/chat-bridge.js?v=20260404l"></script>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       CIRCLE SKILLS AGENT EXECUTOR
+       Implements AgentExecutor interface using Circle Skills patterns:
+         • use-arc  : Arc Testnet config (Chain 5042002, USDC gas)
+         • use-usdc : 6-decimal rule, ERC-20 transfer, balance check
+       Provides: window.AgentExecutor (queueTransfer, queueMultisend,
+         getIntents, startPolling, statusBadge)
+       ADDITIVE ONLY — does not modify any existing files or logic.
+  ══════════════════════════════════════════════════════════════ -->
+  <script src="/static/circle-skills-agent.js?v=20260409a"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
     The query-string approach (?v=) does NOT invalidate browser cache when
