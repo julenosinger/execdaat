@@ -101,7 +101,8 @@ function detectProviders() {
     const key = _dedupKey({ rdns: info.rdns, name: info.name });
     if (!seen.has(key)) {
       seen.add(key);
-      providers.push({ name: info.name, icon: 'fas fa-wallet', provider, rdns: info.rdns });
+      // Preserve the official EIP-6963 icon (base64 data URL) provided by the wallet itself
+      providers.push({ name: info.name, icon: 'fas fa-wallet', eip6963Icon: info.icon || null, provider, rdns: info.rdns });
     }
   });
 
@@ -792,8 +793,15 @@ function _renderWalletModal() {
 
   // ── Helper: render a detected-provider card ───────────────────────────────────
   function _providerCard(p, idx) {
-    const key = getLogoKey(p);
-    const logo = WALLET_LOGOS[key] || WALLET_LOGOS.default;
+    // Prefer the official EIP-6963 icon (data URL from the wallet itself) for pixel-perfect accuracy.
+    // Fall back to our custom SVGs only when the wallet doesn't provide its own icon.
+    let logo;
+    if (p.eip6963Icon) {
+      logo = `<img src="${p.eip6963Icon}" alt="${p.name}" style="width:38px;height:38px;display:block;border-radius:9px;object-fit:contain;" onerror="this.style.display='none'">`;
+    } else {
+      const key = getLogoKey(p);
+      logo = WALLET_LOGOS[key] || WALLET_LOGOS.default;
+    }
     return `
       <button class="wm-card detected" onclick="connectWithProvider(${idx})"
         onmouseenter="this.querySelector('.wm-shimmer').style.animation='none'"
@@ -972,9 +980,11 @@ function openConnectedWalletModal() {
 
   // Detect wallet name/logo from last-used provider
   let lastKey = 'default';
+  let lastEip6963Icon = null;
   try {
     const _saved = JSON.parse(localStorage.getItem('arc_wallet_last') || '{}');
     if (_saved.logoKey) lastKey = _saved.logoKey;
+    if (_saved.eip6963Icon) lastEip6963Icon = _saved.eip6963Icon;
   } catch(e) {}
 
   const WALLET_LOGOS_CONN = {
@@ -1063,7 +1073,10 @@ function openConnectedWalletModal() {
     </svg>`,
   };
 
-  const walletLogo = WALLET_LOGOS_CONN[lastKey] || WALLET_LOGOS_CONN.default;
+  // Use the official EIP-6963 icon when available; fall back to custom SVGs
+  const walletLogo = lastEip6963Icon
+    ? `<img src="${lastEip6963Icon}" alt="${state.address ? 'Wallet' : 'Wallet'}" style="width:40px;height:40px;display:block;border-radius:10px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'">`
+    : (WALLET_LOGOS_CONN[lastKey] || WALLET_LOGOS_CONN.default);
 
   // Inject connected-modal styles once
   if (!document.getElementById('wm-conn-styles')) {
@@ -1323,9 +1336,9 @@ async function connectWithProvider(index) {
     showWalletToast(`✅ ${selected.name} conectada! ${shortenAddress(address)}`, 'success');
     addWalletLog(`[WALLET] ${selected.name} conectada: ${address}`, 'success');
 
-    // Salvar preferência no localStorage (com logoKey para o modal conectado)
+    // Salvar preferência no localStorage (com logoKey e ícone oficial EIP-6963 para o modal conectado)
     const _lk = _getWalletLogoKey ? _getWalletLogoKey(selected) : 'default';
-    localStorage.setItem('arc_wallet_last', JSON.stringify({ name: selected.name, address, logoKey: _lk }));
+    localStorage.setItem('arc_wallet_last', JSON.stringify({ name: selected.name, address, logoKey: _lk, eip6963Icon: selected.eip6963Icon || null }));
 
     // Ouvir mudanças de conta/rede
     provider.on('accountsChanged', handleAccountsChanged);
