@@ -3031,12 +3031,20 @@ async function cfCreateOffchainContract(mode) {
   };
   cfSetMeta(localId, meta);
 
+  const totalValueRaw    = Math.round(humanAmount * 1e6);
+  const milestoneObjects = milestoneDescs.map((d, i) => ({
+    id: i, description: d,
+    amount: BigInt(Math.round((milestoneAmounts[i] || 0) * 1e6)),
+    status: 'Pending', releasedAt: 0,
+  }));
+
+  // In-memory object uses BigInt (required by the rest of the UI)
   const syntheticContract = {
     id:                  localId,
     client:              wallet,
     contractor:          contractor,
     title:               title,
-    totalValue:          BigInt(Math.round(humanAmount * 1e6)),
+    totalValue:          BigInt(totalValueRaw),
     depositedValue:      0n,
     statusCode:          0,
     status:              'Draft',
@@ -3046,11 +3054,7 @@ async function cfCreateOffchainContract(mode) {
     completedAt:         0,
     milestoneCount:      milestoneDescs.length,
     completedMilestones: 0,
-    milestones:          milestoneDescs.map((d, i) => ({
-      id: i, description: d,
-      amount: BigInt(Math.round((milestoneAmounts[i] || 0) * 1e6)),
-      status: 'Pending', releasedAt: 0,
-    })),
+    milestones:          milestoneObjects,
     _isOffchain: true,
     mode:        mode,
     _fetchedAt: Date.now(),
@@ -3058,12 +3062,23 @@ async function cfCreateOffchainContract(mode) {
 
   cfState.contracts = [...cfState.contracts.filter(x => x.id !== localId), syntheticContract];
 
-  // Persist to localStorage
+  // Persist to localStorage — BigInt must be converted to Number/String first
+  // because JSON.stringify throws on BigInt values.
   try {
     const offchainKey = 'arc_cf_offchain_v1';
     const all = JSON.parse(localStorage.getItem(offchainKey) || '[]');
+    // Build a plain-JSON-safe copy (BigInt → Number)
+    const serializable = {
+      ...syntheticContract,
+      totalValue:    totalValueRaw,
+      depositedValue: 0,
+      milestones: milestoneObjects.map(m => ({
+        ...m,
+        amount: Number(m.amount),
+      })),
+    };
     const idx = all.findIndex(x => x.id === localId);
-    if (idx >= 0) all[idx] = syntheticContract; else all.unshift(syntheticContract);
+    if (idx >= 0) all[idx] = serializable; else all.unshift(serializable);
     localStorage.setItem(offchainKey, JSON.stringify(all.slice(0, 100)));
   } catch(e) { cfErr('cfCreateOffchainContract persist:', e); }
 
