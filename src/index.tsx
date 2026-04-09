@@ -5290,9 +5290,34 @@ app.get('/', (c) => {
         if (titleEl) titleEl.textContent = 'Custodial Contracts';
       }
 
-      // Re-render with current state (cfState.contracts is the full merged list)
+      // ── Rendering strategy per mode ─────────────────────────────────────────
+      // Off-Chain / Custodial: render immediately from localStorage — no network
+      // call, no spinner, no refresh. Data is always local.
+      if (mode === 'offchain' || mode === 'custodial') {
+        if (typeof cfRenderContractsByViewMode === 'function') {
+          // Reload local contracts fresh from localStorage so any newly-created
+          // contracts appear immediately without needing a full cfLoadContracts.
+          if (typeof cfLoadOffchainContracts === 'function' && typeof cfState !== 'undefined') {
+            var offchainFresh = cfLoadOffchainContracts();
+            var cachedOnchain = (cfState._allContracts || cfState.contracts || []).filter(function(c){ return !c._isOffchain; });
+            cfState._allContracts = cachedOnchain.concat(offchainFresh);
+          }
+          cfRenderContractsByViewMode();
+        }
+        return; // ← never calls cfLoadContracts for local modes
+      }
+
+      // On-Chain: use cached data first (instant), then trigger a background
+      // refresh only if the cache is stale (> 30 s) or never loaded.
       if (typeof cfRenderContractsByViewMode === 'function') {
-        cfRenderContractsByViewMode();
+        cfRenderContractsByViewMode(); // show cached data immediately
+      }
+      if (typeof cfLoadContracts === 'function') {
+        var lastRefresh = (typeof cfState !== 'undefined') ? (cfState.lastRefresh || 0) : 0;
+        var stale = (Date.now() - lastRefresh) > 30000;
+        if (stale || lastRefresh === 0) {
+          cfLoadContracts(); // background fetch — won't disrupt offchain tabs
+        }
       }
     }
 

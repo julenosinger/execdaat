@@ -523,6 +523,10 @@ function cfHideSteps() {
 
 // ─── List state placeholder ────────────────────────────────────────────────────
 function cfShowListState(state, message = '') {
+  // Never show on-chain loading/error states while the user is on a local tab
+  const vm = window._cfViewMode || 'onchain';
+  if (vm !== 'onchain' && (state === 'loading' || state === 'no_wallet' || state === 'empty' || state === 'wrong_network')) return;
+
   const el = cfEl('cf-contracts-list');
   if (!el) return;
   const states = {
@@ -545,9 +549,27 @@ function cfShowListState(state, message = '') {
 // ─── Load contracts ────────────────────────────────────────────────────────────
 async function cfLoadContracts(opts = {}) {
   const wallet = window.walletState?.address;
-  if (!wallet) {
-    // Still show off-chain/custodial contracts (no wallet required)
+  const currentViewMode = window._cfViewMode || 'onchain';
+
+  // ── Off-chain / Custodial view: always render from localStorage immediately,
+  //    never show a loading spinner or trigger any on-chain fetch.
+  //    The on-chain data is kept in _allContracts for when the user switches back.
+  if (currentViewMode !== 'onchain') {
     const offchainAll = cfLoadOffchainContracts();
+    // Merge with cached on-chain so _allContracts stays complete
+    const cachedOnchain = (cfState._allContracts || cfState.contracts || []).filter(c => !c._isOffchain);
+    const merged = [...cachedOnchain, ...offchainAll];
+    cfState._allContracts = merged;
+    cfRenderContracts(merged, wallet || null);
+    cfRenderSummary(merged, wallet || null);
+    cfUpdateNetworkBanner(!!wallet);
+    return;
+  }
+
+  // ── No wallet: show local off-chain only (no spinner, no on-chain fetch) ────
+  if (!wallet) {
+    const offchainAll = cfLoadOffchainContracts();
+    cfState._allContracts = offchainAll;
     if (offchainAll.length > 0) {
       cfState.contracts = offchainAll;
       cfRenderContracts(offchainAll, null);
@@ -666,8 +688,16 @@ async function cfLoadContracts(opts = {}) {
     });
     const merged = [...contracts, ...offchain];
 
-    cfRenderContracts(merged, address);
-    cfRenderSummary(merged, address);
+    // Always save full merged list so view-mode tabs can re-filter later.
+    cfState._allContracts = merged;
+
+    // Only update the visible list if the user is still on the On-Chain tab.
+    // If they switched to Off-Chain or Custodial while the fetch was running,
+    // do NOT overwrite their view — they will see their local data.
+    if ((window._cfViewMode || 'onchain') === 'onchain') {
+      cfRenderContracts(merged, address);
+      cfRenderSummary(merged, address);
+    }
     cfLog(`━━━ cfLoadContracts DONE: ${contracts.length} on-chain + ${offchain.length} off-chain ━━━`);
     // Dispatch event so smart-autofill can learn from contract history
     window.dispatchEvent(new CustomEvent('arcContractHistoryLoaded', { detail: { contracts: merged } }));
