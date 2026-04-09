@@ -871,6 +871,14 @@ function renderPermit2Panel() {
     return;
   }
 
+  // Render with local data first, then update with on-chain data
+  _renderPermitCards(panel, active, wallet);
+
+  // Async: fetch on-chain allowances and refresh display
+  _refreshPermitBalances(panel, active, wallet);
+}
+
+function _renderPermitCards(panel, active, wallet) {
   panel.innerHTML = active.map(function(p) {
     var remaining  = (p.amount - (p.amountUsed || 0)).toFixed(2);
     var used       = (p.amountUsed || 0).toFixed(2);
@@ -886,24 +894,25 @@ function renderPermit2Panel() {
         ? 'border-yellow-500/30 bg-yellow-900/10'
         : 'border-yellow-600/20 bg-yellow-900/5';
 
-    return '<div class="border ' + urgentClass + ' rounded-lg p-3">' +
+    return '<div id="permit-card-' + p.id + '" class="border ' + urgentClass + ' rounded-lg p-3">' +
       '<div class="flex items-start justify-between gap-2">' +
         '<div class="flex-1 min-w-0">' +
           '<div class="flex items-center gap-2 mb-1">' +
-            '<span class="text-sm font-semibold text-white">' + remaining + ' ' + p.token + '</span>' +
+            '<span class="text-sm font-semibold text-white" id="p2-remaining-' + p.id + '">' + remaining + ' ' + p.token + '</span>' +
             '<span class="text-xs text-gray-500">/ ' + p.amount + ' total</span>' +
             (isAI ? '<span class="text-[10px] bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 rounded px-1.5 py-0.5">🤖 AI' + onChainTag + '</span>' : '') +
+            '<span class="text-[10px] text-gray-600 italic" id="p2-chain-tag-' + p.id + '">syncing…</span>' +
           '</div>' +
           '<div class="flex items-center gap-3 text-xs text-gray-500">' +
             '<span><i class="fas fa-tag mr-1"></i>' + scopeLabel + '</span>' +
             '<span><i class="fas fa-clock mr-1"></i>Expires ' + expires + '</span>' +
           '</div>' +
           '<div class="mt-2 h-1 bg-gray-700 rounded-full overflow-hidden">' +
-            '<div class="h-full bg-gradient-to-r from-yellow-500 to-amber-600 rounded-full" style="width:' + pct + '%"></div>' +
+            '<div class="h-full bg-gradient-to-r from-yellow-500 to-amber-600 rounded-full" id="p2-bar-' + p.id + '" style="width:' + pct + '%"></div>' +
           '</div>' +
           '<div class="flex justify-between text-[10px] text-gray-600 mt-0.5">' +
-            '<span>Used: ' + used + ' ' + p.token + ' (' + pct + '%)</span>' +
-            '<span>Remaining: ' + remaining + ' ' + p.token + '</span>' +
+            '<span id="p2-used-' + p.id + '">Used: ' + used + ' ' + p.token + ' (' + pct + '%)</span>' +
+            '<span id="p2-rem-label-' + p.id + '">Remaining: ' + remaining + ' ' + p.token + '</span>' +
           '</div>' +
           (p.step2TxHash ? '<div class="mt-1"><a href="' + p.explorerUrl2 + '" target="_blank" class="text-[10px] text-blue-400 hover:underline">⛓️ View permit() tx</a></div>' : '') +
         '</div>' +
@@ -914,6 +923,67 @@ function renderPermit2Panel() {
       '</div>' +
     '</div>';
   }).join('');
+}
+
+// Fetch on-chain Permit2 allowances and update the UI elements
+async function _refreshPermitBalances(panel, active, wallet) {
+  var provider = window.walletState && window.walletState.provider;
+  var P2_ADDR  = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
+  var P2_SEL   = '0x927da105'; // allowance(address,address,address)
+  var _pad     = function(a) { return a.replace(/^0x/i, '').toLowerCase().padStart(64, '0'); };
+
+  for (var i = 0; i < active.length; i++) {
+    var p = active[i];
+    try {
+      var data = P2_SEL + _pad(wallet) + _pad(p.tokenAddress) + _pad(wallet);
+      var result;
+      if (provider) {
+        result = await provider.request({ method: 'eth_call', params: [{ to: P2_ADDR, data: data }, 'latest'] });
+      } else {
+        // Fallback RPC
+        var resp = await fetch('https://rpc.testnet.arc.network', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: P2_ADDR, data: data }, 'latest'] })
+        });
+        var json = await resp.json();
+        result = json.result;
+      }
+
+      if (!result || result === '0x' || result.length < 194) continue;
+      var amtWei    = BigInt('0x' + result.slice(2, 66));
+      var expOnChain = Number(BigInt('0x' + result.slice(66, 130)));
+      var nowSec    = Math.floor(Date.now() / 1000);
+      var onChainAmt = Number(amtWei) / 1e6;
+      var isExpired  = expOnChain > 0 && expOnChain < nowSec;
+
+      // Update UI elements
+      var remEl     = document.getElementById('p2-remaining-' + p.id);
+      var tagEl     = document.getElementById('p2-chain-tag-' + p.id);
+      var barEl     = document.getElementById('p2-bar-' + p.id);
+      var usedEl    = document.getElementById('p2-used-' + p.id);
+      var remLblEl  = document.getElementById('p2-rem-label-' + p.id);
+
+      if (isExpired || amtWei === 0n) {
+        // No on-chain allowance active
+        if (tagEl) tagEl.textContent = '⚠️ on-chain: none';
+        if (tagEl) tagEl.style.color = '#f87171';
+      } else {
+        // On-chain amount is the source of truth
+        var onChainUsed = Math.max(0, p.amount - onChainAmt);
+        var onChainPct  = p.amount > 0 ? Math.round(onChainUsed / p.amount * 100) : 0;
+
+        if (remEl)    remEl.textContent = onChainAmt.toFixed(2) + ' ' + p.token;
+        if (tagEl) { tagEl.textContent = '⛓️ on-chain'; tagEl.style.color = '#4ade80'; }
+        if (barEl)    barEl.style.width = onChainPct + '%';
+        if (usedEl)   usedEl.textContent = 'Used: ' + onChainUsed.toFixed(2) + ' ' + p.token + ' (' + onChainPct + '%)';
+        if (remLblEl) remLblEl.textContent = 'Remaining: ' + onChainAmt.toFixed(2) + ' ' + p.token;
+      }
+    } catch (e) {
+      var tagEl2 = document.getElementById('p2-chain-tag-' + p.id);
+      if (tagEl2) tagEl2.textContent = '';
+    }
+  }
 }
 
 // Called from panel revoke button

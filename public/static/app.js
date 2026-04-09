@@ -117,7 +117,22 @@ function switchTab(tab) {
       if (typeof arcInitPayAutofill === 'function') setTimeout(arcInitPayAutofill, 400);
     }
     if (tab === 'contracts') {
-      cfWalletGateUpdate(); cfLoadContracts();
+      cfWalletGateUpdate();
+      // Only fetch from chain when the On-Chain tab is active.
+      // For Off-Chain / Custodial tabs, render immediately from localStorage —
+      // no network call, no spinner.
+      var _vm = window._cfViewMode || 'onchain';
+      if (_vm === 'onchain') {
+        cfLoadContracts();
+      } else if (typeof cfRenderContractsByViewMode === 'function') {
+        // Re-read localStorage and render the local tab without touching the chain
+        if (typeof cfLoadOffchainContracts === 'function' && typeof cfState !== 'undefined') {
+          var _fresh = cfLoadOffchainContracts();
+          var _onchain = (cfState._allContracts || cfState.contracts || []).filter(function(c){ return !c._isOffchain; });
+          cfState._allContracts = _onchain.concat(_fresh);
+        }
+        cfRenderContractsByViewMode();
+      }
       // Smart autofill
       if (typeof arcInitCfAutofill === 'function') setTimeout(arcInitCfAutofill, 600);
     }

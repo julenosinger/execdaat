@@ -92,6 +92,69 @@
     balanceOf: '0x70a08231', // balanceOf(address)
   };
 
+  // ─── Permit2 constants ───────────────────────────────────────────────────────
+  // AllowanceTransfer: transferFrom(address from, address to, uint160 amount, address token)
+  // Selector: 0x36c78516
+  const PERMIT2_ADDR     = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
+  const P2_SEL_ALLOWANCE = '0x927da105'; // allowance(address,address,address)
+  const P2_SEL_XFER      = '0x36c78516'; // transferFrom(address,address,uint160,address)
+
+  // ─── Permit2: read on-chain allowance ────────────────────────────────────────
+  // Returns { amountWei: BigInt, expiration: number, nonce: number }
+  async function _permit2Allowance(owner, tokenAddr, spender, provider) {
+    const data = P2_SEL_ALLOWANCE +
+      _padAddr(owner) +
+      _padAddr(tokenAddr) +
+      _padAddr(spender);
+    try {
+      const hex = await provider.request({
+        method: 'eth_call',
+        params: [{ to: PERMIT2_ADDR, data }, 'latest'],
+      });
+      if (!hex || hex === '0x' || hex.length < 194) return { amountWei: 0n, expiration: 0, nonce: 0 };
+      const amountWei  = BigInt('0x' + hex.slice(2, 66));
+      const expiration = Number(BigInt('0x' + hex.slice(66, 130)));
+      const nonce      = Number(BigInt('0x' + hex.slice(130, 194)));
+      return { amountWei, expiration, nonce };
+    } catch { return { amountWei: 0n, expiration: 0, nonce: 0 }; }
+  }
+
+  // ─── Permit2: execute AllowanceTransfer.transferFrom ─────────────────────────
+  // Calls Permit2.transferFrom(from, to, uint160 amount, address token)
+  // Requires: allowance already set on-chain via permit()
+  async function _permit2TransferFrom(tokenAddr, from, to, humanAmount, provider) {
+    const rawUnits = BigInt(Math.round(humanAmount * 1e6));
+    // ABI encode: (address from, address to, uint160 amount, address token)
+    const data = P2_SEL_XFER +
+      _padAddr(from) +
+      _padAddr(to) +
+      _padUint(rawUnits) +
+      _padAddr(tokenAddr);
+
+    // Estimate gas
+    let gasHex = '0x30D40'; // fallback 200k
+    try {
+      const estHex = await provider.request({
+        method: 'eth_estimateGas',
+        params: [{ from, to: PERMIT2_ADDR, data }],
+      });
+      if (estHex && estHex !== '0x') {
+        gasHex = '0x' + Math.ceil(Number(BigInt(estHex)) * 1.3).toString(16);
+      }
+    } catch {}
+
+    const txHash = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [{ from, to: PERMIT2_ADDR, data, gas: gasHex }],
+    });
+
+    const receipt = await _waitForReceipt(txHash, provider);
+    if (receipt && receipt.status === '0x0') {
+      throw new Error(`Permit2.transferFrom reverted. TxHash: ${txHash}`);
+    }
+    return { txHash, receipt, method: 'permit2_transferFrom' };
+  }
+
   // ─── Intent storage ──────────────────────────────────────────────────────────
   function _loadIntents() {
     try { return JSON.parse(localStorage.getItem(AE_STORE_KEY) || '[]'); } catch { return []; }
@@ -350,21 +413,79 @@
           );
         }
 
-        // Step 5 & 6: Build calldata + send (wallet popup for explicit approval)
-        _updateIntent(intentId, { status: 'signing' });
-        _toast(`Waiting for wallet approval…`, 'info');
-        _chat('assistant',
-          `✍️ **Please approve in your wallet**\n\n` +
-          `Sending **${amount} ${tok}** → \`${to.slice(0,10)}…${to.slice(-8)}\`\n\n` +
-          `*Your wallet will pop up — please confirm the transaction.*`,
-          'payments'
-        );
-
         const tokenAddr = tok === 'USDC' ? CS_USDC.address : CS_EURC.address;
-        const { txHash, receipt } = await _executeErc20Transfer(tokenAddr, to, numAmount, provider);
+        const nowSec    = Math.floor(Date.now() / 1000);
+
+        // Step 5: Check Permit2 on-chain allowance
+        // Permit2 AllowanceTransfer: owner grants themselves (spender = owner)
+        // so any caller (including this agent) can call transferFrom on their behalf
+        let usePermit2 = false;
+        let p2Info     = null;
+        try {
+          const p2 = await _permit2Allowance(from, tokenAddr, from, provider);
+          const amtWei = BigInt(Math.round(numAmount * 1e6));
+          if (p2.amountWei >= amtWei && p2.expiration > nowSec) {
+            usePermit2 = true;
+            p2Info     = p2;
+          }
+        } catch {}
+
+        // Step 6: Send transfer — Permit2 if available, else direct ERC-20
+        _updateIntent(intentId, { status: 'signing' });
+
+        let txHash, receipt, transferMethod;
+
+        if (usePermit2) {
+          // Permit2.transferFrom — uses existing on-chain allowance, still triggers wallet popup
+          _toast(`Using Permit2 allowance — waiting for wallet approval…`, 'info');
+          const remaining = Number(p2Info.amountWei) / 1e6;
+          const expiresIn = Math.round((p2Info.expiration - nowSec) / 60);
+          _chat('assistant',
+            `🔐 **Permit2 active — using your spending permission**\n\n` +
+            `✍️ Please approve in your wallet\n\n` +
+            `Sending **${amount} ${tok}** → \`${to.slice(0,10)}…${to.slice(-8)}\`\n\n` +
+            `| | |\n|---|---|\n` +
+            `| Permit balance | ${remaining.toFixed(2)} ${tok} |\n` +
+            `| Permit expires in | ${expiresIn} min |\n` +
+            `| Method | \`Permit2.transferFrom\` |`,
+            'payments'
+          );
+          const result = await _permit2TransferFrom(tokenAddr, from, to, numAmount, provider);
+          txHash  = result.txHash;
+          receipt = result.receipt;
+          transferMethod = 'permit2_transferFrom';
+          // Update Permit2 localStorage usage record
+          try {
+            const raw = localStorage.getItem('arc_permit2_allowances_v1');
+            if (raw) {
+              const permits = JSON.parse(raw);
+              const match   = permits.find(p =>
+                p.wallet?.toLowerCase() === from.toLowerCase() &&
+                p.token?.toUpperCase() === tok
+              );
+              if (match) {
+                match.amountUsed = (match.amountUsed || 0) + numAmount;
+                localStorage.setItem('arc_permit2_allowances_v1', JSON.stringify(permits));
+              }
+            }
+          } catch {}
+        } else {
+          // Standard ERC-20 transfer (wallet popup)
+          _toast(`Waiting for wallet approval…`, 'info');
+          _chat('assistant',
+            `✍️ **Please approve in your wallet**\n\n` +
+            `Sending **${amount} ${tok}** → \`${to.slice(0,10)}…${to.slice(-8)}\`\n\n` +
+            `*Your wallet will pop up — please confirm the transaction.*`,
+            'payments'
+          );
+          const result = await _executeErc20Transfer(tokenAddr, to, numAmount, provider);
+          txHash  = result.txHash;
+          receipt = result.receipt;
+          transferMethod = 'erc20_transfer';
+        }
 
         // Step 7: Success
-        _updateIntent(intentId, { status: 'completed', txHash });
+        _updateIntent(intentId, { status: 'completed', txHash, transferMethod });
         _refreshIntentsUI();
         _toast(`✅ Transfer sent! ${amount} ${tok}`, 'success');
         _chat('assistant',
@@ -374,13 +495,14 @@
           `| Amount | **${amount} ${tok}** |\n` +
           `| To | \`${to.slice(0,10)}…${to.slice(-8)}\` |\n` +
           `| Status | ${_statusBadge(intentId, 'completed')} |\n` +
+          `| Method | \`${transferMethod}\` |\n` +
           `| TX | [\`${txHash.slice(0,16)}…\`](${CS_ARC.explorer}/tx/${txHash}) |`,
           'payments'
         );
 
         // Emit confirmed event so other modules can react
         global.dispatchEvent(new CustomEvent('circleSkills:transferComplete', {
-          detail: { intentId, txHash, amount, token: tok, to, from }
+          detail: { intentId, txHash, amount, token: tok, to, from, transferMethod }
         }));
 
       } catch (err) {

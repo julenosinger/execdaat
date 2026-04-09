@@ -639,9 +639,11 @@ async function prepareTransfer(params) {
   var sim = await simulateTransfer(token.symbol, wallet, params.recipient, amount);
 
   // ── Check on-chain Permit2 allowance
+  // Self-permit pattern: owner granted themselves (spender = owner)
+  // so the spender (who calls transferFrom) is the wallet itself
   var onChainP2 = { amount: 0n, expiration: 0, nonce: 0 };
   try {
-    onChainP2 = await getPermit2OnChainAllowance(wallet, token.symbol, params.recipient);
+    onChainP2 = await getPermit2OnChainAllowance(wallet, token.symbol, wallet);
   } catch(e) { /* ignore */ }
 
   // Select method
