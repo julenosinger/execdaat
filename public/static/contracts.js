@@ -193,7 +193,7 @@ function cfGetDisputeStatus(contractId) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function cfEl(id)       { return document.getElementById(id); }
 function cfShort(addr)  { if (!addr || addr.length < 12) return addr || '—'; return addr.slice(0, 8) + '…' + addr.slice(-6); }
-function cfTs(ts)       { if (!ts || ts === 0) return '—'; return new Date(Number(ts) * 1000).toLocaleString('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }); }
+function cfTs(ts)       { if (!ts || ts === 0) return '—'; return new Date(Number(ts) * 1000).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }); }
 function cfLog(...a)    { if (cfState.debugMode) console.log('%c[CF v5]', 'color:#60b4ff;font-weight:bold', ...a); }
 function cfWarn(...a)   { console.warn('[CF v5]', ...a); }
 function cfErr(...a)    { console.error('[CF v5]', ...a); }
@@ -789,7 +789,16 @@ function cfRenderSummary(contracts, wallet) {
 
 // ─── Helper: classify a contract by its view mode ─────────────────────────────
 function cfContractViewMode(c) {
+  // On-chain contracts: never have _isOffchain flag
   if (!c._isOffchain) return 'onchain';
+
+  // Off-chain / custodial: prefer the mode stored directly on the object,
+  // fall back to the meta entry (for contracts created before this fix).
+  const directMode = c.mode;
+  if (directMode === 'custodial') return 'custodial';
+  if (directMode === 'offchain')  return 'offchain';
+
+  // Fallback: read from meta (arc_cf_meta_v5)
   const meta = cfGetMeta(c.id);
   const m = meta.mode || 'offchain';
   return (m === 'custodial') ? 'custodial' : 'offchain';
@@ -2960,7 +2969,7 @@ async function cfCreateOffchainContract(mode) {
     const a = parseFloat(row.querySelector('.cf-ms-amt')?.value || '0');
     if (d && a > 0) { milestoneDescs.push(d); milestoneAmounts.push(a); }
   });
-  if (!milestoneDescs.length) { showToast('Adicione pelo menos 1 milestone.', 'warning'); return; }
+  if (!milestoneDescs.length) { showToast('Add at least 1 milestone.', 'warning'); return; }
 
   // Generate a unique local off-chain ID (negative to distinguish from on-chain)
   const localId   = -(Date.now() % 10000000 + Math.floor(Math.random() * 999));
@@ -3005,6 +3014,7 @@ async function cfCreateOffchainContract(mode) {
       status: 'Pending', releasedAt: 0,
     })),
     _isOffchain: true,
+    mode:        mode,
     _fetchedAt: Date.now(),
   };
 
@@ -3022,7 +3032,7 @@ async function cfCreateOffchainContract(mode) {
   cfLogTx('createOffchain', 'local-' + localId, localId, { mode, title, totalValue: humanAmount });
 
   const modeInfo = CF_MODES[mode] || CF_MODES.offchain;
-  showToast(`✅ Contrato ${modeInfo.label} criado! ID local: ${localId}.`, 'success');
+  showToast(`✅ ${modeInfo.label} contract created! Local ID: ${localId}.`, 'success');
 
   // Reset form
   ['cf-title','cf-contractor','cf-value','cf-client-email','cf-contractor-email','cf-custodian-addr'].forEach(id => {
@@ -3040,12 +3050,25 @@ async function cfCreateOffchainContract(mode) {
 function cfLoadOffchainContracts() {
   try {
     const all = JSON.parse(localStorage.getItem('arc_cf_offchain_v1') || '[]');
-    return all.map(c => ({
-      ...c,
-      totalValue:     BigInt(c.totalValue || 0),
-      depositedValue: BigInt(c.depositedValue || 0),
-      milestones:     (c.milestones || []).map(m => ({ ...m, amount: BigInt(m.amount || 0) })),
-    }));
+    return all.map(c => {
+      // Ensure mode is present on the object (for contracts created before the fix,
+      // fall back to meta so cfContractViewMode can classify them correctly).
+      let mode = c.mode;
+      if (!mode) {
+        try {
+          const meta = cfGetMeta(c.id);
+          mode = meta.mode || 'offchain';
+        } catch { mode = 'offchain'; }
+      }
+      return {
+        ...c,
+        mode,
+        _isOffchain:    true,
+        totalValue:     BigInt(c.totalValue || 0),
+        depositedValue: BigInt(c.depositedValue || 0),
+        milestones:     (c.milestones || []).map(m => ({ ...m, amount: BigInt(m.amount || 0) })),
+      };
+    });
   } catch(e) { return []; }
 }
 
@@ -3100,7 +3123,7 @@ async function cfCreateContract() {
     if (d && a > 0) { milestoneDescs.push(d); milestoneAmounts.push(cfParseUsdc(a)); }
   });
 
-  if (!milestoneDescs.length) { showToast('Adicione pelo menos 1 milestone.', 'warning'); return; }
+  if (!milestoneDescs.length) { showToast('Add at least 1 milestone.', 'warning'); return; }
   if (milestoneDescs.length > 10) { showToast(t('cf_max_10_milestones'), 'error'); return; }
 
   const totalRaw = cfParseUsdc(humanAmount);
@@ -3220,7 +3243,7 @@ async function cfCreateContract() {
     cfSetStep(6, 'done');
 
     const arcScanLink = `${CF_EXPLORER}/tx/${receipt.hash}`;
-    showToast(`✅ Contrato${newId!==null?` #${newId}`:''} criado on-chain! Fee: $${cfFmtUsdc(feeRaw)} · Net: $${cfFmtUsdc(netRaw)} · <a href="${arcScanLink}" target="_blank" class="underline">ArcScan ↗</a>`, 'success');
+    showToast(`✅ Contract${newId!==null?` #${newId}`:''} created on-chain! Fee: $${cfFmtUsdc(feeRaw)} · Net: $${cfFmtUsdc(netRaw)} · <a href="${arcScanLink}" target="_blank" class="underline">ArcScan ↗</a>`, 'success');
     cfShowTxBadge(receipt.hash, `Contract #${newId !== null ? newId : 'new'} created!`);
 
     // ─── Capture data for smart autofill (on-chain path) ───────────────────────
