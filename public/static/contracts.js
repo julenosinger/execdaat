@@ -808,10 +808,13 @@ function cfRenderSummaryForMode(contracts, wallet, viewMode) {
 
 // ─── Summary bar ──────────────────────────────────────────────────────────────
 function cfRenderSummary(contracts, wallet) {
-  // Save the full merged list (same as cfRenderContracts does)
-  cfState._allContracts = contracts;
-
+  // Only overwrite _allContracts when it is a meaningful list, or when we are
+  // on the on-chain tab. Never wipe the cached local-contracts list just because
+  // the on-chain data returned empty (e.g. cfWalletGateUpdate with no wallet).
   const viewMode = (window._cfViewMode) || 'onchain';
+  if (contracts.length > 0 || viewMode === 'onchain') {
+    cfState._allContracts = contracts;
+  }
   // Filter summary to match the active view tab
   const filtered = contracts.filter(c => cfContractViewMode(c) === viewMode);
   cfRenderSummaryForMode(filtered, wallet, viewMode);
@@ -881,8 +884,13 @@ function cfRenderContractsByMode(contracts, wallet, viewMode) {
 // ─── Render contracts list ─────────────────────────────────────────────────────
 // (public entry-point called by cfLoadContracts — delegates to mode-aware renderer)
 function cfRenderContracts(contracts, wallet) {
-  // Save the full merged list so view-mode tabs can re-filter without reloading
-  cfState._allContracts = contracts;
+  // Save the full merged list so view-mode tabs can re-filter without reloading.
+  // Only overwrite when we have a meaningful list or we are on the on-chain tab —
+  // this prevents on-chain-only calls from erasing the cached local contracts.
+  const _vm = window._cfViewMode || 'onchain';
+  if (contracts.length > 0 || _vm === 'onchain') {
+    cfState._allContracts = contracts;
+  }
 
   const el = cfEl('cf-contracts-list');
   if (!el) return;
@@ -3354,6 +3362,8 @@ function cfResetMilestones() {
       <input type="text" placeholder="Milestone description" class="cf-ms-desc flex-1 cf-input px-3 py-2 text-sm" oninput="cfUpdateMilestoneSum()" />
       <input type="number" placeholder="USDC" step="0.01" min="0.01" class="cf-ms-amt w-24 cf-input px-3 py-2 text-sm" oninput="cfUpdateMilestoneSum()" />
     </div>`;
+  // Reset the sum display immediately after clearing rows
+  cfUpdateMilestoneSum();
 }
 
 function cfUpdateMilestoneSum() {
@@ -3375,34 +3385,62 @@ function cfUpdateMilestoneSum() {
 // ─── Wallet gate ────────────────────────────────────────────────────────────────
 function cfWalletGateUpdate() {
   const wallet = window.walletState?.address;
-  if (!wallet) { cfShowListState('no_wallet'); cfRenderSummary([], null); cfUpdateNetworkBanner(false); }
+  if (!wallet) {
+    cfShowListState('no_wallet'); // already has mode-guard — skipped for local tabs
+    // Only reset the summary on the on-chain tab to avoid wiping _allContracts
+    if ((window._cfViewMode || 'onchain') === 'onchain') {
+      cfRenderSummary([], null);
+    }
+    cfUpdateNetworkBanner(false);
+  }
 }
 
 // ─── Wallet event listeners ────────────────────────────────────────────────────
 window.addEventListener('walletConnected', () => {
   cfLog('walletConnected event → loading contracts');
-  cfLoadContracts({ force: true });
+  // Only do a chain fetch when the On-Chain tab is active; local tabs are unaffected.
+  if ((window._cfViewMode || 'onchain') === 'onchain') {
+    cfLoadContracts({ force: true });
+  } else {
+    // Still save the wallet / network state without touching the local view.
+    cfUpdateNetworkBanner(true);
+    if (typeof cfRenderContractsByViewMode === 'function') cfRenderContractsByViewMode();
+  }
   // Init smart autofill for Contracts tab
   setTimeout(() => { if (typeof arcInitCfAutofill === 'function') arcInitCfAutofill(); }, 800);
 });
 window.addEventListener('walletDisconnected', () => {
   cfLog('walletDisconnected event');
-  cfShowListState('no_wallet');
-  cfRenderSummary([], null);
+  cfShowListState('no_wallet'); // mode-guard inside — skipped for local tabs
+  // Don't wipe _allContracts for local tabs — off-chain data stays visible
+  if ((window._cfViewMode || 'onchain') === 'onchain') {
+    cfRenderSummary([], null);
+  }
   cfState.contracts = [];
   cfState.networkOk = false;
   cfState.lastWallet = null;
   cfUpdateNetworkBanner(false);
+  // Re-render local tab so off-chain/custodial contracts remain visible
+  if ((window._cfViewMode || 'onchain') !== 'onchain' && typeof cfRenderContractsByViewMode === 'function') {
+    cfRenderContractsByViewMode();
+  }
 });
 window.addEventListener('walletChanged', () => {
   cfLog('walletChanged event → reloading contracts');
   cfState.contracts = [];
-  cfLoadContracts({ force: true });
+  // Only chain-reload when on the On-Chain tab.
+  if ((window._cfViewMode || 'onchain') === 'onchain') {
+    cfLoadContracts({ force: true });
+  } else if (typeof cfRenderContractsByViewMode === 'function') {
+    cfRenderContractsByViewMode();
+  }
 });
 
-// ─── Auto-refresh every 60s when contracts tab is active ──────────────────────
+// ─── Auto-refresh every 60s when contracts tab is active (on-chain only) ─────
 setInterval(() => {
   if (document.getElementById('tab-content-contracts')?.classList.contains('hidden')) return;
+  // Never auto-refresh local tabs — data is already in localStorage.
+  if ((window._cfViewMode || 'onchain') !== 'onchain') return;
   if (!window.walletState?.address) return;
   const age = Date.now() - cfState.lastRefresh;
   if (age > 60000) {
