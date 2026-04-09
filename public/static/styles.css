@@ -3289,3 +3289,186 @@ body.light-mode option {
 body.light-mode select:not([multiple]):not([size]) {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT-MODE: inline-style color overrides & missing section fixes
+   Covers elements that use hardcoded inline style="color:..." which CSS
+   class rules cannot override. Also covers Agents/Guardian/Yield tabs that
+   lacked light-mode rules entirely.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Inline color resets: common dark-UI palette → readable on light bg ──── */
+body.light-mode [style*="color:#dde2f0"],
+body.light-mode [style*="color: #dde2f0"]  { color: var(--lm-text-hi)    !important; }
+
+body.light-mode [style*="color:#8aaac8"],
+body.light-mode [style*="color: #8aaac8"]  { color: var(--lm-text-muted) !important; }
+
+body.light-mode [style*="color:#a0b4cc"],
+body.light-mode [style*="color: #a0b4cc"]  { color: var(--lm-text-lo)    !important; }
+
+body.light-mode [style*="color:#3a4870"],
+body.light-mode [style*="color: #3a4870"]  { color: var(--lm-text-muted) !important; }
+
+body.light-mode [style*="color:#60b4ff"],
+body.light-mode [style*="color: #60b4ff"]  { color: var(--lm-blue)       !important; }
+
+body.light-mode [style*="color:#93c5fd"],
+body.light-mode [style*="color: #93c5fd"]  { color: #2563eb              !important; }
+
+body.light-mode [style*="color:#fbbf24"],
+body.light-mode [style*="color: #fbbf24"]  { color: #92400e              !important; }
+
+body.light-mode [style*="color:#34d399"],
+body.light-mode [style*="color: #34d399"],
+body.light-mode [style*="color:#6ee7b7"],
+body.light-mode [style*="color: #6ee7b7"]  { color: #15803d              !important; }
+
+body.light-mode [style*="color:#f87171"],
+body.light-mode [style*="color: #f87171"],
+body.light-mode [style*="color:#fca5a5"],
+body.light-mode [style*="color: #fca5a5"]  { color: #b91c1c              !important; }
+
+body.light-mode [style*="color:#a78bfa"],
+body.light-mode [style*="color: #a78bfa"]  { color: var(--lm-accent)     !important; }
+
+body.light-mode [style*="color:#67e8f9"],
+body.light-mode [style*="color: #67e8f9"],
+body.light-mode [style*="color:#22d3ee"],
+body.light-mode [style*="color: #22d3ee"]  { color: #0e7490              !important; }
+
+/* White text on inline style (cards, badges) */
+body.light-mode [style*="color:white"],
+body.light-mode [style*="color: white"],
+body.light-mode [style*="color:#fff"],
+body.light-mode [style*="color: #fff"],
+body.light-mode [style*="color:#ffffff"],
+body.light-mode [style*="color: #ffffff"]  { color: var(--lm-text-hi)    !important; }
+
+/* Dark inline backgrounds that become white panels in light mode */
+body.light-mode [style*="background:rgba(8,11,24"],
+body.light-mode [style*="background: rgba(8,11,24"],
+body.light-mode [style*="background-color:rgba(8,11,24"],
+body.light-mode [style*="background:#080b18"],
+body.light-mode [style*="background: #080b18"]  {
+  background: var(--lm-bg-card)   !important;
+  border-color: var(--lm-border)  !important;
+}
+
+body.light-mode [style*="background:rgba(55,138,221,0.06)"],
+body.light-mode [style*="background: rgba(55,138,221,0.06)"] {
+  background: var(--lm-accent-soft) !important;
+}
+
+/* ── Agents tab (§ 25): tab-content-agents ──────────────────────────────── */
+body.light-mode #tab-content-agents,
+body.light-mode #tab-content-agents > * {
+  background-color: var(--lm-bg) !important;
+}
+
+body.light-mode #tab-content-agents .bg-gray-900,
+body.light-mode #tab-content-agents [class*="bg-gray-9"] {
+  background: var(--lm-bg-card)  !important;
+  border-color: var(--lm-border) !important;
+  box-shadow: var(--lm-shadow-md) !important;
+}
+
+body.light-mode #tab-content-agents .bg-gray-800,
+body.light-mode #tab-content-agents [class*="bg-gray-8"] {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border-soft) !important;
+}
+
+body.light-mode #tab-content-agents .text-white,
+body.light-mode #tab-content-agents .text-gray-100,
+body.light-mode #tab-content-agents .text-gray-200  { color: var(--lm-text-hi)    !important; }
+body.light-mode #tab-content-agents .text-gray-300  { color: var(--lm-text-lo)    !important; }
+body.light-mode #tab-content-agents .text-gray-400,
+body.light-mode #tab-content-agents .text-gray-500  { color: var(--lm-text-muted) !important; }
+
+/* Agent log / compliance log sections */
+body.light-mode [id*="agent-log"],
+body.light-mode [id*="compliance-log"],
+body.light-mode [id*="guardian-log"],
+body.light-mode [id*="yield-log"] {
+  background: var(--lm-bg-sunken) !important;
+  border-color: var(--lm-border)  !important;
+  color: var(--lm-text-md)        !important;
+}
+body.light-mode [id*="agent-log"] *,
+body.light-mode [id*="compliance-log"] *,
+body.light-mode [id*="guardian-log"] *,
+body.light-mode [id*="yield-log"] * {
+  color: var(--lm-text-md) !important;
+}
+
+/* Wallet status / stat boxes inside Agents */
+body.light-mode #tab-content-agents [class*="rounded"][class*="border"],
+body.light-mode #tab-content-agents [class*="rounded"][class*="bg-gray"] {
+  background: var(--lm-bg-card)   !important;
+  border-color: var(--lm-border)  !important;
+  box-shadow: var(--lm-shadow-sm) !important;
+}
+
+/* Capability pills / toggle badges */
+body.light-mode #tab-content-agents [style*="background:rgba"],
+body.light-mode #tab-content-agents [style*="background: rgba"] {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border)  !important;
+}
+
+/* ── Contracts tab: inline-style card text ──────────────────────────────── */
+body.light-mode #tab-content-contracts [style*="font-size:18px"],
+body.light-mode #tab-content-contracts [style*="font-size: 18px"] {
+  color: var(--lm-text-hi) !important;
+}
+
+/* Contract card container backgrounds */
+body.light-mode #tab-content-contracts [style*="background:rgba(8,11,24"],
+body.light-mode #tab-content-contracts [style*="background: rgba(8,11,24"] {
+  background: var(--lm-bg-card)  !important;
+  border-color: var(--lm-border) !important;
+}
+
+/* Mode selector pills in create form */
+body.light-mode [id^="cf-mode-"],
+body.light-mode [id^="cf-view-tab-"] {
+  color: var(--lm-text-lo) !important;
+}
+
+/* ── Payments tab: remaining invisible text ─────────────────────────────── */
+body.light-mode #tab-content-payments .text-white,
+body.light-mode #tab-content-payments .text-gray-100,
+body.light-mode #tab-content-payments .text-gray-200  { color: var(--lm-text-hi)    !important; }
+body.light-mode #tab-content-payments .text-gray-300  { color: var(--lm-text-lo)    !important; }
+body.light-mode #tab-content-payments .text-gray-400,
+body.light-mode #tab-content-payments .text-gray-500  { color: var(--lm-text-muted) !important; }
+
+/* Queue / history empty state text */
+body.light-mode #tab-content-payments [style*="color:#8aaac8"],
+body.light-mode #tab-content-payments [style*="color: #8aaac8"] { color: var(--lm-text-muted) !important; }
+
+/* ── Generic: any element with dark rgba background that should be light ── */
+body.light-mode [style*="background:rgba(15,23,42"],
+body.light-mode [style*="background: rgba(15,23,42"],
+body.light-mode [style*="background:rgba(30,41,59"],
+body.light-mode [style*="background: rgba(30,41,59"] {
+  background: var(--lm-bg-raised) !important;
+  border-color: var(--lm-border-soft) !important;
+}
+
+/* ── Status badge text (inline colored spans) ───────────────────────────── */
+body.light-mode .cf-badge-pending  { border-color: rgba(245,158,11,0.35) !important; }
+body.light-mode .cf-badge-funded   { border-color: rgba(96,165,250,0.35) !important; }
+body.light-mode .cf-badge-active   { border-color: rgba(34,211,238,0.35) !important; }
+body.light-mode .cf-badge-completed{ border-color: rgba(52,211,153,0.35) !important; }
+
+/* ── USDC inline label (blue bg chip) ───────────────────────────────────── */
+body.light-mode [style*="background:rgba(29,78,216"],
+body.light-mode [style*="background: rgba(29,78,216"],
+body.light-mode [style*="background:rgba(55,138,221"],
+body.light-mode [style*="background: rgba(55,138,221"] {
+  background: var(--lm-blue-soft)   !important;
+  border-color: var(--lm-blue-border) !important;
+  color: var(--lm-blue) !important;
+}
