@@ -276,49 +276,81 @@ async function _signPermitSingle(provider, walletAddr, tokenInfo, spenderAddr, a
 }
 
 // ── Step 2b: Submit permit() on-chain ────────────────────────────────────────
-// Encodes: permit(address owner, PermitSingle permitSingle, bytes signature)
-// PermitSingle = (PermitDetails details, address spender, uint256 sigDeadline)
-// PermitDetails = (address token, uint160 amount, uint48 expiration, uint48 nonce)
+// Uses ethers.js Interface.encodeFunctionData for correct ABI encoding.
+// permit(address owner, PermitSingle permitSingle, bytes signature)
+// PermitSingle = { details: { token, amount, expiration, nonce }, spender, sigDeadline }
 async function _submitPermitOnChain(provider, walletAddr, tokenInfo, spenderAddr, amountWei, expiration, nonce, sig, sigDeadline, updateStatus) {
+  if (typeof updateStatus === 'function') updateStatus('step2', 'active', 'Encoding permit() calldata…');
+
+  // Use ethers.js for correct ABI encoding (avoids manual struct offset errors)
+  var data;
+  if (typeof ethers !== 'undefined') {
+    var PERMIT2_IFACE = new ethers.Interface([
+      'function permit(address owner, tuple(tuple(address token, uint160 amount, uint48 expiration, uint48 nonce) details, address spender, uint256 sigDeadline) permitSingle, bytes calldata signature) external',
+    ]);
+    data = PERMIT2_IFACE.encodeFunctionData('permit', [
+      walletAddr,
+      {
+        details: {
+          token:      tokenInfo.address,
+          amount:     amountWei,
+          expiration: expiration,
+          nonce:      nonce,
+        },
+        spender:     spenderAddr,
+        sigDeadline: sigDeadline,
+      },
+      sig,
+    ]);
+  } else {
+    // Fallback manual encoding based on verified ethers.js output:
+    // permit(address owner, PermitSingle, bytes sig)
+    // Layout (words after selector):
+    //   [0]  owner                → address
+    //   [1]  details.token        → address  (PermitSingle inlined, no offset)
+    //   [2]  details.amount       → uint160
+    //   [3]  details.expiration   → uint48
+    //   [4]  details.nonce        → uint48
+    //   [5]  spender              → address
+    //   [6]  sigDeadline          → uint256
+    //   [7]  offset to bytes sig  → 0x100 (256 = 8 words * 32)
+    //   [8]  sig length           → 65
+    //   [9..11] sig data (65 bytes padded to 96 bytes = 3 words)
+    var sigBytes = sig.startsWith('0x') ? sig.slice(2) : sig;
+    var sigLen   = sigBytes.length / 2; // 65 bytes
+    var padded   = sigBytes.padEnd(Math.ceil(sigLen / 32) * 64, '0');
+
+    data = '0x2b67b570';
+    data += _p2EncAddr(walletAddr);          // [0] owner
+    data += _p2EncAddr(tokenInfo.address);   // [1] details.token
+    data += _p2EncUint(amountWei);           // [2] details.amount
+    data += _p2EncUint(expiration);          // [3] details.expiration
+    data += _p2EncUint(nonce);               // [4] details.nonce
+    data += _p2EncAddr(spenderAddr);         // [5] spender
+    data += _p2EncUint(sigDeadline);         // [6] sigDeadline
+    data += _p2EncUint(0x100);               // [7] offset to bytes (8 words * 32 = 256)
+    data += _p2EncUint(sigLen);              // [8] bytes length
+    data += padded;                          // [9..] sig data padded to 32 bytes
+  }
+
+  if (typeof updateStatus === 'function') updateStatus('step2', 'active', 'Validating permit() via eth_call…');
+
+  // Pre-validate with eth_call to get revert reason BEFORE sending real tx
+  try {
+    await _p2Rpc('eth_call', [{ from: walletAddr, to: PERMIT2_ADDR, data: data }, 'latest']);
+  } catch(e) {
+    // Try to decode revert reason
+    var revertMsg = e.message || '';
+    if (/InvalidNonce/i.test(revertMsg))    throw new Error('Permit2 InvalidNonce — nonce already used. Try creating a new permit.');
+    if (/SignatureExpired/i.test(revertMsg)) throw new Error('Permit2 SignatureExpired — sigDeadline passed. Please retry.');
+    if (/InvalidSigner/i.test(revertMsg))   throw new Error('Permit2 InvalidSigner — signature does not match. Check wallet connection.');
+    if (/AllowanceExpired/i.test(revertMsg))throw new Error('Permit2 AllowanceExpired — existing allowance expired.');
+    // Log raw data for debugging
+    console.error('[Permit2] eth_call pre-validate failed:', e.message, '\nCalldata:', data.slice(0, 200));
+    throw new Error('permit() would revert: ' + revertMsg + '\n(Check that ERC-20 was approved first and signature is valid)');
+  }
+
   if (typeof updateStatus === 'function') updateStatus('step2', 'active', 'Submitting permit() on-chain…');
-
-  // Encode permit(owner, PermitSingle, bytes) manually
-  // selector: keccak256("permit(address,(((address,uint160,uint48,uint48),address,uint256)),bytes)")
-  // = 0x2b67b570 (AllowanceTransfer single permit)
-  //
-  // ABI encoding for permit(address owner, PermitSingle calldata permitSingle, bytes calldata signature):
-  // [0]  owner           → address (padded to 32)
-  // [1]  permitSingle offset → 0x40 (32*2)
-  // [2]  signature offset → dynamic, after permitSingle
-  //
-  // PermitSingle (inline struct, not dynamic):
-  // [0] details.token      → address
-  // [1] details.amount     → uint160
-  // [2] details.expiration → uint48
-  // [3] details.nonce      → uint48
-  // [4] spender            → address
-  // [5] sigDeadline        → uint256
-  //
-  // bytes signature: dynamic — offset, length, data padded to 32
-
-  var sigBytes = sig.startsWith('0x') ? sig.slice(2) : sig; // 65 bytes = 130 hex chars
-  var sigLen = sigBytes.length / 2; // should be 65
-
-  // Build calldata
-  var data = PERMIT2_PERMIT_SEL;                        // selector
-  data += _p2EncAddr(walletAddr);                       // owner
-  data += _p2EncUint(0x40);                             // offset to PermitSingle (64 bytes after owner)
-  data += _p2EncUint(0x40 + 6 * 32);                    // offset to signature bytes (after 6-slot PermitSingle)
-  // PermitSingle fields (6 slots):
-  data += _p2EncAddr(tokenInfo.address);                // details.token
-  data += _p2EncUint(amountWei);                        // details.amount (uint160)
-  data += _p2EncUint(expiration);                       // details.expiration (uint48)
-  data += _p2EncUint(nonce);                            // details.nonce (uint48)
-  data += _p2EncAddr(spenderAddr);                      // spender
-  data += _p2EncUint(sigDeadline);                      // sigDeadline
-  // bytes signature:
-  data += _p2EncUint(sigLen);                           // length of signature
-  data += sigBytes.padEnd(Math.ceil(sigBytes.length / 64) * 64, '0'); // padded to 32 bytes
 
   // Estimate gas
   var gasHex;
