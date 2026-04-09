@@ -638,13 +638,25 @@ async function prepareTransfer(params) {
   // Simulate
   var sim = await simulateTransfer(token.symbol, wallet, params.recipient, amount);
 
+  // ── Check on-chain Permit2 allowance
+  var onChainP2 = { amount: 0n, expiration: 0, nonce: 0 };
+  try {
+    onChainP2 = await getPermit2OnChainAllowance(wallet, token.symbol, params.recipient);
+  } catch(e) { /* ignore */ }
+
   // Select method
   var method = 'erc20_transfer'; // default: direct transfer
-  if (preflight.matchedPermit) method = 'permit2_signed';
+  var amtWeiCheck = _toWei(amount, token.decimals);
+  if (onChainP2.amount >= amtWeiCheck && onChainP2.expiration > Math.floor(Date.now()/1000)) {
+    method = 'permit2_transferFrom'; // use on-chain Permit2 allowance
+  } else if (preflight.matchedPermit) {
+    method = 'permit2_signed';
+  }
 
   return {
     ok:          preflight.ok && sim.success !== false,
     method:      method,
+    onChainPermit2: onChainP2,
     preview: {
       token:       token.symbol,
       amount:      amount,
@@ -656,11 +668,71 @@ async function prepareTransfer(params) {
       suggestions: preflight.suggestions,
       warnings:    preflight.warnings,
       errors:      preflight.errors,
+      transferMethod: method,
     },
     preflight:    preflight,
     gasInfo:      gasInfo,
     sim:          sim,
   };
+}
+
+// ── Permit2.transferFrom (AllowanceTransfer) — uses existing on-chain allowance ─
+async function permit2TransferFrom(tokenSymbol, fromAddr, toAddr, amount) {
+  await _ensureArcNetwork();
+  var signer = await _getSigner();
+  var token  = _getTokenInfo(tokenSymbol);
+  var amtWei = _toWei(amount, token.decimals);
+
+  // Single-item transferFrom: Permit2.transferFrom(from, to, uint160 amount, address token)
+  var PERMIT2_TRANSFER_ABI = [
+    'function transferFrom(address from, address to, uint160 amount, address token) external',
+  ];
+
+  var contract = new ethers.Contract(PERMIT2_ADDR, PERMIT2_TRANSFER_ABI, signer);
+  var gasEst;
+  try {
+    gasEst = await contract.transferFrom.estimateGas(fromAddr, toAddr, amtWei, token.address);
+  } catch(e) { gasEst = 100000n; }
+  var gasLimit = BigInt(Math.ceil(Number(gasEst) * 1.3));
+
+  var tx = await contract.transferFrom(fromAddr, toAddr, amtWei, token.address, { gasLimit });
+  var receipt = await tx.wait(1);
+
+  var receiptObj = {
+    id:          'p2tx_' + Date.now().toString(36),
+    type:        'permit2_transfer',
+    token:       token.symbol,
+    amount:      amount,
+    from:        fromAddr,
+    to:          toAddr,
+    txHash:      tx.hash,
+    blockNumber: receipt.blockNumber,
+    timestamp:   Date.now(),
+    explorerUrl: P2E_EXPLORER + '/tx/' + tx.hash,
+    method:      'permit2_transferFrom',
+  };
+  _saveReceipt(receiptObj);
+  return receiptObj;
+}
+
+// ── Get on-chain Permit2 allowance (owner, token, spender) ───────────────────
+async function getPermit2OnChainAllowance(ownerAddr, tokenSymbol, spenderAddr) {
+  var code = await _rpcCall('eth_getCode', [PERMIT2_ADDR, 'latest']);
+  if (!code || code === '0x' || code === '0x0') return { amount: 0n, expiration: 0, nonce: 0 };
+  var token = _getTokenInfo(tokenSymbol);
+  var sig   = '0x927da105';
+  var data  = sig + _encodeAddress(ownerAddr) + _encodeAddress(token.address) + _encodeAddress(spenderAddr);
+  try {
+    var hex = await _ethCall(PERMIT2_ADDR, data);
+    if (!hex || hex === '0x' || hex.length < 194) return { amount: 0n, expiration: 0, nonce: 0 };
+    var amount     = _decodeUint256('0x' + hex.slice(2, 66));
+    var expiration = Number(_decodeUint256('0x' + hex.slice(66, 130)));
+    var nonce      = Number(_decodeUint256('0x' + hex.slice(130, 194)));
+    return { amount: amount, expiration: expiration, nonce: nonce,
+             expired: expiration > 0 && expiration < Math.floor(Date.now() / 1000) };
+  } catch(e) {
+    return { amount: 0n, expiration: 0, nonce: 0 };
+  }
 }
 
 // ── Execute confirmed transfer ────────────────────────────────────────────────
@@ -670,7 +742,16 @@ async function executeTransfer(params) {
   if (!wallet) throw new Error('No wallet connected');
   await _ensureArcNetwork();
 
-  var result = await erc20Transfer(params.token, params.recipient, params.amount);
+  var method = params.method || 'erc20_transfer';
+  var result;
+
+  if (method === 'permit2_transferFrom') {
+    // Use Permit2 on-chain allowance (AllowanceTransfer.transferFrom)
+    result = await permit2TransferFrom(params.token, wallet, params.recipient, params.amount);
+  } else {
+    // Default: direct ERC-20 transfer
+    result = await erc20Transfer(params.token, params.recipient, params.amount);
+  }
 
   // Record usage in permit if applicable
   if (params.permitId && typeof p2RecordUsage === 'function') {
@@ -820,6 +901,8 @@ global.Permit2Engine = {
   erc20Approve,
   erc20Transfer,
   erc20TransferFrom,
+  permit2TransferFrom,
+  getPermit2OnChainAllowance,
   batchTransferERC20,
   prepareTransfer,
   executeTransfer,

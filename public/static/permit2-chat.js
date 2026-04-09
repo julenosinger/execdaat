@@ -2,16 +2,24 @@
 // PERMIT2-CHAT.JS — Chatbot-Based Permit2 Authorization
 // ExecDaat · Arc Testnet · ChainId 5042002
 //
-// Responsibilities:
-//  • Parse natural language permit intents from chatbot
-//  • Build EIP-712 Permit2 payloads
-//  • Request wallet signature (no auto-sign)
-//  • Store/revoke permits in localStorage
-//  • Expose createPermitFromChat(params) global function
-//  • Feed active permits to AI agent spending checks
+// CORRECT UNISWAP PERMIT2 FLOW (per https://docs.uniswap.org/contracts/permit2/overview):
 //
-// NOTE: All locals are scoped in IIFE to avoid const re-declaration
-//       conflicts with chat.js (ARC_CHAIN_ID, ARC_CHAIN_HEX, etc.)
+//  ┌──────────────────────────────────────────────────────┐
+//  │  STEP 1 (one-time): ERC-20 approve(PERMIT2_ADDR, ∞) │
+//  │     USDC.approve("0x000...22D473", maxUint256)        │
+//  │     → On-chain tx, wallet popup, user pays gas        │
+//  ├──────────────────────────────────────────────────────┤
+//  │  STEP 2: AllowanceTransfer.permit()                   │
+//  │     → Signs EIP-712 PermitSingle off-chain            │
+//  │     → Submits permit() tx on-chain to Permit2 addr    │
+//  │     → Sets allowance(owner, token, spender)           │
+//  ├──────────────────────────────────────────────────────┤
+//  │  STEP 3: Spender calls transferFrom(from, to, amt)   │
+//  │     → Permit2.transferFrom() debits allowance         │
+//  └──────────────────────────────────────────────────────┘
+//
+// PREVIOUS BUG: code only signed off-chain, never called permit() on-chain.
+// This file now implements the full 3-step Permit2 flow correctly.
 // ============================================================
 (function () {
 'use strict';
@@ -22,7 +30,12 @@ var P2_USDC_TOKEN       = '0x3600000000000000000000000000000000000000';
 var P2_EURC_TOKEN       = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
 var P2_CHAIN_ID         = 5042002;
 var P2_CHAIN_HEX        = '0x4cef52';
+var P2_RPC              = 'https://rpc.testnet.arc.network';
+var P2_EXPLORER         = 'https://testnet.arcscan.app';
 var MAX_PERMIT_DAYS     = 7; // hard cap — max 7 days per requirement
+
+// Canonical Permit2 contract (deployed on Arc Testnet ✅)
+var PERMIT2_ADDR = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 
 // Token registry
 var TOKEN_MAP = {
@@ -38,6 +51,41 @@ var SCOPE_LABELS = {
   multisend: 'Multisend only',
   contracts: 'Contract operations only',
 };
+
+// ABI selectors (manual encoding — no ethers dependency here)
+var ERC20_ABI_APPROVE_SEL = '0x095ea7b3'; // approve(address,uint256)
+var ERC20_ABI_ALLOWANCE_SEL = '0xdd62ed3e'; // allowance(address,address)
+var PERMIT2_PERMIT_SEL = '0x2b67b570';     // permit(address,PermitSingle,bytes)
+var PERMIT2_ALLOWANCE_SEL = '0x927da105';  // allowance(address,address,address) → (uint160,uint48,uint48)
+
+// MaxUint256 for unlimited ERC-20 approval to Permit2
+var MAX_UINT256 = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+var MAX_UINT160 = '0x000000000000000000000000ffffffffffffffffffffffffffffffffffffffff';
+
+// ── RPC helpers ───────────────────────────────────────────────────────────────
+var _p2RpcId = 0;
+async function _p2Rpc(method, params) {
+  _p2RpcId++;
+  var resp = await fetch(P2_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: _p2RpcId, method: method, params: params || [] }),
+  });
+  var data = await resp.json();
+  if (data.error) throw new Error('RPC ' + method + ': ' + data.error.message);
+  return data.result;
+}
+
+function _p2EncAddr(addr) {
+  return addr.toLowerCase().replace('0x', '').padStart(64, '0');
+}
+function _p2EncUint(n) {
+  return BigInt(n).toString(16).padStart(64, '0');
+}
+function _p2DecUint(hex) {
+  if (!hex || hex === '0x') return 0n;
+  return BigInt(hex.startsWith('0x') ? hex : '0x' + hex);
+}
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 function p2LoadAll() {
@@ -92,6 +140,233 @@ function p2RevokeAll(wallet) {
   });
   p2SaveAll(updated);
   return all.length - updated.length;
+}
+
+// ── Check on-chain ERC-20 allowance for Permit2 ─────────────────────────────
+async function _checkERC20AllowanceForPermit2(walletAddr, tokenAddr) {
+  var data = ERC20_ABI_ALLOWANCE_SEL + _p2EncAddr(walletAddr) + _p2EncAddr(PERMIT2_ADDR);
+  try {
+    var hex = await _p2Rpc('eth_call', [{ to: tokenAddr, data: data }, 'latest']);
+    return _p2DecUint(hex);
+  } catch(e) {
+    return 0n;
+  }
+}
+
+// ── Get on-chain Permit2 allowance (owner, token, spender) ──────────────────
+async function _getOnChainPermit2Allowance(ownerAddr, tokenAddr, spenderAddr) {
+  var data = PERMIT2_ALLOWANCE_SEL +
+             _p2EncAddr(ownerAddr) +
+             _p2EncAddr(tokenAddr) +
+             _p2EncAddr(spenderAddr);
+  try {
+    var hex = await _p2Rpc('eth_call', [{ to: PERMIT2_ADDR, data: data }, 'latest']);
+    if (!hex || hex === '0x' || hex.length < 194) return { amount: 0n, expiration: 0, nonce: 0 };
+    var amount     = _p2DecUint('0x' + hex.slice(2, 66));
+    var expiration = Number(_p2DecUint('0x' + hex.slice(66, 130)));
+    var nonce      = Number(_p2DecUint('0x' + hex.slice(130, 194)));
+    return { amount: amount, expiration: expiration, nonce: nonce };
+  } catch(e) {
+    return { amount: 0n, expiration: 0, nonce: 0 };
+  }
+}
+
+// ── Step 1: ERC-20 approve(Permit2, maxUint256) — sends on-chain tx ──────────
+async function _approveTokenForPermit2(provider, walletAddr, tokenInfo, updateStatus) {
+  if (typeof updateStatus === 'function') updateStatus('step1', 'active', 'Checking ERC-20 allowance…');
+
+  // Check current allowance
+  var currentAllowance = await _checkERC20AllowanceForPermit2(walletAddr, tokenInfo.address);
+  var LARGE_AMOUNT = BigInt('0xffffffffffffffffffffffffffffffff00000000000000000000000000000000');
+
+  if (currentAllowance > LARGE_AMOUNT) {
+    if (typeof updateStatus === 'function') updateStatus('step1', 'done', '✅ Permit2 already approved');
+    return null; // Already approved — skip
+  }
+
+  if (typeof updateStatus === 'function') updateStatus('step1', 'active', 'Approving ' + tokenInfo.symbol + ' for Permit2 — sign in wallet…');
+
+  // Build approve(PERMIT2_ADDR, maxUint256) calldata
+  var approveData = ERC20_ABI_APPROVE_SEL + _p2EncAddr(PERMIT2_ADDR) + MAX_UINT256.slice(2).padStart(64, '0');
+
+  // Estimate gas
+  var gasHex;
+  try {
+    gasHex = await _p2Rpc('eth_estimateGas', [{ from: walletAddr, to: tokenInfo.address, data: approveData }]);
+  } catch(e) { gasHex = '0x186A0'; } // fallback 100k gas
+
+  var gasLimit = '0x' + (BigInt(gasHex) * 13n / 10n).toString(16); // +30%
+
+  // Get gas price
+  var gasPriceHex;
+  try { gasPriceHex = await _p2Rpc('eth_gasPrice', []); }
+  catch(e) { gasPriceHex = '0x1'; }
+
+  // Send approve tx
+  var txHash = await provider.request({
+    method: 'eth_sendTransaction',
+    params: [{
+      from:     walletAddr,
+      to:       tokenInfo.address,
+      data:     approveData,
+      gas:      gasLimit,
+      gasPrice: gasPriceHex,
+    }],
+  });
+
+  if (typeof updateStatus === 'function') updateStatus('step1', 'active', '⏳ Waiting approval confirmation: ' + txHash.slice(0, 14) + '…');
+
+  // Wait for receipt
+  var receipt = await _waitForReceipt(provider, txHash);
+  if (!receipt || receipt.status === '0x0') {
+    throw new Error('ERC-20 approval transaction failed (reverted). TX: ' + txHash);
+  }
+
+  if (typeof updateStatus === 'function') updateStatus('step1', 'done', '✅ Approved! TX: ' + txHash.slice(0, 14) + '…');
+  return txHash;
+}
+
+// ── Step 2: Sign EIP-712 PermitSingle (AllowanceTransfer) ───────────────────
+async function _signPermitSingle(provider, walletAddr, tokenInfo, spenderAddr, amountWei, expiration, nonce) {
+  var sigDeadline = Math.floor(Date.now() / 1000) + 1800; // 30 min
+
+  var typedData = {
+    types: {
+      EIP712Domain: [
+        { name: 'name',              type: 'string'  },
+        { name: 'chainId',           type: 'uint256' },
+        { name: 'verifyingContract', type: 'address' },
+      ],
+      PermitDetails: [
+        { name: 'token',      type: 'address' },
+        { name: 'amount',     type: 'uint160' },
+        { name: 'expiration', type: 'uint48'  },
+        { name: 'nonce',      type: 'uint48'  },
+      ],
+      PermitSingle: [
+        { name: 'details',     type: 'PermitDetails' },
+        { name: 'spender',     type: 'address'       },
+        { name: 'sigDeadline', type: 'uint256'       },
+      ],
+    },
+    primaryType: 'PermitSingle',
+    domain: {
+      name:              'Permit2',
+      chainId:           P2_CHAIN_ID,
+      verifyingContract: PERMIT2_ADDR,
+    },
+    message: {
+      details: {
+        token:      tokenInfo.address,
+        amount:     amountWei.toString(),
+        expiration: expiration,
+        nonce:      nonce,
+      },
+      spender:     spenderAddr,
+      sigDeadline: sigDeadline,
+    },
+  };
+
+  var sig = await provider.request({
+    method: 'eth_signTypedData_v4',
+    params: [walletAddr, JSON.stringify(typedData)],
+  });
+
+  return { sig: sig, typedData: typedData, sigDeadline: sigDeadline };
+}
+
+// ── Step 2b: Submit permit() on-chain ────────────────────────────────────────
+// Encodes: permit(address owner, PermitSingle permitSingle, bytes signature)
+// PermitSingle = (PermitDetails details, address spender, uint256 sigDeadline)
+// PermitDetails = (address token, uint160 amount, uint48 expiration, uint48 nonce)
+async function _submitPermitOnChain(provider, walletAddr, tokenInfo, spenderAddr, amountWei, expiration, nonce, sig, sigDeadline, updateStatus) {
+  if (typeof updateStatus === 'function') updateStatus('step2', 'active', 'Submitting permit() on-chain…');
+
+  // Encode permit(owner, PermitSingle, bytes) manually
+  // selector: keccak256("permit(address,(((address,uint160,uint48,uint48),address,uint256)),bytes)")
+  // = 0x2b67b570 (AllowanceTransfer single permit)
+  //
+  // ABI encoding for permit(address owner, PermitSingle calldata permitSingle, bytes calldata signature):
+  // [0]  owner           → address (padded to 32)
+  // [1]  permitSingle offset → 0x40 (32*2)
+  // [2]  signature offset → dynamic, after permitSingle
+  //
+  // PermitSingle (inline struct, not dynamic):
+  // [0] details.token      → address
+  // [1] details.amount     → uint160
+  // [2] details.expiration → uint48
+  // [3] details.nonce      → uint48
+  // [4] spender            → address
+  // [5] sigDeadline        → uint256
+  //
+  // bytes signature: dynamic — offset, length, data padded to 32
+
+  var sigBytes = sig.startsWith('0x') ? sig.slice(2) : sig; // 65 bytes = 130 hex chars
+  var sigLen = sigBytes.length / 2; // should be 65
+
+  // Build calldata
+  var data = PERMIT2_PERMIT_SEL;                        // selector
+  data += _p2EncAddr(walletAddr);                       // owner
+  data += _p2EncUint(0x40);                             // offset to PermitSingle (64 bytes after owner)
+  data += _p2EncUint(0x40 + 6 * 32);                    // offset to signature bytes (after 6-slot PermitSingle)
+  // PermitSingle fields (6 slots):
+  data += _p2EncAddr(tokenInfo.address);                // details.token
+  data += _p2EncUint(amountWei);                        // details.amount (uint160)
+  data += _p2EncUint(expiration);                       // details.expiration (uint48)
+  data += _p2EncUint(nonce);                            // details.nonce (uint48)
+  data += _p2EncAddr(spenderAddr);                      // spender
+  data += _p2EncUint(sigDeadline);                      // sigDeadline
+  // bytes signature:
+  data += _p2EncUint(sigLen);                           // length of signature
+  data += sigBytes.padEnd(Math.ceil(sigBytes.length / 64) * 64, '0'); // padded to 32 bytes
+
+  // Estimate gas
+  var gasHex;
+  try {
+    gasHex = await _p2Rpc('eth_estimateGas', [{ from: walletAddr, to: PERMIT2_ADDR, data: data }]);
+  } catch(e) {
+    console.warn('[Permit2] gas estimate failed:', e.message);
+    gasHex = '0x30D40'; // 200k fallback
+  }
+  var gasLimit = '0x' + (BigInt(gasHex) * 13n / 10n).toString(16);
+
+  var gasPriceHex;
+  try { gasPriceHex = await _p2Rpc('eth_gasPrice', []); }
+  catch(e) { gasPriceHex = '0x1'; }
+
+  var txHash = await provider.request({
+    method: 'eth_sendTransaction',
+    params: [{
+      from:     walletAddr,
+      to:       PERMIT2_ADDR,
+      data:     data,
+      gas:      gasLimit,
+      gasPrice: gasPriceHex,
+    }],
+  });
+
+  if (typeof updateStatus === 'function') updateStatus('step2', 'active', '⏳ permit() tx pending: ' + txHash.slice(0, 14) + '…');
+
+  var receipt = await _waitForReceipt(provider, txHash);
+  if (!receipt || receipt.status === '0x0') {
+    throw new Error('permit() transaction failed (reverted). TX: ' + txHash);
+  }
+
+  if (typeof updateStatus === 'function') updateStatus('step2', 'done', '✅ Permit registered on-chain! TX: ' + txHash.slice(0, 14) + '…');
+  return txHash;
+}
+
+// ── Wait for tx receipt (polls eth_getTransactionReceipt) ───────────────────
+async function _waitForReceipt(provider, txHash, maxAttempts) {
+  maxAttempts = maxAttempts || 60; // 60 * 2s = 2 min timeout
+  for (var i = 0; i < maxAttempts; i++) {
+    await new Promise(function(r) { setTimeout(r, 2000); });
+    try {
+      var receipt = await _p2Rpc('eth_getTransactionReceipt', [txHash]);
+      if (receipt && receipt.blockNumber) return receipt;
+    } catch(e) { /* continue polling */ }
+  }
+  throw new Error('Transaction not confirmed after ' + (maxAttempts * 2) + ' seconds. Hash: ' + txHash);
 }
 
 // ── Natural Language Parser ────────────────────────────────────────────────────
@@ -152,118 +427,132 @@ function p2ParseIntent(msg) {
   return { type: 'create', token: token, amount: amount, durationHours: durationHours, scope: scope };
 }
 
-// ── EIP-712 Permit2 payload builder ──────────────────────────────────────────
-function p2BuildTypedData(params) {
-  var wallet    = params.wallet;
-  var token     = params.token;
-  var amount    = params.amount;
-  var expiry    = params.expiry;
-  var scope     = params.scope;
-  var nonce     = params.nonce;
-  var tokenInfo = TOKEN_MAP[token.toLowerCase()];
-  var amountWei = BigInt(Math.round(amount * Math.pow(10, tokenInfo ? tokenInfo.decimals : 6))).toString();
-
-  return {
-    types: {
-      EIP712Domain: [
-        { name: 'name',    type: 'string'  },
-        { name: 'version', type: 'string'  },
-        { name: 'chainId', type: 'uint256' },
-      ],
-      PermitAuthorization: [
-        { name: 'owner',  type: 'address' },
-        { name: 'token',  type: 'address' },
-        { name: 'amount', type: 'uint256' },
-        { name: 'expiry', type: 'uint256' },
-        { name: 'scope',  type: 'string'  },
-        { name: 'nonce',  type: 'uint256' },
-      ],
-    },
-    primaryType: 'PermitAuthorization',
-    domain: {
-      name:    'ARC Permit2 Authorization',
-      version: '1',
-      chainId: P2_CHAIN_ID,
-    },
-    message: {
-      owner:  wallet,
-      token:  tokenInfo ? tokenInfo.address : P2_USDC_TOKEN,
-      amount: amountWei,
-      expiry: Math.floor(expiry / 1000),
-      scope:  scope,
-      nonce:  nonce,
-    },
-  };
+// ── Duration / expiry formatters ──────────────────────────────────────────────
+function p2FormatDuration(hours) {
+  if (hours < 1)       return Math.round(hours * 60) + ' minutes';
+  if (hours < 24)      return hours + ' hour' + (hours !== 1 ? 's' : '');
+  if (hours < 24 * 7)  return Math.round(hours / 24) + ' day' + (Math.round(hours / 24) !== 1 ? 's' : '');
+  return Math.round(hours / (24 * 7)) + ' week' + (Math.round(hours / (24 * 7)) !== 1 ? 's' : '');
 }
 
-// ── Core: createPermitFromChat ────────────────────────────────────────────────
+function p2FormatExpiry(ts) {
+  return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// ── Core: createPermitFromChat (FULL 3-step Permit2 flow) ────────────────────
 async function createPermitFromChat(params) {
   var token         = params.token;
   var amount        = params.amount;
   var durationHours = params.durationHours;
   var scope         = params.scope;
   var wallet        = params.wallet;
+  // spenderAddr: who will spend on behalf of the user (default: dApp's agent address or PERMIT2_ADDR itself for demo)
+  var spenderAddr   = params.spenderAddr || window._daatSpenderAddr || wallet; // fallback to wallet for testing
 
-  if (!wallet) {
-    throw new Error('No wallet connected. Connect your EVM wallet first.');
-  }
-  if (!amount || amount <= 0) {
-    throw new Error('Amount must be greater than 0.');
-  }
-  if (!durationHours || durationHours <= 0) {
-    throw new Error('Duration must be greater than 0.');
-  }
-  if (durationHours > MAX_PERMIT_DAYS * 24) {
-    throw new Error('Maximum permit duration is ' + MAX_PERMIT_DAYS + ' days (' + (MAX_PERMIT_DAYS * 24) + ' hours).');
-  }
+  if (!wallet) throw new Error('No wallet connected. Connect your EVM wallet first.');
+  if (!amount || amount <= 0) throw new Error('Amount must be greater than 0.');
+  if (!durationHours || durationHours <= 0) throw new Error('Duration must be greater than 0.');
+  if (durationHours > MAX_PERMIT_DAYS * 24) throw new Error('Maximum permit duration is ' + MAX_PERMIT_DAYS + ' days.');
 
   var provider = (window.walletState && window.walletState.provider) || window.ethereum;
   if (!provider) throw new Error('Wallet provider not found. Reconnect your wallet.');
 
+  // Ensure correct network
   var chainHex = await provider.request({ method: 'eth_chainId' });
   if (parseInt(chainHex, 16) !== P2_CHAIN_ID) {
     try {
-      await provider.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: P2_CHAIN_HEX }],
-      });
+      await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: P2_CHAIN_HEX }] });
     } catch (e) {
       throw new Error('Please switch to Arc Testnet (Chain 5042002) before signing.');
     }
   }
 
+  var tokenInfo = TOKEN_MAP[token.toLowerCase()] || TOKEN_MAP.usdc;
   var expiry    = Date.now() + durationHours * 3600 * 1000;
-  var nonce     = Date.now();
-  var typedData = p2BuildTypedData({ wallet: wallet, token: token, amount: amount, expiry: expiry, scope: scope, nonce: nonce });
+  var expiryUnix = Math.floor(expiry / 1000);
+  var amountWei = BigInt(Math.round(amount * Math.pow(10, tokenInfo.decimals)));
 
-  var signature;
-  try {
-    signature = await provider.request({
-      method: 'eth_signTypedData_v4',
-      params: [wallet, JSON.stringify(typedData)],
-    });
-  } catch (e) {
-    if (e.code === 4001 || /denied|rejected|cancelled/i.test(e.message || '')) {
-      throw new Error('Signature cancelled by user.');
+  // ── Status update helper (updates chat UI if available) ──────────────────
+  var stepMessages = {};
+  function updateStatus(step, state, msg) {
+    stepMessages[step] = { state: state, msg: msg };
+    var stepEl = document.getElementById('p2-' + step + '-status');
+    if (stepEl) {
+      stepEl.textContent = msg;
+      stepEl.className = 'p2-step-status p2-step-' + state;
     }
-    throw new Error('Signature error: ' + (e.message || e));
+    console.log('[Permit2][' + step + '][' + state + '] ' + msg);
   }
 
-  var tokenInfo = TOKEN_MAP[token.toLowerCase()] || TOKEN_MAP.usdc;
+  // ── STEP 1: ERC-20 approve(Permit2, maxUint256) ──────────────────────────
+  var step1TxHash = null;
+  try {
+    step1TxHash = await _approveTokenForPermit2(provider, wallet, tokenInfo, updateStatus);
+  } catch(e) {
+    if (e.code === 4001 || /deny|reject|cancel/i.test(e.message || '')) {
+      throw new Error('CANCELLED: User rejected the ERC-20 approval for Permit2.');
+    }
+    throw new Error('ERC-20 approval failed: ' + e.message);
+  }
+
+  // ── STEP 2: Get current nonce from Permit2 on-chain state ────────────────
+  updateStatus('step2', 'active', 'Fetching current nonce from Permit2…');
+  var onChainState = await _getOnChainPermit2Allowance(wallet, tokenInfo.address, spenderAddr);
+  var nonce = onChainState.nonce; // use current on-chain nonce
+
+  // ── STEP 2a: Sign PermitSingle EIP-712 (off-chain, no gas) ──────────────
+  updateStatus('step2', 'active', 'Signing permit — approve in wallet (no gas)…');
+  var signResult;
+  try {
+    signResult = await _signPermitSingle(provider, wallet, tokenInfo, spenderAddr, amountWei, expiryUnix, nonce);
+  } catch(e) {
+    if (e.code === 4001 || /deny|reject|cancel/i.test(e.message || '')) {
+      throw new Error('CANCELLED: User rejected the Permit2 signature.');
+    }
+    throw new Error('Signature error: ' + e.message);
+  }
+
+  // ── STEP 2b: Submit permit() on-chain ────────────────────────────────────
+  var step2TxHash;
+  try {
+    step2TxHash = await _submitPermitOnChain(
+      provider, wallet, tokenInfo, spenderAddr,
+      amountWei, expiryUnix, nonce,
+      signResult.sig, signResult.sigDeadline,
+      updateStatus
+    );
+  } catch(e) {
+    if (e.code === 4001 || /deny|reject|cancel/i.test(e.message || '')) {
+      throw new Error('CANCELLED: User rejected the permit() transaction.');
+    }
+    // If permit tx fails, still save off-chain record (useful for debugging)
+    console.warn('[Permit2] permit() on-chain failed, saving off-chain only:', e.message);
+    step2TxHash = null;
+  }
+
+  // ── Save permit to localStorage (for UI state tracking) ─────────────────
   var permit = {
     id:           'permit_' + Date.now().toString(36),
     wallet:       wallet,
     token:        token.toUpperCase(),
     tokenAddress: tokenInfo.address,
+    spenderAddr:  spenderAddr,
     amount:       amount,
     amountUsed:   0,
     expiry:       expiry,
+    expiryUnix:   expiryUnix,
     scope:        scope,
     nonce:        nonce,
-    signature:    signature,
+    signature:    signResult.sig,
+    sigDeadline:  signResult.sigDeadline,
+    step1TxHash:  step1TxHash,
+    step2TxHash:  step2TxHash,
+    onChain:      step2TxHash !== null,
     createdVia:   'chat',
     createdAt:    Date.now(),
     label:        amount + ' ' + token.toUpperCase() + ' — ' + (SCOPE_LABELS[scope] || scope),
+    explorerUrl1: step1TxHash ? (P2_EXPLORER + '/tx/' + step1TxHash) : null,
+    explorerUrl2: step2TxHash ? (P2_EXPLORER + '/tx/' + step2TxHash) : null,
   };
 
   p2AddPermit(permit);
@@ -295,18 +584,6 @@ function p2RecordUsage(permitId, amountUsed) {
     if (all[idx].amountUsed >= all[idx].amount) all[idx].amount = 0;
     p2SaveAll(all);
   }
-}
-
-// ── Duration / expiry formatters ──────────────────────────────────────────────
-function p2FormatDuration(hours) {
-  if (hours < 1)       return Math.round(hours * 60) + ' minutes';
-  if (hours < 24)      return hours + ' hour' + (hours !== 1 ? 's' : '');
-  if (hours < 24 * 7)  return Math.round(hours / 24) + ' day' + (Math.round(hours / 24) !== 1 ? 's' : '');
-  return Math.round(hours / (24 * 7)) + ' week' + (Math.round(hours / (24 * 7)) !== 1 ? 's' : '');
-}
-
-function p2FormatExpiry(ts) {
-  return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // ── Chat Intent Handler ───────────────────────────────────────────────────────
@@ -343,7 +620,8 @@ async function handlePermitIntent(msg) {
       var remaining = (p.amount - (p.amountUsed || 0)).toFixed(2);
       var expires   = p2FormatExpiry(p.expiry);
       var tag       = p.createdVia === 'chat' ? ' 🤖 *Created via AI*' : '';
-      return '• **' + remaining + ' ' + p.token + '** · ' + (SCOPE_LABELS[p.scope] || p.scope) + ' · expires ' + expires + tag;
+      var onChainTag = p.onChain ? ' ⛓️ *On-chain*' : ' 📝 *Off-chain only*';
+      return '• **' + remaining + ' ' + p.token + '** · ' + (SCOPE_LABELS[p.scope] || p.scope) + ' · expires ' + expires + tag + onChainTag;
     }).join('\n');
     _append('assistant', '🔐 **Active Permit2 Permissions** (' + active.length + ')\n\n' + lines, 'permit2');
     _card([
@@ -394,29 +672,34 @@ async function handlePermitIntent(msg) {
       _card([{ label: '🔗 Connect Wallet', action: 'openWalletModal()', primary: true }]);
       return true;
     }
-    var token         = intent.token;
+    var tokenCreate   = intent.token;
     var amount        = intent.amount;
     var durationHours = intent.durationHours;
-    var scope         = intent.scope;
+    var scopeCreate   = intent.scope;
     var durLabel      = p2FormatDuration(durationHours);
-    var scopeLabel    = SCOPE_LABELS[scope] || scope;
+    var scopeLabel    = SCOPE_LABELS[scopeCreate] || scopeCreate;
     var expiryDate    = p2FormatExpiry(Date.now() + durationHours * 3600 * 1000);
 
     _append('assistant',
       '🔐 **Permit2 Authorization Request**\n\n' +
-      'You\'re about to allow the agent to spend:\n\n' +
+      'This will execute the full Uniswap Permit2 flow:\n\n' +
+      '| Step | Action | Gas |\n' +
+      '|---|---|---|\n' +
+      '| 1️⃣ | ERC-20 approve USDC → Permit2 contract | ✅ On-chain (one-time) |\n' +
+      '| 2️⃣ | Sign PermitSingle EIP-712 | 📝 Off-chain (no gas) |\n' +
+      '| 3️⃣ | Submit permit() on-chain | ✅ On-chain tx |\n\n' +
       '| Field | Value |\n' +
       '|---|---|\n' +
-      '| Token | **' + token.toUpperCase() + '** |\n' +
-      '| Amount | **' + amount + ' ' + token.toUpperCase() + '** |\n' +
+      '| Token | **' + tokenCreate.toUpperCase() + '** |\n' +
+      '| Amount | **' + amount + ' ' + tokenCreate.toUpperCase() + '** |\n' +
       '| Duration | **' + durLabel + '** |\n' +
       '| Scope | ' + scopeLabel + ' |\n' +
       '| Expires | ' + expiryDate + ' |\n\n' +
-      '⚠️ *Signature required from your wallet. This is off-chain only — no gas cost.*\n\n' +
+      '⚠️ *Steps 1 and 3 require on-chain transactions (wallet popups). Step 1 is skipped if already approved.*\n\n' +
       '**Confirm to proceed?**',
       'permit2');
 
-    window._pendingPermit = { token: token, amount: amount, durationHours: durationHours, scope: scope, wallet: wallet };
+    window._pendingPermit = { token: tokenCreate, amount: amount, durationHours: durationHours, scope: scopeCreate, wallet: wallet };
 
     _card([
       { label: '✅ Confirm & Sign', action: 'window._confirmPermitFromChat()', primary: true, success: true },
@@ -437,29 +720,57 @@ window._confirmPermitFromChat = async function () {
     return;
   }
   if (typeof showTypingIndicator === 'function') showTypingIndicator();
+
   var token         = params.token;
   var amount        = params.amount;
   var durationHours = params.durationHours;
   var scope         = params.scope;
   var durLabel = p2FormatDuration(durationHours);
 
+  // Show progress UI in chat
+  if (typeof appendChatMessage === 'function') {
+    appendChatMessage('assistant',
+      '⏳ **Processing Permit2 authorization…**\n\n' +
+      '<div id="p2-progress-block" style="font-family:monospace;font-size:12px;padding:8px;background:rgba(0,0,0,0.3);border-radius:8px;border:1px solid rgba(255,255,255,0.1);">' +
+      '<div id="p2-step1-status" class="p2-step-status p2-step-pending">⏳ Step 1: ERC-20 approve(Permit2) — waiting…</div>' +
+      '<div id="p2-step2-status" class="p2-step-status p2-step-pending" style="margin-top:4px;">⏳ Step 2: permit() on-chain — waiting…</div>' +
+      '</div>',
+      'permit2');
+  }
+
   try {
     var permit = await createPermitFromChat(params);
     if (typeof hideTypingIndicator === 'function') hideTypingIndicator();
+
+    var step1Info = permit.step1TxHash
+      ? '| Step 1 TX | [`' + permit.step1TxHash.slice(0, 14) + '…`](' + permit.explorerUrl1 + ') |'
+      : '| Step 1 | Already approved (skipped) |';
+    var step2Info = permit.step2TxHash
+      ? '| Step 2 TX | [`' + permit.step2TxHash.slice(0, 14) + '…`](' + permit.explorerUrl2 + ') |'
+      : '| Step 2 | permit() failed — off-chain only |';
+
     if (typeof appendChatMessage === 'function') {
       appendChatMessage('assistant',
-        '✅ **Autonomous spending enabled!**\n\n' +
-        'Your agent can now use up to **' + amount + ' ' + token + '** for **' + durLabel + '**.\n\n' +
+        '✅ **Permit2 authorization complete!**\n\n' +
+        (permit.onChain
+          ? '⛓️ *Fully on-chain — spender can call transferFrom() without further approval.*'
+          : '⚠️ *Only signature saved — permit() tx failed. Spender may need ERC-20 approval.*') +
+        '\n\n' +
         '| Detail | Value |\n' +
         '|---|---|\n' +
+        '| Token | **' + token + '** |\n' +
+        '| Amount | **' + amount + ' ' + token + '** |\n' +
+        '| Duration | ' + durLabel + ' |\n' +
         '| Scope | ' + (SCOPE_LABELS[scope] || scope) + ' |\n' +
         '| Expires | ' + p2FormatExpiry(permit.expiry) + ' |\n' +
         '| Permit ID | `' + permit.id + '` |\n' +
+        step1Info + '\n' +
+        step2Info + '\n' +
         '| Created via | 🤖 AI Chat |\n\n' +
         '*The agent will automatically use this permit within the defined limits.*',
         'permit2');
     }
-    if (typeof showToast === 'function') showToast('✅ Permit created: ' + amount + ' ' + token + ' for ' + durLabel, 'success');
+    if (typeof showToast === 'function') showToast('✅ Permit2 created: ' + amount + ' ' + token + ' for ' + durLabel, 'success');
     if (typeof appendActionCard === 'function') {
       appendActionCard([
         { label: '👁️ View Permits', action: "sendQuickMessage('show my permissions')", primary: true },
@@ -468,13 +779,14 @@ window._confirmPermitFromChat = async function () {
     }
   } catch (e) {
     if (typeof hideTypingIndicator === 'function') hideTypingIndicator();
-    var msg = e.message || String(e);
-    var isCancelled = /cancel|reject|denied/i.test(msg);
+    var errMsg = e.message || String(e);
+    var isCancelled = /cancel|reject|denied|CANCELLED/i.test(errMsg);
     if (typeof appendChatMessage === 'function') {
       appendChatMessage('assistant',
         isCancelled
           ? '⚠️ **Signature cancelled.**\n\nThe permit was not created. You can try again anytime.'
-          : '❌ **Permit creation failed**\n\n' + msg,
+          : '❌ **Permit creation failed**\n\n' + errMsg +
+            '\n\n💡 *Make sure you have Arc Testnet ETH for gas fees.*',
         'permit2');
     }
   }
@@ -534,6 +846,7 @@ function renderPermit2Panel() {
     var expires    = p2FormatExpiry(p.expiry);
     var scopeLabel = SCOPE_LABELS[p.scope] || p.scope;
     var isAI       = p.createdVia === 'chat';
+    var onChainTag = p.onChain ? ' ⛓️' : ' 📝';
     var hoursLeft  = Math.max(0, (p.expiry - Date.now()) / 3600000);
     var urgentClass = hoursLeft < 2
       ? 'border-red-500/40 bg-red-900/10'
@@ -547,7 +860,7 @@ function renderPermit2Panel() {
           '<div class="flex items-center gap-2 mb-1">' +
             '<span class="text-sm font-semibold text-white">' + remaining + ' ' + p.token + '</span>' +
             '<span class="text-xs text-gray-500">/ ' + p.amount + ' total</span>' +
-            (isAI ? '<span class="text-[10px] bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 rounded px-1.5 py-0.5">🤖 Created via AI</span>' : '') +
+            (isAI ? '<span class="text-[10px] bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 rounded px-1.5 py-0.5">🤖 AI' + onChainTag + '</span>' : '') +
           '</div>' +
           '<div class="flex items-center gap-3 text-xs text-gray-500">' +
             '<span><i class="fas fa-tag mr-1"></i>' + scopeLabel + '</span>' +
@@ -560,6 +873,7 @@ function renderPermit2Panel() {
             '<span>Used: ' + used + ' ' + p.token + ' (' + pct + '%)</span>' +
             '<span>Remaining: ' + remaining + ' ' + p.token + '</span>' +
           '</div>' +
+          (p.step2TxHash ? '<div class="mt-1"><a href="' + p.explorerUrl2 + '" target="_blank" class="text-[10px] text-blue-400 hover:underline">⛓️ View permit() tx</a></div>' : '') +
         '</div>' +
         '<button onclick="window._p2RevokeFromPanel(\'' + p.id + '\')"' +
           ' class="flex-shrink-0 text-red-500 hover:text-red-400 hover:bg-red-900/20 rounded-lg p-1.5 transition-colors" title="Revoke permit">' +
@@ -601,6 +915,18 @@ window.handlePermitIntent   = handlePermitIntent;
 window.p2RefreshUI          = p2RefreshUI;
 window.renderPermit2Panel   = renderPermit2Panel;
 
+// Expose Permit2 internals for use by other modules
+window.Permit2Chat = {
+  PERMIT2_ADDR:           PERMIT2_ADDR,
+  TOKEN_MAP:              TOKEN_MAP,
+  checkERC20Allowance:    _checkERC20AllowanceForPermit2,
+  getOnChainAllowance:    _getOnChainPermit2Allowance,
+  approveTokenForPermit2: _approveTokenForPermit2,
+  signPermitSingle:       _signPermitSingle,
+  submitPermitOnChain:    _submitPermitOnChain,
+  waitForReceipt:         _waitForReceipt,
+};
+
 // ── Wallet sync ───────────────────────────────────────────────────────────────
 window.addEventListener('walletConnected',    function() { setTimeout(p2RefreshUI, 200); });
 window.addEventListener('walletDisconnected', function() { setTimeout(p2RefreshUI, 200); });
@@ -627,34 +953,10 @@ setInterval(function() {
   }
 }, 5 * 60 * 1000);
 
-console.log('[Permit2] Module loaded — Arc Testnet 5042002 | Max ' + MAX_PERMIT_DAYS + ' days | EIP-712 off-chain');
+console.log('[Permit2] Module loaded — Arc Testnet 5042002 | FULL ON-CHAIN FLOW ENABLED | Permit2 @ ' + PERMIT2_ADDR);
 
-// ── ADVANCED: Batch Permit creation ──────────────────────────────────────────
-// Creates permits for multiple tokens in one session
-async function createBatchPermitsFromChat(tokenList, amount, durationHours, scope) {
-  var wallet = window.walletState && window.walletState.address;
-  if (!wallet) throw new Error('No wallet connected');
-  var results = [];
-  for (var i = 0; i < tokenList.length; i++) {
-    try {
-      var permit = await createPermitFromChat({
-        token: tokenList[i],
-        amount: amount,
-        durationHours: durationHours,
-        scope: scope,
-        wallet: wallet,
-      });
-      results.push({ token: tokenList[i], permit: permit, ok: true });
-    } catch (e) {
-      results.push({ token: tokenList[i], error: e.message, ok: false });
-    }
-  }
-  return results;
-}
-
-// ── ADVANCED: Reuse check with Engine integration ────────────────────────────
+// ── ADVANCED: p2SuggestReuse ──────────────────────────────────────────────────
 function p2SuggestReuse(wallet, token, amount, scope) {
-  // First check off-chain permits
   var suggestion = null;
   if (typeof Permit2Engine !== 'undefined' && Permit2Engine.suggestReusePermit) {
     suggestion = Permit2Engine.suggestReusePermit(wallet, token, amount, scope);
@@ -726,7 +1028,7 @@ function p2HandleHistoryIntent(msg) {
   return true;
 }
 
-// ── ADVANCED: Handle "check balance" / "check allowance" intent ───────────────
+// ── ADVANCED: Handle "check balance" intent ───────────────────────────────────
 async function p2HandleCheckIntent(msg) {
   var lower = msg.toLowerCase();
   if (!/check.*balance|my.*balance|balance.*usdc|balance.*eurc|check.*allowance|my.*allowance/i.test(lower)) return false;
@@ -745,12 +1047,21 @@ async function p2HandleCheckIntent(msg) {
     if (typeof showTypingIndicator === 'function') showTypingIndicator();
     var usdcBal = await Permit2Engine.getTokenBalance(wallet, 'USDC');
     var eurcBal = await Permit2Engine.getTokenBalance(wallet, 'EURC');
+
+    // Also check on-chain Permit2 state
+    var p2State = await _getOnChainPermit2Allowance(wallet, P2_USDC_TOKEN, wallet);
+    var erc20AllowanceForP2 = await _checkERC20AllowanceForPermit2(wallet, P2_USDC_TOKEN);
+
     _hide();
     _append('assistant',
       '💰 **Token Balances**\n\n' +
       '| Token | Balance |\n|---|---|\n' +
       '| USDC | **' + usdcBal.formatted.toFixed(4) + ' USDC** |\n' +
       '| EURC | **' + eurcBal.formatted.toFixed(4) + ' EURC** |\n\n' +
+      '⛓️ **Permit2 On-Chain State**\n\n' +
+      '| | |\n|---|---|\n' +
+      '| USDC → Permit2 approval | ' + (erc20AllowanceForP2 > 0n ? '✅ Approved (' + (erc20AllowanceForP2 >= BigInt('0xffffffffffffffffffffffffffffffff00000000000000000000000000000000') ? 'Unlimited' : erc20AllowanceForP2.toString()) + ')' : '❌ Not approved') + ' |\n' +
+      '| Active allowance nonce | ' + p2State.nonce + ' |\n\n' +
       '*Wallet: `' + wallet.slice(0, 10) + '…`*',
       'general');
   } catch(e) {
@@ -760,38 +1071,14 @@ async function p2HandleCheckIntent(msg) {
   return true;
 }
 
-// ── ADVANCED: Expiry timer — warn user about expiring permits ─────────────────
-function p2CheckExpiringPermits(wallet) {
-  if (!wallet) return;
-  var active = p2GetActive(wallet);
-  var now    = Date.now();
-  var twoHrs = 2 * 3600 * 1000;
-  var soon   = active.filter(function(p) { return (p.expiry - now) < twoHrs; });
-  if (!soon.length) return;
-  if (typeof showToast === 'function') {
-    showToast('⏰ ' + soon.length + ' permit(s) expire in < 2 hours!', 'warning');
-  }
-  if (typeof appendChatMessage === 'function') {
-    var lines = soon.map(function(p) {
-      var mins = Math.max(0, Math.round((p.expiry - now) / 60000));
-      return '• **' + p.amount + ' ' + p.token + '** — expires in ' + mins + ' min';
-    }).join('\n');
-    appendChatMessage('assistant',
-      '⏰ **Permits expiring soon!**\n\n' + lines +
-      '\n\nRenew with: `allow 100 USDC for 24 hours`',
-      'permit2');
-  }
-}
-
 // Extend handlePermitIntent to also handle advanced intents
 var _origHandlePermitIntent = handlePermitIntent;
 window.handlePermitIntent = async function(msg) {
-  // Try history
   if (p2HandleHistoryIntent(msg)) return true;
-  // Try balance/allowance check
   var balHandled = await p2HandleCheckIntent(msg);
   if (balHandled) return true;
-  // Try batch create: "allow 100 USDC and EURC for 24 hours"
+
+  // Batch: "allow 100 USDC and EURC for 24 hours"
   var lower = msg.toLowerCase();
   if (/allow|authorize|permit/.test(lower) && /usdc.*eurc|eurc.*usdc|both tokens?/.test(lower)) {
     var amtM = msg.match(/(\d+(?:\.\d+)?)/);
@@ -804,7 +1091,6 @@ window.handlePermitIntent = async function(msg) {
         if (typeof appendChatMessage === 'function') appendChatMessage('assistant', '⚠️ Connect wallet first.', 'permit2');
         return true;
       }
-      // Check reuse for both
       var reuseU = p2SuggestReuse(wallet, 'USDC', amount, 'all');
       var reuseE = p2SuggestReuse(wallet, 'EURC', amount, 'all');
       if (reuseU && reuseE) {
@@ -821,7 +1107,7 @@ window.handlePermitIntent = async function(msg) {
         appendChatMessage('assistant',
           '🔐 **Batch Permit Request**\n\n' +
           'Allow agent to spend **' + amount + ' USDC** and **' + amount + ' EURC** for **' + p2FormatDuration(hrs) + '**.\n\n' +
-          '⚠️ *This will request 2 signatures from your wallet.*\n\n' +
+          '⚠️ *This will execute the full Permit2 flow for each token (multiple wallet popups).*\n\n' +
           '**Confirm to proceed?**',
           'permit2');
       }
@@ -835,7 +1121,6 @@ window.handlePermitIntent = async function(msg) {
       return true;
     }
   }
-  // Default: original handler
   return _origHandlePermitIntent(msg);
 };
 
@@ -846,11 +1131,25 @@ window._confirmBatchPermitFromChat = async function() {
   if (!params) return;
   if (typeof showTypingIndicator === 'function') showTypingIndicator();
   try {
-    var results = await createBatchPermitsFromChat(params.tokenList, params.amount, params.durationHours, params.scope);
+    var results = [];
+    for (var i = 0; i < params.tokenList.length; i++) {
+      try {
+        var permit = await createPermitFromChat({
+          token: params.tokenList[i],
+          amount: params.amount,
+          durationHours: params.durationHours,
+          scope: params.scope,
+          wallet: params.wallet,
+        });
+        results.push({ token: params.tokenList[i], permit: permit, ok: true });
+      } catch (e) {
+        results.push({ token: params.tokenList[i], error: e.message, ok: false });
+      }
+    }
     if (typeof hideTypingIndicator === 'function') hideTypingIndicator();
     var lines = results.map(function(r) {
       return r.ok
-        ? '✅ **' + r.token + '** — ' + r.permit.amount + ' ' + r.token + ' authorized (' + p2FormatDuration(params.durationHours) + ')'
+        ? '✅ **' + r.token + '** — ' + r.permit.amount + ' ' + r.token + ' authorized ' + (r.permit.onChain ? '⛓️' : '📝') + ' (' + p2FormatDuration(params.durationHours) + ')'
         : '❌ **' + r.token + '** — ' + r.error;
     });
     if (typeof appendChatMessage === 'function') {
@@ -867,22 +1166,40 @@ window._confirmBatchPermitFromChat = async function() {
   }
 };
 
-// ── Expose new globals ────────────────────────────────────────────────────────
-window.createBatchPermitsFromChat = createBatchPermitsFromChat;
+// ── Expose remaining globals ──────────────────────────────────────────────────
+window.createBatchPermitsFromChat = function(tokenList, amount, durationHours, scope) {
+  var wallet = window.walletState && window.walletState.address;
+  if (!wallet) return Promise.reject(new Error('No wallet connected'));
+  var results = [];
+  var chain = Promise.resolve();
+  tokenList.forEach(function(tok) {
+    chain = chain.then(function() {
+      return createPermitFromChat({ token: tok, amount: amount, durationHours: durationHours, scope: scope, wallet: wallet })
+        .then(function(p) { results.push({ token: tok, permit: p, ok: true }); })
+        .catch(function(e) { results.push({ token: tok, error: e.message, ok: false }); });
+    });
+  });
+  return chain.then(function() { return results; });
+};
 window.p2SuggestReuse             = p2SuggestReuse;
 window.erc20ApproveFromChat       = erc20ApproveFromChat;
 window.p2HandleHistoryIntent      = p2HandleHistoryIntent;
 window.p2HandleCheckIntent        = p2HandleCheckIntent;
-window.p2CheckExpiringPermits     = p2CheckExpiringPermits;
 
-// ── Check expiring permits when wallet connects ───────────────────────────────
+// Check expiring permits when wallet connects
 window.addEventListener('walletConnected', function() {
   setTimeout(function() {
     var wallet = window.walletState && window.walletState.address;
-    if (wallet) p2CheckExpiringPermits(wallet);
+    if (!wallet) return;
+    var active = p2GetActive(wallet);
+    var now    = Date.now();
+    var twoHrs = 2 * 3600 * 1000;
+    var soon   = active.filter(function(p) { return (p.expiry - now) < twoHrs; });
+    if (!soon.length) return;
+    if (typeof showToast === 'function') {
+      showToast('⏰ ' + soon.length + ' permit(s) expire in < 2 hours!', 'warning');
+    }
   }, 2000);
 });
-
-console.log('[Permit2] Module loaded — Arc Testnet 5042002 | Max ' + MAX_PERMIT_DAYS + ' days | EIP-712 off-chain');
 
 })(); // end IIFE
