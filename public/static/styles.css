@@ -3291,184 +3291,292 @@ body.light-mode select:not([multiple]):not([size]) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   LIGHT-MODE: inline-style color overrides & missing section fixes
-   Covers elements that use hardcoded inline style="color:..." which CSS
-   class rules cannot override. Also covers Agents/Guardian/Yield tabs that
-   lacked light-mode rules entirely.
+   INLINE-STYLE COLOR OVERRIDES  — dark + light mode
+   All inline style="color:..." and style="background:..." values used
+   throughout the app are listed here so both themes stay consistent.
+   Dark mode: values are already correct (native dark palette).
+   Light mode: every dark-palette value maps to a readable light equivalent.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Inline color resets: common dark-UI palette → readable on light bg ──── */
+/* ─── TEXT COLORS ────────────────────────────────────────────────────────── */
+
+/* High-emphasis text  #dde2f0 → near-black */
 body.light-mode [style*="color:#dde2f0"],
-body.light-mode [style*="color: #dde2f0"]  { color: var(--lm-text-hi)    !important; }
+body.light-mode [style*="color: #dde2f0"] { color:#0f172a !important; }
 
+/* Body / medium text  #e2e8f0 #e8edf8 #f0f4ff #f1f5f9 → dark slate */
+body.light-mode [style*="color:#e2e8f0"],
+body.light-mode [style*="color: #e2e8f0"],
+body.light-mode [style*="color:#e8edf8"],
+body.light-mode [style*="color: #e8edf8"],
+body.light-mode [style*="color:#f0f4ff"],
+body.light-mode [style*="color: #f0f4ff"],
+body.light-mode [style*="color:#f1f5f9"],
+body.light-mode [style*="color: #f1f5f9"] { color:#1e293b !important; }
+
+/* Muted text palette  #8aaac8 #8899bb #a0b4cc #a8c4e0 #90bce0 */
 body.light-mode [style*="color:#8aaac8"],
-body.light-mode [style*="color: #8aaac8"]  { color: var(--lm-text-muted) !important; }
-
+body.light-mode [style*="color: #8aaac8"],
+body.light-mode [style*="color:#8899bb"],
+body.light-mode [style*="color: #8899bb"],
 body.light-mode [style*="color:#a0b4cc"],
-body.light-mode [style*="color: #a0b4cc"]  { color: var(--lm-text-lo)    !important; }
+body.light-mode [style*="color: #a0b4cc"],
+body.light-mode [style*="color:#a8c4e0"],
+body.light-mode [style*="color: #a8c4e0"],
+body.light-mode [style*="color:#90bce0"],
+body.light-mode [style*="color: #90bce0"],
+body.light-mode [style*="color:#7a9cc0"],
+body.light-mode [style*="color: #7a9cc0"],
+body.light-mode [style*="color:#7a90a8"],
+body.light-mode [style*="color: #7a90a8"],
+body.light-mode [style*="color:#8aaccc"],
+body.light-mode [style*="color: #8aaccc"],
+body.light-mode [style*="color:#7a9ab8"],
+body.light-mode [style*="color: #7a9ab8"],
+body.light-mode [style*="color:#6a90b8"],
+body.light-mode [style*="color: #6a90b8"],
+body.light-mode [style*="color:#7aaad0"],
+body.light-mode [style*="color: #7aaad0"],
+body.light-mode [style*="color:#d0e4f8"],
+body.light-mode [style*="color: #d0e4f8"] { color:#475569 !important; }
 
+/* Dim / placeholder  #3a4870 #4a6490 #5a7898 #6a85aa #5a7090 #5a8070 */
 body.light-mode [style*="color:#3a4870"],
-body.light-mode [style*="color: #3a4870"]  { color: var(--lm-text-muted) !important; }
+body.light-mode [style*="color: #3a4870"],
+body.light-mode [style*="color:#4a6490"],
+body.light-mode [style*="color: #4a6490"],
+body.light-mode [style*="color:#5a7898"],
+body.light-mode [style*="color: #5a7898"],
+body.light-mode [style*="color:#6a85aa"],
+body.light-mode [style*="color: #6a85aa"],
+body.light-mode [style*="color:#5a7090"],
+body.light-mode [style*="color: #5a7090"],
+body.light-mode [style*="color:#3a6090"],
+body.light-mode [style*="color: #3a6090"],
+body.light-mode [style*="color:#3a5a8a"],
+body.light-mode [style*="color: #3a5a8a"],
+body.light-mode [style*="color:#252a40"],
+body.light-mode [style*="color: #252a40"],
+body.light-mode [style*="color:#4a3a7a"],
+body.light-mode [style*="color: #4a3a7a"] { color:#64748b !important; }
 
-body.light-mode [style*="color:#60b4ff"],
-body.light-mode [style*="color: #60b4ff"]  { color: var(--lm-blue)       !important; }
+/* Tailwind grays  #6b7280 #9ca3af #94a3b8 #4b5563 #4a5568 */
+body.light-mode [style*="color:#6b7280"],
+body.light-mode [style*="color: #6b7280"],
+body.light-mode [style*="color:#9ca3af"],
+body.light-mode [style*="color: #9ca3af"],
+body.light-mode [style*="color:#94a3b8"],
+body.light-mode [style*="color: #94a3b8"],
+body.light-mode [style*="color:#4b5563"],
+body.light-mode [style*="color: #4b5563"],
+body.light-mode [style*="color:#4a5568"],
+body.light-mode [style*="color: #4a5568"] { color:#64748b !important; }
 
-body.light-mode [style*="color:#93c5fd"],
-body.light-mode [style*="color: #93c5fd"]  { color: #2563eb              !important; }
+/* Light grays used as labels  #ccc #bbb #999 #888 */
+body.light-mode [style*="color:#ccc"],
+body.light-mode [style*="color: #ccc"],
+body.light-mode [style*="color:#bbb"],
+body.light-mode [style*="color: #bbb"],
+body.light-mode [style*="color:#999"],
+body.light-mode [style*="color: #999"],
+body.light-mode [style*="color:#888"],
+body.light-mode [style*="color: #888"] { color:#64748b !important; }
 
-body.light-mode [style*="color:#fbbf24"],
-body.light-mode [style*="color: #fbbf24"]  { color: #92400e              !important; }
-
-body.light-mode [style*="color:#34d399"],
-body.light-mode [style*="color: #34d399"],
-body.light-mode [style*="color:#6ee7b7"],
-body.light-mode [style*="color: #6ee7b7"]  { color: #15803d              !important; }
-
-body.light-mode [style*="color:#f87171"],
-body.light-mode [style*="color: #f87171"],
-body.light-mode [style*="color:#fca5a5"],
-body.light-mode [style*="color: #fca5a5"]  { color: #b91c1c              !important; }
-
-body.light-mode [style*="color:#a78bfa"],
-body.light-mode [style*="color: #a78bfa"]  { color: var(--lm-accent)     !important; }
-
-body.light-mode [style*="color:#67e8f9"],
-body.light-mode [style*="color: #67e8f9"],
-body.light-mode [style*="color:#22d3ee"],
-body.light-mode [style*="color: #22d3ee"]  { color: #0e7490              !important; }
-
-/* White text on inline style (cards, badges) */
-body.light-mode [style*="color:white"],
-body.light-mode [style*="color: white"],
+/* Pure white / near-white  → near-black */
 body.light-mode [style*="color:#fff"],
 body.light-mode [style*="color: #fff"],
 body.light-mode [style*="color:#ffffff"],
-body.light-mode [style*="color: #ffffff"]  { color: var(--lm-text-hi)    !important; }
+body.light-mode [style*="color: #ffffff"],
+body.light-mode [style*="color:white"],
+body.light-mode [style*="color: white"] { color:#0f172a !important; }
 
-/* Dark inline backgrounds that become white panels in light mode */
+/* Accent: blue  #60b4ff #378ADD #93c5fd #7dd3fc #38bdf8 */
+body.light-mode [style*="color:#60b4ff"],
+body.light-mode [style*="color: #60b4ff"],
+body.light-mode [style*="color:#378ADD"],
+body.light-mode [style*="color: #378ADD"],
+body.light-mode [style*="color:#93c5fd"],
+body.light-mode [style*="color: #93c5fd"],
+body.light-mode [style*="color:#7dd3fc"],
+body.light-mode [style*="color: #7dd3fc"],
+body.light-mode [style*="color:#38bdf8"],
+body.light-mode [style*="color: #38bdf8"] { color:#1d4ed8 !important; }
+
+/* Accent: green  #34d399 #6ee7b7 #86efac #1D9E75 #4a9470 #5a8070 */
+body.light-mode [style*="color:#34d399"],
+body.light-mode [style*="color: #34d399"],
+body.light-mode [style*="color:#6ee7b7"],
+body.light-mode [style*="color: #6ee7b7"],
+body.light-mode [style*="color:#86efac"],
+body.light-mode [style*="color: #86efac"],
+body.light-mode [style*="color:#1D9E75"],
+body.light-mode [style*="color: #1D9E75"],
+body.light-mode [style*="color:#4a9470"],
+body.light-mode [style*="color: #4a9470"],
+body.light-mode [style*="color:#5a8070"],
+body.light-mode [style*="color: #5a8070"] { color:#15803d !important; }
+
+/* Accent: yellow/amber  #fbbf24 #fcd34d #f59e0b */
+body.light-mode [style*="color:#fbbf24"],
+body.light-mode [style*="color: #fbbf24"],
+body.light-mode [style*="color:#fcd34d"],
+body.light-mode [style*="color: #fcd34d"],
+body.light-mode [style*="color:#f59e0b"],
+body.light-mode [style*="color: #f59e0b"] { color:#92400e !important; }
+
+/* Accent: red  #f87171 #fca5a5 */
+body.light-mode [style*="color:#f87171"],
+body.light-mode [style*="color: #f87171"],
+body.light-mode [style*="color:#fca5a5"],
+body.light-mode [style*="color: #fca5a5"] { color:#b91c1c !important; }
+
+/* Accent: purple  #a78bfa #c4b5fd #818cf8 */
+body.light-mode [style*="color:#a78bfa"],
+body.light-mode [style*="color: #a78bfa"],
+body.light-mode [style*="color:#c4b5fd"],
+body.light-mode [style*="color: #c4b5fd"],
+body.light-mode [style*="color:#818cf8"],
+body.light-mode [style*="color: #818cf8"] { color:#6d28d9 !important; }
+
+/* Accent: cyan  #67e8f9 #22d3ee */
+body.light-mode [style*="color:#67e8f9"],
+body.light-mode [style*="color: #67e8f9"],
+body.light-mode [style*="color:#22d3ee"],
+body.light-mode [style*="color: #22d3ee"] { color:#0e7490 !important; }
+
+/* Orange  #e65100 */
+body.light-mode [style*="color:#e65100"],
+body.light-mode [style*="color: #e65100"] { color:#c2410c !important; }
+
+/* ─── BACKGROUND COLORS (inline style="background:...") ──────────────────── */
+
+/* Near-black dark panels → white card */
 body.light-mode [style*="background:rgba(8,11,24"],
 body.light-mode [style*="background: rgba(8,11,24"],
-body.light-mode [style*="background-color:rgba(8,11,24"],
-body.light-mode [style*="background:#080b18"],
-body.light-mode [style*="background: #080b18"]  {
-  background: var(--lm-bg-card)   !important;
-  border-color: var(--lm-border)  !important;
-}
-
-body.light-mode [style*="background:rgba(55,138,221,0.06)"],
-body.light-mode [style*="background: rgba(55,138,221,0.06)"] {
-  background: var(--lm-accent-soft) !important;
-}
-
-/* ── Agents tab (§ 25): tab-content-agents ──────────────────────────────── */
-body.light-mode #tab-content-agents,
-body.light-mode #tab-content-agents > * {
-  background-color: var(--lm-bg) !important;
-}
-
-body.light-mode #tab-content-agents .bg-gray-900,
-body.light-mode #tab-content-agents [class*="bg-gray-9"] {
-  background: var(--lm-bg-card)  !important;
-  border-color: var(--lm-border) !important;
-  box-shadow: var(--lm-shadow-md) !important;
-}
-
-body.light-mode #tab-content-agents .bg-gray-800,
-body.light-mode #tab-content-agents [class*="bg-gray-8"] {
-  background: var(--lm-bg-raised) !important;
-  border-color: var(--lm-border-soft) !important;
-}
-
-body.light-mode #tab-content-agents .text-white,
-body.light-mode #tab-content-agents .text-gray-100,
-body.light-mode #tab-content-agents .text-gray-200  { color: var(--lm-text-hi)    !important; }
-body.light-mode #tab-content-agents .text-gray-300  { color: var(--lm-text-lo)    !important; }
-body.light-mode #tab-content-agents .text-gray-400,
-body.light-mode #tab-content-agents .text-gray-500  { color: var(--lm-text-muted) !important; }
-
-/* Agent log / compliance log sections */
-body.light-mode [id*="agent-log"],
-body.light-mode [id*="compliance-log"],
-body.light-mode [id*="guardian-log"],
-body.light-mode [id*="yield-log"] {
-  background: var(--lm-bg-sunken) !important;
-  border-color: var(--lm-border)  !important;
-  color: var(--lm-text-md)        !important;
-}
-body.light-mode [id*="agent-log"] *,
-body.light-mode [id*="compliance-log"] *,
-body.light-mode [id*="guardian-log"] *,
-body.light-mode [id*="yield-log"] * {
-  color: var(--lm-text-md) !important;
-}
-
-/* Wallet status / stat boxes inside Agents */
-body.light-mode #tab-content-agents [class*="rounded"][class*="border"],
-body.light-mode #tab-content-agents [class*="rounded"][class*="bg-gray"] {
-  background: var(--lm-bg-card)   !important;
-  border-color: var(--lm-border)  !important;
-  box-shadow: var(--lm-shadow-sm) !important;
-}
-
-/* Capability pills / toggle badges */
-body.light-mode #tab-content-agents [style*="background:rgba"],
-body.light-mode #tab-content-agents [style*="background: rgba"] {
-  background: var(--lm-bg-raised) !important;
-  border-color: var(--lm-border)  !important;
-}
-
-/* ── Contracts tab: inline-style card text ──────────────────────────────── */
-body.light-mode #tab-content-contracts [style*="font-size:18px"],
-body.light-mode #tab-content-contracts [style*="font-size: 18px"] {
-  color: var(--lm-text-hi) !important;
-}
-
-/* Contract card container backgrounds */
-body.light-mode #tab-content-contracts [style*="background:rgba(8,11,24"],
-body.light-mode #tab-content-contracts [style*="background: rgba(8,11,24"] {
-  background: var(--lm-bg-card)  !important;
-  border-color: var(--lm-border) !important;
-}
-
-/* Mode selector pills in create form */
-body.light-mode [id^="cf-mode-"],
-body.light-mode [id^="cf-view-tab-"] {
-  color: var(--lm-text-lo) !important;
-}
-
-/* ── Payments tab: remaining invisible text ─────────────────────────────── */
-body.light-mode #tab-content-payments .text-white,
-body.light-mode #tab-content-payments .text-gray-100,
-body.light-mode #tab-content-payments .text-gray-200  { color: var(--lm-text-hi)    !important; }
-body.light-mode #tab-content-payments .text-gray-300  { color: var(--lm-text-lo)    !important; }
-body.light-mode #tab-content-payments .text-gray-400,
-body.light-mode #tab-content-payments .text-gray-500  { color: var(--lm-text-muted) !important; }
-
-/* Queue / history empty state text */
-body.light-mode #tab-content-payments [style*="color:#8aaac8"],
-body.light-mode #tab-content-payments [style*="color: #8aaac8"] { color: var(--lm-text-muted) !important; }
-
-/* ── Generic: any element with dark rgba background that should be light ── */
+body.light-mode [style*="background:rgba(10,12,24"],
+body.light-mode [style*="background: rgba(10,12,24"],
 body.light-mode [style*="background:rgba(15,23,42"],
 body.light-mode [style*="background: rgba(15,23,42"],
 body.light-mode [style*="background:rgba(30,41,59"],
-body.light-mode [style*="background: rgba(30,41,59"] {
-  background: var(--lm-bg-raised) !important;
-  border-color: var(--lm-border-soft) !important;
+body.light-mode [style*="background: rgba(30,41,59"],
+body.light-mode [style*="background:#080b18"],
+body.light-mode [style*="background:#1a1a2e"],
+body.light-mode [style*="background:#1a2235"],
+body.light-mode [style*="background:#1e293b"],
+body.light-mode [style*="background:#111"] {
+  background: #ffffff !important;
+  border-color: #dae1ec !important;
 }
 
-/* ── Status badge text (inline colored spans) ───────────────────────────── */
-body.light-mode .cf-badge-pending  { border-color: rgba(245,158,11,0.35) !important; }
-body.light-mode .cf-badge-funded   { border-color: rgba(96,165,250,0.35) !important; }
-body.light-mode .cf-badge-active   { border-color: rgba(34,211,238,0.35) !important; }
-body.light-mode .cf-badge-completed{ border-color: rgba(52,211,153,0.35) !important; }
+/* Semi-transparent white overlays (used as subtle card tints in dark) → light surface */
+body.light-mode [style*="background:rgba(255,255,255,0.02)"],
+body.light-mode [style*="background:rgba(255,255,255,0.03)"],
+body.light-mode [style*="background:rgba(255,255,255,0.04)"],
+body.light-mode [style*="background:rgba(255,255,255,0.05)"],
+body.light-mode [style*="background:rgba(255,255,255,0.06)"],
+body.light-mode [style*="background:rgba(255,255,255,0.07)"] {
+  background: #f8fafc !important;
+}
 
-/* ── USDC inline label (blue bg chip) ───────────────────────────────────── */
-body.light-mode [style*="background:rgba(29,78,216"],
-body.light-mode [style*="background: rgba(29,78,216"],
-body.light-mode [style*="background:rgba(55,138,221"],
-body.light-mode [style*="background: rgba(55,138,221"] {
-  background: var(--lm-blue-soft)   !important;
-  border-color: var(--lm-blue-border) !important;
-  color: var(--lm-blue) !important;
+/* Blue tints → light blue tint */
+body.light-mode [style*="background:rgba(55,138,221,0.03)"],
+body.light-mode [style*="background:rgba(55,138,221,0.04)"],
+body.light-mode [style*="background:rgba(55,138,221,0.05)"],
+body.light-mode [style*="background:rgba(55,138,221,0.06)"],
+body.light-mode [style*="background:rgba(55,138,221,0.07)"],
+body.light-mode [style*="background:rgba(55,138,221,0.08)"],
+body.light-mode [style*="background:rgba(55,138,221,0.1)"],
+body.light-mode [style*="background:rgba(55,138,221,0.12)"],
+body.light-mode [style*="background:rgba(55,138,221,0.15)"],
+body.light-mode [style*="background:rgba(55,138,221,0.18)"],
+body.light-mode [style*="background:rgba(55,138,221,0.2)"],
+body.light-mode [style*="background:rgba(96,180,255,0.06)"],
+body.light-mode [style*="background:rgba(29,78,216"] {
+  background: rgba(29,78,216,0.07) !important;
+  border-color: rgba(29,78,216,0.2) !important;
+  color: #1d4ed8 !important;
+}
+
+/* Green tints */
+body.light-mode [style*="background:rgba(52,211,153,0.06)"],
+body.light-mode [style*="background:rgba(52,211,153,0.08)"],
+body.light-mode [style*="background:rgba(52,211,153,0.1)"],
+body.light-mode [style*="background:rgba(52,211,153,0.12)"],
+body.light-mode [style*="background:rgba(52,211,153,0.2)"],
+body.light-mode [style*="background:rgba(16,185,129,0.1)"],
+body.light-mode [style*="background:rgba(29,158,117,0.2)"] {
+  background: rgba(21,128,61,0.07) !important;
+  border-color: rgba(21,128,61,0.2) !important;
+}
+
+/* Amber/yellow tints */
+body.light-mode [style*="background:rgba(245,158,11,0.06)"],
+body.light-mode [style*="background:rgba(245,158,11,0.08)"],
+body.light-mode [style*="background:rgba(245,158,11,0.12)"],
+body.light-mode [style*="background:rgba(245,158,11,0.15)"],
+body.light-mode [style*="background:rgba(251,191,36,0.06)"],
+body.light-mode [style*="background:rgba(251,191,36,0.1)"] {
+  background: rgba(146,64,14,0.07) !important;
+  border-color: rgba(146,64,14,0.2) !important;
+}
+
+/* Red tints */
+body.light-mode [style*="background:rgba(239,68,68,0.04)"],
+body.light-mode [style*="background:rgba(239,68,68,0.06)"],
+body.light-mode [style*="background:rgba(239,68,68,0.08)"],
+body.light-mode [style*="background:rgba(239,68,68,0.1)"],
+body.light-mode [style*="background:rgba(239,68,68,0.12)"],
+body.light-mode [style*="background:rgba(239,68,68,0.15)"],
+body.light-mode [style*="background:rgba(96,165,250,0.12)"] {
+  background: rgba(185,28,28,0.06) !important;
+  border-color: rgba(185,28,28,0.18) !important;
+}
+
+/* Purple tints */
+body.light-mode [style*="background:rgba(167,139,250,0.04)"],
+body.light-mode [style*="background:rgba(167,139,250,0.06)"],
+body.light-mode [style*="background:rgba(167,139,250,0.08)"],
+body.light-mode [style*="background:rgba(167,139,250,0.1)"],
+body.light-mode [style*="background:rgba(88,28,135"] {
+  background: rgba(109,40,217,0.07) !important;
+  border-color: rgba(109,40,217,0.2) !important;
+}
+
+/* Gray tints (used for neutral chips/badges) */
+body.light-mode [style*="background:rgba(74,85,104,0.1)"],
+body.light-mode [style*="background:rgba(74,85,104,0.15)"] {
+  background: rgba(100,116,139,0.1) !important;
+  border-color: rgba(100,116,139,0.2) !important;
+}
+
+/* ─── AGENTS TAB — full coverage ─────────────────────────────────────────── */
+body.light-mode #tab-content-agents .bg-gray-900,
+body.light-mode #tab-content-agents [class*="bg-gray-9"] {
+  background: #ffffff !important;
+  border-color: #dae1ec !important;
+  box-shadow: 0 4px 14px rgba(15,23,42,0.09) !important;
+}
+body.light-mode #tab-content-agents .bg-gray-800,
+body.light-mode #tab-content-agents [class*="bg-gray-8"] {
+  background: #f8fafc !important;
+  border-color: #e4eaf4 !important;
+}
+body.light-mode #tab-content-agents .text-white,
+body.light-mode #tab-content-agents .text-gray-100,
+body.light-mode #tab-content-agents .text-gray-200 { color:#0f172a !important; }
+body.light-mode #tab-content-agents .text-gray-300 { color:#475569 !important; }
+body.light-mode #tab-content-agents .text-gray-400,
+body.light-mode #tab-content-agents .text-gray-500 { color:#64748b !important; }
+
+/* Log / console areas inside Agents */
+body.light-mode [id*="agent-log"] *,
+body.light-mode [id*="guardian-log"] *,
+body.light-mode [id*="yield-log"] *,
+body.light-mode [id*="compliance-log"] * { color:#1e293b !important; }
+body.light-mode [id*="agent-log"],
+body.light-mode [id*="guardian-log"],
+body.light-mode [id*="yield-log"],
+body.light-mode [id*="compliance-log"] {
+  background: #f1f5f9 !important;
+  border-color: #dae1ec !important;
 }
