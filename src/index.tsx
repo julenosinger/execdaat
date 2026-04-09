@@ -2216,11 +2216,27 @@ app.get('/', (c) => {
           <!-- Summary stats -->
           <div id="cf-summary" class="mb-4"></div>
 
+          <!-- View Mode Tabs -->
+          <div style="display:flex;gap:6px;margin-bottom:14px;background:rgba(8,11,24,0.7);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:6px;" id="cf-view-mode-tabs">
+            <button id="cf-view-tab-onchain" onclick="cfSetViewMode('onchain')"
+              style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid rgba(55,138,221,0.4);background:rgba(55,138,221,0.15);color:#60b4ff;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:5px;">
+              <i class="fas fa-link" style="font-size:10px;"></i>On-Chain Escrow
+            </button>
+            <button id="cf-view-tab-offchain" onclick="cfSetViewMode('offchain')"
+              style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid rgba(251,191,36,0.15);background:rgba(251,191,36,0.04);color:#8aaac8;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:5px;">
+              <i class="fas fa-money-bill-wave" style="font-size:10px;"></i>Off-Chain
+            </button>
+            <button id="cf-view-tab-custodial" onclick="cfSetViewMode('custodial')"
+              style="flex:1;padding:8px 10px;border-radius:10px;border:1px solid rgba(167,139,250,0.15);background:rgba(167,139,250,0.04);color:#8aaac8;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:5px;">
+              <i class="fas fa-shield-alt" style="font-size:10px;"></i>Custodial
+            </button>
+          </div>
+
           <!-- Header -->
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center gap-2">
-              <i class="fas fa-file-contract" style="color:#60b4ff;font-size:14px;"></i>
-              <span style="color:#dde2f0;font-size:14px;font-weight:700;">My Contracts</span>
+              <i id="cf-list-header-icon" class="fas fa-link" style="color:#60b4ff;font-size:14px;"></i>
+              <span id="cf-list-header-title" style="color:#dde2f0;font-size:14px;font-weight:700;">On-Chain Contracts</span>
             </div>
             <div class="flex items-center gap-2">
               <button onclick="typeof arcShowHiddenContracts==='function'&&arcShowHiddenContracts()"
@@ -5211,27 +5227,80 @@ app.get('/', (c) => {
       var valueLabel  = document.querySelector('label[for="cf-value"]');
 
       if (mode === 'onchain') {
-        if (desc) { desc.style.background = 'rgba(55,138,221,0.06)'; desc.style.borderColor = 'rgba(55,138,221,0.2)'; desc.style.color = '#60b4ff'; desc.innerHTML = '<i class="fas fa-info-circle mr-1"></i><strong>On-Chain Escrow:</strong> USDC bloqueado no smart contract. Fundos liberados via aprovação de milestone.'; }
+        if (desc) { desc.style.background = 'rgba(55,138,221,0.06)'; desc.style.borderColor = 'rgba(55,138,221,0.2)'; desc.style.color = '#60b4ff'; desc.innerHTML = '<i class="fas fa-info-circle mr-1"></i><strong>On-Chain Escrow:</strong> USDC locked in smart contract. Funds released via milestone approval.'; }
         if (btn)  { btn.style.background = 'linear-gradient(135deg,#1565c0,#006064)'; }
         if (lbl)  lbl.textContent = 'Create Contract On-Chain';
         if (ico)  ico.className = 'fas fa-file-signature';
         if (onchainNote) onchainNote.style.display = '';
       } else if (mode === 'offchain') {
-        if (desc) { desc.style.background = 'rgba(251,191,36,0.06)'; desc.style.borderColor = 'rgba(251,191,36,0.2)'; desc.style.color = '#fbbf24'; desc.innerHTML = '<i class="fas fa-info-circle mr-1"></i><strong>Off-Chain Payment:</strong> Registro de contrato sem escrow on-chain. Pagamento externo (PIX, TED, crypto). Serve como registro legal.'; }
+        if (desc) { desc.style.background = 'rgba(251,191,36,0.06)'; desc.style.borderColor = 'rgba(251,191,36,0.2)'; desc.style.color = '#fbbf24'; desc.innerHTML = '<i class="fas fa-info-circle mr-1"></i><strong>Off-Chain Payment:</strong> Contract record without on-chain escrow. External payment (wire, crypto). Serves as a legal record.'; }
         if (btn)  { btn.style.background = 'linear-gradient(135deg,#92400e,#b45309)'; }
         if (lbl)  lbl.textContent = 'Create Off-Chain Contract';
         if (ico)  ico.className = 'fas fa-money-bill-wave';
         if (onchainNote) onchainNote.style.display = 'none';
       } else if (mode === 'custodial') {
-        if (desc) { desc.style.background = 'rgba(167,139,250,0.06)'; desc.style.borderColor = 'rgba(167,139,250,0.2)'; desc.style.color = '#a78bfa'; desc.innerHTML = '<i class="fas fa-info-circle mr-1"></i><strong>Custodial Escrow:</strong> Fundos gerenciados por terceiro. Referência de custódia registrada. Status: In Custody → Released → Disputed.'; }
+        if (desc) { desc.style.background = 'rgba(167,139,250,0.06)'; desc.style.borderColor = 'rgba(167,139,250,0.2)'; desc.style.color = '#a78bfa'; desc.innerHTML = '<i class="fas fa-info-circle mr-1"></i><strong>Custodial Escrow:</strong> Funds managed by a third party. Custody reference recorded. Status: In Custody → Released → Disputed.'; }
         if (btn)  { btn.style.background = 'linear-gradient(135deg,#4c1d95,#5b21b6)'; }
         if (lbl)  lbl.textContent = 'Create Custodial Contract';
         if (ico)  ico.className = 'fas fa-shield-alt';
         if (onchainNote) onchainNote.style.display = 'none';
       }
     }
+
+    // ── View Mode Selector (right panel — filters the contracts list) ─────────
+    // Tracks which mode is currently displayed in the list panel.
+    // Does NOT affect the create-form mode selector (cfUpdateModeUI).
+    window._cfViewMode = 'onchain';
+
+    function cfSetViewMode(mode) {
+      window._cfViewMode = mode;
+
+      // Tab button styles
+      var tabs = {
+        onchain:  { el: document.getElementById('cf-view-tab-onchain'),   color: '#60b4ff', borderActive: 'rgba(55,138,221,0.5)',   bgActive: 'rgba(55,138,221,0.15)',   borderInactive: 'rgba(55,138,221,0.12)',  bgInactive: 'rgba(55,138,221,0.03)' },
+        offchain: { el: document.getElementById('cf-view-tab-offchain'),  color: '#fbbf24', borderActive: 'rgba(251,191,36,0.5)',   bgActive: 'rgba(251,191,36,0.12)',   borderInactive: 'rgba(251,191,36,0.12)',  bgInactive: 'rgba(251,191,36,0.03)' },
+        custodial:{ el: document.getElementById('cf-view-tab-custodial'), color: '#a78bfa', borderActive: 'rgba(167,139,250,0.5)', bgActive: 'rgba(167,139,250,0.12)', borderInactive: 'rgba(167,139,250,0.12)', bgInactive: 'rgba(167,139,250,0.03)' },
+      };
+
+      Object.keys(tabs).forEach(function(k) {
+        var t = tabs[k];
+        if (!t.el) return;
+        if (k === mode) {
+          t.el.style.border      = '1px solid ' + t.borderActive;
+          t.el.style.background  = t.bgActive;
+          t.el.style.color       = t.color;
+        } else {
+          t.el.style.border      = '1px solid ' + t.borderInactive;
+          t.el.style.background  = t.bgInactive;
+          t.el.style.color       = '#8aaac8';
+        }
+      });
+
+      // Update list header icon + title
+      var iconEl  = document.getElementById('cf-list-header-icon');
+      var titleEl = document.getElementById('cf-list-header-title');
+      if (mode === 'onchain') {
+        if (iconEl)  { iconEl.className = 'fas fa-link'; iconEl.style.color = '#60b4ff'; }
+        if (titleEl) titleEl.textContent = 'On-Chain Contracts';
+      } else if (mode === 'offchain') {
+        if (iconEl)  { iconEl.className = 'fas fa-money-bill-wave'; iconEl.style.color = '#fbbf24'; }
+        if (titleEl) titleEl.textContent = 'Off-Chain Contracts';
+      } else if (mode === 'custodial') {
+        if (iconEl)  { iconEl.className = 'fas fa-shield-alt'; iconEl.style.color = '#a78bfa'; }
+        if (titleEl) titleEl.textContent = 'Custodial Contracts';
+      }
+
+      // Re-render with current state (cfState.contracts is the full merged list)
+      if (typeof cfRenderContractsByViewMode === 'function') {
+        cfRenderContractsByViewMode();
+      }
+    }
+
     // Initialize on DOMContentLoaded
-    document.addEventListener('DOMContentLoaded', function() { cfUpdateModeUI('onchain'); });
+    document.addEventListener('DOMContentLoaded', function() {
+      cfUpdateModeUI('onchain');
+      if (typeof cfSetViewMode === 'function') cfSetViewMode('onchain');
+    });
   </script>
   <script>
     // ── Platform initialization ───────────────────────────────────────────────

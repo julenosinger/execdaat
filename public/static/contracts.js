@@ -291,11 +291,11 @@ async function cfInitProvider() {
 
     let provider;
     try { provider = new window.ethers.BrowserProvider(rawProv, 'any'); }
-    catch (e) { return { ok: false, error: 'provider_init', message: 'Falha ao inicializar provider: ' + e.message }; }
+    catch (e) { return { ok: false, error: 'provider_init', message: 'Failed to initialize provider: ' + e.message }; }
 
     let network;
     try { network = await provider.getNetwork(); }
-    catch (e) { return { ok: false, error: 'network_error', message: 'Falha ao ler rede: ' + e.message }; }
+    catch (e) { return { ok: false, error: 'network_error', message: 'Failed to read network: ' + e.message }; }
 
     const chainId = Number(network.chainId);
     if (chainId !== CF_CHAIN_ID) {
@@ -319,7 +319,7 @@ async function cfInitProvider() {
     return { ok: true, provider, signer, factory, usdc, address };
   } catch (e) {
     cfErr('initProvider unexpected:', e);
-    return { ok: false, error: 'unexpected', message: e.message || 'Erro inesperado.' };
+    return { ok: false, error: 'unexpected', message: e.message || 'Unexpected error.' };
   }
 }
 
@@ -342,7 +342,7 @@ async function cfSwitchNetwork() {
         await new Promise(r => setTimeout(r, 1000));
         cfLoadContracts();
       } catch (e2) { showToast('Could not add Arc Testnet: ' + e2.message, 'error'); }
-    } else if (e.code !== 4001) { showToast('Erro ao trocar rede: ' + e.message, 'error'); }
+    } else if (e.code !== 4001) { showToast('Error switching network: ' + e.message, 'error'); }
   }
 }
 
@@ -526,11 +526,11 @@ function cfShowListState(state, message = '') {
   const el = cfEl('cf-contracts-list');
   if (!el) return;
   const states = {
-    no_wallet:     { icon: 'fa-wallet',       color: '#3a4870', msg: 'Conecte sua carteira para ver contratos on-chain.' },
-    wrong_network: { icon: 'fa-network-wired', color: '#f59e0b', msg: message || `Troque para ${CF_NETWORK_NAME}.` },
-    loading:       { icon: 'fa-spinner fa-spin', color: '#60b4ff', msg: 'Carregando contratos on-chain…' },
-    empty:         { icon: 'fa-file-contract', color: '#3a4870', msg: 'Nenhum contrato encontrado. Crie um acima.' },
-    error:         { icon: 'fa-exclamation-triangle', color: '#f87171', msg: message || 'Erro ao carregar contratos.' },
+    no_wallet:     { icon: 'fa-wallet',       color: '#3a4870', msg: 'Connect your wallet to view on-chain contracts.' },
+    wrong_network: { icon: 'fa-network-wired', color: '#f59e0b', msg: message || `Switch to ${CF_NETWORK_NAME}.` },
+    loading:       { icon: 'fa-spinner fa-spin', color: '#60b4ff', msg: 'Loading on-chain contracts…' },
+    empty:         { icon: 'fa-file-contract', color: '#3a4870', msg: 'No contracts found. Create one above.' },
+    error:         { icon: 'fa-exclamation-triangle', color: '#f87171', msg: message || 'Error loading contracts.' },
   };
   const s = states[state] || states.error;
   el.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px 0;text-align:center;">
@@ -706,7 +706,7 @@ async function cfLoadContracts(opts = {}) {
           if (listEl) {
             const bar = document.createElement('div');
             bar.style.cssText = 'background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:11px;color:#fbbf24;display:flex;align-items:center;gap:6px;';
-            bar.innerHTML = `<i class="fas fa-database"></i> Cache (sync falhou: ${e.message}). <button onclick="cfLoadContracts({force:true})" style="margin-left:auto;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:10px;">Tentar novamente</button>`;
+            bar.innerHTML = `<i class="fas fa-database"></i> Cached data (sync failed: ${e.message}). <button onclick="cfLoadContracts({force:true})" style="margin-left:auto;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:2px 10px;border-radius:6px;cursor:pointer;font-size:10px;">Retry</button>`;
             listEl.insertBefore(bar, listEl.firstChild);
           }
           return;
@@ -734,11 +734,15 @@ window.addEventListener('arcSyncRequest', () => {
   }
 });
 
-// ─── Summary bar ──────────────────────────────────────────────────────────────
-function cfRenderSummary(contracts, wallet) {
+// ─── Summary bar (mode-aware) ──────────────────────────────────────────────────
+function cfRenderSummaryForMode(contracts, wallet, viewMode) {
   const el = cfEl('cf-summary');
   if (!el) return;
   if (!contracts.length) { el.innerHTML = ''; return; }
+
+  const vm         = viewMode || 'onchain';
+  const modeColors = { onchain: '#378ADD', offchain: '#fbbf24', custodial: '#a78bfa' };
+  const borderCol  = { onchain: 'rgba(55,138,221,0.15)', offchain: 'rgba(251,191,36,0.18)', custodial: 'rgba(167,139,250,0.18)' };
 
   const total     = contracts.length;
   const pending   = contracts.filter(c => cfUiStatus(c) === 'Pending').length;
@@ -750,11 +754,11 @@ function cfRenderSummary(contracts, wallet) {
     try { return s + BigInt(c.totalValue); } catch { return s; }
   }, 0n);
 
-  el.innerHTML = `<div style="background:rgba(8,11,24,0.9);border:1px solid rgba(55,138,221,0.15);border-radius:14px;padding:12px 16px;margin-bottom:4px;">
+  el.innerHTML = `<div style="background:rgba(8,11,24,0.9);border:1px solid ${borderCol[vm]};border-radius:14px;padding:12px 16px;margin-bottom:4px;">
     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
       <div style="display:flex;flex-direction:column;">
-        <span style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;">Total Escrow</span>
-        <span style="font-size:18px;font-weight:800;color:#dde2f0;">$${cfFmtUsdc(totalUsdc)} <span style="font-size:11px;color:#378ADD;font-weight:600;">USDC</span></span>
+        <span style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;">Total Value</span>
+        <span style="font-size:18px;font-weight:800;color:#dde2f0;">$${cfFmtUsdc(totalUsdc)} <span style="font-size:11px;color:${modeColors[vm]};font-weight:600;">USDC</span></span>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;">
         ${pending   ? `<span style="font-size:11px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:3px 10px;border-radius:999px;">${pending} Pending</span>` : ''}
@@ -764,16 +768,49 @@ function cfRenderSummary(contracts, wallet) {
         <span style="font-size:11px;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.18);color:#60b4ff;padding:3px 10px;border-radius:999px;">${total} Total</span>
       </div>
     </div>
-    <div style="margin-top:8px;font-size:10px;color:#3a4870;">
+    ${vm === 'onchain' ? `<div style="margin-top:8px;font-size:10px;color:#3a4870;">
       <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" style="color:#378ADD;">
         <i class="fas fa-external-link-alt" style="font-size:9px;margin-right:3px;"></i>ContractFactory on ArcScan
       </a>
-    </div>
+    </div>` : ''}
   </div>`;
 }
 
-// ─── Render contracts list ─────────────────────────────────────────────────────
-function cfRenderContracts(contracts, wallet) {
+// ─── Summary bar ──────────────────────────────────────────────────────────────
+function cfRenderSummary(contracts, wallet) {
+  // Save the full merged list (same as cfRenderContracts does)
+  cfState._allContracts = contracts;
+
+  const viewMode = (window._cfViewMode) || 'onchain';
+  // Filter summary to match the active view tab
+  const filtered = contracts.filter(c => cfContractViewMode(c) === viewMode);
+  cfRenderSummaryForMode(filtered, wallet, viewMode);
+}
+
+// ─── Helper: classify a contract by its view mode ─────────────────────────────
+function cfContractViewMode(c) {
+  if (!c._isOffchain) return 'onchain';
+  const meta = cfGetMeta(c.id);
+  const m = meta.mode || 'offchain';
+  return (m === 'custodial') ? 'custodial' : 'offchain';
+}
+
+// ─── Re-render using the currently selected view-mode tab ─────────────────────
+function cfRenderContractsByViewMode() {
+  // cfState._allContracts holds the full merged list saved during the last load
+  const all    = cfState._allContracts || cfState.contracts || [];
+  const wallet = cfState.lastWallet    || window.walletState?.address || null;
+  const mode   = (window._cfViewMode) || 'onchain';
+
+  // Filter to only contracts matching the active view-mode tab
+  const filtered = all.filter(c => cfContractViewMode(c) === mode);
+
+  cfRenderContractsByMode(filtered, wallet, mode);
+  cfRenderSummaryForMode(filtered, wallet, mode);
+}
+
+// ─── Render contracts list (mode-aware, used by both direct calls & view tabs) ─
+function cfRenderContractsByMode(contracts, wallet, viewMode) {
   const el = cfEl('cf-contracts-list');
   if (!el) return;
 
@@ -784,10 +821,57 @@ function cfRenderContracts(contracts, wallet) {
   const visible = sorted.filter(c => _cfDismiss.isVisible(String(c.id)));
 
   if (!visible.length) {
+    const modeLabels = { onchain: 'On-Chain Escrow', offchain: 'Off-Chain Payment', custodial: 'Custodial Escrow' };
+    const modeColors = { onchain: '#60b4ff', offchain: '#fbbf24', custodial: '#a78bfa' };
+    const modeIcons  = { onchain: 'fa-link', offchain: 'fa-money-bill-wave', custodial: 'fa-shield-alt' };
+    const vm = viewMode || 'onchain';
     el.innerHTML = `
-      <div style="color:#8aaac8;font-size:11px;text-align:center;padding:32px 0;">
-        <i class="fas fa-file-contract" style="font-size:22px;display:block;margin-bottom:8px;color:#3a4870;"></i>
-        No contracts in local view. Refresh to reload from chain.
+      <div style="color:#8aaac8;font-size:12px;text-align:center;padding:40px 0;display:flex;flex-direction:column;align-items:center;gap:10px;">
+        <div style="width:52px;height:52px;border-radius:14px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.12);display:flex;align-items:center;justify-content:center;">
+          <i class="fas ${modeIcons[vm]}" style="color:${modeColors[vm]};font-size:20px;"></i>
+        </div>
+        <span style="color:#8aaac8;">No <strong style="color:${modeColors[vm]};">${modeLabels[vm]}</strong> contracts found.</span>
+        <span style="font-size:11px;color:#3a4870;">Switch mode in the form to create one, or refresh.</span>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = visible.map(c => cfContractCard(c, wallet)).join('');
+}
+
+// ─── Render contracts list ─────────────────────────────────────────────────────
+// (public entry-point called by cfLoadContracts — delegates to mode-aware renderer)
+function cfRenderContracts(contracts, wallet) {
+  // Save the full merged list so view-mode tabs can re-filter without reloading
+  cfState._allContracts = contracts;
+
+  const el = cfEl('cf-contracts-list');
+  if (!el) return;
+
+  // Determine which view-mode tab is active (default: onchain)
+  const viewMode = (window._cfViewMode) || 'onchain';
+
+  // Filter to the active tab's mode
+  const filtered = contracts.filter(c => cfContractViewMode(c) === viewMode);
+
+  const order = { Active: 0, Funded: 1, Pending: 2, Completed: 3, Cancelled: 4 };
+  const sorted = [...filtered].sort((a, b) => (order[cfUiStatus(a)] ?? 9) - (order[cfUiStatus(b)] ?? 9));
+
+  // Apply local dismiss filter — only hides from view, contract still on-chain
+  const visible = sorted.filter(c => _cfDismiss.isVisible(String(c.id)));
+
+  if (!visible.length) {
+    const modeLabels = { onchain: 'On-Chain Escrow', offchain: 'Off-Chain Payment', custodial: 'Custodial Escrow' };
+    const modeColors = { onchain: '#60b4ff', offchain: '#fbbf24', custodial: '#a78bfa' };
+    const modeIcons  = { onchain: 'fa-link', offchain: 'fa-money-bill-wave', custodial: 'fa-shield-alt' };
+    const vm = viewMode;
+    el.innerHTML = `
+      <div style="color:#8aaac8;font-size:12px;text-align:center;padding:40px 0;display:flex;flex-direction:column;align-items:center;gap:10px;">
+        <div style="width:52px;height:52px;border-radius:14px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.12);display:flex;align-items:center;justify-content:center;">
+          <i class="fas ${modeIcons[vm]}" style="color:${modeColors[vm]};font-size:20px;"></i>
+        </div>
+        <span style="color:#8aaac8;">No <strong style="color:${modeColors[vm]};">${modeLabels[vm]}</strong> contracts found.</span>
+        <span style="font-size:11px;color:#3a4870;">Switch mode in the form to create one, or refresh.</span>
       </div>`;
     return;
   }
@@ -883,11 +967,11 @@ function cfContractCard(c, wallet) {
   } else if (isInDispute) {
     // During active dispute: only resolution options for participants
     actionBtns = `<span style="font-size:11px;color:#f87171;display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;flex-wrap:wrap;gap:8px;">
-      <i class="fas fa-gavel"></i>Fundos bloqueados — disputa ativa
+      <i class="fas fa-gavel"></i>Funds locked — active dispute
     </span>`;
     if (isParticipant)
       actionBtns += `<button onclick="cfShowDisputeResolution(${c.id})" class="cf-action-btn" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#f87171;">
-        <i class="fas fa-balance-scale mr-1.5"></i>Resolver Disputa
+        <i class="fas fa-balance-scale mr-1.5"></i>Resolve Dispute
       </button>`;
   } else {
     if (mode === 'onchain') {
@@ -923,7 +1007,7 @@ function cfContractCard(c, wallet) {
     // Open Dispute button — available to both parties when active/funded (not closed, not already disputed)
     if (isParticipant && (uiStatus === 'Active' || uiStatus === 'Funded' || hasProofs) && !isClosed)
       actionBtns += `<button onclick="cfShowOpenDispute(${c.id})" class="cf-action-btn" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;">
-        <i class="fas fa-gavel mr-1.5"></i>Abrir Disputa
+        <i class="fas fa-gavel mr-1.5"></i>Open Dispute
       </button>`;
 
     // Wallet-link
@@ -942,7 +1026,7 @@ function cfContractCard(c, wallet) {
     // Close Contract — only when Completed and participant, dispute resolved or none
     if ((uiStatus === 'Completed' || disputeStat === 'resolved') && isParticipant && !isClosed)
       actionBtns += `<button onclick="cfCloseContract(${c.id})" class="cf-action-btn" style="background:rgba(74,85,104,0.12);border:1px solid rgba(74,85,104,0.3);color:#9ca3af;">
-        <i class="fas fa-lock mr-1.5"></i>Encerrar Contrato
+        <i class="fas fa-lock mr-1.5"></i>Close Contract
       </button>`;
   }
 
@@ -977,7 +1061,7 @@ function cfContractCard(c, wallet) {
           ${uiStatus==='Active'&&isClient&&m.status==='Pending'&&mode==='onchain'&&!isInDispute&&!isClosed
             ? `<button onclick="cfReleaseMilestone(${c.id},${i})" style="font-size:10px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.25);color:#34d399;padding:2px 8px;border-radius:6px;cursor:pointer;">Release</button>`
             : isInDispute && m.status==='Pending'
-              ? `<span style="font-size:10px;color:#f87171;" title="Fundos bloqueados por disputa"><i class="fas fa-lock mr-1"></i>Bloqueado</span>`
+              ? `<span style="font-size:10px;color:#f87171;" title="Funds locked due to active dispute"><i class="fas fa-lock mr-1"></i>Locked</span>`
               : `<span style="font-size:10px;color:${m.status==='Released'?'#34d399':'#3a4870'};">${m.status}</span>`}
         </div>`).join('')}
     </div>` : '';
@@ -1025,7 +1109,7 @@ function cfContractCard(c, wallet) {
       <div style="margin-top:8px;padding:7px 10px;background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.2);border-radius:8px;">
         <div style="font-size:10px;font-weight:700;color:#34d399;margin-bottom:4px;"><i class="fas fa-check-circle mr-1"></i>${t("cf_resolution_label")}</div>
         <div style="font-size:11px;color:#8899bb;">${dispute.resolution.outcome === 'contractor' ? t('cf_resolution_contractor') : dispute.resolution.outcome === 'client' ? t('cf_resolution_client') : t('cf_resolution_mutual')}</div>
-        <div style="font-size:10px;color:#3a4870;margin-top:3px;">${new Date(dispute.resolution.resolvedAt).toLocaleString('pt-BR')}</div>
+        <div style="font-size:10px;color:#3a4870;margin-top:3px;">${new Date(dispute.resolution.resolvedAt).toLocaleString('en-US')}</div>
         ${dispute.resolution.note ? `<div style="font-size:11px;color:#6b7280;margin-top:3px;font-style:italic;">"${dispute.resolution.note}"</div>` : ''}
       </div>` : '';
     const approvalHtml = dispute.status === 'open' && dispute.mutualApproval ? (() => {
@@ -1044,11 +1128,11 @@ function cfContractCard(c, wallet) {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
         <i class="fas ${ds.icon}" style="color:${ds.color};"></i>
         <span style="font-size:11px;font-weight:800;color:${ds.color};text-transform:uppercase;letter-spacing:0.05em;">${ds.label}</span>
-        <span style="font-size:10px;color:#3a4870;margin-left:auto;">${new Date(dispute.openedAt).toLocaleString('pt-BR')}</span>
+        <span style="font-size:10px;color:#3a4870;margin-left:auto;">${new Date(dispute.openedAt).toLocaleString('en-US')}</span>
       </div>
       <div style="font-size:12px;color:#dde2f0;margin-bottom:6px;font-weight:600;">"${dispute.reason}"</div>
       <div style="font-size:10px;color:#4a6490;margin-bottom:6px;">
-        <i class="fas fa-user mr-1"></i>Aberto por: <span style="font-family:monospace;">${cfShort(dispute.openedBy)}</span>
+        <i class="fas fa-user mr-1"></i>Opened by: <span style="font-family:monospace;">${cfShort(dispute.openedBy)}</span>
         ${dispute.openedBy?.toLowerCase() === c.client?.toLowerCase() ? ' (Cliente)' : ' (Contratado)'}
       </div>
       ${evidences.length ? `
@@ -1069,11 +1153,11 @@ function cfContractCard(c, wallet) {
     <div style="margin-top:8px;padding:10px 12px;background:rgba(74,85,104,0.1);border:1px solid rgba(74,85,104,0.25);border-radius:10px;">
       <div style="display:flex;align-items:center;gap:6px;">
         <i class="fas fa-lock" style="color:#6b7280;"></i>
-        <span style="font-size:11px;font-weight:700;color:#9ca3af;">Contrato Encerrado</span>
-        <span style="font-size:10px;color:#3a4870;margin-left:auto;">${new Date(meta.closedAt || 0).toLocaleString('pt-BR')}</span>
+        <span style="font-size:11px;font-weight:700;color:#9ca3af;">Contract Closed</span>
+        <span style="font-size:10px;color:#3a4870;margin-left:auto;">${new Date(meta.closedAt || 0).toLocaleString('en-US')}</span>
       </div>
-      <div style="font-size:10px;color:#4a5568;margin-top:4px;">Encerrado por: <span style="font-family:monospace;">${cfShort(meta.closedBy)}</span></div>
-      <div style="font-size:10px;color:#3a4870;margin-top:2px;">Todas as interações foram bloqueadas permanentemente.</div>
+      <div style="font-size:10px;color:#4a5568;margin-top:4px;">Closed by: <span style="font-family:monospace;">${cfShort(meta.closedBy)}</span></div>
+      <div style="font-size:10px;color:#3a4870;margin-top:2px;">All interactions have been permanently locked.</div>
     </div>` : '';
 
   // ── Meta info ──────────────────────────────────────────────────────────────
@@ -1094,8 +1178,8 @@ function cfContractCard(c, wallet) {
             <span style="font-size:13px;font-weight:800;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;" title="${c.title||''}">${c.title || 'Untitled'}</span>
             <span style="font-size:10px;color:#3a4870;font-family:monospace;">#${c.id}</span>
             ${cfStatusBadge(uiStatus)}
-            ${isInDispute ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#f87171;padding:1px 8px;border-radius:999px;"><i class="fas fa-gavel" style="font-size:8px;"></i>Em Disputa</span>` : ''}
-            ${isClosed ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(74,85,104,0.15);border:1px solid rgba(74,85,104,0.3);color:#9ca3af;padding:1px 8px;border-radius:999px;"><i class="fas fa-lock" style="font-size:8px;"></i>Encerrado</span>` : ''}
+            ${isInDispute ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#f87171;padding:1px 8px;border-radius:999px;"><i class="fas fa-gavel" style="font-size:8px;"></i>In Dispute</span>` : ''}
+            ${isClosed ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(74,85,104,0.15);border:1px solid rgba(74,85,104,0.3);color:#9ca3af;padding:1px 8px;border-radius:999px;"><i class="fas fa-lock" style="font-size:8px;"></i>Closed</span>` : ''}
           </div>
           <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;">
             <span style="font-size:10px;font-weight:600;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.15);color:${roleColor};padding:1px 8px;border-radius:999px;">${role}</span>
@@ -1215,7 +1299,7 @@ function cfShowProofUpload(contractId) {
       ondragleave="this.style.borderColor='rgba(167,139,250,0.3)';this.style.background=''"
       ondrop="cfHandleProofDrop(event,${contractId})">
       <i class="fas fa-cloud-upload-alt" style="font-size:28px;color:#a78bfa;margin-bottom:8px;display:block;"></i>
-      <p style="color:#dde2f0;font-size:13px;font-weight:600;margin-bottom:4px;">Arraste arquivos ou clique para selecionar</p>
+      <p style="color:#dde2f0;font-size:13px;font-weight:600;margin-bottom:4px;">Drag files here or click to select</p>
       <p style="color:#4a3a7a;font-size:11px;">${t("cf_file_types_hint")}</p>
     </div>
     <input type="file" id="cf-proof-file-input" multiple accept="image/*,.pdf,.doc,.docx"
@@ -1234,8 +1318,7 @@ function cfShowProofUpload(contractId) {
       </button>
       <button onclick="document.getElementById('cf-proof-modal').remove()"
         style="padding:11px 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280;border-radius:12px;cursor:pointer;font-size:13px;">
-        Cancelar
-      </button>
+        Cancel      </button>
     </div>
     <p style="font-size:10px;color:#3a4870;margin-top:10px;text-align:center;">
       <i class="fas fa-shield-alt mr-1"></i>${t("cf_hash_generated_locally")}
@@ -1258,7 +1341,7 @@ function cfHandleProofFilesRaw(files, contractId) {
   if (!window._cfProofFiles) window._cfProofFiles = [];
   const MAX = 10 * 1024 * 1024;
   files.forEach(f => {
-    if (f.size > MAX) { showToast(`${f.name} excede 10MB.`, 'error'); return; }
+    if (f.size > MAX) { showToast(`${f.name} exceeds 10MB.`, 'error'); return; }
     if (window._cfProofFiles.length >= 5) { showToast('Max 5 files at a time.', 'warning'); return; }
     const dup = window._cfProofFiles.find(x => x.name === f.name && x.size === f.size);
     if (dup) { showToast(`${f.name} already added.`, 'warning'); return; }
@@ -1299,22 +1382,22 @@ async function cfHashFile(file) {
 // Execute proof upload — stores files as base64 + SHA-256 hash
 async function cfExecuteProofUpload(contractId) {
   const files = window._cfProofFiles || [];
-  if (!files.length) { showToast('Selecione pelo menos um arquivo.', 'warning'); return; }
+  if (!files.length) { showToast('Please select at least one file.', 'warning'); return; }
 
   const btn    = document.getElementById('cf-proof-upload-btn');
   const status = document.getElementById('cf-proof-status');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processando…'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing…'; }
   if (status) {
     status.style.display = 'block';
     status.style.cssText += ';background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);color:#60b4ff;';
-    status.textContent = 'Gerando hashes e armazenando arquivos…';
+    status.textContent = 'Generating hashes and storing files…';
   }
 
   const uploaded = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     try {
-      if (status) status.textContent = `[${i+1}/${files.length}] Processando: ${file.name}…`;
+      if (status) status.textContent = `[${i+1}/${files.length}] Processing: ${file.name}…`;
 
       // Compute SHA-256 fingerprint
       const hash = await cfHashFile(file);
@@ -1350,17 +1433,17 @@ async function cfExecuteProofUpload(contractId) {
     // Check for duplicate hashes
     const newProofs = uploaded.filter(u => !existing.some(e => e.hash === u.hash));
     const dupes     = uploaded.length - newProofs.length;
-    if (dupes > 0) showToast(`${dupes} arquivo(s) duplicado(s) ignorado(s).`, 'warning');
+    if (dupes > 0) showToast(`${dupes} duplicate file(s) ignored.`, 'warning');
 
     cfSetMeta(contractId, { proofs: [...existing, ...newProofs] });
     if (status) {
       status.style.background = 'rgba(52,211,153,0.08)';
       status.style.border     = '1px solid rgba(52,211,153,0.2)';
       status.style.color      = '#34d399';
-      status.innerHTML = `✅ ${newProofs.length} arquivo(s) armazenado(s)!<br>
+      status.innerHTML = `✅ ${newProofs.length} file(s) stored!<br>
         <span style="font-size:10px;color:#60b4ff;">${t("cf_hash_click_commit")}</span>`;
     }
-    showToast(`✅ ${newProofs.length} prova(s) enviada(s)! Aguardando commit do cliente.`, 'success');
+    showToast(`✅ ${newProofs.length} proof(s) submitted! Awaiting client commit.`, 'success');
     window._cfProofFiles = [];
     cfRenderProofPreview();
     setTimeout(() => {
@@ -1368,7 +1451,7 @@ async function cfExecuteProofUpload(contractId) {
       cfLoadContracts({ force: true });
     }, 2500);
   } else {
-    if (status) { status.style.color = '#f87171'; status.textContent = 'Falha ao processar arquivos. Tente novamente.'; }
+    if (status) { status.style.color = '#f87171'; status.textContent = 'Failed to process files. Please try again.'; }
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-2"></i>Upload & Gerar Hash'; }
   }
 }
@@ -1397,7 +1480,7 @@ function cfViewProof(contractId, proofIndex) {
       return `<div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:16px;">
         <img src="${p.url}" alt="${p.name}"
           style="max-width:100%;max-height:calc(100vh - 140px);object-fit:contain;border-radius:10px;box-shadow:0 0 40px rgba(0,0,0,0.6);"
-          onerror="this.outerHTML='<div style=\\'color:#f87171;text-align:center;padding:40px;\\'><i class=\\"fas fa-image-slash\\" style=\\"font-size:40px;display:block;margin-bottom:12px;\\"></i>Não foi possível renderizar a imagem.</div>'" />
+          onerror="this.outerHTML='<div style=\\'color:#f87171;text-align:center;padding:40px;\\'><i class=\\"fas fa-image-slash\\" style=\\"font-size:40px;display:block;margin-bottom:12px;\\"></i>Could not render image.</div>'" />
       </div>`;
     }
 
@@ -1520,7 +1603,7 @@ window.cfDownloadProofByUrl = function(contractId, proofIndex) {
     a.download = p.name || `proof_${contractId}_${proofIndex}`;
     a.click();
   } catch(e) {
-    showToast('Erro ao baixar arquivo: ' + e.message, 'error');
+    showToast('Error downloading file: ' + e.message, 'error');
   }
 };
 
@@ -2062,13 +2145,13 @@ async function cfCommitProof(contractId) {
     </div>
     <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:10px;margin-bottom:14px;font-size:11px;color:#fbbf24;">
       <i class="fas fa-exclamation-triangle mr-1"></i>
-      Ao confirmar, você atesta que revisou a prova de trabalho e está de acordo. Esta ação <strong>não pode ser desfeita</strong>.
+      By confirming, you attest that you have reviewed the proof of work and agree. This action <strong>cannot be undone</strong>.
       ${(c?.milestoneCount || 0) > 0 ? `<br><br>${t("cf_after_confirm_hint")}` : ''}
     </div>
     <div style="display:flex;gap:10px;">
       <button onclick="cfExecuteCommitProof(${contractId})" id="cf-commit-btn"
         style="flex:1;background:linear-gradient(135deg,#065f46,#047857);color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;">
-        <i class="fas fa-stamp mr-2"></i>Confirmar & Bloquear Prova
+        <i class="fas fa-stamp mr-2"></i>Confirm & Lock Proof
       </button>
       <button onclick="document.getElementById('cf-commit-modal').remove()"
         style="padding:12px 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280;border-radius:12px;cursor:pointer;font-size:13px;">Cancelar</button>
@@ -2115,7 +2198,7 @@ async function cfExecuteCommitProof(contractId) {
   } catch (e) {
     cfErr('cfExecuteCommitProof:', e.message);
     showToast(`❌ Erro ao confirmar: ${e.message}`, 'error');
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-stamp mr-2"></i>Confirmar & Bloquear Prova'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-stamp mr-2"></i>Confirm & Lock Proof'; }
   }
 }
 
@@ -2268,7 +2351,7 @@ function cfShowWalletLink(contractId) {
       <div style="color:#3a4870;font-weight:700;text-transform:uppercase;margin-bottom:6px;letter-spacing:0.06em;">Detalhes do Contrato</div>
       <div style="color:#8899bb;margin-bottom:2px;">T&iacute;tulo: <span style="color:#dde2f0;">${c && c.title ? c.title.replace(/</g,'&lt;').replace(/>/g,'&gt;') : '&mdash;'}</span></div>
       <div style="color:#8899bb;margin-bottom:2px;">Valor: <span style="color:#dde2f0;">$${c ? cfFmtUsdc(c.totalValue) : '&mdash;'} USDC</span></div>
-      <div style="color:#8899bb;margin-bottom:2px;">Modo: <span style="color:${CF_MODES[mode] ? CF_MODES[mode].color : '#dde2f0'};">${CF_MODES[mode] ? CF_MODES[mode].label : mode}</span></div>
+      <div style="color:#8899bb;margin-bottom:2px;">Mode: <span style="color:${CF_MODES[mode] ? CF_MODES[mode].color : '#dde2f0'};">${CF_MODES[mode] ? CF_MODES[mode].label : mode}</span></div>
       <div style="color:#8899bb;margin-bottom:2px;">Chain: <span style="color:#dde2f0;">Arc Testnet (${CF_CHAIN_ID})</span></div>
       <div style="color:#8899bb;">Contratado: <span style="font-family:monospace;color:#34d399;">${cfShort(c && c.contractor ? c.contractor : '')}</span></div>
       ${contractorEmail ? `<div style="color:#8899bb;margin-top:4px;">Email: <span style="color:#60b4ff;">${contractorEmail}</span></div>` : ''}
@@ -2311,10 +2394,10 @@ function cfShowOffchainActions(contractId) {
       <select id="cf-offchain-status" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(251,191,36,0.3);color:#dde2f0;border-radius:8px;padding:9px 12px;font-size:13px;outline:none;">
         <option value="pending"   ${meta.offchainStatus==='pending'  ?'selected':''}>${t("cf_status_pending")}</option>
         <option value="in_custody" ${meta.offchainStatus==='in_custody'?'selected':''}>${t("cf_status_in_custody")}</option>
-        <option value="paid"      ${meta.offchainStatus==='paid'     ?'selected':''}>💳 Paid — Pago (aguardando confirmação)</option>
+        <option value="paid"      ${meta.offchainStatus==='paid'     ?'selected':''}>💳 Paid — Awaiting confirmation</option>
         <option value="confirmed" ${meta.offchainStatus==='confirmed'?'selected':''}>✅ Confirmed — Confirmado</option>
         <option value="disputed"  ${meta.offchainStatus==='disputed' ?'selected':''}>${t("cf_status_disputed")}</option>
-        <option value="released"  ${meta.offchainStatus==='released' ?'selected':''}>🎉 Released — Liberado</option>
+        <option value="released"  ${meta.offchainStatus==='released' ?'selected':''}>🎉 Released</option>
       </select>
     </div>
 
@@ -2366,12 +2449,12 @@ function cfSaveOffchainStatus(contractId) {
 // ─── Mark as Complete (release all milestones) ─────────────────────────────────
 async function cfMarkComplete(contractId) {
   const wallet = window.walletState?.address;
-  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
+  if (!wallet) { showToast('Connect your wallet.', 'warning'); return; }
   if (cfState.pending) { showToast(t('contracts_pending_tx'), 'warning'); return; }
 
   const c = cfState.contracts.find(x => x.id === contractId);
   if (!c) { showToast(t('contracts_contract_not_found'), 'error'); return; }
-  if (c.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Apenas o cliente pode marcar como completo.', 'error'); return; }
+  if (c.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Only the client can mark as complete.', 'error'); return; }
 
   const meta = cfGetMeta(contractId);
   if (!meta.proofs?.length) { showToast(t('contracts_upload_proof_first'), 'warning'); return; }
@@ -2417,7 +2500,7 @@ async function cfMarkComplete(contractId) {
         netValue: cfFmtUsdc(cfNetAmount(BigInt(c.totalValue))),
         proofCount: meta.proofs.length, proofRefs: meta.proofs.map(p => p.name).join(', '),
         custodianAddr: meta.custodianAddr || '', escrowRef: meta.escrowRef || '',
-        completedAt: new Date(completedAt).toLocaleString('pt-BR'),
+        completedAt: new Date(completedAt).toLocaleString('en-US'),
         network: CF_NETWORK_NAME, chainId: CF_CHAIN_ID, factory: CF_FACTORY_ADDR,
       }
     });
@@ -2481,7 +2564,7 @@ function cfDownloadReceipt(contractId) {
   const net      = c ? cfFmtUsdc(cfNetAmount(BigInt(c?.totalValue || 0))) : r.netValue || '?';
   const title    = c?.title || r.title || 'Contract';
   const proofs   = meta.proofs || [];
-  const now      = new Date().toLocaleString('pt-BR');
+  const now      = new Date().toLocaleString('en-US');
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -2548,7 +2631,7 @@ ${meta.custodianAddr ? `<div class="section">
 
 <div class="section">
   <h2>Proof of Work (${proofs.length} file${proofs.length !== 1 ? 's' : ''})</h2>
-  ${proofs.length ? proofs.map((p, i) => `<div class="proof-item">${i+1}. ${p.name} ${p.cid ? `— IPFS: ${p.cid}` : '(stored locally)'} — ${new Date(p.uploadedAt).toLocaleString('pt-BR')}</div>`).join('') : '<p style="color:#999;font-size:12px;">No proof files.</p>'}
+  ${proofs.length ? proofs.map((p, i) => `<div class="proof-item">${i+1}. ${p.name} ${p.cid ? `— IPFS: ${p.cid}` : '(stored locally)'} — ${new Date(p.uploadedAt).toLocaleString('en-US')}</div>`).join('') : '<p style="color:#999;font-size:12px;">No proof files.</p>'}
 </div>
 
 <div class="footer">
@@ -2607,7 +2690,7 @@ async function cfRunTx(label, fn, contractId = null) {
     if (contractId !== null) cfLogTx(label, tx.hash, contractId);
     showToast(t('cf_awaiting_confirmation'), 'info');
     const receipt = await tx.wait(1);
-    if (receipt.status !== 1) throw new Error('Transação revertida on-chain.');
+    if (receipt.status !== 1) throw new Error('Transaction reverted on-chain.');
     cfLog(`${label} confirmed! Block: ${receipt.blockNumber}`);
     showToast(`✅ ${label} — confirmado! Bloco #${receipt.blockNumber}.`, 'success');
     cfShowTxBadge(receipt.hash, label);
@@ -2793,17 +2876,17 @@ async function cfExecuteWithdraw(contractId, releasedAmt) {
 // ─── Release milestone ─────────────────────────────────────────────────────────
 async function cfReleaseMilestone(contractId, milestoneIdx) {
   const wallet = window.walletState?.address;
-  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
-  if (cfState.pending) { showToast('Aguarde.', 'warning'); return; }
+  if (!wallet) { showToast('Connect your wallet.', 'warning'); return; }
+  if (cfState.pending) { showToast('Please wait.', 'warning'); return; }
   // Block during active dispute
   if (cfGetDisputeStatus(contractId) === 'open') {
-    showToast('❌ Fundos bloqueados — disputa ativa. Resolva a disputa primeiro.', 'error'); return;
+    showToast('❌ Funds locked — active dispute. Resolve the dispute first.', 'error'); return;
   }
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (c?.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Apenas o cliente pode liberar.', 'error'); return; }
+  if (c?.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Only the client can release.', 'error'); return; }
   const ms = c?.milestones?.[milestoneIdx];
   const humanAmt = ms ? cfFmtUsdc(ms.amount) : '?';
-  if (!window.confirm(`Release Milestone ${milestoneIdx+1} — $${humanAmt} USDC?\n\nEsta ação é irreversível.`)) return;
+  if (!window.confirm(`Release Milestone ${milestoneIdx+1} — $${humanAmt} USDC?\n\nThis action is irreversible.`)) return;
 
   cfState.pending = true;
   try {
@@ -2815,10 +2898,10 @@ async function cfReleaseMilestone(contractId, milestoneIdx) {
 // ─── Sign contract ─────────────────────────────────────────────────────────────
 async function cfSignContract(contractId) {
   const wallet = window.walletState?.address;
-  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
-  if (cfState.pending) { showToast('Aguarde.', 'warning'); return; }
+  if (!wallet) { showToast('Connect your wallet.', 'warning'); return; }
+  if (cfState.pending) { showToast('Please wait.', 'warning'); return; }
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (c?.contractor?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Apenas o contratado pode assinar.', 'error'); return; }
+  if (c?.contractor?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Only the contractor can sign.', 'error'); return; }
 
   cfState.pending = true;
   try {
@@ -2830,11 +2913,11 @@ async function cfSignContract(contractId) {
 // ─── Cancel contract ───────────────────────────────────────────────────────────
 async function cfCancelContract(contractId) {
   const wallet = window.walletState?.address;
-  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
-  if (cfState.pending) { showToast('Aguarde.', 'warning'); return; }
+  if (!wallet) { showToast('Connect your wallet.', 'warning'); return; }
+  if (cfState.pending) { showToast('Please wait.', 'warning'); return; }
   const c = cfState.contracts.find(x => x.id === contractId);
-  if (c?.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Apenas o cliente pode cancelar.', 'error'); return; }
-  if (!window.confirm(`Cancel Contract #${contractId}?\n\n$${c ? cfFmtUsdc(c.depositedValue) : '?'} USDC será devolvido.\nEsta ação é irreversível.`)) return;
+  if (c?.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Only the client can cancel.', 'error'); return; }
+  if (!window.confirm(`Cancel Contract #${contractId}?\n\n$${c ? cfFmtUsdc(c.depositedValue) : '?'} USDC will be returned.\nThis action is irreversible.`)) return;
 
   cfState.pending = true;
   try {
@@ -3034,7 +3117,7 @@ async function cfCreateContract() {
 
   cfState.pending = true;
   const btn = cfEl('cf-submit-btn');
-  if (btn) { btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin mr-2"></i>Processando…'; }
+  if (btn) { btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin mr-2"></i>Processing…'; }
 
   const unlock = () => {
     cfState.pending = false;
@@ -3053,7 +3136,7 @@ async function cfCreateContract() {
 
     cfSetStep(1, 'active', 'Verificar saldo USDC');
     const balance = await cfReadBalance(fromAddr);
-    if (balance < totalRaw) throw new Error(`Saldo insuficiente: $${cfFmtUsdc(balance)} disponível, $${humanAmount} necessário.`);
+    if (balance < totalRaw) throw new Error(`Insufficient balance: $${cfFmtUsdc(balance)} available, $${humanAmount} required.`);
     cfSetStep(1, 'done');
 
     cfSetStep(2, 'active', 'Verificar allowance USDC');
@@ -3073,13 +3156,13 @@ async function cfCreateContract() {
     showToast(`⛽ Gas: ${gasFeeUsdc} USDC. Fee: $${cfFmtUsdc(feeRaw)}. Net: $${cfFmtUsdc(netRaw)}. Confirme…`, 'info');
     cfSetStep(3, 'done');
 
-    cfSetStep(4, 'active', 'Aguardando assinatura…');
+    cfSetStep(4, 'active', 'Awaiting wallet signature…');
     const createTx = await factory.createContract(contractor, title, totalRaw, milestoneDescs, milestoneAmounts, { gasLimit });
     cfState.lastTxHash = createTx.hash;
     showToast(`📤 Tx: <a href="${CF_EXPLORER}/tx/${createTx.hash}" target="_blank" class="underline font-mono">${createTx.hash.slice(0,18)}…</a>`, 'info');
     cfSetStep(4, 'done');
 
-    cfSetStep(5, 'active', 'Aguardando confirmação…');
+    cfSetStep(5, 'active', 'Awaiting confirmation…');
     const receipt = await createTx.wait(1);
     if (receipt.status !== 1) throw new Error(`Tx revertida no bloco #${receipt.blockNumber}.`);
 
@@ -3289,7 +3372,7 @@ function cfShowOpenDispute(contractId) {
 
   const isClient = c.client?.toLowerCase() === wallet?.toLowerCase();
   const isContr  = c.contractor?.toLowerCase() === wallet?.toLowerCase();
-  if (!isClient && !isContr) { showToast('Apenas participantes do contrato podem abrir disputas.', 'error'); return; }
+  if (!isClient && !isContr) { showToast('Only contract participants can open disputes.', 'error'); return; }
 
   // Check for existing open dispute
   if (cfGetDisputeStatus(contractId) === 'open') {
@@ -3306,14 +3389,14 @@ function cfShowOpenDispute(contractId) {
   modal.innerHTML = `
   <div style="background:#0a0c18;border:1px solid rgba(239,68,68,0.3);border-radius:20px;width:100%;max-width:480px;padding:24px;max-height:90vh;overflow-y:auto;">
     <h3 style="color:#f87171;font-size:15px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:8px;">
-      <i class="fas fa-gavel"></i>Abrir Disputa — #${contractId}
+      <i class="fas fa-gavel"></i>Open Dispute — #${contractId}
     </h3>
-    <p style="font-size:11px;color:#4a6490;margin-bottom:16px;">Contrato: <strong style="color:#8899bb;">${c.title || 'Sem título'}</strong> · Valor: <strong style="color:#60b4ff;">$${cfFmtUsdc(BigInt(c.totalValue))} USDC</strong></p>
+    <p style="font-size:11px;color:#4a6490;margin-bottom:16px;">Contract: <strong style="color:#8899bb;">${c.title || 'Untitled'}</strong> · Valor: <strong style="color:#60b4ff;">$${cfFmtUsdc(BigInt(c.totalValue))} USDC</strong></p>
 
     <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px;margin-bottom:14px;font-size:11px;color:#f87171;">
       <i class="fas fa-exclamation-triangle mr-1"></i>
-      Ao abrir uma disputa, os <strong>fundos em escrow serão bloqueados</strong> até a resolução.
-      Apenas ${c.mode==='onchain'?'ambas as partes':'você e a contraparte'} podem resolver a disputa.
+      By opening a dispute, the <strong>escrowed funds will be locked</strong> until resolution.
+      Only ${c.mode==='onchain'?'both parties':'you and the counterparty'} can resolve the dispute.
     </div>
 
     <!-- Reason -->
@@ -3339,7 +3422,7 @@ function cfShowOpenDispute(contractId) {
         ondrop="cfHandleDisputeFileDrop(event,${contractId})"
         style="border:2px dashed rgba(239,68,68,0.3);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:all 0.2s;">
         <i class="fas fa-cloud-upload-alt" style="font-size:22px;color:#f87171;display:block;margin-bottom:6px;"></i>
-        <p style="font-size:12px;color:#8899bb;">Arraste ou clique para adicionar evidências</p>
+        <p style="font-size:12px;color:#8899bb;">Drag or click to add evidence</p>
         <p style="font-size:10px;color:#4a3a7a;">${t("cf_file_types_small")}</p>
       </div>
       <input type="file" id="cf-dispute-file-input" multiple accept="image/*,.pdf,.doc,.docx"
@@ -3350,7 +3433,7 @@ function cfShowOpenDispute(contractId) {
     <div style="display:flex;gap:10px;">
       <button onclick="cfSubmitDispute(${contractId})" id="cf-dispute-submit-btn"
         style="flex:1;background:linear-gradient(135deg,#991b1b,#7f1d1d);color:#fff;border:none;border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;">
-        <i class="fas fa-gavel mr-2"></i>Confirmar & Abrir Disputa
+        <i class="fas fa-gavel mr-2"></i>Confirm & Open Dispute
       </button>
       <button onclick="document.getElementById('cf-dispute-open-modal').remove()"
         style="padding:12px 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280;border-radius:12px;cursor:pointer;font-size:13px;">Cancelar</button>
@@ -3371,7 +3454,7 @@ function cfHandleDisputeFilesRaw(files) {
   if (!window._cfDisputeFiles) window._cfDisputeFiles = [];
   const MAX = 10 * 1024 * 1024;
   files.forEach(f => {
-    if (f.size > MAX) { showToast(`${f.name} excede 10MB.`, 'error'); return; }
+    if (f.size > MAX) { showToast(`${f.name} exceeds 10MB.`, 'error'); return; }
     if (window._cfDisputeFiles.length >= 5) { showToast(t('cf_max_5_files'), 'warning'); return; }
     if (window._cfDisputeFiles.find(x => x.name === f.name && x.size === f.size)) { showToast(`${f.name} already added.`, 'warning'); return; }
     window._cfDisputeFiles.push(f);
@@ -3437,14 +3520,14 @@ async function cfSubmitDispute(contractId) {
     cfSetMeta(contractId, { disputeOpenedAt: Date.now(), disputeOpenedBy: wallet });
 
     cfLogTx('openDispute', null, contractId, { reason: reason.slice(0, 80), openedBy: wallet });
-    showToast('⚖️ Disputa aberta! Fundos em escrow bloqueados.', 'error');
+    showToast('⚖️ Dispute opened! Escrowed funds are now locked.', 'error');
     document.getElementById('cf-dispute-open-modal')?.remove();
     window._cfDisputeFiles = [];
     cfLoadContracts({ force: true });
   } catch(e) {
     cfErr('cfSubmitDispute:', e);
-    showToast('Erro ao abrir disputa: ' + e.message, 'error');
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-gavel mr-2"></i>Confirmar & Abrir Disputa'; }
+    showToast('Error opening dispute: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-gavel mr-2"></i>Confirm & Open Dispute'; }
   }
 }
 
@@ -3458,7 +3541,7 @@ function cfShowDisputeResolution(contractId) {
 
   const isClient = c.client?.toLowerCase() === wallet?.toLowerCase();
   const isContr  = c.contractor?.toLowerCase() === wallet?.toLowerCase();
-  if (!isClient && !isContr) { showToast('Apenas participantes podem resolver disputas.', 'error'); return; }
+  if (!isClient && !isContr) { showToast('Only participants can resolve disputes.', 'error'); return; }
 
   // Check mutual approval state
   const approvals = dispute.mutualApproval || {};
@@ -3473,21 +3556,21 @@ function cfShowDisputeResolution(contractId) {
     <h3 style="color:#f87171;font-size:15px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:8px;">
       <i class="fas fa-balance-scale"></i>Resolver Disputa — #${contractId}
     </h3>
-    <p style="font-size:11px;color:#4a6490;margin-bottom:14px;">${c.title || 'Sem título'} · <strong style="color:#8899bb;">$${cfFmtUsdc(BigInt(c.totalValue))} USDC</strong></p>
+    <p style="font-size:11px;color:#4a6490;margin-bottom:14px;">${c.title || 'Untitled'} · <strong style="color:#8899bb;">$${cfFmtUsdc(BigInt(c.totalValue))} USDC</strong></p>
 
     <!-- Dispute details -->
     <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px;margin-bottom:16px;">
-      <div style="font-size:10px;color:#f87171;font-weight:700;text-transform:uppercase;margin-bottom:6px;"><i class="fas fa-gavel mr-1"></i>Detalhes da Disputa</div>
+      <div style="font-size:10px;color:#f87171;font-weight:700;text-transform:uppercase;margin-bottom:6px;"><i class="fas fa-gavel mr-1"></i>Dispute Details</div>
       <div style="font-size:12px;color:#dde2f0;margin-bottom:4px;">"${dispute.reason}"</div>
-      <div style="font-size:10px;color:#4a6490;">Aberto por: ${cfShort(dispute.openedBy)} · ${new Date(dispute.openedAt).toLocaleString('pt-BR')}</div>
-      ${dispute.evidence?.length ? `<div style="font-size:10px;color:#4a6490;margin-top:4px;">${dispute.evidence.length} evidência(s) enviada(s)</div>` : ''}
+      <div style="font-size:10px;color:#4a6490;">Opened by: ${cfShort(dispute.openedBy)} · ${new Date(dispute.openedAt).toLocaleString('en-US')}</div>
+      ${dispute.evidence?.length ? `<div style="font-size:10px;color:#4a6490;margin-top:4px;">${dispute.evidence.length} file(s) submitted</div>` : ''}
     </div>
 
     <!-- Note field -->
     <div style="margin-bottom:14px;">
-      <label style="font-size:11px;color:#8899bb;display:block;margin-bottom:6px;font-weight:600;">Nota de resolução (opcional)</label>
+      <label style="font-size:11px;color:#8899bb;display:block;margin-bottom:6px;font-weight:600;">Resolution note (optional)</label>
       <textarea id="cf-resolve-note" rows="2"
-        placeholder="Descreva os termos do acordo ou motivo da resolução..."
+        placeholder="Describe the settlement terms or reason for resolution..."
         style="width:100%;background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.15);border-radius:10px;padding:10px;color:#dde2f0;font-size:12px;resize:vertical;outline:none;font-family:inherit;"></textarea>
     </div>
 
@@ -3504,7 +3587,7 @@ function cfShowDisputeResolution(contractId) {
         <button onclick="cfExecuteDisputeResolution(${contractId},'client')"
           style="padding:12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;text-align:left;">
           <i class="fas fa-undo mr-2"></i><strong>Devolver ao Cliente</strong>
-          <div style="font-size:10px;opacity:0.7;margin-top:2px;">Trabalho não entregue — $${cfFmtUsdc(BigInt(c.totalValue))} USDC retorna para ${cfShort(c.client)}</div>
+          <div style="font-size:10px;opacity:0.7;margin-top:2px;">Work not delivered — $${cfFmtUsdc(BigInt(c.totalValue))} USDC retorna para ${cfShort(c.client)}</div>
         </button>
       </div>
     </div>
@@ -3513,15 +3596,15 @@ function cfShowDisputeResolution(contractId) {
 
     <!-- Mutual agreement -->
     <div style="margin-bottom:16px;">
-      <p style="font-size:11px;color:#fbbf24;font-weight:700;margin-bottom:8px;"><i class="fas fa-handshake mr-1"></i>Acordo Mútuo (ambas as partes aprovam):</p>
+      <p style="font-size:11px;color:#fbbf24;font-weight:700;margin-bottom:8px;"><i class="fas fa-handshake mr-1"></i>Mutual Agreement (both parties approve):</p>
       ${myApproval ? `
         <div style="padding:10px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:10px;font-size:11px;color:#34d399;margin-bottom:8px;">
-          <i class="fas fa-check-circle mr-1"></i>Você já aprovou este acordo. Aguardando a contraparte.
+          <i class="fas fa-check-circle mr-1"></i>You already approved this settlement. Awaiting the counterparty.
         </div>` : `
         <button onclick="cfApproveMutualResolution(${contractId})"
           style="width:100%;padding:12px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;">
-          <i class="fas fa-handshake mr-2"></i>Aprovar Acordo Mútuo
-          <div style="font-size:10px;opacity:0.7;margin-top:2px;">Ambas as partes devem clicar para confirmar a resolução</div>
+          <i class="fas fa-handshake mr-2"></i>Approve Mutual Agreement
+          <div style="font-size:10px;opacity:0.7;margin-top:2px;">Both parties must click to confirm the resolution</div>
         </button>`}
     </div>
 
@@ -3542,7 +3625,7 @@ async function cfExecuteDisputeResolution(contractId, outcome) {
 
   const note = document.getElementById('cf-resolve-note')?.value?.trim() || '';
   const outcomeLabel = outcome === 'contractor' ? 'liberar para o Contratado' : 'devolver ao Cliente';
-  if (!window.confirm(`Confirmar resolução: ${outcomeLabel}?\n\nEsta ação é irreversível.`)) return;
+  if (!window.confirm(`Confirm resolution: ${outcomeLabel}?\n\nThis action is irreversible.`)) return;
 
   cfSetDispute(contractId, {
     status: 'resolved',
@@ -3562,21 +3645,21 @@ async function cfExecuteDisputeResolution(contractId, outcome) {
   });
 
   cfLogTx('resolveDispute', null, contractId, { outcome, resolvedBy: wallet });
-  showToast(`✅ Disputa resolvida — ${outcomeLabel}.`, 'success');
+  showToast(`✅ Dispute resolved — ${outcomeLabel}.`, 'success');
   document.getElementById('cf-dispute-resolve-modal')?.remove();
   cfLoadContracts({ force: true });
 }
 
 async function cfApproveMutualResolution(contractId) {
   const wallet = window.walletState?.address;
-  if (!wallet) { showToast('Conecte sua carteira.', 'warning'); return; }
+  if (!wallet) { showToast('Connect your wallet.', 'warning'); return; }
   const c = cfState.contracts.find(x => x.id === contractId);
   const dispute = cfGetDispute(contractId);
   if (!c || !dispute || dispute.status !== 'open') return;
 
   const isClient = c.client?.toLowerCase() === wallet?.toLowerCase();
   const isContr  = c.contractor?.toLowerCase() === wallet?.toLowerCase();
-  if (!isClient && !isContr) { showToast('Apenas participantes podem aprovar.', 'error'); return; }
+  if (!isClient && !isContr) { showToast('Only participants can approve.', 'error'); return; }
 
   const approvals = dispute.mutualApproval || {};
   approvals[wallet.toLowerCase()] = true;
@@ -3654,7 +3737,7 @@ function cfViewDisputeEvidence(contractId, evidenceIndex) {
         <i class="fas fa-times"></i></button>
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:700;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ev.name}</div>
-        <div style="font-size:10px;color:#f87171;">Evidência de Disputa #${contractId} — ${ev.mimeType || 'Arquivo'}</div>
+        <div style="font-size:10px;color:#f87171;">Dispute Evidence #${contractId} — ${ev.mimeType || 'Arquivo'}</div>
       </div>
       <button onclick="(()=>{const a=document.createElement('a');a.href='${ev.url}';a.download='${ev.name}';a.click()})()"
         style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;" title="Baixar">
@@ -3677,7 +3760,7 @@ function cfCloseContract(contractId) {
 
   const isClient = c.client?.toLowerCase() === wallet?.toLowerCase();
   const isContr  = c.contractor?.toLowerCase() === wallet?.toLowerCase();
-  if (!isClient && !isContr) { showToast('Apenas participantes podem encerrar o contrato.', 'error'); return; }
+  if (!isClient && !isContr) { showToast('Only participants can close the contract.', 'error'); return; }
 
   const meta = cfGetMeta(contractId);
   if (meta.contractClosed) { showToast(t('cf_contract_already_closed'), 'info'); return; }
@@ -3690,7 +3773,7 @@ function cfCloseContract(contractId) {
   const uiStatus = cfUiStatus(c);
   const disputeResolved = cfGetDisputeStatus(contractId) === 'resolved';
   if (uiStatus !== 'Completed' && !disputeResolved) {
-    showToast('O contrato deve estar Concluído ou com Disputa Resolvida para ser encerrado.', 'warning'); return;
+    showToast('The contract must be Completed or Dispute Resolved to be closed.', 'warning'); return;
   }
 
   document.getElementById('cf-close-contract-modal')?.remove();
@@ -3700,17 +3783,17 @@ function cfCloseContract(contractId) {
   modal.innerHTML = `
   <div style="background:#0a0c18;border:1px solid rgba(74,85,104,0.3);border-radius:20px;width:100%;max-width:440px;padding:24px;">
     <h3 style="color:#9ca3af;font-size:15px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:8px;">
-      <i class="fas fa-lock"></i>Encerrar Contrato — #${contractId}
+      <i class="fas fa-lock"></i>Close Contract — #${contractId}
     </h3>
-    <p style="font-size:11px;color:#4a6490;margin-bottom:16px;">${c.title || 'Sem título'} · $${cfFmtUsdc(BigInt(c.totalValue))} USDC</p>
+    <p style="font-size:11px;color:#4a6490;margin-bottom:16px;">${c.title || 'Untitled'} · $${cfFmtUsdc(BigInt(c.totalValue))} USDC</p>
 
     <div style="background:rgba(74,85,104,0.1);border:1px solid rgba(74,85,104,0.25);border-radius:10px;padding:12px;margin-bottom:16px;font-size:11px;color:#9ca3af;">
       <i class="fas fa-exclamation-triangle mr-1" style="color:#fbbf24;"></i>
-      <strong>Atenção:</strong> Ao encerrar este contrato, <strong>todas as interações serão permanentemente bloqueadas</strong>:
+      <strong>Warning:</strong> Closing this contract will <strong>permanently lock all interactions</strong>:
       <ul style="margin-top:8px;margin-left:16px;list-style:disc;color:#6b7280;">
-        <li>Nenhum upload de prova adicional</li>
-        <li>Nenhuma disputa pode ser aberta</li>
-        <li>Nenhuma edição ou cancelamento</li>
+        <li>No additional proof uploads</li>
+        <li>No new disputes can be opened</li>
+        <li>No edits or cancellations</li>
         <li>Contrato se torna somente leitura</li>
       </ul>
     </div>
@@ -3739,12 +3822,12 @@ function cfExecuteCloseContract(contractId) {
       closedBy:       wallet,
     });
     cfLogTx('closeContract', null, contractId, { closedBy: wallet });
-    showToast('🔒 Contrato encerrado permanentemente.', 'success');
+    showToast('🔒 Contract permanently closed.', 'success');
     document.getElementById('cf-close-contract-modal')?.remove();
     cfLoadContracts({ force: true });
   } catch(e) {
     cfErr('cfExecuteCloseContract:', e);
-    showToast('Erro ao encerrar contrato: ' + e.message, 'error');
+    showToast('Error closing contract: ' + e.message, 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-lock mr-2"></i>Encerrar Permanentemente'; }
   }
 }
