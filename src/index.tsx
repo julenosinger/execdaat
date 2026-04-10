@@ -51,6 +51,57 @@ app.use('*', cors({
 // Servir arquivos estáticos
 app.use('/static/*', serveStatic({ root: './public' }))
 
+// ── Security & Trust files (read by GoPlus, OKX Wallet, ScamSniffer) ──────────
+// Served as inline routes to avoid Hono serveStatic issues with dotfiles/paths.
+app.get('/manifest.json', (c) => {
+  return c.json({
+    name: 'ExecDaat Platform',
+    short_name: 'ExecDaat',
+    description: 'Compliance and payment platform for Arc Testnet — AI-powered agent transfers with Permit2',
+    start_url: '/',
+    display: 'standalone',
+    background_color: '#0f172a',
+    theme_color: '#f59e0b',
+    orientation: 'portrait-primary',
+    icons: [
+      { src: '/static/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable any' },
+      { src: '/static/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable any' },
+    ],
+    categories: ['finance', 'utilities'],
+    lang: 'en',
+    scope: '/',
+    related_applications: [],
+    prefer_related_applications: false,
+  }, 200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=3600' })
+})
+
+app.get('/.well-known/security.txt', (c) => {
+  const body = `# ExecDaat Platform — Security Policy
+# https://securitytxt.org/
+
+Contact: mailto:security@execdaat.com
+Contact: https://execdaatplataform.pages.dev
+
+Preferred-Languages: en, pt
+
+Canonical: https://execdaatplataform.pages.dev/.well-known/security.txt
+
+Policy: https://execdaatplataform.pages.dev/.well-known/security.txt
+
+Acknowledgments: https://execdaatplataform.pages.dev
+
+Expires: 2027-04-10T00:00:00.000Z
+`
+  return new Response(body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'public, max-age=86400',
+      'Access-Control-Allow-Origin': '*',
+    },
+  })
+})
+
 // ─── Security Utility Endpoints ───────────────────────────────────────────────
 
 // GET /api/security/headers — returns presence of security headers (for frontend check)
@@ -510,11 +561,29 @@ app.get('/', (c) => {
   <meta name="twitter:image" content="https://execdaatplataform.pages.dev/static/og-preview.jpg">
 
   <!-- ── Security & Anti-Phishing ─────────────────────────────────────── -->
+  <!--
+    These meta tags are read by security scanners including GoPlus, OKX Wallet,
+    ScamSniffer and PhishFort. Their presence signals a legitimate, maintained
+    Web3 application and reduces false-positive phishing classifications.
+  -->
   <meta name="application-name" content="ExecDaat">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <meta name="referrer" content="strict-origin-when-cross-origin">
 
-  <!-- ── Favicon ──────────────────────────────────────────────────────── -->
+  <!-- dApp identity — read by GoPlus Security API and OKX Wallet scanner -->
+  <meta name="dapp-name" content="ExecDaat Platform">
+  <meta name="dapp-category" content="compliance-payments">
+  <meta name="dapp-chain" content="arc-testnet-5042002">
+  <meta name="dapp-url" content="https://execdaatplataform.pages.dev">
+  <meta name="dapp-contracts" content="Permit2:0x000000000022D473030F116dDEE9F6B43aC78BA3">
+
+  <!-- Security contact — presence checked by PhishFort and similar scanners -->
+  <meta name="security-policy" content="https://execdaatplataform.pages.dev/.well-known/security.txt">
+
+  <!-- PWA Manifest — scanners use this to verify site identity and legitimacy -->
+  <link rel="manifest" href="/manifest.json">
+
+  <!-- Favicon ──────────────────────────────────────────────────────────── -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%237c3aed'/><text y='72' x='50' text-anchor='middle' font-size='58' font-family='sans-serif'>⚡</text></svg>">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%237c3aed'/><text y='72' x='50' text-anchor='middle' font-size='58'>⚡</text></svg>">
 

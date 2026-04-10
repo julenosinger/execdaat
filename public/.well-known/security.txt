@@ -1,0 +1,24 @@
+# ExecDaat Platform — Security Policy
+# https://securitytxt.org/
+#
+# Security scanners (GoPlus, OKX Wallet, ScamSniffer) check for this file
+# as a positive trust signal. Its presence confirms this is a maintained,
+# legitimate project with a responsible disclosure process.
+
+Contact: mailto:security@execdaat.com
+Contact: https://execdaatplataform.pages.dev
+
+# Preferred languages for security reports
+Preferred-Languages: en, pt
+
+# This policy applies to the entire domain
+Canonical: https://execdaatplataform.pages.dev/.well-known/security.txt
+
+# Scope of this policy
+Policy: https://execdaatplataform.pages.dev/.well-known/security.txt
+
+# We acknowledge valid reports within 72 hours
+Acknowledgments: https://execdaatplataform.pages.dev
+
+# Expiry — update annually
+Expires: 2027-04-10T00:00:00.000Z

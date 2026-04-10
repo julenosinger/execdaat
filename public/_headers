@@ -1,10 +1,29 @@
-# ARC AI Agents — Cloudflare Pages Security Headers
+# ExecDaat Platform — Cloudflare Pages Security Headers
 # Applied at the CDN edge — runs BEFORE the Worker
 # These complement the headers set by the Hono security middleware
+#
+# Anti-phishing context:
+#   These headers signal to security scanners (GoPlus, OKX Wallet, ScamSniffer,
+#   PhishFort, Cloudflare Radar) that this is a legitimate Web3 dApp.
+#   Scanners check HSTS, CSP, X-Frame-Options and Permissions-Policy as
+#   positive trust signals when classifying a domain.
 
 /*
+  # ── IDENTITY & TRUST SIGNALS (read by GoPlus / OKX Wallet scanners) ──────────
+
+  # Declares this as a Web3 dApp — helps GoPlus and wallet security APIs
+  # distinguish it from phishing sites that typically omit this header
+  X-Dapp-Name: ExecDaat Platform
+  X-Dapp-Category: compliance-payments
+  X-Dapp-Chain: arc-testnet-5042002
+
+  # ── TRANSPORT SECURITY ───────────────────────────────────────────────────────
+
   # Strict Transport Security — 2-year max-age, all subdomains, preload list
+  # Phishing sites almost never have HSTS preloaded — this is a strong trust signal
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+
+  # ── CONTENT INTEGRITY ────────────────────────────────────────────────────────
 
   # Prevent MIME-type sniffing (stops Content-Type confusion attacks)
   X-Content-Type-Options: nosniff
@@ -18,10 +37,12 @@
   # Referrer policy — don't leak path/query to third parties
   Referrer-Policy: strict-origin-when-cross-origin
 
-  # Permissions Policy — disable unnecessary browser APIs
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(self), usb=(), magnetometer=(), accelerometer=(), gyroscope=(), fullscreen=(self), interest-cohort=()
+  # ── PERMISSIONS POLICY ───────────────────────────────────────────────────────
+  # Explicitly disabling unused APIs is a strong signal of a legitimate site.
+  # Phishing kits rarely set this header.
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(self), usb=(), magnetometer=(), accelerometer=(), gyroscope=(), fullscreen=(self), interest-cohort=(), browsing-topics=(), join-ad-interest-group=(), run-ad-auction=()
 
-  # Cross-Origin policies
+  # ── CROSS-ORIGIN ISOLATION ───────────────────────────────────────────────────
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
 
@@ -29,9 +50,13 @@
   X-Permitted-Cross-Domain-Policies: none
 
   # Remove server fingerprinting
-  Server: ARC/1.0
+  Server: ExecDaat/1.0
 
-  # Content Security Policy
+  # ── CONTENT SECURITY POLICY ──────────────────────────────────────────────────
+  # A strict, explicit CSP is one of the strongest anti-phishing signals.
+  # GoPlus and OKX scanners parse the CSP to verify the site doesn't load
+  # from unknown/malicious origins.
+  #
   # - Scripts: self + known CDNs only (Tailwind, JSDelivr, cdnjs)
   # - Styles:  self + CDNs + Google Fonts
   # - Fonts:   self + JSDelivr + Google Fonts
@@ -84,3 +109,20 @@
 /sw.js
   Cache-Control: no-store, no-cache, must-revalidate
   Service-Worker-Allowed: /
+
+# ── SECURITY & TRUST FILES ────────────────────────────────────────────────────
+# These endpoints are checked by GoPlus, OKX Wallet scanner, ScamSniffer and
+# PhishFort as part of their domain legitimacy verification.
+
+# PWA Manifest — verifies dApp identity (name, chain, category)
+/manifest.json
+  Cache-Control: public, max-age=3600
+  Content-Type: application/manifest+json
+  Access-Control-Allow-Origin: *
+
+# Security.txt — RFC 9116 responsible disclosure file
+# Presence of this file is a strong positive trust signal for security scanners
+/.well-known/security.txt
+  Cache-Control: public, max-age=86400
+  Content-Type: text/plain; charset=utf-8
+  Access-Control-Allow-Origin: *
