@@ -219,7 +219,7 @@ router.put('/circle', async (c) => {
     settingsStore.circle.webhookSecret = clampString(webhookSecret.trim(), 256)
   }
   if (environment) {
-    settingsStore.circle.environment = String(environment)
+    settingsStore.circle.environment = String(environment) as 'production' | 'sandbox'
   }
 
   // Reset conexão ao mudar config

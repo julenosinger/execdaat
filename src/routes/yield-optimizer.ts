@@ -2,6 +2,7 @@
 
 import { Hono } from 'hono';
 import { YieldOptimizerAgent } from '../agents/YieldOptimizerAgent';
+import { isValidTxHash, isValidEthAddress } from '../middleware/security';
 
 const yieldRouter = new Hono();
 let agent: YieldOptimizerAgent | null = null;

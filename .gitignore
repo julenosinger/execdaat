@@ -42,3 +42,6 @@ contracts/hardhat/artifacts/
 contracts/hardhat/cache/
 contracts/node_modules/
 contracts/package-lock.json
+
+# Vercel build output
+dist-vercel/
