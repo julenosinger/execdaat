@@ -245,7 +245,7 @@ const LEGAL_NAV = `
   <nav class="nav">
     <a href="/" class="nav-brand"><span style="background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:900;letter-spacing:.06em">ExecDaat</span></a>
     <div class="nav-links">
-      <a href="/about">About</a>
+      <a href="#" onclick="openAboutPage();return false;">About</a>
       <a href="/privacy-policy">Privacy</a>
       <a href="/terms-of-service">Terms</a>
     </div>
@@ -765,7 +765,7 @@ app.get('/', (c) => {
     <span style="color:#f59e0b;font-weight:700;letter-spacing:0.03em;">TESTNET ONLY —</span>
     <span style="color:#ccc;font-weight:400;" class="hidden sm:inline">This application runs exclusively on Arc Testnet. No real funds are used. Do not send mainnet assets.</span>
     <span style="color:#ccc;font-weight:400;" class="sm:hidden">Arc Testnet only. No real funds.</span>
-    <a href="/about" style="color:#ccc;text-decoration:underline;margin-left:4px;opacity:0.8;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" class="hidden sm:inline">Learn more</a>
+    <a href="#" onclick="openAboutPage();return false;" style="color:#ccc;text-decoration:underline;margin-left:4px;opacity:0.8;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" class="hidden sm:inline">Learn more</a>
     <button
       onclick="dismissBanner()"
       title="Dismiss"
@@ -943,7 +943,7 @@ app.get('/', (c) => {
                 class="flex items-center gap-2 text-xs text-gray-400 hover:text-blue-400 border border-gray-700 hover:border-blue-700 rounded-lg px-3 py-2 transition-all">
                 <i class="fas fa-faucet text-blue-500"></i>Get Test USDC
               </a>
-              <a href="/about" class="flex items-center gap-2 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg px-3 py-2 transition-all">
+              <a href="#" onclick="openAboutPage();return false;" class="flex items-center gap-2 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg px-3 py-2 transition-all">
                 <i class="fas fa-info-circle"></i>About / Legal
               </a>
             </div>
@@ -1106,7 +1106,7 @@ app.get('/', (c) => {
           <span style="font-weight:700;letter-spacing:.04em">ExecDaat</span><span style="color:#6b7280"> — Open Source Testnet dApp</span>
         </div>
         <div class="flex items-center gap-4">
-          <a href="/about" class="hover:text-gray-400 transition-colors">About</a>
+          <a href="#" onclick="openAboutPage();return false;" class="hover:text-gray-400 transition-colors">About</a>
           <a href="/privacy-policy" class="hover:text-gray-400 transition-colors">Privacy</a>
           <a href="/terms-of-service" class="hover:text-gray-400 transition-colors">Terms</a>
           <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener" class="hover:text-gray-400 transition-colors">GitHub</a>
@@ -3905,7 +3905,7 @@ app.get('/', (c) => {
           This dApp never asks for your private key. All transactions are signed
           exclusively in your wallet (MetaMask). No automatic or hidden transactions occur.
         </span>
-        <a href="/about" class="ml-auto text-blue-400 hover:text-blue-300 underline whitespace-nowrap">Learn more ↗</a>
+        <a href="#" onclick="openAboutPage();return false;" class="ml-auto text-blue-400 hover:text-blue-300 underline whitespace-nowrap">Learn more ↗</a>
       </div>
 
       <!-- ── Outer wrapper: swap-center or liq 2-col grid ─────────────────────── -->
@@ -5075,7 +5075,7 @@ app.get('/', (c) => {
         <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Resources</h3>
         <ul class="space-y-2 text-xs text-gray-500">
           <li>
-            <a href="/about" class="flex items-center gap-1.5 hover:text-white transition-colors">
+            <a href="#" onclick="openAboutPage();return false;" class="flex items-center gap-1.5 hover:text-white transition-colors">
               <i class="fas fa-info-circle text-[10px]"></i>About this App
             </a>
           </li>

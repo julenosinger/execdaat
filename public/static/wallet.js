@@ -1573,8 +1573,19 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('[WALLET] EURC:', window.EURC_ADDRESS);
   console.log('[WALLET] Arc Testnet Chain ID: 5042002');
 
+  // Garantir UI limpa na carga inicial (sem wallet conectada ainda)
+  updateWalletUI();
+
   // Tentar auto-reconectar após carregamento
   setTimeout(tryAutoReconnect, 800);
+
+  // Ao sair da página, limpar sessão de wallet para não exibir
+  // dados da sessão anterior quando o usuário voltar ao site.
+  const _clearWalletSession = () => {
+    localStorage.removeItem('arc_wallet_last');
+  };
+  window.addEventListener('pagehide', _clearWalletSession);
+  window.addEventListener('beforeunload', _clearWalletSession);
 
   // Expor funções globais
   window.openWalletModal          = openWalletModal;
