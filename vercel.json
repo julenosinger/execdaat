@@ -1,0 +1,79 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "framework": null,
+  "functions": {
+    "api/index.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/.well-known/(.*)",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/manifest.json",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/((?!static|favicon|_next).*)",
+      "destination": "/api/index.ts"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Strict-Transport-Security",     "value": "max-age=63072000; includeSubDomains; preload" },
+        { "key": "X-Content-Type-Options",         "value": "nosniff" },
+        { "key": "X-Frame-Options",                "value": "SAMEORIGIN" },
+        { "key": "X-XSS-Protection",               "value": "1; mode=block" },
+        { "key": "Referrer-Policy",                "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Dapp-Name",                    "value": "ExecDaat Platform" },
+        { "key": "X-Dapp-Category",                "value": "compliance-payments" },
+        { "key": "X-Dapp-Chain",                   "value": "arc-testnet-5042002" },
+        { "key": "Permissions-Policy",             "value": "camera=(), microphone=(), geolocation=(), payment=(self), usb=(), magnetometer=(), accelerometer=(), gyroscope=(), fullscreen=(self), interest-cohort=(), browsing-topics=(), join-ad-interest-group=()" },
+        { "key": "Cross-Origin-Opener-Policy",     "value": "same-origin" },
+        { "key": "Cross-Origin-Resource-Policy",   "value": "same-origin" },
+        { "key": "X-Permitted-Cross-Domain-Policies", "value": "none" }
+      ]
+    },
+    {
+      "source": "/static/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    },
+    {
+      "source": "/manifest.json",
+      "headers": [
+        { "key": "Cache-Control",               "value": "public, max-age=3600" },
+        { "key": "Content-Type",                "value": "application/manifest+json" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/.well-known/security.txt",
+      "headers": [
+        { "key": "Cache-Control",               "value": "public, max-age=86400" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, private" }
+      ]
+    }
+  ]
+}
