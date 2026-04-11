@@ -3612,7 +3612,7 @@ app.get('/', (c) => {
           <!-- Inline chat widget -->
           <div id="autonoma-chat-widget"
             class="flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-xl shadow-purple-900/20 overflow-hidden"
-            style="height: calc(100vh - 260px); min-height: 480px; max-height: 800px; width: 100%; min-width: 0;">
+            style="height: calc(100vh - 260px); min-height: 480px; max-height: 800px;">
 
             <!-- Chat header -->
             <div class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 flex-shrink-0">
