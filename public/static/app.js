@@ -781,6 +781,16 @@ function enterApp() {
   switchTab('agents');
 }
 
+// Open About Us page without requiring wallet connection
+function openAboutPage() {
+  const landing  = document.getElementById('landing-page');
+  const appShell = document.getElementById('app-shell');
+  if (landing)  landing.classList.add('hidden');
+  if (appShell) appShell.classList.remove('hidden');
+  switchTab('about');
+}
+window.openAboutPage = openAboutPage;
+
 function showLanding() {
   const landing  = document.getElementById('landing-page');
   const appShell = document.getElementById('app-shell');

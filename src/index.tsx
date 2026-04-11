@@ -892,6 +892,11 @@ app.get('/', (c) => {
             <i class="fas fa-rocket"></i>
             Launch App
           </button>
+          <button onclick="openAboutPage()"
+            class="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 hover:border-emerald-400/60 text-emerald-400 font-semibold rounded-2xl px-6 py-3.5 text-base transition-all hover:scale-105 active:scale-95">
+            <i class="fas fa-shield-alt"></i>
+            About Us
+          </button>
           <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener"
             class="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors">
             <i class="fab fa-github"></i>
