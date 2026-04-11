@@ -3506,19 +3506,6 @@ app.get('/', (c) => {
           </div>
 
           <!-- Permit2 status banner -->
-          <div id="autonoma-permit-status-bar" class="mb-3 p-3 rounded-lg border text-xs flex items-center justify-between gap-2
-            bg-gray-800/50 border-gray-700/40 text-gray-400">
-            <div class="flex items-center gap-2 min-w-0">
-              <i class="fas fa-lock text-gray-500 text-[10px] flex-shrink-0"></i>
-              <span id="autonoma-permit-status-text" class="truncate">Checking permissions…</span>
-            </div>
-            <button id="autonoma-permit-create-btn"
-              onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
-              class="hidden text-[11px] bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 rounded-lg px-2.5 py-1 hover:bg-yellow-500/30 transition-colors whitespace-nowrap flex-shrink-0">
-              <i class="fas fa-plus mr-1"></i> Create Permit
-            </button>
-          </div>
-
           <!-- Stats row -->
           <div class="grid grid-cols-4 gap-1.5 mb-3">
             <div class="bg-gray-800/50 rounded-lg p-2 text-center">
