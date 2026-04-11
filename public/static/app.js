@@ -842,8 +842,13 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('walletConnected', (e) => {
     const { address, shortAddress, onArcNetwork, usdcBalance } = e.detail;
 
-    // Auto-enter app when wallet connects
-    enterApp();
+    // Só chamar enterApp() se o app-shell ainda está oculto (primeira conexão)
+    // Se já está visível (troca de conta/wallet), permanecer na aba atual
+    const appShell = document.getElementById('app-shell');
+    const isFirstConnect = !appShell || appShell.classList.contains('hidden');
+    if (isFirstConnect) {
+      enterApp();
+    }
 
     // Atualizar avatar no header
     const avatar = document.getElementById('wallet-avatar');
