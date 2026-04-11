@@ -1478,20 +1478,8 @@ app.get('/', (c) => {
         .pay-tok-btn.tok-off  { background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.18); color:#8aaccc; }
         .pay-tok-btn.tok-off:hover { border-color:rgba(55,138,221,0.4); color:#a8c8e8; }
 
-        /* ── Preview box ── */
-        #pay-preview-box {
-          background:rgba(255,255,255,0.015);
-          border:1px solid rgba(55,138,221,0.1);
-          border-radius:12px; padding:10px 14px; margin-bottom:14px;
-        }
-        #pay-preview-box .prow {
-          display:flex; justify-content:space-between; align-items:center;
-          padding:4px 0; font-size:11px;
-          border-bottom:1px solid rgba(55,138,221,0.05);
-        }
-        #pay-preview-box .prow:last-child { border-bottom:none; }
-        #pay-preview-box .prow .pk { color:#8aaac8; font-weight:600; }
-        #pay-preview-box .prow .pv { color:#e8edf8; font-weight:700; }
+        /* ── Preview box (hidden) ── */
+        #pay-preview-box { display:none !important; }
 
         /* ── Error box ── */
         #pay-error-box {
@@ -1721,30 +1709,13 @@ app.get('/', (c) => {
                   </div>
                 </div>
 
-                <!-- Fee Transparency Box -->
-                <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.18);border-radius:11px;padding:10px 13px 9px;">
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
-                    <div style="display:flex;align-items:center;gap:6px;">
-                      <i class="fas fa-receipt" style="color:#60b4ff;font-size:11px;"></i>
-                      <span style="color:#8aaac8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Total Cost Breakdown</span>
-                    </div>
-                    <div style="position:relative;display:inline-block;">
-                      <i class="fas fa-info-circle" style="color:#60b4ff;font-size:12px;cursor:help;"
-                        onmouseenter="document.getElementById('pay-fee-tooltip').style.display='block'"
-                        onmouseleave="document.getElementById('pay-fee-tooltip').style.display='none'"></i>
-                      <div id="pay-fee-tooltip" style="display:none;position:absolute;right:0;top:20px;z-index:100;background:#1a2235;border:1px solid rgba(55,138,221,0.3);border-radius:10px;padding:10px 13px;box-shadow:0 8px 30px rgba(0,0,0,0.4);white-space:nowrap;"></div>
-                    </div>
-                  </div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;font-size:11px;">
-                    <div style="color:#8aaac8;">Network Gas</div>
-                    <div id="pay-fee-gas" style="color:#fbbf24;font-weight:700;text-align:right;">$0.0000</div>
-                    <div style="color:#8aaac8;">Platform Fee (0.2%)</div>
-                    <div id="pay-fee-platform" style="color:#60b4ff;font-weight:700;text-align:right;">$0.0000</div>
-                    <div style="color:#8aaac8;">Government Tax</div>
-                    <div id="pay-fee-tax" style="color:#a78bfa;font-weight:700;text-align:right;">$0.0000</div>
-                    <div style="color:#dde2f0;font-weight:700;border-top:1px solid rgba(55,138,221,0.15);padding-top:4px;margin-top:2px;">Total Cost (USD)</div>
-                    <div id="pay-fee-total" style="color:#34d399;font-weight:800;text-align:right;border-top:1px solid rgba(55,138,221,0.15);padding-top:4px;margin-top:2px;">$0.0000</div>
-                  </div>
+                <!-- Fee elements hidden (kept for JS compatibility) -->
+                <div style="display:none;">
+                  <div id="pay-fee-tooltip"></div>
+                  <div id="pay-fee-gas"></div>
+                  <div id="pay-fee-platform"></div>
+                  <div id="pay-fee-tax"></div>
+                  <div id="pay-fee-total"></div>
                 </div>
 
                 <!-- Payment Note -->
@@ -1807,19 +1778,24 @@ app.get('/', (c) => {
                   </div>
                 </div>
 
-                <!-- Preview box -->
-                <div id="pay-preview-box">
-                  <div class="prow"><span class="pk">Token</span><span id="prev-token" class="pv" style="color:#60b4ff;">USDC</span></div>
-                  <div class="prow"><span class="pk">Amount</span><span id="prev-amount" class="pv">—</span><span id="prev-amount-usd" style="color:#8aaac8;font-size:10px;margin-left:6px;"></span></div>
-                  <div class="prow"><span class="pk">To</span><span id="prev-recipient" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
-                  <div class="prow" id="prev-recipient-name-row" style="display:none;"><span class="pk">Recipient</span><span id="prev-recipient-name" class="pv" style="color:#34d399;">—</span></div>
-                  <div class="prow" id="prev-recipient-email-row" style="display:none;"><span class="pk">Recip. Email</span><span id="prev-recipient-email-display" class="pv" style="color:#34d399;">—</span></div>
-                  <div class="prow"><span class="pk">From</span><span id="pay-from-display" class="pv" style="font-family:monospace;font-size:10px;">—</span></div>
-                  <div class="prow"><span class="pk">Network</span><span id="prev-network" class="pv" style="color:#34d399;">Arc Testnet</span></div>
-                  <div class="prow" id="prev-sched-row" style="display:none;"><span class="pk">Scheduled</span><span id="prev-sched" class="pv" style="color:#c4b5fd;">—</span></div>
-                  <div class="prow" id="prev-note-row" style="display:none;"><span class="pk">Note</span><span id="prev-note" class="pv" style="color:#a8c4e0;font-style:italic;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span></div>
-                  <div class="prow"><span class="pk">Est. Gas</span><span id="prev-gas" class="pv" style="color:#fbbf24;">~1 tx</span></div>
-                  <div class="prow" style="border-top:1px solid rgba(55,138,221,0.15);margin-top:3px;padding-top:5px;"><span class="pk" style="color:#dde2f0;font-weight:700;">Total Cost (USD)</span><span id="prev-total-cost" class="pv" style="color:#34d399;font-weight:800;">$0.0000</span></div>
+                <!-- Preview box removed (hidden elements kept for JS compatibility) -->
+                <div id="pay-preview-box" style="display:none;">
+                  <span id="prev-token"></span>
+                  <span id="prev-amount"></span>
+                  <span id="prev-amount-usd"></span>
+                  <span id="prev-recipient"></span>
+                  <span id="prev-recipient-name"></span>
+                  <span id="prev-recipient-email-display"></span>
+                  <span id="pay-from-display"></span>
+                  <span id="prev-network"></span>
+                  <span id="prev-sched"></span>
+                  <span id="prev-note"></span>
+                  <span id="prev-gas"></span>
+                  <span id="prev-total-cost"></span>
+                  <div id="prev-recipient-name-row" style="display:none;"></div>
+                  <div id="prev-recipient-email-row" style="display:none;"></div>
+                  <div id="prev-sched-row" style="display:none;"></div>
+                  <div id="prev-note-row" style="display:none;"></div>
                 </div>
 
                 <!-- Error box -->
