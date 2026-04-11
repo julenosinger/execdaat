@@ -95,6 +95,7 @@ function switchTab(tab) {
         multisend: ['border-cyan-500',   'text-cyan-400'],
         history:   ['border-blue-500',   'text-blue-400'],
         dashboard: ['border-indigo-500', 'text-indigo-400'],
+        about:     ['border-emerald-500','text-emerald-400'],
       };
       const [bc, tc] = tabColors[tab] || ['border-purple-500', 'text-purple-400'];
       tabBtn.classList.add(bc, tc);

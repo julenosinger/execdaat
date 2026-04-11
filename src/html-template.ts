@@ -3,6 +3,7 @@
  * 
  * Exports the main dApp HTML page as a function.
  * NO Cloudflare Workers dependencies — safe to import in Node.js (Vercel).
+ * AUTO-GENERATED from src/index.tsx — do not edit manually.
  */
 
 export function getMainHTML(): string {
@@ -15,9 +16,12 @@ export function getMainHTML(): string {
 
   <!-- ── SEO & Trust Meta Tags ─────────────────────────────────────────── -->
   <meta name="description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
-  <meta name="keywords" content="ARC Network, testnet, dApp, USDC, EURC, swap, AMM, Web3, blockchain, smart contracts, autonomous payments, DeFi">
+  <meta name="keywords" content="ARC Network, testnet, no real funds, web3 testing, dApp testing, USDC testnet, blockchain testing, smart contracts testing, DeFi testnet, development environment, open source dapp">
   <meta name="author" content="ExecDaat — Open Source Project">
   <meta name="robots" content="index, follow">
+  <meta name="rating" content="safe for kids">
+  <meta name="classification" content="Development/Testing Tool">
+  <meta name="category" content="testnet, web3, blockchain, development">
   <meta name="theme-color" content="#1e1b4b">
 
   <!-- ── Open Graph (Facebook/LinkedIn/Discord/WhatsApp) ──────────────── -->
@@ -621,6 +625,9 @@ export function getMainHTML(): string {
         <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all">
           <i class="fas fa-info-circle mr-1 sm:mr-2"></i><span class="hidden sm:inline">Information</span><span class="sm:hidden text-xs">Info</span>
         </button>
+        <button onclick="switchTab('about')" id="tab-about" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-emerald-400 transition-all">
+          <i class="fas fa-shield-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">About Us</span><span class="sm:hidden text-xs">About</span>
+        </button>
 
       </div>
     </div>
@@ -1097,36 +1104,6 @@ export function getMainHTML(): string {
 
               <div class="space-y-3">
 
-                <!-- Name + Email row -->
-                <div class="grid grid-cols-2 gap-2">
-                  <div>
-                    <label class="pay-cf-label">
-                      <i class="fas fa-user" style="color:#90bce0;"></i>
-                      SENDER NAME
-                      <span class="opt">(optional)</span>
-                      <span style="margin-left:auto;cursor:help;" title="Your name will appear on the payment receipt for record-keeping."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
-                    </label>
-                    <input type="text" id="pay-fullname" class="pay-cf-input px-3 py-2 text-sm"
-                      placeholder="Your name"
-                      autocomplete="name"
-                      oninput="payValidateField('fullname'); payValidateForm()">
-                    <div id="pay-hint-fullname" class="pay-field-hint"></div>
-                  </div>
-                  <div>
-                    <label class="pay-cf-label">
-                      <i class="fas fa-envelope" style="color:#90bce0;"></i>
-                      EMAIL
-                      <span class="opt">(optional)</span>
-                      <span style="margin-left:auto;cursor:help;" title="Used for receipt delivery and record-keeping only."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
-                    </label>
-                    <input type="email" id="pay-email" class="pay-cf-input px-3 py-2 text-sm"
-                      placeholder="you@example.com"
-                      autocomplete="email"
-                      oninput="payValidateField('email'); payValidateForm()">
-                    <div id="pay-hint-email" class="pay-field-hint"></div>
-                  </div>
-                </div>
-
                 <!-- Recipient wallet + ENS -->
                 <div>
                   <label class="pay-cf-label">
@@ -1152,43 +1129,6 @@ export function getMainHTML(): string {
                   </div>
                 </div>
 
-                <!-- Recipient name + email (optional) -->
-                <div style="background:rgba(29,158,117,0.05);border:1px solid rgba(29,158,117,0.18);border-radius:12px;padding:12px 14px 10px;">
-                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;">
-                    <div style="width:22px;height:22px;border-radius:7px;background:rgba(29,158,117,0.14);border:1px solid rgba(29,158,117,0.28);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                      <i class="fas fa-user-check" style="color:#34d399;font-size:10px;"></i>
-                    </div>
-                    <span style="color:#34d399;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Recipient Info</span>
-                    <span style="color:#5a8070;font-size:9px;font-weight:400;text-transform:none;letter-spacing:0;">(optional — for records &amp; receipt)</span>
-                  </div>
-                  <div class="grid grid-cols-2 gap-2">
-                    <div>
-                      <label class="pay-cf-label" style="color:#4a9470;">
-                        <i class="fas fa-user" style="color:#34d399;"></i>
-                        RECIPIENT NAME
-                        <span class="opt">(optional)</span>
-                      </label>
-                      <input type="text" id="pay-recipient-name" class="pay-cf-input px-3 py-2 text-sm"
-                        placeholder="Recipient's name"
-                        autocomplete="off"
-                        oninput="updatePayPreview(); payValidateForm()">
-                      <div id="pay-hint-recipient-name" class="pay-field-hint"></div>
-                    </div>
-                    <div>
-                      <label class="pay-cf-label" style="color:#4a9470;">
-                        <i class="fas fa-envelope" style="color:#34d399;"></i>
-                        RECIPIENT EMAIL
-                        <span class="opt">(optional)</span>
-                      </label>
-                      <input type="email" id="pay-recipient-email" class="pay-cf-input px-3 py-2 text-sm"
-                        placeholder="recipient@example.com"
-                        autocomplete="off"
-                        oninput="payValidateField('recipientEmail'); updatePayPreview(); payValidateForm()">
-                      <div id="pay-hint-recipient-email" class="pay-field-hint"></div>
-                    </div>
-                  </div>
-                </div>
-
                 <!-- Amount -->
                 <div>
                   <label class="pay-cf-label">
@@ -1200,6 +1140,7 @@ export function getMainHTML(): string {
                   <div style="position:relative;">
                     <input type="number" id="pay-amount" class="pay-cf-input px-3 py-2.5 text-sm pr-24"
                       placeholder="0.000000" min="0" step="0.000001"
+                      autocomplete="off"
                       inputmode="decimal"
                       oninput="payValidateField('amount'); updatePayPreview(); payValidateForm()">
                     <button onclick="setPayMax()"
@@ -3987,6 +3928,288 @@ export function getMainHTML(): string {
       </div><!-- end dex-swap-center -->
 
     <!-- ════════════════════════════════════════════════════════════════ -->
+
+    <!-- ════════════════════════════════════════════════════════════════ -->
+
+    <!-- ══ ABOUT US TAB ═══════════════════════════════════════════════ -->
+    <div id="tab-content-about" class="tab-content hidden" role="main" aria-label="About ExecDaat Platform">
+      <div class="max-w-4xl mx-auto px-4 py-8 space-y-6">
+
+        <!-- Testnet Notice Banner -->
+        <div role="alert" aria-live="polite"
+          style="background:linear-gradient(135deg,rgba(16,185,129,0.12),rgba(5,150,105,0.08));border:2px solid rgba(16,185,129,0.4);border-radius:16px;padding:20px 24px;display:flex;align-items:flex-start;gap:14px;">
+          <div style="width:44px;height:44px;border-radius:12px;background:rgba(16,185,129,0.18);border:1px solid rgba(16,185,129,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas fa-flask" style="color:#10b981;font-size:20px;"></i>
+          </div>
+          <div>
+            <h2 style="color:#10b981;font-size:18px;font-weight:800;margin:0 0 6px;letter-spacing:-0.01em;">
+              Testnet Only — No Real Funds Involved
+            </h2>
+            <p style="color:#6ee7b7;font-size:13px;line-height:1.6;margin:0;">
+              This application runs exclusively on <strong>Arc Testnet (Chain ID: 5042002)</strong>.
+              All tokens (USDC, EURC) used here are <strong>testnet tokens with no monetary value</strong>.
+              There is <strong>no real financial risk</strong> in using this platform.
+              This is a development and testing environment only.
+            </p>
+          </div>
+        </div>
+
+        <!-- About Section -->
+        <article class="space-y-6" itemscope itemtype="https://schema.org/WebApplication">
+          <header>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+              <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="fas fa-bolt" style="color:white;font-size:22px;"></i>
+              </div>
+              <div>
+                <h1 itemprop="name" style="color:#f1f5f9;font-size:24px;font-weight:800;margin:0;letter-spacing:-0.02em;">ExecDaat Platform</h1>
+                <p style="color:#64748b;font-size:13px;margin:0;">Open Source · Arc Testnet · Built for Testing &amp; Development</p>
+              </div>
+            </div>
+          </header>
+
+          <!-- Who built this -->
+          <section>
+            <h3 style="color:#e2e8f0;font-size:15px;font-weight:700;margin:0 0 10px;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-user-circle" style="color:#818cf8;"></i>Who Built This
+            </h3>
+            <div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:16px 18px;">
+              <p itemprop="author" style="color:#94a3b8;font-size:13px;line-height:1.7;margin:0;">
+                ExecDaat was built by an <strong style="color:#c7d2fe;">independent developer and user of the Arc Network</strong> who wanted to explore the capabilities of Web3 infrastructure on testnet. The platform was created using <strong style="color:#c7d2fe;">Genspark AI</strong> as the primary development assistant, demonstrating the power of AI-assisted dApp development.
+              </p>
+            </div>
+          </section>
+
+          <!-- Purpose -->
+          <section>
+            <h3 style="color:#e2e8f0;font-size:15px;font-weight:700;margin:0 0 10px;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-bullseye" style="color:#34d399;"></i>Purpose &amp; Scope
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);border-radius:12px;padding:14px 16px;text-align:center;">
+                <i class="fas fa-vial" style="color:#10b981;font-size:20px;margin-bottom:8px;display:block;"></i>
+                <div style="color:#34d399;font-size:12px;font-weight:700;margin-bottom:4px;">TESTING ONLY</div>
+                <div style="color:#6b7280;font-size:11px;line-height:1.5;">All features run exclusively on Arc Testnet. No mainnet interactions.</div>
+              </div>
+              <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:12px;padding:14px 16px;text-align:center;">
+                <i class="fas fa-code" style="color:#3b82f6;font-size:20px;margin-bottom:8px;display:block;"></i>
+                <div style="color:#93c5fd;font-size:12px;font-weight:700;margin-bottom:4px;">OPEN SOURCE</div>
+                <div style="color:#6b7280;font-size:11px;line-height:1.5;">Built transparently. Source available on GitHub for audit and review.</div>
+              </div>
+              <div style="background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:12px;padding:14px 16px;text-align:center;">
+                <i class="fas fa-graduation-cap" style="color:#f59e0b;font-size:20px;margin-bottom:8px;display:block;"></i>
+                <div style="color:#fcd34d;font-size:12px;font-weight:700;margin-bottom:4px;">EDUCATIONAL</div>
+                <div style="color:#6b7280;font-size:11px;line-height:1.5;">Demonstrates DeFi concepts: Permit2, ERC-20, AMM, escrow, and AI agents.</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- What this is NOT -->
+          <section>
+            <h3 style="color:#e2e8f0;font-size:15px;font-weight:700;margin:0 0 10px;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-ban" style="color:#f87171;"></i>What This Platform Is NOT
+            </h3>
+            <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);border-radius:12px;padding:16px 18px;">
+              <ul style="margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;">
+                <li style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:12px;">
+                  <i class="fas fa-times-circle" style="color:#ef4444;flex-shrink:0;"></i>Not a financial service or exchange
+                </li>
+                <li style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:12px;">
+                  <i class="fas fa-times-circle" style="color:#ef4444;flex-shrink:0;"></i>Not affiliated with Circle, Uniswap, or any DeFi protocol
+                </li>
+                <li style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:12px;">
+                  <i class="fas fa-times-circle" style="color:#ef4444;flex-shrink:0;"></i>Does not handle real money or real assets
+                </li>
+                <li style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:12px;">
+                  <i class="fas fa-times-circle" style="color:#ef4444;flex-shrink:0;"></i>Not an investment platform or wallet service
+                </li>
+                <li style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:12px;">
+                  <i class="fas fa-times-circle" style="color:#ef4444;flex-shrink:0;"></i>Not collecting or storing personal data
+                </li>
+                <li style="display:flex;align-items:center;gap:8px;color:#fca5a5;font-size:12px;">
+                  <i class="fas fa-times-circle" style="color:#ef4444;flex-shrink:0;"></i>Not a phishing site or malicious application
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          <!-- Security Architecture -->
+          <section>
+            <h3 style="color:#e2e8f0;font-size:15px;font-weight:700;margin:0 0 10px;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-shield-alt" style="color:#818cf8;"></i>Security Architecture
+            </h3>
+            <div style="background:rgba(129,140,248,0.07);border:1px solid rgba(129,140,248,0.2);border-radius:12px;padding:16px 18px;">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div style="display:flex;align-items:flex-start;gap:10px;">
+                  <i class="fas fa-lock" style="color:#a78bfa;margin-top:2px;flex-shrink:0;"></i>
+                  <div>
+                    <div style="color:#c4b5fd;font-size:12px;font-weight:600;margin-bottom:2px;">Stateless Design</div>
+                    <div style="color:#6b7280;font-size:11px;line-height:1.5;">No user data (emails, names, wallet history) is stored locally or remotely. Every session starts fresh.</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:10px;">
+                  <i class="fas fa-user-secret" style="color:#a78bfa;margin-top:2px;flex-shrink:0;"></i>
+                  <div>
+                    <div style="color:#c4b5fd;font-size:12px;font-weight:600;margin-bottom:2px;">Privacy by Default</div>
+                    <div style="color:#6b7280;font-size:11px;line-height:1.5;">No tracking, no analytics, no cookies for profiling. Wallet connection is entirely under the user's control.</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:10px;">
+                  <i class="fas fa-code-branch" style="color:#a78bfa;margin-top:2px;flex-shrink:0;"></i>
+                  <div>
+                    <div style="color:#c4b5fd;font-size:12px;font-weight:600;margin-bottom:2px;">WAF Protection</div>
+                    <div style="color:#6b7280;font-size:11px;line-height:1.5;">Web Application Firewall blocks XSS, SQL injection, path traversal, and malicious bot patterns.</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:10px;">
+                  <i class="fas fa-certificate" style="color:#a78bfa;margin-top:2px;flex-shrink:0;"></i>
+                  <div>
+                    <div style="color:#c4b5fd;font-size:12px;font-weight:600;margin-bottom:2px;">Security Headers</div>
+                    <div style="color:#6b7280;font-size:11px;line-height:1.5;">HSTS, CSP, X-Frame-Options, and Permissions-Policy headers prevent clickjacking and injection attacks.</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:10px;">
+                  <i class="fas fa-key" style="color:#a78bfa;margin-top:2px;flex-shrink:0;"></i>
+                  <div>
+                    <div style="color:#c4b5fd;font-size:12px;font-weight:600;margin-bottom:2px;">Wallet-Only Auth</div>
+                    <div style="color:#6b7280;font-size:11px;line-height:1.5;">No passwords. No private keys handled. Authentication via EIP-1193 wallet signature only (MetaMask, Rabby, OKX).</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:10px;">
+                  <i class="fas fa-tachometer-alt" style="color:#a78bfa;margin-top:2px;flex-shrink:0;"></i>
+                  <div>
+                    <div style="color:#c4b5fd;font-size:12px;font-weight:600;margin-bottom:2px;">Rate Limiting</div>
+                    <div style="color:#6b7280;font-size:11px;line-height:1.5;">Sliding-window rate limiting per IP prevents abuse and DDoS attacks on API endpoints.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Technical Stack -->
+          <section>
+            <h3 style="color:#e2e8f0;font-size:15px;font-weight:700;margin:0 0 10px;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-layer-group" style="color:#06b6d4;"></i>Technical Stack
+            </h3>
+            <div style="background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.18);border-radius:12px;padding:16px 18px;">
+              <div style="display:flex;flex-wrap:wrap;gap:8px;" itemprop="applicationSubCategory">
+                <span style="background:rgba(6,182,212,0.12);border:1px solid rgba(6,182,212,0.3);border-radius:8px;padding:5px 12px;color:#22d3ee;font-size:11px;font-weight:600;">Hono Framework</span>
+                <span style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:5px 12px;color:#818cf8;font-size:11px;font-weight:600;">Cloudflare Pages</span>
+                <span style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:5px 12px;color:#fbbf24;font-size:11px;font-weight:600;">TypeScript</span>
+                <span style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:5px 12px;color:#10b981;font-size:11px;font-weight:600;">ethers.js v6</span>
+                <span style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:5px 12px;color:#f87171;font-size:11px;font-weight:600;">Arc Testnet</span>
+                <span style="background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:5px 12px;color:#a78bfa;font-size:11px;font-weight:600;">Uniswap Permit2</span>
+                <span style="background:rgba(34,211,238,0.12);border:1px solid rgba(34,211,238,0.3);border-radius:8px;padding:5px 12px;color:#22d3ee;font-size:11px;font-weight:600;">TailwindCSS</span>
+                <span style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:5px 12px;color:#fbbf24;font-size:11px;font-weight:600;">Genspark AI</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Contact & Verification -->
+          <section>
+            <h3 style="color:#e2e8f0;font-size:15px;font-weight:700;margin:0 0 10px;display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-search-plus" style="color:#10b981;"></i>Verification &amp; Trust
+            </h3>
+            <div style="background:rgba(15,23,42,0.6);border:1px solid rgba(100,116,139,0.2);border-radius:12px;padding:16px 18px;display:flex;flex-wrap:wrap;gap:12px;">
+              <a href="/.well-known/security.txt" target="_blank" rel="noopener noreferrer"
+                style="display:inline-flex;align-items:center;gap:7px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);border-radius:9px;padding:8px 14px;color:#34d399;font-size:12px;font-weight:600;text-decoration:none;transition:all 0.2s;"
+                onmouseover="this.style.background='rgba(16,185,129,0.18)'" onmouseout="this.style.background='rgba(16,185,129,0.1)'">
+                <i class="fas fa-file-shield"></i>Security Policy
+              </a>
+              <a href="/manifest.json" target="_blank" rel="noopener noreferrer"
+                style="display:inline-flex;align-items:center;gap:7px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);border-radius:9px;padding:8px 14px;color:#818cf8;font-size:12px;font-weight:600;text-decoration:none;transition:all 0.2s;"
+                onmouseover="this.style.background='rgba(99,102,241,0.18)'" onmouseout="this.style.background='rgba(99,102,241,0.1)'">
+                <i class="fas fa-file-code"></i>App Manifest
+              </a>
+              <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener noreferrer"
+                style="display:inline-flex;align-items:center;gap:7px;background:rgba(100,116,139,0.1);border:1px solid rgba(100,116,139,0.25);border-radius:9px;padding:8px 14px;color:#94a3b8;font-size:12px;font-weight:600;text-decoration:none;transition:all 0.2s;"
+                onmouseover="this.style.background='rgba(100,116,139,0.18)'" onmouseout="this.style.background='rgba(100,116,139,0.1)'">
+                <i class="fab fa-github"></i>Source Code
+              </a>
+              <a href="https://testnet.arcscan.app" target="_blank" rel="noopener noreferrer"
+                style="display:inline-flex;align-items:center;gap:7px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:9px;padding:8px 14px;color:#fbbf24;font-size:12px;font-weight:600;text-decoration:none;transition:all 0.2s;"
+                onmouseover="this.style.background='rgba(245,158,11,0.18)'" onmouseout="this.style.background='rgba(245,158,11,0.1)'">
+                <i class="fas fa-external-link-alt"></i>Arc Explorer
+              </a>
+            </div>
+          </section>
+
+          <!-- Disclaimer -->
+          <footer>
+            <div role="note" aria-label="Legal Disclaimer"
+              style="background:rgba(15,23,42,0.8);border:1px solid rgba(71,85,105,0.3);border-radius:12px;padding:16px 18px;">
+              <p style="color:#475569;font-size:11px;line-height:1.7;margin:0;" itemprop="description">
+                <strong style="color:#64748b;">Disclaimer:</strong> ExecDaat is an open-source testnet dApp built for educational and development purposes. 
+                It operates exclusively on <span itemprop="operatingSystem">Arc Testnet</span> and involves <strong>no real funds, no financial transactions, and no monetary value</strong>. 
+                The platform is not a financial service, not a wallet provider, and not affiliated with any financial institution. 
+                Use at your own discretion. All smart contract interactions are on testnet only. 
+                The developer provides no warranties and accepts no liability for any use of this software.
+              </p>
+            </div>
+          </footer>
+
+        </article>
+
+        <!-- Structured data for trust signals (machine-readable) -->
+        <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          "name": "ExecDaat Platform",
+          "url": "https://execdaatplataform.pages.dev",
+          "description": "Open-source testnet dApp for Arc Network. Testnet only. No real funds involved. For development and testing purposes only.",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "Web Browser",
+          "keywords": "testnet, no real funds, web3 testing, arc network, blockchain testing, dapp development",
+          "author": {
+            "@type": "Person",
+            "description": "Independent developer and Arc Network testnet user"
+          },
+          "about": {
+            "@type": "Thing",
+            "name": "Arc Testnet",
+            "description": "Blockchain test network — no real value"
+          },
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "description": "Free open-source testnet application"
+          },
+          "isAccessibleForFree": true,
+          "additionalProperty": [
+            {
+              "@type": "PropertyValue",
+              "name": "environment",
+              "value": "testnet-only"
+            },
+            {
+              "@type": "PropertyValue",
+              "name": "real-funds",
+              "value": "false"
+            },
+            {
+              "@type": "PropertyValue",
+              "name": "financial-risk",
+              "value": "none"
+            },
+            {
+              "@type": "PropertyValue",
+              "name": "purpose",
+              "value": "testing and development"
+            },
+            {
+              "@type": "PropertyValue",
+              "name": "built-with",
+              "value": "Genspark AI"
+            }
+          ]
+        }
+        </script>
+
+      </div>
+    </div>
+    <!-- ══ END ABOUT US TAB ════════════════════════════════════════════ -->
 
     <!-- ════════════════════════════════════════════════════════════════ -->
 

@@ -712,43 +712,29 @@ function payValidateSched() {
 
 // ─── Preview update ────────────────────────────────────────────────────────────
 function updatePayPreview() {
-  const recipient      = (payEl('pay-recipient')?.value       || '').trim();
-  const recipientName  = (payEl('pay-recipient-name')?.value  || '').trim();
-  const recipientEmail = (payEl('pay-recipient-email')?.value || '').trim();
-  const amountStr      = (payEl('pay-amount')?.value          || '').trim();
-  const amountNum      = parseFloat(amountStr) || 0;
-  const note           = (payEl('pay-note')?.value            || '').trim();
-  const token          = payState.token;
-  const tokenMeta      = PAY_TOKENS[token] || { usdRate: 1.0 };
-  const amountUSD      = amountNum * tokenMeta.usdRate;
+  const recipient  = (payEl('pay-recipient')?.value || '').trim();
+  const amountStr  = (payEl('pay-amount')?.value    || '').trim();
+  const amountNum  = parseFloat(amountStr) || 0;
+  const note       = (payEl('pay-note')?.value      || '').trim();
+  const token      = payState.token;
+  const tokenMeta  = PAY_TOKENS[token] || { usdRate: 1.0 };
+  const amountUSD  = amountNum * tokenMeta.usdRate;
 
-  paySet('prev-token',     token);
-  paySet('prev-amount',    amountNum > 0 ? amountNum.toFixed(6) + ' ' + token : '—');
+  paySet('prev-token',      token);
+  paySet('prev-amount',     amountNum > 0 ? amountNum.toFixed(6) + ' ' + token : '—');
   paySet('prev-amount-usd', amountNum > 0 ? '≈ $' + amountUSD.toFixed(2) : '');
-  paySet('prev-recipient', isValidAddress(recipient) ? shortAddr(recipient) : (recipient || '—'));
-  paySet('prev-network',   'Arc Testnet (5042002)');
-  paySet('prev-gas',       token === 'EURC' ? '~2 txs (approve + transfer)' : '~1 tx (ERC-20 transfer)');
+  paySet('prev-recipient',  isValidAddress(recipient) ? shortAddr(recipient) : (recipient || '—'));
+  paySet('prev-network',    'Arc Testnet (5042002)');
+  paySet('prev-gas',        token === 'EURC' ? '~2 txs (approve + transfer)' : '~1 tx (ERC-20 transfer)');
 
   const from = window.walletState?.address;
   if (from) paySet('pay-from-display', shortAddr(from));
 
-  // Recipient name row
-  const recipNameRow = payEl('prev-recipient-name-row');
-  if (recipientName) {
-    paySet('prev-recipient-name', recipientName);
-    if (recipNameRow) recipNameRow.style.display = '';
-  } else {
-    if (recipNameRow) recipNameRow.style.display = 'none';
-  }
-
-  // Recipient email row
+  // Hide name/email rows (removed from UI)
+  const recipNameRow  = payEl('prev-recipient-name-row');
   const recipEmailRow = payEl('prev-recipient-email-row');
-  if (recipientEmail) {
-    paySet('prev-recipient-email-display', recipientEmail);
-    if (recipEmailRow) recipEmailRow.style.display = '';
-  } else {
-    if (recipEmailRow) recipEmailRow.style.display = 'none';
-  }
+  if (recipNameRow)  recipNameRow.style.display  = 'none';
+  if (recipEmailRow) recipEmailRow.style.display = 'none';
 
   // Scheduled row
   const schedRow = payEl('prev-sched-row');
@@ -785,11 +771,8 @@ function updatePayPreview() {
 // ─── Field-level validation ────────────────────────────────────────────────────
 function payValidateField(field) {
   const fieldMap = {
-    fullname:       { el: 'pay-fullname',        hint: 'pay-hint-fullname'        },
-    email:          { el: 'pay-email',           hint: 'pay-hint-email'           },
-    recipient:      { el: 'pay-recipient',       hint: 'pay-hint-recipient'       },
-    recipientEmail: { el: 'pay-recipient-email', hint: 'pay-hint-recipient-email' },
-    amount:         { el: 'pay-amount',          hint: 'pay-hint-amount'          },
+    recipient: { el: 'pay-recipient', hint: 'pay-hint-recipient' },
+    amount:    { el: 'pay-amount',    hint: 'pay-hint-amount'    },
   };
   const f = fieldMap[field];
   if (!f) return;
@@ -802,16 +785,6 @@ function payValidateField(field) {
   hint.className = 'pay-field-hint';
   hint.textContent = '';
 
-  if (field === 'fullname') {
-    if (!val) { hint.className += ' info'; hint.textContent = ''; }
-    else if (val.length < 2) { hint.className += ' err'; hint.textContent = 'Name too short'; input.classList.add('is-error'); }
-    else { hint.className += ' ok'; hint.textContent = '✓'; input.classList.add('is-valid'); }
-  }
-  if (field === 'email' || field === 'recipientEmail') {
-    if (!val) { hint.className += ' info'; hint.textContent = ''; }
-    else if (!isValidEmail(val)) { hint.className += ' err'; hint.textContent = 'Invalid email format'; input.classList.add('is-error'); }
-    else { hint.className += ' ok'; hint.textContent = '✓ Valid'; input.classList.add('is-valid'); }
-  }
   if (field === 'recipient') {
     if (!val) { hint.className += ' info'; hint.textContent = 'Enter recipient wallet address'; }
     else if (!isValidAddress(val)) { hint.className += ' err'; hint.textContent = 'Invalid address — must start with 0x + 40 hex chars'; input.classList.add('is-error'); }
@@ -834,26 +807,20 @@ function payValidateForm() {
   const btnText = payEl('pay-send-btn-text');
   if (!btn) return;
 
-  const fullname       = (payEl('pay-fullname')?.value        || '').trim();
-  const email          = (payEl('pay-email')?.value           || '').trim();
-  const recipient      = (payEl('pay-recipient')?.value       || '').trim();
-  const recipientEmail = (payEl('pay-recipient-email')?.value || '').trim();
-  const amountStr      = (payEl('pay-amount')?.value          || '').trim();
-  const amount         = parseFloat(amountStr);
-  const token          = payState.token;
-  const bal            = payState.senderBalance[token];
-  const connected      = !!window.walletState?.address;
-  const noteLen        = (payEl('pay-note')?.value || '').length;
+  const recipient  = (payEl('pay-recipient')?.value || '').trim();
+  const amountStr  = (payEl('pay-amount')?.value    || '').trim();
+  const amount     = parseFloat(amountStr);
+  const token      = payState.token;
+  const bal        = payState.senderBalance[token];
+  const connected  = !!window.walletState?.address;
+  const noteLen    = (payEl('pay-note')?.value || '').length;
 
   let ok = true;
   let reason = payState.scheduleMode === 'later' ? 'Schedule Payment' : 'Sign & Send';
 
   if (!connected)                                        { ok = false; reason = 'Connect wallet to send'; }
-  else if (fullname && fullname.length < 2)              { ok = false; reason = 'Name too short'; }
-  else if (email && !isValidEmail(email))                { ok = false; reason = 'Invalid email format'; }
   else if (!isValidAddress(recipient))                   { ok = false; reason = 'Invalid recipient address'; }
   else if (recipient.toLowerCase() === window.walletState?.address?.toLowerCase()) { ok = false; reason = 'Cannot send to yourself'; }
-  else if (recipientEmail && !isValidEmail(recipientEmail)) { ok = false; reason = 'Invalid recipient email'; }
   else if (isNaN(amount) || amount <= 0)                 { ok = false; reason = 'Enter a valid amount'; }
   else if (bal !== null && amount > bal)                 { ok = false; reason = 'Insufficient balance'; }
   else if (noteLen > PAY_NOTE_MAX)                       { ok = false; reason = 'Note too long (max 300)'; }

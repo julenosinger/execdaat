@@ -410,10 +410,8 @@ async function arcRetryItem(store, id) {
     const item  = items.find(r => r.id === id);
     if (!item) { showToast('Record not found', 'error'); return; }
 
-    // Re-fill the payment form
+    // Re-fill only blockchain-required fields (no name/email — stateless)
     const fields = {
-      'pay-fullname':  item.fullname  || item.senderName || '',
-      'pay-email':     item.email     || '',
       'pay-recipient': item.recipient || item.to || '',
       'pay-amount':    item.amount    ? String(item.amount) : '',
     };
@@ -428,8 +426,8 @@ async function arcRetryItem(store, id) {
     if (typeof updatePayPreview === 'function') updatePayPreview();
     if (typeof payValidateForm === 'function') payValidateForm();
 
-    showToast('✏️ Payment form pre-filled. Review and submit.', 'info');
-    document.getElementById('pay-fullname')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    showToast('Payment form pre-filled. Review and submit.', 'info');
+    document.getElementById('pay-recipient')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 
