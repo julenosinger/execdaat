@@ -1665,26 +1665,6 @@ app.get('/', (c) => {
                   <div id="pay-hint-amount" class="pay-field-hint"></div>
                 </div>
 
-                <!-- Government Tax (optional) -->
-                <div style="background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.15);border-radius:11px;padding:11px 13px 9px;">
-                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
-                    <i class="fas fa-landmark" style="color:#a78bfa;font-size:11px;"></i>
-                    <span style="color:#c4b5fd;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Government Tax</span>
-                    <span style="color:#5a5070;font-size:9px;">(optional)</span>
-                    <span style="margin-left:auto;cursor:help;" title="Optional regulatory tax. Enter as % of amount or a fixed USD value. Default: 0. Included in total cost and receipt."><i class="fas fa-info-circle" style="color:#a78bfa;font-size:10px;opacity:0.7;"></i></span>
-                  </div>
-                  <div style="display:flex;gap:6px;align-items:center;">
-                    <input type="number" id="pay-gov-tax" class="pay-cf-input px-3 py-2 text-sm" style="flex:1;"
-                      placeholder="0" min="0" step="0.01" inputmode="decimal"
-                      oninput="updatePayPreview(); payValidateForm()">
-                    <select id="pay-tax-mode" class="pay-cf-input px-2 py-2 text-sm" style="width:100px;"
-                      onchange="updatePayPreview(); payValidateForm()">
-                      <option value="pct">% of amt</option>
-                      <option value="fixed">Fixed USD</option>
-                    </select>
-                  </div>
-                </div>
-
                 <!-- Gas Speed Selector -->
                 <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.15);border-radius:11px;padding:11px 13px 9px;">
                   <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
