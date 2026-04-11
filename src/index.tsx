@@ -2092,18 +2092,10 @@ app.get('/', (c) => {
                     class="cf-input w-full px-3 py-2.5 text-sm font-mono" />
                 </div>
 
-                <!-- Emails row -->
-                <div class="grid grid-cols-2 gap-2">
-                  <div>
-                    <label class="cf-label"><i class="fas fa-envelope" style="color:#a78bfa;"></i>CLIENT EMAIL</label>
-                    <input type="email" id="cf-client-email" placeholder="client@email.com"
-                      class="cf-input w-full px-3 py-2 text-sm" />
-                  </div>
-                  <div>
-                    <label class="cf-label"><i class="fas fa-envelope" style="color:#f59e0b;"></i>CONTRACTOR EMAIL</label>
-                    <input type="email" id="cf-contractor-email" placeholder="contractor@email.com"
-                      class="cf-input w-full px-3 py-2 text-sm" />
-                  </div>
+                <!-- Email fields hidden (kept for JS compatibility) -->
+                <div style="display:none;">
+                  <input type="email" id="cf-client-email" />
+                  <input type="email" id="cf-contractor-email" />
                 </div>
 
                 <!-- Total USDC -->
