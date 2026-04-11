@@ -102,8 +102,11 @@ async function dbFetchOnChainStats(walletAddress) {
   return results;
 }
 
-// ── Build activity feed from localStorage ────────────────────────────────────
+// ── Build activity feed — only when wallet is connected ───────────────────────
 function dbGetLocalActivity() {
+  // Guard: only show activity data when a wallet is connected
+  if (!window.walletState?.address) return [];
+
   const items = [];
 
   // Payment history
@@ -343,10 +346,92 @@ function dbRenderMetricsBar(stats, payHistory, cfMeta, msHistory) {
     </div>`;
 }
 
+// ── Reset dashboard to disconnected state ───────────────────────────────────
+function dbResetDashboard() {
+  const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+
+  // Reset stat cards to default
+  setEl('stat-payments', '--');
+  setEl('stat-volume',   '--');
+  setEl('stat-contracts', '--');
+  setEl('stat-pending',  '--');
+
+  // Reset wallet panel to connect state
+  const walletPanel = document.getElementById('wallet-panel');
+  if (walletPanel) {
+    walletPanel.innerHTML = `
+      <div class="flex flex-col items-center justify-center py-4 gap-3">
+        <div class="w-12 h-12 rounded-full bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center">
+          <i class="fas fa-wallet text-gray-500 text-lg"></i>
+        </div>
+        <p class="text-gray-400 text-xs text-center">Connect your EVM wallet to interact with Arc Testnet</p>
+        <button onclick="openWalletModal()" class="wallet-connect-pulse bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 py-2 text-sm font-semibold transition-all flex items-center gap-2">
+          <i class="fas fa-plug"></i><span>Connect Wallet</span>
+        </button>
+      </div>`;
+  }
+
+  // Reset metrics bar
+  const metricsBar = document.getElementById('db-metrics-bar');
+  if (metricsBar) metricsBar.innerHTML = `
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div class="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
+        <div class="text-xs text-gray-500 mb-1">📋 On-chain Contracts</div>
+        <div class="text-xl font-bold text-gray-600">--</div>
+        <div class="text-xs text-gray-700">connect wallet to view</div>
+      </div>
+      <div class="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
+        <div class="text-xs text-gray-500 mb-1">💳 Payments (session)</div>
+        <div class="text-xl font-bold text-gray-600">--</div>
+        <div class="text-xs text-gray-700">--</div>
+      </div>
+      <div class="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
+        <div class="text-xs text-gray-500 mb-1">📦 Latest Block</div>
+        <div class="text-xl font-bold text-gray-600">--</div>
+        <div class="text-xs text-gray-700">Arc Testnet</div>
+      </div>
+      <div class="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
+        <div class="text-xs text-gray-500 mb-1">⚡ RPC Latency</div>
+        <div class="text-xl font-bold text-gray-600">--</div>
+        <div class="text-xs text-gray-700">--</div>
+      </div>
+    </div>`;
+
+  // Reset activity feed
+  const activity = document.getElementById('recent-activity');
+  if (activity) activity.innerHTML = `
+    <div class="text-center py-8">
+      <i class="fas fa-wallet text-gray-700 text-3xl mb-3 block"></i>
+      <p class="text-gray-500 text-sm">No wallet connected</p>
+      <p class="text-gray-600 text-xs mt-1">Connect your wallet to see transaction history.</p>
+      <div class="flex gap-2 justify-center mt-4">
+        <button onclick="openWalletModal()" class="text-xs px-3 py-1.5 bg-purple-800/30 text-purple-300 border border-purple-700/30 rounded-lg hover:bg-purple-700/30 transition-all">
+          <i class="fas fa-plug mr-1"></i>Connect Wallet
+        </button>
+      </div>
+    </div>`;
+
+  // Reset network metrics
+  const netMetrics = document.getElementById('db-network-metrics');
+  if (netMetrics) netMetrics.innerHTML = `
+    <div class="grid grid-cols-2 gap-3">
+      <div class="bg-gray-800/60 rounded-xl p-3"><div class="text-xs text-gray-500 mb-1">Latest Block</div><div class="text-gray-600 font-bold text-sm">--</div></div>
+      <div class="bg-gray-800/60 rounded-xl p-3"><div class="text-xs text-gray-500 mb-1">RPC Latency</div><div class="text-gray-600 font-bold text-sm">--</div></div>
+      <div class="bg-gray-800/60 rounded-xl p-3"><div class="text-xs text-gray-500 mb-1">Gas Price</div><div class="text-gray-600 font-bold text-sm">--</div></div>
+      <div class="bg-gray-800/60 rounded-xl p-3"><div class="text-xs text-gray-500 mb-1">Contracts</div><div class="text-gray-600 font-bold text-sm">--</div></div>
+    </div>`;
+}
+
 // ── Main dashboard loader ─────────────────────────────────────────────────────
 async function loadDashboard() {
   const wallet       = window.walletState?.address;
   const arcPayActive = localStorage.getItem('arc-pay-approved') === '1';
+
+  // ── GUARD: if wallet not connected, show empty state and return ──
+  if (!wallet) {
+    dbResetDashboard();
+    return;
+  }
 
   // Show loading state
   const activity = document.getElementById('recent-activity');
@@ -479,11 +564,25 @@ function dbStartAutoRefresh() {
 
 // ── Event-driven refresh ─────────────────────────────────────────────────────
 window.addEventListener('walletConnected',    () => { _dbLastRefresh = 0; loadDashboard(); });
-window.addEventListener('walletDisconnected', () => { _dbLastRefresh = 0; loadDashboard(); });
+window.addEventListener('walletDisconnected', () => {
+  // Immediate UI reset — do not wait for async loadDashboard
+  dbResetDashboard();
+  _dbLastRefresh = 0;
+});
 window.addEventListener('walletChanged',      () => { _dbLastRefresh = 0; loadDashboard(); });
 
 // ── Expose ────────────────────────────────────────────────────────────────────
-window.loadDashboard = loadDashboard;
+window.loadDashboard   = loadDashboard;
+window.dbResetDashboard = dbResetDashboard;
 dbStartAutoRefresh();
+
+// On script load: if no wallet is connected, immediately reset to clean state
+if (!window.walletState?.address) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', dbResetDashboard);
+  } else {
+    dbResetDashboard();
+  }
+}
 
 console.log('[DB v3] Dashboard loaded — real on-chain data, batch RPC, live metrics');

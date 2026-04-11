@@ -1940,6 +1940,11 @@ window.addEventListener('accountsChanged', async (e) => {
   await _payOnWalletChange(newAddr || null);
 });
 
+window.addEventListener('walletDisconnected', async () => {
+  console.log('[PAY] walletDisconnected event → clearing all state');
+  await _payOnWalletChange(null);
+});
+
 // ─── Boot log ──────────────────────────────────────────────────────────────────
 console.log('[PAY v4] Payments module loaded — Arc Testnet ChainID:', PAY_CHAIN_ID);
 console.log('[PAY v4] Features: Fee Transparency · Gas Oracle · Multi-Token · Gov Tax · ENS · KYC · TX Pipeline · Receipts++');

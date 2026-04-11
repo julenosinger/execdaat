@@ -904,7 +904,50 @@ document.addEventListener('DOMContentLoaded', () => {
     const msGate2 = document.getElementById('ms-wallet-gate');
     if (msGate2) msGate2.classList.remove('hidden');
 
-    addLog('[WALLET] Wallet disconnected', 'warning');
+    // ── Reset stat cards no dashboard ──────────────────────────────────
+    const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+    setEl('stat-payments',  '--');
+    setEl('stat-volume',    '--');
+    setEl('stat-contracts', '--');
+    setEl('stat-pending',   '--');
+
+    // Reset wallet panel para estado desconectado
+    const walletPanel = document.getElementById('wallet-panel');
+    if (walletPanel) {
+      walletPanel.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-4 gap-3">
+          <div class="w-12 h-12 rounded-full bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center">
+            <i class="fas fa-wallet text-gray-500 text-lg"></i>
+          </div>
+          <p class="text-gray-400 text-xs text-center">Connect your EVM wallet to interact with Arc Testnet</p>
+          <button onclick="openWalletModal()" class="wallet-connect-pulse bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 py-2 text-sm font-semibold transition-all flex items-center gap-2">
+            <i class="fas fa-plug"></i><span>Connect Wallet</span>
+          </button>
+        </div>`;
+    }
+
+    // Chamar reset completo do dashboard se disponível
+    if (typeof window.dbResetDashboard === 'function') {
+      window.dbResetDashboard();
+    }
+
+    // Limpar balanço da aba payments
+    const payBalance = document.getElementById('pay-balance');
+    if (payBalance) payBalance.textContent = '';
+    const payBalanceHint = document.getElementById('pay-hint-amount');
+    if (payBalanceHint) payBalanceHint.textContent = '';
+    const payFromDisplay = document.getElementById('pay-from-display');
+    if (payFromDisplay) payFromDisplay.textContent = '—';
+
+    // Limpar recipient e amount na aba payments
+    const payRecipient = document.getElementById('pay-recipient');
+    if (payRecipient) payRecipient.value = '';
+    const payAmount = document.getElementById('pay-amount');
+    if (payAmount) payAmount.value = '';
+    const payNote = document.getElementById('pay-note');
+    if (payNote) payNote.value = '';
+
+    addLog('[WALLET] Wallet disconnected — UI resetado', 'warning');
   });
 });
 
