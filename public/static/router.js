@@ -17,6 +17,7 @@ const DAAT_ROUTES = [
   { path: '/swap',       tab: 'dex',        label: 'Swap',       icon: 'fas fa-exchange-alt',  color: '#eab308' },
   { path: '/multisend',  tab: 'multisend',  label: 'MultiSend',  icon: 'fas fa-paper-plane',   color: '#06b6d4' },
   { path: '/history',    tab: 'history',    label: 'History',    icon: 'fas fa-history',       color: '#60a5fa' },
+  { path: '/about',      tab: 'about',      label: 'About Us',   icon: 'fas fa-shield-alt',    color: '#10b981' },
 ];
 
 // tab-name → route path (for reverse lookup)
@@ -73,12 +74,12 @@ function _applyRoute(tab) {
   if (_currentRoute === tab) return;
   _currentRoute = tab;
 
-  // Enter app-shell if hidden
-  if (typeof window.enterApp === 'function') {
-    const shell = document.getElementById('app-shell');
-    if (shell && shell.classList.contains('hidden')) {
-      window.enterApp();
-    }
+  // Show app-shell if hidden — do NOT call enterApp() because it forces 'agents' tab
+  const shell   = document.getElementById('app-shell');
+  const landing = document.getElementById('landing-page');
+  if (shell && shell.classList.contains('hidden')) {
+    if (landing) landing.classList.add('hidden');
+    shell.classList.remove('hidden');
   }
 
   // Delegate to existing switchTab
@@ -230,16 +231,16 @@ function daatRouterInit() {
         _handleSettingsRoute();
         return;
       }
-      const shell = document.getElementById('app-shell');
+      const shell   = document.getElementById('app-shell');
+      const landing = document.getElementById('landing-page');
       if (shell && shell.classList.contains('hidden')) {
-        // On landing page — navigate to app
-        if (typeof window.enterApp === 'function') {
-          window.enterApp();
-          setTimeout(() => {
-            if (typeof window.switchTab === 'function') window.switchTab(tab);
-            _updateRouterNavHighlight(tab);
-          }, 200);
-        }
+        // Show app-shell without forcing 'agents' tab (enterApp() would do that)
+        if (landing) landing.classList.add('hidden');
+        shell.classList.remove('hidden');
+        setTimeout(() => {
+          if (typeof window.switchTab === 'function') window.switchTab(tab);
+          _updateRouterNavHighlight(tab);
+        }, 200);
       } else {
         if (typeof window.switchTab === 'function') window.switchTab(tab);
         _updateRouterNavHighlight(tab);
