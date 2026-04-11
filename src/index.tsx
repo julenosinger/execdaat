@@ -4501,6 +4501,29 @@ app.get('/', (c) => {
           </div>
         </section>
 
+        <!-- ── Verified Contracts Section ─────────────────────────────── -->
+        <section aria-label="Verified Contracts" style="margin-bottom:24px;">
+          <header style="margin-bottom:14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+              <h2 style="color:#e2e8f0;font-size:18px;font-weight:800;margin:0;display:flex;align-items:center;gap:10px;">
+                <i class="fas fa-file-contract" style="color:#6366f1;"></i>Verified Contracts
+              </h2>
+              <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:4px 12px;color:#818cf8;font-size:11px;font-weight:700;">
+                <i class="fas fa-cubes" style="font-size:10px;"></i>Arc Testnet · Chain 5042002
+              </span>
+            </div>
+            <p style="color:#64748b;font-size:12px;margin:6px 0 0;">All smart contracts deployed and used by this dApp.</p>
+          </header>
+
+          <!-- Container for the dynamic contract list -->
+          <div id="vc-panel">
+            <!-- Loading skeleton -->
+            <div style="text-align:center;padding:30px;color:#475569;font-size:13px;">
+              <i class="fas fa-spinner fa-spin" style="margin-right:8px;color:#6366f1;"></i>Loading contract registry…
+            </div>
+          </div>
+        </section>
+
         <!-- Disclaimer footer -->
         <footer>
           <div role="note" style="background:rgba(15,23,42,0.7);border:1px solid rgba(71,85,105,0.25);border-radius:12px;padding:16px 20px;">
@@ -5146,6 +5169,7 @@ app.get('/', (c) => {
   <script src="/static/app.js?v=20260404a"></script>
   <script src="/static/payments.js?v=20260330a"></script>
   <script src="/static/contracts.js?v=20250325a"></script>
+  <script src="/static/verified-contracts.js?v=20260411a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250325b"></script>

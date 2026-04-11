@@ -945,36 +945,21 @@ window.ammSetSlippage = function(pct) {
   ammComputeSwapQuote();
 };
 
-// ─── Deploy contract helper (UI) ──────────────────────────────────────────────
+// ─── Deploy contract helper (UI) ─────────────────────────────────────────────
+// SECURITY: Private keys must NEVER be entered or transmitted via the browser.
+// Deployment must be done via CLI: forge create or node scripts/deployAMM.cjs
 window.ammDeployContract = async function() {
-  const pkInput = $('amm-pk-input');
-  const pk = pkInput?.value?.trim();
-  if (!pk || pk.length < 60) {
-    showToast('Enter a valid private key', 'error');
-    return;
-  }
-
-  showToast('⚠️ Deploying via backend — key not sent over network in prod', 'warning');
-
-  try {
-    const res = await fetch('/api/dex/amm/deploy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ privateKey: pk }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      ammState.ammAddress = data.ammAddress;
-      ammState.deployed   = true;
-      showToast(`✅ Deployed at ${data.ammAddress}`, 'success');
-      if (pkInput) pkInput.value = '';
-      await ammRefreshAll();
-    } else {
-      showToast(`❌ Deploy failed: ${data.error}`, 'error');
-    }
-  } catch (e) {
-    showToast(`❌ ${e.message}`, 'error');
-  }
+  // Blocked: never accept private keys in the browser
+  showToast(
+    '🔒 Security: Deploy via CLI only. Never input private keys in the browser. ' +
+    'Use: forge create src/SimpleAMM.sol:SimpleAMM --constructor-args <EURC> <USDC> --rpc-url <RPC>',
+    'warning'
+  );
+  console.warn(
+    '[AMM] ammDeployContract() blocked — deployment requires CLI.\n' +
+    'Use: forge create or node scripts/deployAMM.cjs\n' +
+    'NEVER submit private keys via browser forms.'
+  );
 };
 
 // ─── Init ─────────────────────────────────────────────────────────────────────

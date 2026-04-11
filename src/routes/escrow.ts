@@ -27,9 +27,11 @@ const NETWORK_NAME    = 'Arc Testnet';
 const EXPLORER_URL    = 'https://testnet.arcscan.app';
 const RPC_URL         = 'https://rpc.testnet.arc.network';
 // Simulated factory address (replace with deployed address after `forge create`)
-const FACTORY_ADDRESS = '0xEscrow0000000000000000000000000000000001';
+// NOTE: EscrowRegistry is awaiting deployment — EscrowWallet logic is used via ContractFactory
+const FACTORY_ADDRESS = '0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A'; // ContractFactory (deployed)
 // EscrowRegistry address (from EscrowRegistry.sol — deploy separately)
-const REGISTRY_ADDRESS = '0xEscrowRegistry00000000000000000000000002';
+// TODO: Deploy EscrowRegistry.sol and update this address
+const REGISTRY_ADDRESS = '0x0000000000000000000000000000000000000000'; // Not yet deployed
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type EscrowState = 'Created' | 'Active' | 'Disputed' | 'Completed' | 'Refunded';

@@ -286,6 +286,142 @@ contractsRouter.get('/by-wallet/:address', async (c) => {
   }
 });
 
+// ─── GET /verified — Full verified contracts registry ─────────────────────────
+// Returns all deployed/verified contracts with live on-chain data where possible.
+// IMPORTANT: Must be declared BEFORE /:id to avoid route conflict
+contractsRouter.get('/verified', async (c) => {
+  const ARCSCAN_BASE = 'https://testnet.arcscan.app';
+
+  // Static registry — source of truth for all addresses
+  const registry = [
+    {
+      id:           'usdc',
+      name:         'USDC Token',
+      contractName: 'FiatTokenProxy',
+      address:      '0x3600000000000000000000000000000000000000',
+      category:     'token',
+      status:       'verified',
+      arcscanUrl:   `${ARCSCAN_BASE}/address/0x3600000000000000000000000000000000000000`,
+      sourceFile:   'FiatTokenProxy (Circle)',
+      security:     ['ERC-20 Standard', 'Verified on ArcScan'],
+    },
+    {
+      id:           'eurc',
+      name:         'EURC Token',
+      contractName: 'FiatTokenProxy',
+      address:      '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
+      category:     'token',
+      status:       'verified',
+      arcscanUrl:   `${ARCSCAN_BASE}/address/0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a`,
+      sourceFile:   'FiatTokenProxy (Circle)',
+      security:     ['ERC-20 Standard', 'Verified on ArcScan'],
+    },
+    {
+      id:           'permit2',
+      name:         'Permit2',
+      contractName: 'Permit2',
+      address:      '0x000000000022D473030F116dDEE9F6B43aC78BA3',
+      category:     'infrastructure',
+      status:       'verified',
+      arcscanUrl:   `${ARCSCAN_BASE}/address/0x000000000022D473030F116dDEE9F6B43aC78BA3`,
+      sourceFile:   'Uniswap Permit2',
+      security:     ['Verified on ArcScan', 'No Admin Keys'],
+    },
+    {
+      id:           'multicall3',
+      name:         'Multicall3',
+      contractName: 'Multicall3',
+      address:      '0xcA11bde05977b3631167028862bE2a173976CA11',
+      category:     'infrastructure',
+      status:       'verified',
+      arcscanUrl:   `${ARCSCAN_BASE}/address/0xcA11bde05977b3631167028862bE2a173976CA11`,
+      sourceFile:   'MakerDAO Multicall3',
+      security:     ['Verified on ArcScan', 'Read-only'],
+    },
+    {
+      id:              'contract_factory',
+      name:            'ContractFactory',
+      contractName:    'ContractFactory',
+      address:         FACTORY_ADDRESS,
+      category:        'core',
+      status:          'deployed',
+      verificationPending: true,
+      arcscanUrl:      `${ARCSCAN_BASE}/address/${FACTORY_ADDRESS}`,
+      constructorArgs: [USDC_ADDRESS],
+      sourceFile:      'ContractFactory.sol',
+      solcVersion:     '0.8.20',
+      security:        ['Reentrancy Protection', 'USDC Escrow', 'No Admin Keys'],
+    },
+    {
+      id:              'simple_amm',
+      name:            'SimpleAMM (USDC/EURC)',
+      contractName:    'SimpleAMM',
+      address:         '0x3148E2807F172D1cC354F35fB4fC4104e8b6b561',
+      category:        'defi',
+      status:          'deployed',
+      verificationPending: true,
+      arcscanUrl:      `${ARCSCAN_BASE}/address/0x3148E2807F172D1cC354F35fB4fC4104e8b6b561`,
+      deployTx:        '0x35d96b9659ab438b84c606c6d47d16c883388b6552465a21f9a97d75680c5022',
+      constructorArgs: [EURC_ADDRESS, USDC_ADDRESS],
+      sourceFile:      'SimpleAMM.sol',
+      solcVersion:     '0.8.20',
+      security:        ['Reentrancy Protection', 'x*y=k Formula', '0.3% Fee', 'No Admin Keys'],
+    },
+    {
+      id:              'otc_escrow',
+      name:            'OTCEscrow v4',
+      contractName:    'OTCEscrow',
+      address:         '0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d',
+      category:        'defi',
+      status:          'deployed',
+      verificationPending: true,
+      arcscanUrl:      `${ARCSCAN_BASE}/address/0x1B58895D02856598d29C8D4f7EFD98D9d5d9332d`,
+      constructorArgs: [],
+      sourceFile:      'OTCEscrow.sol',
+      solcVersion:     '0.8.20',
+      security:        ['Reentrancy Protection', 'Arbiter Dispute', 'EIP-2612 Permit'],
+    },
+    {
+      id:              'escrow_registry',
+      name:            'EscrowRegistry',
+      contractName:    'EscrowRegistry',
+      address:         null,
+      category:        'core',
+      status:          'placeholder',
+      verificationPending: false,
+      arcscanUrl:      null,
+      constructorArgs: [USDC_ADDRESS],
+      sourceFile:      'EscrowRegistry.sol',
+      solcVersion:     '0.8.20',
+      security:        ['Reentrancy Protection', 'USDC Escrow', 'Testnet Only'],
+    },
+  ];
+
+  // Try to enrich with live on-chain data
+  const enriched = await Promise.all(registry.map(async (contract) => {
+    if (!contract.address) return contract;
+    try {
+      // Verify the contract is actually deployed (has code)
+      const code = await ethCall(contract.address, '0x') as string;
+      const isDeployed = code && code !== '0x' && code.length > 2;
+      return { ...contract, onChain: { isDeployed, codeSize: isDeployed ? (code.length - 2) / 2 : 0 } };
+    } catch {
+      return contract;
+    }
+  }));
+
+  return c.json({
+    success:  true,
+    network:  { name: NETWORK_NAME, chainId: CHAIN_ID, explorerUrl: ARCSCAN_BASE },
+    contracts: enriched,
+    summary:  {
+      total:    enriched.length,
+      verified: enriched.filter(c => c.status === 'verified').length,
+      deployed: enriched.filter(c => c.status === 'deployed' || c.status === 'verified').length,
+    },
+  });
+});
+
 // ─── GET /api/contracts/:id ───────────────────────────────────────────────────
 contractsRouter.get('/:id', async (c) => {
   const id = parseInt(c.req.param('id'));
@@ -344,5 +480,6 @@ contractsRouter.get('/', async (c) => {
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
+
 
 export default contractsRouter;

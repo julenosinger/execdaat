@@ -525,9 +525,10 @@ walletRouter.post('/create', async (c) => {
       createdAt: new Date().toISOString(),
       network:   { name: 'Arc Testnet', chainId: CHAIN_ID, rpc: ARC_RPC, explorer: EXPLORER },
       faucet:    FAUCET,
-      // ⚠️ password is returned ONCE — caller must persist it securely
-      // In production: replace with HSM or Cloudflare secrets
-      _password_store_securely: password,
+      // ⚠️ TESTNET ONLY — password shown once for testnet convenience.
+      // NEVER do this in production. Use HSM or Cloudflare secrets.
+      _testnet_password_one_time: password,
+      _security_warning: 'TESTNET ONLY — store this password securely; it will not be shown again.',
     })
   } catch (err: any) {
     return c.json({ success: false, error: err.message }, 500)

@@ -167,6 +167,12 @@ function switchTab(tab) {
         if (typeof _otcCheckAlerts === 'function') _otcCheckAlerts();
       }, 50);
     }
+    if (tab === 'about') {
+      // Render Verified Contracts panel when About tab is shown
+      if (typeof window.vcRenderPanel === 'function') {
+        window.vcRenderPanel('vc-panel');
+      }
+    }
   }, prevContent && !prevContent.classList.contains('hidden') ? 150 : 0);
 }
 

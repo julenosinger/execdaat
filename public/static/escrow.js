@@ -22,14 +22,15 @@
   const NETWORK_NAME  = 'Arc Testnet';
 
   // EscrowRegistry deployed address (ARC Testnet)
-  // Replace with real address after `forge create contracts/EscrowWallet.sol:EscrowRegistry`
-  const REGISTRY_ADDR = '0xEscrowRegistry00000000000000000000000002';
+  // Status: PENDING DEPLOYMENT — deploy via: forge create src/EscrowRegistry.sol:EscrowRegistry --constructor-args <USDC_ADDR>
+  // When deployed, update this address and remove the null check below
+  const REGISTRY_ADDR = null; // '0x...' — not yet deployed
 
   // ERC-20 + EscrowRegistry ABI selectors
   const SEL_APPROVE       = '0x095ea7b3'; // approve(address,uint256)
   const SEL_ALLOWANCE     = '0xdd62ed3e'; // allowance(address,address)
   const SEL_BALANCE_OF    = '0x70a08231'; // balanceOf(address)
-  const SEL_CREATE_ESCROW = '0x..TBD..';  // createEscrow(string,address,address,uint256)
+  const SEL_CREATE_ESCROW = '0x2a3ef0a8'; // createEscrow(string,address,address,uint256)
 
   // ── State ──────────────────────────────────────────────────────────────────
   let escrowState = {
@@ -285,6 +286,14 @@
   // ── On-chain write: EscrowRegistry.createEscrow(title, client, contractor, totalAmount)
   //    Selector: keccak4 of "createEscrow(string,address,address,uint256)" = 0x2a3ef0a8
   async function onChainCreateEscrow(title, client, contractor, totalAmountUsdc) {
+    // Guard: EscrowRegistry not yet deployed
+    if (!REGISTRY_ADDR) {
+      throw new Error(
+        'EscrowRegistry contract is not yet deployed on Arc Testnet. ' +
+        'Use ContractFactory (0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A) for milestone-based escrow, ' +
+        'or wait for EscrowRegistry deployment.'
+      );
+    }
     // ABI encode: function(string,address,address,uint256)
     // Layout: [selector][offset_str=0x80][addr_client][addr_contractor][uint_amount][str_len][str_data]
     const { len, data: strData } = encString(title);
@@ -527,6 +536,7 @@
 
   // ── Read escrowCount() from EscrowRegistry contract ───────────────────────
   async function readOnChainEscrowCount() {
+    if (!REGISTRY_ADDR) return null; // Not yet deployed
     // selector for escrowCount() = 0x33b53183
     const data = await evmCall(REGISTRY_ADDR, '0x33b53183');
     if (!data || data === '0x' || data === '0x0') return null;
@@ -536,6 +546,7 @@
 
   // ── Read escrows(id) from EscrowRegistry contract ─────────────────────────
   async function readOnChainEscrow(id) {
+    if (!REGISTRY_ADDR) return null; // Not yet deployed
     // selector for escrows(uint256) = 0xc1c09de4
     const data = '0xc1c09de4' + encUint(id);
     const res = await evmCall(REGISTRY_ADDR, data);
