@@ -3004,10 +3004,10 @@ body.light-mode .hist-offline-bar { background: rgba(217,119,6,0.05); border-col
    AUTONOMA PAGE — 2-column layout: Permit2 (left) + Chat (right)
    ════════════════════════════════════════════════════════════════════ */
 
-/* Grid layout */
+/* Grid layout — minmax(0,1fr) prevents content inside from forcing column expansion */
 .autonoma-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
   align-items: start;
 }
@@ -3022,14 +3022,20 @@ body.light-mode .hist-offline-bar { background: rgba(217,119,6,0.05); border-col
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
-/* Sticky right column */
+/* Right column: sticky + never grows beyond its grid cell */
 .autonoma-col-right {
   position: sticky;
   top: 20px;
+  min-width: 0;
+  align-self: start;
+  /* Prevent the chat column from being pushed by left-column expansion */
+  overflow: hidden;
 }
 
+/* Left column: contained — content cannot force the grid cell to widen */
 .autonoma-col-left {
-  /* normal flow */
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Quick action buttons in inline chat */
