@@ -1,47 +1,15 @@
-# Dependencies
-node_modules/
-dist/
-
-# Environment variables
-.env
-.dev.vars
-contracts/.env
-
-# Wrangler
-.wrangler/
-
-# Logs
-*.log
-logs/
-
-# PM2
-.pm2/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Build
-out/
-build/
-
-# Foundry
-contracts/out/
-contracts/cache/
-contracts/broadcast/
-contracts/lib/
-
-# Backup
-*.tar.gz
-*.zip
-*.bak
-
-# Hardhat project (local dev only — test suite lives in contracts/hardhat/)
-contracts/hardhat/node_modules/
-contracts/hardhat/artifacts/
-contracts/hardhat/cache/
-contracts/node_modules/
-contracts/package-lock.json
-
 # Vercel build output
 dist-vercel/
+.vercel/
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dependencies lockfiles (optional - uncomment if needed)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
