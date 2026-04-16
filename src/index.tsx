@@ -509,6 +509,7 @@ app.get('/api/status', (c) => {
 // ─── SPA Route Aliases — redirect path-based URLs to hash-based SPA ──────────
 // e.g. /payments → /#/payments (preserves wallet state, no reload of JS)
 const SPA_ROUTES: Record<string, string> = {
+  '/home':      'home',
   '/dashboard': 'dashboard',
   '/payments':  'payments',
   '/contracts': 'contracts',
@@ -1126,8 +1127,8 @@ app.get('/', (c) => {
   <div id="tab-nav" class="bg-gray-900/60 border-b border-gray-800" style="position:sticky;top:var(--topbar-h,0px);z-index:40;transition:top 0.25s ease;">
     <div class="max-w-7xl mx-auto tab-nav-wrapper">
       <div class="flex gap-0 min-w-max">
-        <button onclick="switchTab('agents')" id="tab-agents" class="tab-btn active px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
-          <i class="fas fa-brain mr-1 sm:mr-2"></i><span data-i18n="tab_agents" class="hidden xs:inline sm:inline">AI Agents</span>
+        <button onclick="switchTab('home')" id="tab-home" class="tab-btn active px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
+          <i class="fas fa-home mr-1 sm:mr-2"></i><span class="hidden xs:inline sm:inline">Home</span>
         </button>
         <button onclick="switchTab('payments')" id="tab-payments" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-dollar-sign mr-1 sm:mr-2"></i><span data-i18n="tab_payments" class="hidden xs:inline sm:inline">Payments</span>
@@ -1146,6 +1147,9 @@ app.get('/', (c) => {
         <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-exchange-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">Swap</span><span class="sm:hidden text-xs">Swap</span>
         </button>
+        <button onclick="switchTab('autonoma')" id="tab-autonoma" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-purple-400 transition-all">
+          <i class="fas fa-robot mr-1 sm:mr-2"></i><span class="hidden sm:inline">Autonomous</span><span class="sm:hidden text-xs">Auto</span>
+        </button>
         <button onclick="switchTab('history')" id="tab-history" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-blue-400 transition-all">
           <i class="fas fa-history mr-1 sm:mr-2"></i><span class="hidden sm:inline">History</span><span class="sm:hidden text-xs">Hist</span>
         </button>
@@ -1162,6 +1166,46 @@ app.get('/', (c) => {
 
   <!-- Main Content -->
   <main class="max-w-7xl mx-auto px-6 py-8">
+
+    <!-- HOME TAB -->
+    <div id="tab-content-home" class="tab-content">
+      <div class="flex flex-col items-center justify-center min-h-[60vh] text-center gap-8">
+        <div>
+          <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-purple-900/40">
+            <i class="fas fa-bolt text-white text-3xl"></i>
+          </div>
+          <h1 class="text-4xl font-extrabold text-white mb-3 tracking-tight">ExecDaat</h1>
+          <p class="text-purple-300 font-semibold text-lg mb-2">Autonomous Payments &amp; Smart Contracts</p>
+          <p class="text-gray-500 text-sm max-w-md mx-auto">Decentralized platform on Arc Testnet — AI-powered payments, token swaps, escrow contracts and autonomous operations.</p>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-2xl">
+          <button onclick="switchTab('payments')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-green-500/40 hover:bg-gray-800/80 transition-all group">
+            <i class="fas fa-dollar-sign text-green-400 text-2xl group-hover:scale-110 transition-transform"></i>
+            <span class="text-white text-sm font-semibold">Payments</span>
+          </button>
+          <button onclick="switchTab('dex')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-yellow-500/40 hover:bg-gray-800/80 transition-all group">
+            <i class="fas fa-exchange-alt text-yellow-400 text-2xl group-hover:scale-110 transition-transform"></i>
+            <span class="text-white text-sm font-semibold">Swap</span>
+          </button>
+          <button onclick="switchTab('autonoma')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-purple-500/40 hover:bg-gray-800/80 transition-all group">
+            <i class="fas fa-robot text-purple-400 text-2xl group-hover:scale-110 transition-transform"></i>
+            <span class="text-white text-sm font-semibold">Autonomous</span>
+          </button>
+          <button onclick="switchTab('contracts')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-blue-500/40 hover:bg-gray-800/80 transition-all group">
+            <i class="fas fa-file-contract text-blue-400 text-2xl group-hover:scale-110 transition-transform"></i>
+            <span class="text-white text-sm font-semibold">Contracts</span>
+          </button>
+          <button onclick="switchTab('multisend')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-cyan-500/40 hover:bg-gray-800/80 transition-all group">
+            <i class="fas fa-paper-plane text-cyan-400 text-2xl group-hover:scale-110 transition-transform"></i>
+            <span class="text-white text-sm font-semibold">MultiSend</span>
+          </button>
+          <button onclick="switchTab('otc')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-indigo-500/40 hover:bg-gray-800/80 transition-all group">
+            <i class="fas fa-handshake text-indigo-400 text-2xl group-hover:scale-110 transition-transform"></i>
+            <span class="text-white text-sm font-semibold">OTC</span>
+          </button>
+        </div>
+      </div>
+    </div><!-- /tab-content-home -->
 
     <!-- DASHBOARD TAB -->
     <div id="tab-content-dashboard" class="tab-content">
@@ -3363,99 +3407,6 @@ app.get('/', (c) => {
         </div>
       </div>
 
-      <!-- ── Agent Executor: Intent History Panel ─────────────────────────── -->
-      <div class="mt-6 bg-gray-900/60 border border-purple-700/30 rounded-xl p-6" id="ae-intents-panel">
-        <div class="flex items-center justify-between mb-4">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center flex-shrink-0">
-              <i class="fas fa-bolt text-white text-sm"></i>
-            </div>
-            <div>
-              <h3 class="text-white font-semibold flex items-center gap-2">
-                Agent Executor — Intents
-                <span id="ae-pending-badge" class="hidden bg-purple-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">0</span>
-              </h3>
-              <p class="text-purple-400 text-xs">Live on-chain execution status · polls every 3s</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <button id="ae-refresh-btn" onclick="aeRefreshPanel()"
-              class="text-xs text-purple-400 hover:text-purple-300 bg-purple-900/20 border border-purple-700/30 rounded-lg px-3 py-1.5 transition-colors">
-              <i class="fas fa-sync mr-1"></i> Refresh
-            </button>
-            <button onclick="aeClearCompleted()"
-              class="text-xs text-gray-500 hover:text-red-400 bg-gray-800/40 border border-gray-700/30 rounded-lg px-3 py-1.5 transition-colors">
-              <i class="fas fa-trash mr-1"></i> Clear done
-            </button>
-          </div>
-        </div>
-
-        <!-- Permit2 status banner — shows current spending permission state -->
-        <div id="ae-permit-status-bar" class="mb-4 p-3 rounded-lg border text-sm flex items-center justify-between gap-3
-          bg-gray-800/50 border-gray-700/40 text-gray-400">
-          <div class="flex items-center gap-2">
-            <i class="fas fa-lock text-gray-500 text-xs"></i>
-            <span id="ae-permit-status-text">Checking spending permissions…</span>
-          </div>
-          <button id="ae-permit-create-btn"
-            onclick="sendQuickMessage('allow the agent to spend 100 USDC for 24 hours'); toggleChat();"
-            class="hidden text-xs bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 rounded-lg px-3 py-1 hover:bg-yellow-500/30 transition-colors whitespace-nowrap">
-            <i class="fas fa-plus mr-1"></i> Create Permit
-          </button>
-        </div>
-
-        <!-- Stats bar -->
-        <div class="grid grid-cols-4 gap-2 mb-4">
-          <div class="bg-gray-800/50 rounded-lg p-2.5 text-center">
-            <p class="text-lg font-bold text-white" id="ae-stat-total">—</p>
-            <p class="text-[10px] text-gray-500">Total</p>
-          </div>
-          <div class="bg-yellow-900/20 rounded-lg p-2.5 text-center border border-yellow-800/30">
-            <p class="text-lg font-bold text-yellow-400" id="ae-stat-pending">—</p>
-            <p class="text-[10px] text-gray-500">Accepted</p>
-          </div>
-          <div class="bg-green-900/20 rounded-lg p-2.5 text-center border border-green-800/30">
-            <p class="text-lg font-bold text-green-400" id="ae-stat-completed">—</p>
-            <p class="text-[10px] text-gray-500">Completed</p>
-          </div>
-          <div class="bg-red-900/20 rounded-lg p-2.5 text-center border border-red-800/30">
-            <p class="text-lg font-bold text-red-400" id="ae-stat-failed">—</p>
-            <p class="text-[10px] text-gray-500">Failed</p>
-          </div>
-        </div>
-
-        <!-- Intents list -->
-        <div id="ae-intents-list" class="space-y-2 max-h-72 overflow-y-auto">
-          <div class="text-center text-gray-600 text-sm py-6" id="ae-intents-empty">
-            <i class="fas fa-inbox text-gray-700 text-3xl mb-2 block"></i>
-            <span id="ae-empty-msg">Authorize the agent, then ask the chat to send a payment.</span>
-          </div>
-        </div>
-
-        <!-- Quick actions -->
-        <div class="mt-4 p-3 bg-gray-800/40 rounded-lg">
-          <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Quick actions</p>
-          <div class="flex flex-wrap gap-2">
-            <button onclick="sendQuickMessage('send 5 USDC to 0x1234567890123456789012345678901234567890'); toggleChat();"
-              class="text-xs bg-purple-900/30 border border-purple-700/30 rounded-lg px-3 py-1.5 text-purple-300 hover:border-purple-500/50 transition-colors">
-              ⚡ Test: send 5 USDC
-            </button>
-            <button onclick="sendQuickMessage('allow the agent to spend 100 USDC for 24 hours'); toggleChat();"
-              class="text-xs bg-yellow-900/30 border border-yellow-700/30 rounded-lg px-3 py-1.5 text-yellow-300 hover:border-yellow-500/50 transition-colors">
-              🔐 Create Permit
-            </button>
-            <button onclick="if(window.AgentExecutor){AgentExecutor.getIntents().then(r=>aeRenderIntents(r));} "
-              class="text-xs bg-gray-800/50 border border-gray-700/30 rounded-lg px-3 py-1.5 text-gray-400 hover:text-gray-300 transition-colors">
-              <i class="fas fa-list mr-1"></i> Load all
-            </button>
-            <button onclick="AgentExecutor && AgentExecutor.startPolling(); showToast('Polling started','info');"
-              class="text-xs bg-gray-800/50 border border-gray-700/30 rounded-lg px-3 py-1.5 text-gray-400 hover:text-gray-300 transition-colors">
-              <i class="fas fa-play mr-1"></i> Start poll
-            </button>
-          </div>
-        </div>
-      </div>
-
     </div><!-- /tab-content-agents -->
 
 
@@ -3469,7 +3420,7 @@ app.get('/', (c) => {
       <!-- Page header -->
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-3">
-          <button onclick="switchTab('agents')"
+          <button onclick="switchTab('home')"
             class="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all">
             <i class="fas fa-arrow-left text-sm"></i>
           </button>

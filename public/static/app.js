@@ -32,7 +32,7 @@ const API = {
 // ============================================================
 // STATE
 // ============================================================
-let currentTab = 'dashboard';
+let currentTab = 'home';
 let logCount = 0;
 
 // ============================================================
@@ -87,12 +87,14 @@ function switchTab(tab) {
       tabBtn.classList.remove('border-transparent', 'text-gray-400');
       // Per-tab accent color
       const tabColors = {
+        home:      ['border-purple-500', 'text-purple-400'],
         agents:    ['border-purple-500', 'text-purple-400'],
         payments:  ['border-green-500',  'text-green-400'],
         contracts: ['border-blue-500',   'text-blue-400'],
         otc:       ['border-indigo-500', 'text-indigo-400'],
         dex:       ['border-yellow-500', 'text-yellow-400'],
         multisend: ['border-cyan-500',   'text-cyan-400'],
+        autonoma:  ['border-purple-500', 'text-purple-400'],
         history:   ['border-blue-500',   'text-blue-400'],
         dashboard: ['border-indigo-500', 'text-indigo-400'],
         about:     ['border-emerald-500','text-emerald-400'],
@@ -783,8 +785,8 @@ function enterApp() {
   const appShell = document.getElementById('app-shell');
   if (landing)  landing.classList.add('hidden');
   if (appShell) appShell.classList.remove('hidden');
-  // Load agents tab by default (first tab now)
-  switchTab('agents');
+  // Load home tab by default (first tab now)
+  switchTab('home');
 }
 
 // Open About Us page without requiring wallet connection
