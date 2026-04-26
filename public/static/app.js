@@ -93,6 +93,7 @@ function switchTab(tab) {
         contracts: ['border-blue-500',   'text-blue-400'],
         otc:       ['border-indigo-500', 'text-indigo-400'],
         dex:       ['border-yellow-500', 'text-yellow-400'],
+        bridge:    ['border-cyan-500',   'text-cyan-400'],
         multisend: ['border-cyan-500',   'text-cyan-400'],
         autonoma:  ['border-purple-500', 'text-purple-400'],
         history:   ['border-blue-500',   'text-blue-400'],
@@ -157,6 +158,19 @@ function switchTab(tab) {
       } else if (window.ammRefreshAll) {
         window.ammRefreshAll();
       }
+    }
+    if (tab === 'bridge') {
+      if (window.bridgeInit && !window._bridgeInitialized) {
+        window._bridgeInitialized = true;
+        window.bridgeInit();
+      } else {
+        if (window.bridgeRefreshBalance) window.bridgeRefreshBalance();
+        if (window.bridgeRenderHistory) window.bridgeRenderHistory();
+        if (window.bridgeUpdateBtn) window.bridgeUpdateBtn();
+      }
+      // Update recipient address display
+      const recipEl = document.getElementById('bridge-recipient-addr');
+      if (recipEl) recipEl.textContent = window.walletState?.address || '—';
     }
     if (tab === 'history') {
       if (window.historyInit) window.historyInit();
@@ -882,6 +896,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Atualizar wallet gate de multisend
     const msGate = document.getElementById('ms-wallet-gate');
     if (msGate) msGate.classList.add('hidden');
+
+    // Atualizar recipient no bridge
+    const bridgeRecip = document.getElementById('bridge-recipient-addr');
+    if (bridgeRecip) bridgeRecip.textContent = address;
+    if (window.bridgeUpdateBtn) window.bridgeUpdateBtn();
 
     addLog(`[WALLET] ✅ ${shortAddress} conectada${onArcNetwork ? ' na Arc Testnet' : ' (rede incorreta)'}`, 'success');
   });

@@ -517,6 +517,7 @@ const SPA_ROUTES: Record<string, string> = {
   '/settings':  'settings',
   '/otc':       'otc',
   '/swap':      'swap',
+  '/bridge':    'bridge',
   '/multisend': 'multisend',
   '/history':   'history',
 }
@@ -1147,6 +1148,10 @@ app.get('/', (c) => {
         <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-exchange-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">Swap</span><span class="sm:hidden text-xs">Swap</span>
         </button>
+        <button onclick="switchTab('bridge')" id="tab-bridge" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all relative">
+          <i class="fas fa-bridge mr-1 sm:mr-2"></i><span class="hidden sm:inline">Bridge</span><span class="sm:hidden text-xs">Bridge</span>
+          <span class="absolute top-2 right-0.5 text-[8px] bg-cyan-600 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">CCTP</span>
+        </button>
         <button onclick="switchTab('autonoma')" id="tab-autonoma" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-purple-400 transition-all">
           <i class="fas fa-robot mr-1 sm:mr-2"></i><span class="hidden sm:inline">Autonomous</span><span class="sm:hidden text-xs">Auto</span>
         </button>
@@ -1186,6 +1191,10 @@ app.get('/', (c) => {
           <button onclick="switchTab('dex')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-yellow-500/40 hover:bg-gray-800/80 transition-all group">
             <i class="fas fa-exchange-alt text-yellow-400 text-2xl group-hover:scale-110 transition-transform"></i>
             <span class="text-white text-sm font-semibold">Swap</span>
+          </button>
+          <button onclick="switchTab('bridge')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-cyan-500/40 hover:bg-gray-800/80 transition-all group">
+            <i class="fas fa-bridge text-cyan-400 text-2xl group-hover:scale-110 transition-transform"></i>
+            <span class="text-white text-sm font-semibold">Bridge</span>
           </button>
           <button onclick="switchTab('autonoma')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-purple-500/40 hover:bg-gray-800/80 transition-all group">
             <i class="fas fa-robot text-purple-400 text-2xl group-hover:scale-110 transition-transform"></i>
@@ -4352,6 +4361,293 @@ app.get('/', (c) => {
 
     <!-- ════════════════════════════════════════════════════════════════ -->
 
+    <!-- ══ BRIDGE TAB — CCTP Cross-Chain ══════════════════════════════ -->
+    <div id="tab-content-bridge" class="tab-content hidden">
+
+      <!-- Bridge local styles -->
+      <style>
+        .bridge-step-pending  { opacity:0.35; }
+        .bridge-step-active   { opacity:1; }
+        .bridge-step-done     { opacity:1; }
+        .bridge-step-error    { opacity:1; }
+        .bridge-step-done  .bridge-step-icon  { background:linear-gradient(135deg,#059669,#10b981); }
+        .bridge-step-active .bridge-step-icon { background:linear-gradient(135deg,#1d4ed8,#3b82f6); animation: bridge-pulse 1.2s ease-in-out infinite; }
+        .bridge-step-error .bridge-step-icon  { background:linear-gradient(135deg,#b91c1c,#ef4444); }
+        @keyframes bridge-pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(59,130,246,.5); } 50%{ box-shadow:0 0 0 8px rgba(59,130,246,0); } }
+        .bridge-chain-btn { display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:12px;
+          background:rgba(30,41,59,0.8);border:1px solid rgba(100,116,139,0.35);color:#e2e8f0;
+          font-size:14px;cursor:pointer;transition:all .2s;min-width:140px;white-space:nowrap; }
+        .bridge-chain-btn:hover { border-color:rgba(96,165,250,.5);background:rgba(30,41,59,1); }
+        .bridge-dropdown { position:absolute;top:calc(100% + 6px);left:0;z-index:200;min-width:200px;
+          background:#0f172a;border:1px solid rgba(100,116,139,.35);border-radius:14px;padding:6px;
+          box-shadow:0 20px 40px rgba(0,0,0,.6); }
+      </style>
+
+      <!-- ── Page Header ──────────────────────────────────────────────── -->
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 class="text-2xl font-bold text-white flex items-center gap-3">
+            <span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-cyan-900/40">
+              <i class="fas fa-bridge"></i>
+            </span>
+            CCTP Bridge
+            <span class="text-xs font-normal bg-amber-500/10 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-full">
+              <i class="fas fa-flask mr-1 text-[10px]"></i>Testnet
+            </span>
+          </h2>
+          <p class="text-gray-500 text-xs mt-1.5 ml-13">Native USDC · Circle CCTP V2 · Burn &amp; Mint · No wrapped tokens</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="bridgeRefreshBalance()" class="text-xs text-gray-500 hover:text-cyan-400 transition-colors bg-gray-800/60 border border-gray-700/40 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
+            <i class="fas fa-sync-alt text-[10px]"></i> Refresh
+          </button>
+          <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-900/60 border border-gray-700/50 rounded-full text-xs">
+            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span class="text-gray-300">Testnet Live</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Security notice ──────────────────────────────────────────── -->
+      <div class="mb-5 bg-blue-900/10 border border-blue-700/30 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3 text-xs">
+        <i class="fas fa-shield-alt text-blue-400 text-base"></i>
+        <span class="text-gray-400">
+          <strong class="text-blue-300">Security notice:</strong>
+          This dApp never asks for your private key. All transactions are signed
+          exclusively in your wallet (MetaMask). Testnet only — no real funds.
+        </span>
+      </div>
+
+      <!-- ── Main layout ──────────────────────────────────────────────── -->
+      <div style="width:100%;display:flex;justify-content:center;">
+        <div style="width:100%;max-width:480px;">
+
+          <!-- ── Bridge card ────────────────────────────────────────── -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-4 shadow-xl">
+
+            <!-- Mode toggle -->
+            <div class="flex gap-1.5 bg-gray-900/70 border border-gray-700/40 rounded-2xl p-1.5">
+              <button id="bridge-mode-fast" onclick="bridgeSetMode('fast')"
+                class="flex-1 py-2 px-3 text-xs font-bold rounded-lg bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 shadow transition-all flex items-center justify-center gap-1">
+                <i class="fas fa-bolt"></i> Fast Transfer
+              </button>
+              <button id="bridge-mode-standard" onclick="bridgeSetMode('standard')"
+                class="flex-1 py-2 px-3 text-xs font-semibold rounded-lg text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all flex items-center justify-center gap-1">
+                <i class="fas fa-shield-alt"></i> Standard
+              </button>
+            </div>
+
+            <!-- ETA pill -->
+            <div class="flex justify-center">
+              <div class="flex items-center gap-2 text-xs bg-gray-800/50 border border-gray-700/30 rounded-full px-4 py-1.5">
+                <i class="fas fa-clock text-yellow-400 text-[10px]"></i>
+                <span class="text-gray-400">Estimated time:</span>
+                <span id="bridge-eta" class="text-yellow-300 font-semibold">~5–15 seconds</span>
+              </div>
+            </div>
+
+            <!-- Token (fixed USDC) -->
+            <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3.5 space-y-2">
+              <div class="flex items-center justify-between text-xs text-gray-500">
+                <span class="font-semibold">Amount</span>
+                <div class="flex items-center gap-2">
+                  <span id="bridge-balance">Balance: —</span>
+                  <button onclick="bridgeSetMax()"
+                    class="px-2 py-0.5 bg-cyan-900/50 hover:bg-cyan-700/60 border border-cyan-700/50 text-cyan-400 rounded-md font-bold transition-all text-xs">
+                    MAX
+                  </button>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 min-w-fit border border-gray-600/30">
+                  <span class="text-lg">💵</span>
+                  <span class="text-white font-bold text-sm">USDC</span>
+                </div>
+                <input type="number" id="bridge-amount-input" placeholder="0.00" min="0" step="0.000001"
+                  class="flex-1 bg-transparent text-white text-2xl font-bold text-right outline-none placeholder-gray-700 w-0" />
+              </div>
+            </div>
+
+            <!-- From → To chain selectors -->
+            <div class="flex items-center gap-2">
+              <!-- From -->
+              <div class="flex-1 relative" id="bridge-from-wrap">
+                <div class="text-xs text-gray-500 font-semibold mb-1.5 ml-1">From</div>
+                <button id="bridge-from-chain" class="bridge-chain-btn w-full justify-between" onclick="bridgeToggleDropdown('from')">
+                  Loading…
+                </button>
+                <div id="bridge-from-dropdown" class="bridge-dropdown hidden"></div>
+              </div>
+
+              <!-- Flip button -->
+              <div class="flex-shrink-0 mt-5">
+                <button onclick="bridgeFlipChains()"
+                  class="w-9 h-9 rounded-xl bg-gray-800 border border-gray-600/50 hover:border-cyan-500/60 hover:bg-gray-700 flex items-center justify-center transition-all shadow-lg group">
+                  <i class="fas fa-arrow-right-arrow-left text-gray-400 group-hover:text-cyan-400 transition-all text-sm"></i>
+                </button>
+              </div>
+
+              <!-- To -->
+              <div class="flex-1 relative" id="bridge-to-wrap">
+                <div class="text-xs text-gray-500 font-semibold mb-1.5 ml-1">To</div>
+                <button id="bridge-to-chain" class="bridge-chain-btn w-full justify-between" onclick="bridgeToggleDropdown('to')">
+                  Loading…
+                </button>
+                <div id="bridge-to-dropdown" class="bridge-dropdown hidden"></div>
+              </div>
+            </div>
+
+            <!-- Recipient info -->
+            <div class="flex items-center gap-2 bg-gray-800/40 border border-gray-700/30 rounded-xl px-4 py-2.5">
+              <i class="fas fa-wallet text-gray-500 text-xs"></i>
+              <span class="text-xs text-gray-500">Recipient:</span>
+              <span class="text-xs text-gray-300 font-mono truncate" id="bridge-recipient-addr">—</span>
+            </div>
+
+            <!-- Step progress (hidden until bridge starts) -->
+            <div id="bridge-steps-wrap" class="hidden">
+              <div class="flex items-center gap-1 py-2">
+
+                <!-- Step: Burn -->
+                <div id="bridge-step-burn" class="bridge-step-pending flex-1 flex flex-col items-center gap-1.5">
+                  <div class="bridge-step-icon w-8 h-8 rounded-xl bg-gradient-to-br from-orange-600 to-red-600 flex items-center justify-center shadow-md">
+                    <i class="fas fa-fire text-white text-xs"></i>
+                  </div>
+                  <span class="text-[10px] text-gray-400 font-semibold text-center leading-tight">Burn</span>
+                </div>
+
+                <div class="flex-shrink-0 w-8 flex items-center justify-center pb-4">
+                  <div class="w-full h-px bg-gray-700/60"></div>
+                </div>
+
+                <!-- Step: Attest -->
+                <div id="bridge-step-attest" class="bridge-step-pending flex-1 flex flex-col items-center gap-1.5">
+                  <div class="bridge-step-icon w-8 h-8 rounded-xl bg-gradient-to-br from-yellow-600 to-amber-600 flex items-center justify-center shadow-md">
+                    <i class="fas fa-hourglass-half text-white text-xs"></i>
+                  </div>
+                  <span class="text-[10px] text-gray-400 font-semibold text-center leading-tight">Attest</span>
+                </div>
+
+                <div class="flex-shrink-0 w-8 flex items-center justify-center pb-4">
+                  <div class="w-full h-px bg-gray-700/60"></div>
+                </div>
+
+                <!-- Step: Mint -->
+                <div id="bridge-step-mint" class="bridge-step-pending flex-1 flex flex-col items-center gap-1.5">
+                  <div class="bridge-step-icon w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md">
+                    <i class="fas fa-coins text-white text-xs"></i>
+                  </div>
+                  <span class="text-[10px] text-gray-400 font-semibold text-center leading-tight">Mint</span>
+                </div>
+
+                <div class="flex-shrink-0 w-8 flex items-center justify-center pb-4">
+                  <div class="w-full h-px bg-gray-700/60"></div>
+                </div>
+
+                <!-- Step: Done -->
+                <div id="bridge-step-done" class="bridge-step-pending flex-1 flex flex-col items-center gap-1.5">
+                  <div class="bridge-step-icon w-8 h-8 rounded-xl bg-gradient-to-br from-green-600 to-emerald-600 flex items-center justify-center shadow-md">
+                    <i class="fas fa-check text-white text-xs"></i>
+                  </div>
+                  <span class="text-[10px] text-gray-400 font-semibold text-center leading-tight">Done</span>
+                </div>
+
+              </div>
+              <!-- Attestation progress bar -->
+              <div class="h-1 bg-gray-800 rounded-full overflow-hidden mt-1">
+                <div id="bridge-attest-bar" class="h-full bg-gradient-to-r from-yellow-500 to-amber-400 rounded-full transition-all duration-500" style="width:0%"></div>
+              </div>
+            </div>
+
+            <!-- Status bar -->
+            <div id="bridge-status-bar" class="hidden"></div>
+
+            <!-- Bridge button -->
+            <button id="bridge-submit-btn" onclick="bridgeExecute()" disabled
+              class="w-full py-3.5 px-6 rounded-xl font-bold text-sm
+                     bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500
+                     text-white shadow-lg shadow-cyan-900/30 transition-all
+                     disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:from-cyan-600 disabled:hover:to-blue-600
+                     flex items-center justify-center gap-2">
+              <i class="fas fa-bridge mr-1"></i>Bridge USDC
+            </button>
+
+            <!-- Fee info -->
+            <div class="flex items-center justify-between text-xs text-gray-600 px-1">
+              <span><i class="fas fa-gas-pump mr-1"></i>Gas paid by sender on each chain</span>
+              <span class="text-gray-500">Protocol fee: 0 (CCTP)</span>
+            </div>
+
+          </div><!-- /bridge card -->
+
+          <!-- ── Advanced: CCTP Hooks placeholder ───────────────────── -->
+          <div class="mt-4 bg-gray-900/40 border border-gray-700/20 rounded-2xl p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <i class="fas fa-code text-purple-400 text-xs"></i>
+              <span class="text-xs text-gray-400 font-semibold">CCTP Hooks V2 <span class="text-gray-600 font-normal">(coming soon)</span></span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <div class="text-[11px] px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/30 text-gray-500 flex items-center gap-1.5 opacity-50">
+                <i class="fas fa-coins text-[9px]"></i>Auto Stake
+              </div>
+              <div class="text-[11px] px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/30 text-gray-500 flex items-center gap-1.5 opacity-50">
+                <i class="fas fa-exchange-alt text-[9px]"></i>Auto Swap
+              </div>
+              <div class="text-[11px] px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/30 text-gray-500 flex items-center gap-1.5 opacity-50">
+                <i class="fas fa-piggy-bank text-[9px]"></i>Auto Deposit
+              </div>
+            </div>
+          </div>
+
+          <!-- ── What is Bridge? ─────────────────────────────────────── -->
+          <div class="mt-4 bg-blue-900/10 border border-blue-700/20 rounded-2xl p-5">
+            <h4 class="text-sm font-semibold text-blue-300 mb-2 flex items-center gap-2">
+              <i class="fas fa-question-circle text-xs"></i>What is Bridge?
+            </h4>
+            <p class="text-gray-400 text-xs leading-relaxed">
+              This bridge uses native USDC via CCTP on testnet. Funds are burned on the source chain and minted on the destination without wrapped tokens or liquidity pools, ensuring fast and secure transfers.
+            </p>
+            <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+              <div class="bg-gray-800/40 rounded-xl p-2.5">
+                <div class="text-orange-400 text-base mb-1"><i class="fas fa-fire"></i></div>
+                <div class="text-[11px] text-white font-semibold">Burn</div>
+                <div class="text-[10px] text-gray-500 mt-0.5">Source chain</div>
+              </div>
+              <div class="bg-gray-800/40 rounded-xl p-2.5">
+                <div class="text-yellow-400 text-base mb-1"><i class="fas fa-certificate"></i></div>
+                <div class="text-[11px] text-white font-semibold">Attest</div>
+                <div class="text-[10px] text-gray-500 mt-0.5">Circle API</div>
+              </div>
+              <div class="bg-gray-800/40 rounded-xl p-2.5">
+                <div class="text-green-400 text-base mb-1"><i class="fas fa-coins"></i></div>
+                <div class="text-[11px] text-white font-semibold">Mint</div>
+                <div class="text-[10px] text-gray-500 mt-0.5">Destination</div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /max-width column -->
+      </div><!-- /center wrapper -->
+
+      <!-- ── Transaction History ──────────────────────────────────────── -->
+      <div class="mt-8 max-w-2xl mx-auto">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-white font-semibold flex items-center gap-2 text-sm">
+            <i class="fas fa-history text-cyan-400 text-xs"></i>Bridge History
+          </h3>
+          <button onclick="bridgeRenderHistory()" class="text-xs text-gray-600 hover:text-gray-400 transition-colors">
+            <i class="fas fa-sync-alt text-[10px] mr-1"></i>Refresh
+          </button>
+        </div>
+        <div id="bridge-history-list" class="space-y-2">
+          <div class="text-gray-600 text-sm text-center py-6"><i class="fas fa-inbox mr-2 opacity-40"></i>No bridge transactions yet.</div>
+        </div>
+      </div>
+
+    </div><!-- /tab-content-bridge -->
+
+    <!-- ════════════════════════════════════════════════════════════════ -->
+
     <!-- ══ ABOUT US TAB ═══════════════════════════════════════════════ -->
     <div id="tab-content-about" class="tab-content hidden" role="main" aria-label="About This Application">
       <div class="max-w-3xl mx-auto px-4 py-10 space-y-8">
@@ -5111,6 +5407,7 @@ app.get('/', (c) => {
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250325b"></script>
+  <script src="/static/bridge.js"></script>
   <script src="/static/multisend.js?v=20260327b"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
