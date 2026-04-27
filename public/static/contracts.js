@@ -1239,10 +1239,11 @@ function cfContractCard(c, wallet) {
             <div style="font-size:10px;color:#3a4870;">USDC · 0.2% fee</div>
             <div style="font-size:10px;color:#4a6490;">Net: $${cfFmtUsdc(netRaw)}</div>
           </div>
-          <!-- ✕ Persistent hide — contract still exists on-chain, only hidden from view -->
+          <!-- Hide button — contract still exists on-chain, only hidden from view -->
           <button class="arc-dismiss-btn"
-            onclick="event.stopPropagation();arcAnimatedDismiss('cf-contract-${c.id}',function(){if(typeof arcHideContract==='function')arcHideContract('${c.id}');cfRenderContracts(cfState.contracts,window.walletState?.address);})"
-            title="Hide from view — on-chain contracts cannot be deleted, only hidden">✕</button>
+            onclick="event.stopPropagation();if(typeof arcHideContract==='function')arcHideContract('${c.id}');cfRenderContracts(cfState.contracts,window.walletState?.address);"
+            title="Hide from view — on-chain contracts cannot be deleted, only hidden"
+            style="width:auto;height:auto;font-size:11px;padding:3px 9px;border-radius:7px;font-weight:600;letter-spacing:0.01em;">Hide</button>
         </div>
       </div>
 

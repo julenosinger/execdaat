@@ -196,6 +196,17 @@
     );
   };
 
+  window.arcHideAllContracts = function () {
+    var contracts = (typeof cfState !== 'undefined' && cfState.contracts) ? cfState.contracts : [];
+    contracts.forEach(function (c) {
+      var id = c.id || c;
+      if (id) contractStore.hideItem(String(id));
+    });
+    if (typeof cfRenderContracts === 'function' && typeof cfState !== 'undefined') {
+      cfRenderContracts(cfState.contracts, window.walletState && window.walletState.address);
+    }
+  };
+
   window.arcShowHiddenMultisend = function () {
     window.arcShowHiddenModal(
       msStore,

@@ -218,7 +218,7 @@ function bridgeUpdateBtn() {
   if (!amt || isNaN(amt) || amt <= 0) { btn.textContent = 'Enter amount'; return; }
   btn.innerHTML = bridgeState.pending
     ? '<i class="fas fa-spinner fa-spin mr-2"></i>Bridging…'
-    : `<i class="fas fa-bridge mr-2"></i>Bridge ${bridgeFmt(bridgeState.amount)} USDC`;
+    : `<i class="fas fa-right-left mr-2"></i>Bridge ${bridgeFmt(bridgeState.amount)} USDC`;
 }
 
 async function bridgeRefreshBalance() {

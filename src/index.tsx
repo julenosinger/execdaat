@@ -1149,7 +1149,7 @@ app.get('/', (c) => {
           <i class="fas fa-exchange-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">Swap</span><span class="sm:hidden text-xs">Swap</span>
         </button>
         <button onclick="switchTab('bridge')" id="tab-bridge" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all relative">
-          <i class="fas fa-bridge mr-1 sm:mr-2"></i><span class="hidden sm:inline">Bridge</span><span class="sm:hidden text-xs">Bridge</span>
+          <i class="fas fa-right-left mr-1 sm:mr-2"></i><span class="hidden sm:inline">Bridge</span><span class="sm:hidden text-xs">Bridge</span>
           <span class="absolute top-2 right-0.5 text-[8px] bg-cyan-600 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">CCTP</span>
         </button>
         <button onclick="switchTab('autonoma')" id="tab-autonoma" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-purple-400 transition-all">
@@ -1193,7 +1193,7 @@ app.get('/', (c) => {
             <span class="text-white text-sm font-semibold">Swap</span>
           </button>
           <button onclick="switchTab('bridge')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-cyan-500/40 hover:bg-gray-800/80 transition-all group">
-            <i class="fas fa-bridge text-cyan-400 text-2xl group-hover:scale-110 transition-transform"></i>
+            <i class="fas fa-right-left text-cyan-400 text-2xl group-hover:scale-110 transition-transform"></i>
             <span class="text-white text-sm font-semibold">Bridge</span>
           </button>
           <button onclick="switchTab('autonoma')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-purple-500/40 hover:bg-gray-800/80 transition-all group">
@@ -2259,6 +2259,12 @@ app.get('/', (c) => {
                 title="Show hidden contracts"
                 onmouseover="this.style.background='rgba(55,138,221,0.14)'" onmouseout="this.style.background='rgba(55,138,221,0.06)'">
                 <i class="fas fa-eye" style="font-size:10px;"></i>Show Hidden
+              </button>
+              <button onclick="typeof arcHideAllContracts==='function'&&arcHideAllContracts()"
+                style="font-size:11px;color:#8aaac8;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.18);padding:5px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;"
+                title="Hide all visible contracts"
+                onmouseover="this.style.background='rgba(55,138,221,0.14)'" onmouseout="this.style.background='rgba(55,138,221,0.06)'">
+                <i class="fas fa-eye-slash" style="font-size:10px;"></i>Hide All
               </button>
               <button onclick="cfLoadContracts()"
                 style="font-size:11px;color:#60b4ff;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.2);padding:5px 12px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.2s;"
@@ -4388,7 +4394,7 @@ app.get('/', (c) => {
         <div>
           <h2 class="text-2xl font-bold text-white flex items-center gap-3">
             <span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-cyan-900/40">
-              <i class="fas fa-bridge"></i>
+              <i class="fas fa-right-left"></i>
             </span>
             CCTP Bridge
             <span class="text-xs font-normal bg-amber-500/10 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-full">
@@ -4569,7 +4575,7 @@ app.get('/', (c) => {
                      text-white shadow-lg shadow-cyan-900/30 transition-all
                      disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:from-cyan-600 disabled:hover:to-blue-600
                      flex items-center justify-center gap-2">
-              <i class="fas fa-bridge mr-1"></i>Bridge USDC
+              <i class="fas fa-right-left mr-1"></i>Bridge USDC
             </button>
 
             <!-- Fee info -->

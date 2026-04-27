@@ -15,6 +15,7 @@ const DAAT_ROUTES = [
   { path: '/settings',   tab: 'settings',   label: 'Settings',   icon: 'fas fa-cog',           color: '#f59e0b' },
   { path: '/otc',        tab: 'otc',        label: 'OTC',        icon: 'fas fa-handshake',     color: '#6366f1' },
   { path: '/swap',       tab: 'dex',        label: 'Swap',       icon: 'fas fa-exchange-alt',  color: '#eab308' },
+  { path: '/bridge',     tab: 'bridge',     label: 'Bridge',     icon: 'fas fa-right-left',    color: '#06b6d4' },
   { path: '/multisend',  tab: 'multisend',  label: 'MultiSend',  icon: 'fas fa-paper-plane',   color: '#06b6d4' },
   { path: '/history',    tab: 'history',    label: 'History',    icon: 'fas fa-history',       color: '#60a5fa' },
   { path: '/about',      tab: 'about',      label: 'About Us',   icon: 'fas fa-shield-alt',    color: '#10b981' },
