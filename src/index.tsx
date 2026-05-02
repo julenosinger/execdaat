@@ -1174,46 +1174,535 @@ app.get('/', (c) => {
 
     <!-- HOME TAB -->
     <div id="tab-content-home" class="tab-content">
-      <div class="flex flex-col items-center justify-center min-h-[60vh] text-center gap-8">
-        <div>
-          <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-purple-900/40">
-            <i class="fas fa-bolt text-white text-3xl"></i>
+      <style>
+        /* ── Home page styles v2 ─────────────────────────────────── */
+        .home-hero { position:relative; overflow:hidden; }
+        .home-glow-orb {
+          position:absolute; border-radius:50%; filter:blur(80px); pointer-events:none; z-index:0;
+        }
+        .home-hero-title {
+          font-size:clamp(2.1rem,5vw,3.8rem);
+          font-weight:900; line-height:1.05; letter-spacing:-0.03em;
+          color:#fff;
+        }
+        .home-hero-title .accent {
+          background:linear-gradient(135deg,#c084fc,#818cf8,#38bdf8);
+          -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+          background-clip:text;
+        }
+        /* Primary CTA — larger, more glow */
+        .home-cta-primary {
+          display:inline-flex; align-items:center; gap:9px;
+          padding:15px 32px; border-radius:16px; font-weight:800; font-size:15px;
+          background:linear-gradient(135deg,#7c3aed,#4f46e5,#2563eb);
+          color:#fff; border:none; cursor:pointer; transition:all 0.3s;
+          box-shadow:0 0 32px rgba(124,58,237,0.5), 0 4px 20px rgba(0,0,0,0.3);
+          position:relative; overflow:hidden;
+        }
+        .home-cta-primary::after {
+          content:''; position:absolute; inset:0;
+          background:linear-gradient(135deg,rgba(255,255,255,0.15),transparent);
+          opacity:0; transition:opacity 0.3s;
+        }
+        .home-cta-primary:hover { transform:translateY(-3px); box-shadow:0 0 50px rgba(124,58,237,0.7), 0 8px 30px rgba(0,0,0,0.4); }
+        .home-cta-primary:hover::after { opacity:1; }
+        .home-cta-secondary {
+          display:inline-flex; align-items:center; gap:8px;
+          padding:14px 28px; border-radius:16px; font-weight:700; font-size:14px;
+          background:rgba(255,255,255,0.04); color:#e2e8f0;
+          border:1px solid rgba(255,255,255,0.18); cursor:pointer; transition:all 0.3s;
+          backdrop-filter:blur(8px);
+        }
+        .home-cta-secondary:hover { background:rgba(255,255,255,0.09); border-color:rgba(139,92,246,0.5); transform:translateY(-2px); box-shadow:0 4px 20px rgba(0,0,0,0.2); }
+        .home-badge {
+          display:inline-flex; align-items:center; gap:6px;
+          padding:5px 13px; border-radius:999px; font-size:11px; font-weight:600;
+          background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); color:#94a3b8;
+          backdrop-filter:blur(6px);
+        }
+        .home-badge:hover { border-color:rgba(139,92,246,0.4); color:#c4b5fd; }
+        .home-badge i { font-size:10px; }
+        /* Portfolio card — glassmorphism */
+        .home-portfolio-card {
+          background:rgba(15,23,42,0.85);
+          border:1px solid rgba(139,92,246,0.35);
+          border-radius:22px; padding:22px;
+          box-shadow:0 0 80px rgba(99,102,241,0.2), 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+          backdrop-filter:blur(24px);
+        }
+        .home-float-card {
+          background:rgba(15,23,42,0.88);
+          border:1px solid rgba(99,102,241,0.3);
+          border-radius:16px; padding:13px 18px;
+          box-shadow:0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(99,102,241,0.1);
+          backdrop-filter:blur(16px);
+        }
+        /* Feature cards — enhanced */
+        .home-feat-card {
+          background:rgba(10,14,30,0.85);
+          border:1px solid rgba(55,65,100,0.5);
+          border-radius:20px; padding:22px 18px;
+          transition:all 0.3s cubic-bezier(0.4,0,0.2,1); cursor:pointer; position:relative; overflow:hidden;
+        }
+        .home-feat-card::before {
+          content:''; position:absolute; inset:0; border-radius:20px; opacity:0;
+          transition:opacity 0.3s;
+        }
+        .home-feat-card::after {
+          content:''; position:absolute; bottom:0; left:0; right:0; height:2px; opacity:0;
+          transition:opacity 0.3s;
+          border-radius:0 0 20px 20px;
+        }
+        .home-feat-card:hover { transform:translateY(-5px); box-shadow:0 20px 50px rgba(0,0,0,0.4); }
+        .home-feat-card:hover::before { opacity:1; }
+        .home-feat-card:hover::after { opacity:1; }
+        /* Per-card accent colors on hover */
+        .hfc-green:hover { border-color:rgba(34,197,94,0.5); }
+        .hfc-green::before { background:linear-gradient(135deg,rgba(34,197,94,0.07),transparent); }
+        .hfc-green::after { background:linear-gradient(90deg,transparent,rgba(34,197,94,0.6),transparent); }
+        .hfc-yellow:hover { border-color:rgba(234,179,8,0.5); }
+        .hfc-yellow::before { background:linear-gradient(135deg,rgba(234,179,8,0.07),transparent); }
+        .hfc-yellow::after { background:linear-gradient(90deg,transparent,rgba(234,179,8,0.6),transparent); }
+        .hfc-cyan:hover { border-color:rgba(6,182,212,0.5); }
+        .hfc-cyan::before { background:linear-gradient(135deg,rgba(6,182,212,0.07),transparent); }
+        .hfc-cyan::after { background:linear-gradient(90deg,transparent,rgba(6,182,212,0.6),transparent); }
+        .hfc-purple:hover { border-color:rgba(168,85,247,0.5); }
+        .hfc-purple::before { background:linear-gradient(135deg,rgba(168,85,247,0.07),transparent); }
+        .hfc-purple::after { background:linear-gradient(90deg,transparent,rgba(168,85,247,0.6),transparent); }
+        .hfc-blue:hover { border-color:rgba(59,130,246,0.5); }
+        .hfc-blue::before { background:linear-gradient(135deg,rgba(59,130,246,0.07),transparent); }
+        .hfc-blue::after { background:linear-gradient(90deg,transparent,rgba(59,130,246,0.6),transparent); }
+        .hfc-teal:hover { border-color:rgba(20,184,166,0.5); }
+        .hfc-teal::before { background:linear-gradient(135deg,rgba(20,184,166,0.07),transparent); }
+        .hfc-teal::after { background:linear-gradient(90deg,transparent,rgba(20,184,166,0.6),transparent); }
+        .hfc-indigo:hover { border-color:rgba(99,102,241,0.5); }
+        .hfc-indigo::before { background:linear-gradient(135deg,rgba(99,102,241,0.07),transparent); }
+        .hfc-indigo::after { background:linear-gradient(90deg,transparent,rgba(99,102,241,0.6),transparent); }
+        .home-feat-icon {
+          width:48px; height:48px; border-radius:14px;
+          display:flex; align-items:center; justify-content:center;
+          font-size:20px; margin-bottom:16px; flex-shrink:0;
+          transition:transform 0.3s;
+        }
+        .home-feat-card:hover .home-feat-icon { transform:scale(1.1) rotate(-3deg); }
+        .home-feat-title { font-size:15px; font-weight:800; color:#e2e8f0; margin-bottom:6px; }
+        .home-feat-desc { font-size:11.5px; color:#64748b; line-height:1.55; }
+        .home-feat-link { font-size:11px; margin-top:14px; display:flex; align-items:center; gap:4px; font-weight:700; opacity:0.7; transition:opacity 0.2s; }
+        .home-feat-card:hover .home-feat-link { opacity:1; }
+        /* Stats — upgraded with glow borders */
+        .home-stat-card {
+          background:rgba(10,14,30,0.8);
+          border:1px solid rgba(55,65,100,0.4);
+          border-radius:18px; padding:18px 20px;
+          display:flex; align-items:center; gap:14px;
+          transition:all 0.3s; position:relative; overflow:hidden;
+        }
+        .home-stat-card::before {
+          content:''; position:absolute; top:0; left:0; right:0; height:1px; opacity:0;
+          background:linear-gradient(90deg,transparent,rgba(139,92,246,0.6),transparent);
+          transition:opacity 0.3s;
+        }
+        .home-stat-card:hover { border-color:rgba(139,92,246,0.3); box-shadow:0 8px 30px rgba(0,0,0,0.3); transform:translateY(-2px); }
+        .home-stat-card:hover::before { opacity:1; }
+        .home-stat-icon {
+          width:44px; height:44px; border-radius:13px; flex-shrink:0;
+          display:flex; align-items:center; justify-content:center; font-size:17px;
+          transition:transform 0.3s;
+        }
+        .home-stat-card:hover .home-stat-icon { transform:scale(1.1); }
+        .home-stat-val { font-size:23px; font-weight:900; color:#f1f5f9; line-height:1; }
+        .home-stat-lbl { font-size:11px; color:#64748b; margin-top:3px; }
+        .home-stat-badge { font-size:10px; font-weight:700; color:#4ade80; background:rgba(74,222,128,0.12); border:1px solid rgba(74,222,128,0.2); border-radius:999px; padding:2px 7px; margin-left:6px; }
+        /* Counter animation */
+        @keyframes homeCountUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        .home-stat-animated { animation: homeCountUp 0.6s ease both; }
+        /* Why section */
+        .home-why-card {
+          background:rgba(10,14,30,0.7);
+          border:1px solid rgba(55,65,100,0.35);
+          border-radius:16px; padding:20px;
+          display:flex; align-items:flex-start; gap:14px;
+          transition:all 0.25s;
+        }
+        .home-why-card:hover { border-color:rgba(139,92,246,0.3); transform:translateY(-2px); }
+        .home-why-icon { width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; transition:transform 0.3s; }
+        .home-why-card:hover .home-why-icon { transform:scale(1.1); }
+        /* Orbit + float animations */
+        @keyframes homeOrbitSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes homePulseGlow { 0%,100%{ opacity:0.5 } 50%{ opacity:1 } }
+        @keyframes homeFloatUp { 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-10px) } }
+        @keyframes homeShimmer { 0%{ background-position:-200% center } 100%{ background-position:200% center } }
+        .home-orbit-ring { animation: homeOrbitSpin 22s linear infinite; }
+        .home-float-anim { animation: homeFloatUp 4s ease-in-out infinite; }
+        .home-float-anim-2 { animation: homeFloatUp 5.5s ease-in-out infinite 0.8s; }
+        .home-float-anim-3 { animation: homeFloatUp 4.8s ease-in-out infinite 2s; }
+        /* Chart bar hover */
+        .home-chart-bar { transition:opacity 0.2s, height 0.3s; }
+        .home-chart-bar:hover { opacity:1 !important; filter:brightness(1.3); }
+        /* Section divider line */
+        .home-section-line {
+          height:1px; margin:0 0 28px;
+          background:linear-gradient(90deg,transparent,rgba(99,102,241,0.3) 30%,rgba(6,182,212,0.3) 70%,transparent);
+        }
+        /* Neon glow text for subtitle */
+        .home-hero-sub { color:#94a3b8; }
+        /* Live dot */
+        @keyframes homeLiveDot { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:0.7} }
+        .home-live-dot { animation:homeLiveDot 1.5s ease-in-out infinite; }
+      </style>
+
+      <!-- ── Hero Section ─────────────────────────────────────────────── -->
+      <div class="home-hero py-10 md:py-16" style="position:relative;">
+        <!-- Background glow orbs — more saturated -->
+        <div class="home-glow-orb" style="width:700px;height:700px;top:-250px;left:-200px;background:radial-gradient(circle,rgba(99,102,241,0.14),transparent 68%);"></div>
+        <div class="home-glow-orb" style="width:500px;height:500px;top:20px;right:-150px;background:radial-gradient(circle,rgba(139,92,246,0.12),transparent 68%);"></div>
+        <div class="home-glow-orb" style="width:350px;height:350px;bottom:-100px;left:30%;background:radial-gradient(circle,rgba(6,182,212,0.08),transparent 70%);"></div>
+
+        <div class="flex flex-col lg:flex-row items-center gap-12 lg:gap-20" style="position:relative;z-index:1;">
+
+          <!-- Left: Copy -->
+          <div class="flex-1 text-center lg:text-left">
+            <!-- Live pill -->
+            <div class="inline-flex items-center gap-2 mb-7 px-4 py-2 rounded-full text-xs font-semibold"
+              style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;backdrop-filter:blur(8px);">
+              <span class="home-live-dot w-1.5 h-1.5 rounded-full bg-green-400"></span>
+              Live on Arc Testnet · Built for the future of finance
+            </div>
+
+            <!-- Main headline — bigger, bolder -->
+            <h1 class="home-hero-title mb-6">
+              Autonomous Payments.<br>
+              <span class="accent">Intelligent Contracts.</span>
+            </h1>
+
+            <!-- Subtitle -->
+            <p class="home-hero-sub text-base mb-9 max-w-lg mx-auto lg:mx-0 leading-relaxed">
+              ExecDaat is a decentralized platform on Arc Testnet combining AI-powered payments, token swaps, escrow contracts and autonomous multi-agent operations in one unified interface.
+            </p>
+
+            <!-- CTAs — primary more prominent -->
+            <div class="flex flex-wrap items-center gap-4 justify-center lg:justify-start mb-9">
+              <button class="home-cta-primary" onclick="document.getElementById('wallet-connect-btn')?.click()">
+                <i class="fas fa-wallet"></i> Connect Wallet
+              </button>
+              <button class="home-cta-secondary" onclick="switchTab('payments')">
+                Explore Platform <i class="fas fa-arrow-right text-xs"></i>
+              </button>
+            </div>
+
+            <!-- Trust badges — glassmorphism -->
+            <div class="flex flex-wrap gap-2 justify-center lg:justify-start">
+              <span class="home-badge"><i class="fas fa-shield-alt text-purple-400"></i>100% Decentralized</span>
+              <span class="home-badge"><i class="fas fa-lock text-blue-400"></i>Non-Custodial</span>
+              <span class="home-badge"><i class="fas fa-brain text-cyan-400"></i>AI-Powered</span>
+              <span class="home-badge"><i class="fas fa-bolt text-yellow-400"></i>Sub-second Finality</span>
+            </div>
           </div>
-          <h1 class="text-4xl font-extrabold text-white mb-3 tracking-tight">ExecDaat</h1>
-          <p class="text-purple-300 font-semibold text-lg mb-2">Autonomous Payments &amp; Smart Contracts</p>
-          <p class="text-gray-500 text-sm max-w-md mx-auto">Decentralized platform on Arc Testnet — AI-powered payments, token swaps, escrow contracts and autonomous operations.</p>
-        </div>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-2xl">
-          <button onclick="switchTab('payments')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-green-500/40 hover:bg-gray-800/80 transition-all group">
-            <i class="fas fa-dollar-sign text-green-400 text-2xl group-hover:scale-110 transition-transform"></i>
-            <span class="text-white text-sm font-semibold">Payments</span>
-          </button>
-          <button onclick="switchTab('dex')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-yellow-500/40 hover:bg-gray-800/80 transition-all group">
-            <i class="fas fa-exchange-alt text-yellow-400 text-2xl group-hover:scale-110 transition-transform"></i>
-            <span class="text-white text-sm font-semibold">Swap</span>
-          </button>
-          <button onclick="switchTab('bridge')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-cyan-500/40 hover:bg-gray-800/80 transition-all group">
-            <i class="fas fa-right-left text-cyan-400 text-2xl group-hover:scale-110 transition-transform"></i>
-            <span class="text-white text-sm font-semibold">Bridge</span>
-          </button>
-          <button onclick="switchTab('autonoma')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-purple-500/40 hover:bg-gray-800/80 transition-all group">
-            <i class="fas fa-robot text-purple-400 text-2xl group-hover:scale-110 transition-transform"></i>
-            <span class="text-white text-sm font-semibold">Autonomous</span>
-          </button>
-          <button onclick="switchTab('contracts')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-blue-500/40 hover:bg-gray-800/80 transition-all group">
-            <i class="fas fa-file-contract text-blue-400 text-2xl group-hover:scale-110 transition-transform"></i>
-            <span class="text-white text-sm font-semibold">Contracts</span>
-          </button>
-          <button onclick="switchTab('multisend')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-cyan-500/40 hover:bg-gray-800/80 transition-all group">
-            <i class="fas fa-paper-plane text-cyan-400 text-2xl group-hover:scale-110 transition-transform"></i>
-            <span class="text-white text-sm font-semibold">MultiSend</span>
-          </button>
-          <button onclick="switchTab('otc')" class="flex flex-col items-center gap-2 p-5 bg-gray-900/70 border border-gray-700/50 rounded-xl hover:border-indigo-500/40 hover:bg-gray-800/80 transition-all group">
-            <i class="fas fa-handshake text-indigo-400 text-2xl group-hover:scale-110 transition-transform"></i>
-            <span class="text-white text-sm font-semibold">OTC</span>
-          </button>
+
+          <!-- Right: Animated mockup cards -->
+          <div class="flex-shrink-0 relative w-full max-w-sm lg:max-w-md" style="min-height:340px;">
+            <!-- Orbit ring SVG -->
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none" style="z-index:0;">
+              <svg width="400" height="400" viewBox="0 0 400 400" fill="none" class="home-orbit-ring" style="opacity:0.2;">
+                <ellipse cx="200" cy="200" rx="185" ry="85" stroke="url(#og1)" stroke-width="1.5"/>
+                <ellipse cx="200" cy="200" rx="160" ry="68" stroke="url(#og2)" stroke-width="0.8" transform="rotate(45 200 200)"/>
+                <ellipse cx="200" cy="200" rx="130" ry="50" stroke="url(#og3)" stroke-width="0.5" transform="rotate(20 200 200)"/>
+                <defs>
+                  <linearGradient id="og1" x1="0" y1="0" x2="400" y2="400" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#7c3aed"/><stop offset="0.5" stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
+                  </linearGradient>
+                  <linearGradient id="og2" x1="0" y1="0" x2="400" y2="0" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#06b6d4"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
+                  </linearGradient>
+                  <linearGradient id="og3" x1="0" y1="0" x2="400" y2="400" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#a855f7" stop-opacity="0.8"/><stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+
+            <!-- Main portfolio card — glassmorphism -->
+            <div class="home-portfolio-card relative z-10 home-float-anim">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <span class="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Portfolio Overview</span>
+                  <div class="flex items-center gap-1.5 mt-0.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-400" style="animation:pulse 2s infinite;"></span>
+                    <span style="font-size:10px;color:#4ade80;font-weight:600;">Live</span>
+                  </div>
+                </div>
+                <div class="flex gap-1.5">
+                  <span class="w-6 h-6 rounded-lg bg-gray-800/80 border border-gray-700/50 flex items-center justify-center cursor-pointer hover:bg-gray-700/80 transition-colors"><i class="fas fa-chevron-left text-gray-500" style="font-size:8px;"></i></span>
+                  <span class="w-6 h-6 rounded-lg bg-gray-800/80 border border-gray-700/50 flex items-center justify-center cursor-pointer hover:bg-gray-700/80 transition-colors"><i class="fas fa-chevron-right text-gray-500" style="font-size:8px;"></i></span>
+                </div>
+              </div>
+              <div class="text-[11px] text-gray-500 mb-1.5">Total Balance</div>
+              <div class="flex items-center gap-3 mb-4">
+                <span class="text-2xl font-black text-white" style="letter-spacing:-0.02em;">12,450.75 ARC</span>
+                <span class="text-xs font-bold text-green-400 bg-green-400/10 border border-green-400/25 rounded-full px-2.5 py-0.5">+12.5%</span>
+              </div>
+              <!-- Mini animated chart bars -->
+              <div class="flex items-end gap-1 mb-3" style="height:52px;">
+                <div class="home-chart-bar flex-1 rounded-sm" style="height:38%;background:rgba(99,102,241,0.35);opacity:0.8;"></div>
+                <div class="home-chart-bar flex-1 rounded-sm" style="height:55%;background:rgba(99,102,241,0.45);opacity:0.85;"></div>
+                <div class="home-chart-bar flex-1 rounded-sm" style="height:42%;background:rgba(99,102,241,0.38);opacity:0.8;"></div>
+                <div class="home-chart-bar flex-1 rounded-sm" style="height:72%;background:rgba(139,92,246,0.55);opacity:0.9;"></div>
+                <div class="home-chart-bar flex-1 rounded-sm" style="height:50%;background:rgba(99,102,241,0.42);opacity:0.8;"></div>
+                <div class="home-chart-bar flex-1 rounded-sm" style="height:85%;background:rgba(139,92,246,0.65);opacity:0.95;"></div>
+                <div class="home-chart-bar flex-1 rounded-sm" style="height:65%;background:rgba(99,102,241,0.48);opacity:0.85;"></div>
+                <div class="home-chart-bar flex-1 rounded-sm" style="height:100%;background:linear-gradient(180deg,#c084fc,#818cf8);box-shadow:0 0 12px rgba(168,85,247,0.5);"></div>
+              </div>
+              <div class="flex gap-2.5 text-[11px] text-gray-600 font-medium">
+                <span class="cursor-pointer hover:text-gray-400 transition-colors">1D</span>
+                <span class="cursor-pointer hover:text-gray-400 transition-colors">7D</span>
+                <span class="text-purple-400 font-bold">30D</span>
+                <span class="cursor-pointer hover:text-gray-400 transition-colors">90D</span>
+                <span class="cursor-pointer hover:text-gray-400 transition-colors">1Y</span>
+              </div>
+            </div>
+
+            <!-- Floating card: Swap preview -->
+            <div class="home-float-card absolute home-float-anim-2" style="bottom:-12px;left:-24px;z-index:20;min-width:160px;">
+              <div class="flex items-center gap-2 mb-1.5">
+                <div class="w-5 h-5 rounded-md bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center">
+                  <i class="fas fa-exchange-alt text-yellow-400" style="font-size:8px;"></i>
+                </div>
+                <span style="font-size:11px;font-weight:700;color:#e2e8f0;">Swap</span>
+                <span class="ml-auto text-[9px] text-green-400 font-semibold bg-green-400/10 px-1.5 py-0.5 rounded-full">Done</span>
+              </div>
+              <div class="flex items-center gap-2 text-xs">
+                <span class="font-bold text-white">1,250 ARC</span>
+                <i class="fas fa-long-arrow-alt-right text-gray-600" style="font-size:9px;"></i>
+                <span class="font-bold text-green-400">8 USDC</span>
+              </div>
+            </div>
+
+            <!-- Floating card: Contract status -->
+            <div class="home-float-card absolute home-float-anim-3" style="top:8px;right:-18px;z-index:20;min-width:152px;">
+              <div class="flex items-center gap-2 mb-1.5">
+                <div class="w-5 h-5 rounded-md bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
+                  <i class="fas fa-file-contract text-blue-400" style="font-size:8px;"></i>
+                </div>
+                <span style="font-size:11px;font-weight:700;color:#e2e8f0;">Escrow</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" style="animation:pulse 2s infinite;"></span>
+                <span style="font-size:11px;font-weight:700;color:#4ade80;">Active</span>
+                <span class="ml-auto font-mono text-[10px] text-gray-500">500 USDC</span>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
+
+      <!-- ── Section divider ──────────────────────────────────────────── -->
+      <div class="home-section-line"></div>
+
+      <!-- ── Feature Cards — enhanced ───────────────────────────────── -->
+      <div class="mb-10">
+        <div class="flex items-center gap-3 mb-5">
+          <h2 style="font-size:16px;font-weight:800;color:#e2e8f0;">Platform Features</h2>
+          <div class="flex-1 h-px bg-gradient-to-r from-purple-500/30 to-transparent"></div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+
+          <div class="home-feat-card hfc-green" onclick="switchTab('payments')">
+            <div class="home-feat-icon" style="background:rgba(34,197,94,0.14);border:1px solid rgba(34,197,94,0.3);">
+              <i class="fas fa-paper-plane text-green-400"></i>
+            </div>
+            <div class="home-feat-title">Payments</div>
+            <div class="home-feat-desc">Send ERC-20 tokens instantly with AI scheduling.</div>
+            <div class="home-feat-link" style="color:#4ade80;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
+          </div>
+
+          <div class="home-feat-card hfc-yellow" onclick="switchTab('dex')">
+            <div class="home-feat-icon" style="background:rgba(234,179,8,0.14);border:1px solid rgba(234,179,8,0.3);">
+              <i class="fas fa-exchange-alt text-yellow-400"></i>
+            </div>
+            <div class="home-feat-title">Swap</div>
+            <div class="home-feat-desc">Best-rate token swaps via the Arc AMM pool.</div>
+            <div class="home-feat-link" style="color:#facc15;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
+          </div>
+
+          <div class="home-feat-card hfc-cyan" onclick="switchTab('bridge')">
+            <div class="home-feat-icon" style="background:rgba(6,182,212,0.14);border:1px solid rgba(6,182,212,0.3);">
+              <i class="fas fa-right-left text-cyan-400"></i>
+            </div>
+            <div class="home-feat-title">Bridge</div>
+            <div class="home-feat-desc">CCTP V2 cross-chain transfers, burn &amp; mint.</div>
+            <div class="home-feat-link" style="color:#22d3ee;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
+          </div>
+
+          <div class="home-feat-card hfc-purple" onclick="switchTab('autonoma')">
+            <div class="home-feat-icon" style="background:rgba(168,85,247,0.14);border:1px solid rgba(168,85,247,0.3);">
+              <i class="fas fa-robot text-purple-400"></i>
+            </div>
+            <div class="home-feat-title">Autonomous</div>
+            <div class="home-feat-desc">AI multi-agent automation for on-chain tasks.</div>
+            <div class="home-feat-link" style="color:#c084fc;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
+          </div>
+
+          <div class="home-feat-card hfc-blue" onclick="switchTab('contracts')">
+            <div class="home-feat-icon" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.3);">
+              <i class="fas fa-file-contract text-blue-400"></i>
+            </div>
+            <div class="home-feat-title">Contracts</div>
+            <div class="home-feat-desc">Deploy escrow smart contracts in seconds.</div>
+            <div class="home-feat-link" style="color:#60a5fa;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
+          </div>
+
+          <div class="home-feat-card hfc-teal" onclick="switchTab('multisend')">
+            <div class="home-feat-icon" style="background:rgba(20,184,166,0.14);border:1px solid rgba(20,184,166,0.3);">
+              <i class="fas fa-layer-group text-teal-400"></i>
+            </div>
+            <div class="home-feat-title">MultiSend</div>
+            <div class="home-feat-desc">Batch transfers to multiple wallets at once.</div>
+            <div class="home-feat-link" style="color:#2dd4bf;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
+          </div>
+
+          <div class="home-feat-card hfc-indigo" onclick="switchTab('otc')" style="position:relative;">
+            <span style="position:absolute;top:10px;right:10px;font-size:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:2px 7px;border-radius:999px;font-weight:800;letter-spacing:0.05em;">NEW</span>
+            <div class="home-feat-icon" style="background:rgba(99,102,241,0.14);border:1px solid rgba(99,102,241,0.3);">
+              <i class="fas fa-handshake text-indigo-400"></i>
+            </div>
+            <div class="home-feat-title">OTC</div>
+            <div class="home-feat-desc">Peer-to-peer OTC deals with on-chain escrow.</div>
+            <div class="home-feat-link" style="color:#818cf8;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Stats Bar — animated counters ──────────────────────────── -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-10">
+
+        <div class="home-stat-card home-stat-animated" style="animation-delay:0.05s;">
+          <div class="home-stat-icon" style="background:rgba(168,85,247,0.14);border:1px solid rgba(168,85,247,0.25);">
+            <i class="fas fa-bolt text-purple-400"></i>
+          </div>
+          <div>
+            <div class="home-stat-val" id="hstat-txs" data-target="24678" data-suffix="">24,678<span class="home-stat-badge">+18.2%</span></div>
+            <div class="home-stat-lbl">Transactions</div>
+            <div style="font-size:10px;color:#475569;margin-top:2px;">Last 7 days</div>
+          </div>
+        </div>
+
+        <div class="home-stat-card home-stat-animated" style="animation-delay:0.1s;">
+          <div class="home-stat-icon" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.25);">
+            <i class="fas fa-coins text-blue-400"></i>
+          </div>
+          <div>
+            <div class="home-stat-val">2.45M<span class="home-stat-badge">+15.7%</span></div>
+            <div class="home-stat-lbl">Value Locked</div>
+            <div style="font-size:10px;color:#475569;margin-top:2px;">Across platform</div>
+          </div>
+        </div>
+
+        <div class="home-stat-card home-stat-animated" style="animation-delay:0.15s;">
+          <div class="home-stat-icon" style="background:rgba(6,182,212,0.14);border:1px solid rgba(6,182,212,0.25);">
+            <i class="fas fa-file-contract text-cyan-400"></i>
+          </div>
+          <div>
+            <div class="home-stat-val">1,246<span class="home-stat-badge">+22.4%</span></div>
+            <div class="home-stat-lbl">Contracts</div>
+            <div style="font-size:10px;color:#475569;margin-top:2px;">On-chain</div>
+          </div>
+        </div>
+
+        <div class="home-stat-card home-stat-animated" style="animation-delay:0.2s;">
+          <div class="home-stat-icon" style="background:rgba(34,197,94,0.14);border:1px solid rgba(34,197,94,0.25);">
+            <i class="fas fa-users text-green-400"></i>
+          </div>
+          <div>
+            <div class="home-stat-val">987<span class="home-stat-badge">+12.1%</span></div>
+            <div class="home-stat-lbl">Active Users</div>
+            <div style="font-size:10px;color:#475569;margin-top:2px;">Unique wallets</div>
+          </div>
+        </div>
+
+        <div class="home-stat-card home-stat-animated" style="animation-delay:0.25s;">
+          <div class="home-stat-icon" style="background:rgba(74,222,128,0.14);border:1px solid rgba(74,222,128,0.25);">
+            <i class="fas fa-server text-green-400"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5 mb-0.5">
+              <span class="home-stat-val" style="font-size:15px;letter-spacing:-0.01em;">Arc Testnet</span>
+            </div>
+            <div class="home-stat-lbl">Network</div>
+            <div style="font-size:10px;font-weight:700;color:#4ade80;margin-top:2px;display:flex;align-items:center;gap:4px;">
+              <span class="home-live-dot w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>Online
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Why ExecDaat — enhanced ────────────────────────────────── -->
+      <div class="rounded-2xl mb-4" style="background:rgba(10,14,30,0.7);border:1px solid rgba(55,65,100,0.4);overflow:hidden;">
+        <!-- Top accent line -->
+        <div style="height:2px;background:linear-gradient(90deg,transparent,#7c3aed 30%,#2563eb 70%,transparent);"></div>
+        <div class="p-6 md:p-8">
+          <div class="flex flex-col lg:flex-row gap-8 items-start">
+
+            <!-- Left: title + CTA -->
+            <div class="lg:w-60 flex-shrink-0">
+              <div class="flex items-center gap-2 mb-3">
+                <div style="width:32px;height:32px;border-radius:10px;background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-star text-purple-400" style="font-size:13px;"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white">Why ExecDaat?</h3>
+              </div>
+              <p class="text-gray-400 text-sm leading-relaxed mb-5">Next-generation DeFi infrastructure combining AI and decentralization — the best Web3 experience on Arc Testnet.</p>
+              <button onclick="switchTab('about')" class="home-cta-secondary" style="font-size:12px;padding:9px 18px;">
+                Learn more <i class="fas fa-arrow-right text-xs"></i>
+              </button>
+            </div>
+
+            <!-- Right: benefit cards — enhanced -->
+            <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              <div class="home-why-card">
+                <div class="home-why-icon" style="background:rgba(168,85,247,0.14);border:1px solid rgba(168,85,247,0.3);">
+                  <i class="fas fa-brain text-purple-400"></i>
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:800;color:#e2e8f0;margin-bottom:5px;">AI-Powered</div>
+                  <div style="font-size:11px;color:#64748b;line-height:1.6;">Multi-agent AI orchestrates payments, analysis and on-chain operations automatically.</div>
+                </div>
+              </div>
+              <div class="home-why-card">
+                <div class="home-why-icon" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.3);">
+                  <i class="fas fa-shield-check text-blue-400"></i>
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:800;color:#e2e8f0;margin-bottom:5px;">Battle-Tested</div>
+                  <div style="font-size:11px;color:#64748b;line-height:1.6;">Audited smart contracts and non-custodial design — your keys, your funds, always.</div>
+                </div>
+              </div>
+              <div class="home-why-card">
+                <div class="home-why-icon" style="background:rgba(234,179,8,0.14);border:1px solid rgba(234,179,8,0.3);">
+                  <i class="fas fa-bolt text-yellow-400"></i>
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:800;color:#e2e8f0;margin-bottom:5px;">Lightning Fast</div>
+                  <div style="font-size:11px;color:#64748b;line-height:1.6;">Sub-second finality on Arc Testnet with gas costs under $0.01 per transaction.</div>
+                </div>
+              </div>
+              <div class="home-why-card">
+                <div class="home-why-icon" style="background:rgba(6,182,212,0.14);border:1px solid rgba(6,182,212,0.3);">
+                  <i class="fas fa-rocket text-cyan-400"></i>
+                </div>
+                <div>
+                  <div style="font-size:13px;font-weight:800;color:#e2e8f0;margin-bottom:5px;">Always Evolving</div>
+                  <div style="font-size:11px;color:#64748b;line-height:1.6;">New features, integrations and AI capabilities shipped continuously every sprint.</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
     </div><!-- /tab-content-home -->
 
     <!-- DASHBOARD TAB -->
@@ -1400,30 +1889,31 @@ app.get('/', (c) => {
 
       <!-- ══ PAYMENTS STYLES (isolated, mirrors Contracts design system) ══ -->
       <style>
-        /* ── Layout ── */
+        /* ── Layout — 3 column on XL ── */
         #pay-page { display:grid; grid-template-columns:1fr; gap:20px; }
-        @media(min-width:1280px){ #pay-page { grid-template-columns:minmax(0,2fr) minmax(0,3fr); gap:20px; } }
+        @media(min-width:1024px){ #pay-page { grid-template-columns:minmax(0,5fr) minmax(0,6fr) minmax(0,4fr); gap:18px; } }
 
-        /* ── Panel (mirrors .cf-panel) ── */
+        /* ── Panel — glass effect ── */
         .pay-cf-panel {
-          background:rgba(10,12,24,0.98);
-          border:1px solid rgba(55,138,221,0.18);
-          border-radius:18px;
+          background:rgba(10,14,30,0.95);
+          border:1px solid rgba(99,102,241,0.2);
+          border-radius:20px;
           position:relative;
           overflow:hidden;
+          box-shadow:0 4px 40px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04);
         }
         .pay-cf-panel::after {
           content:'';
           position:absolute;
           top:0; left:0; right:0; height:1px;
           pointer-events:none;
-          background:linear-gradient(90deg,transparent,rgba(55,138,221,0.6) 40%,rgba(29,158,117,0.5) 60%,transparent);
+          background:linear-gradient(90deg,transparent,rgba(99,102,241,0.7) 35%,rgba(6,182,212,0.6) 65%,transparent);
         }
 
-        /* ── Input (mirrors .cf-input) ── */
+        /* ── Input — glowing focus ── */
         .pay-cf-input {
-          background:rgba(255,255,255,0.06) !important;
-          border:1px solid rgba(55,138,221,0.32) !important;
+          background:rgba(255,255,255,0.05) !important;
+          border:1px solid rgba(99,102,241,0.25) !important;
           border-radius:12px !important;
           color:#e8edf8 !important;
           transition:all 0.2s;
@@ -1431,16 +1921,17 @@ app.get('/', (c) => {
           width:100%;
           box-sizing:border-box;
           font-size:13px !important;
+          padding:10px 14px !important;
         }
-        .pay-cf-input::placeholder { color:#6a85aa !important; }
-        .pay-cf-input:hover  { border-color:rgba(55,138,221,0.55) !important; background:rgba(255,255,255,0.07) !important; }
+        .pay-cf-input::placeholder { color:#475569 !important; }
+        .pay-cf-input:hover  { border-color:rgba(99,102,241,0.5) !important; background:rgba(255,255,255,0.07) !important; }
         .pay-cf-input:focus  {
-          border-color:rgba(55,138,221,0.75) !important;
-          box-shadow:0 0 0 3px rgba(55,138,221,0.16) !important;
-          background:rgba(55,138,221,0.07) !important;
+          border-color:rgba(99,102,241,0.7) !important;
+          box-shadow:0 0 0 3px rgba(99,102,241,0.15), 0 0 20px rgba(99,102,241,0.1) !important;
+          background:rgba(99,102,241,0.06) !important;
           color:#f0f4ff !important;
         }
-        .pay-cf-input.is-valid { border-color:rgba(29,158,117,0.65) !important; box-shadow:0 0 0 2px rgba(29,158,117,0.12) !important; }
+        .pay-cf-input.is-valid { border-color:rgba(34,197,94,0.6) !important; box-shadow:0 0 0 2px rgba(34,197,94,0.1) !important; }
         .pay-cf-input.is-error { border-color:rgba(239,68,68,0.6) !important; box-shadow:0 0 0 3px rgba(239,68,68,0.12) !important; }
 
         /* ── Label (mirrors .cf-label) ── */
@@ -1547,22 +2038,23 @@ app.get('/', (c) => {
           display:none; align-items:flex-start; gap:8px; margin-bottom:14px;
         }
 
-        /* ── Send button ── */
+        /* ── Send button — gradient glow ── */
         #pay-send-btn {
           width:100%;
-          background:linear-gradient(135deg,#1565c0,#006064);
+          background:linear-gradient(135deg,#7b3ff2,#4f46e5,#2563eb);
           color:#fff; border:none; border-radius:14px;
-          padding:13px; font-size:13px; font-weight:800;
+          padding:14px; font-size:14px; font-weight:800;
           cursor:pointer; transition:all 0.3s;
-          box-shadow:0 0 20px rgba(55,138,221,0.3);
+          box-shadow:0 0 30px rgba(99,102,241,0.35);
           letter-spacing:0.04em;
           display:flex; align-items:center; justify-content:center; gap:8px;
+          text-shadow:0 1px 3px rgba(0,0,0,0.3);
         }
-        #pay-send-btn:hover:not(:disabled) { box-shadow:0 0 30px rgba(55,138,221,0.5); transform:translateY(-1px); }
+        #pay-send-btn:hover:not(:disabled) { box-shadow:0 0 45px rgba(99,102,241,0.55), 0 4px 20px rgba(0,0,0,0.3); transform:translateY(-2px); }
         #pay-send-btn:disabled {
-          background:rgba(255,255,255,0.05);
-          border:1px solid rgba(55,138,221,0.18);
-          color:#7a90a8; cursor:not-allowed;
+          background:rgba(255,255,255,0.04);
+          border:1px solid rgba(99,102,241,0.15);
+          color:#64748b; cursor:not-allowed;
           box-shadow:none; transform:none;
         }
 
@@ -1596,33 +2088,52 @@ app.get('/', (c) => {
 
         /* ── Right column panels ── */
         #pay-right-col { display:flex; flex-direction:column; gap:14px; }
+        /* ── Summary card (sticky right) ── */
+        #pay-summary-card {
+          background:rgba(10,14,30,0.95);
+          border:1px solid rgba(99,102,241,0.2);
+          border-radius:20px; overflow:hidden;
+          position:sticky; top:calc(var(--topbar-h,56px) + 56px + 12px);
+          box-shadow:0 4px 40px rgba(0,0,0,0.3);
+        }
+        #pay-summary-card::before {
+          content:''; position:absolute; top:0; left:0; right:0; height:1px;
+          background:linear-gradient(90deg,transparent,rgba(99,102,241,0.7) 50%,transparent);
+        }
         .pay-side-panel {
-          background:rgba(10,12,24,0.98);
-          border:1px solid rgba(55,138,221,0.15);
-          border-radius:14px; overflow:hidden;
+          background:rgba(10,14,30,0.95);
+          border:1px solid rgba(99,102,241,0.18);
+          border-radius:18px; overflow:hidden;
           position:relative;
+          box-shadow:0 4px 24px rgba(0,0,0,0.2);
         }
         .pay-side-panel::after {
           content:''; position:absolute; top:0; left:0; right:0; height:1px;
           pointer-events:none;
-          background:linear-gradient(90deg,transparent,rgba(55,138,221,0.4) 50%,transparent);
+          background:linear-gradient(90deg,transparent,rgba(99,102,241,0.5) 50%,transparent);
         }
         .pay-side-hdr {
-          padding:10px 16px;
-          border-bottom:1px solid rgba(55,138,221,0.09);
+          padding:12px 16px;
+          border-bottom:1px solid rgba(99,102,241,0.08);
           display:flex; align-items:center; justify-content:space-between;
-          background:rgba(55,138,221,0.03);
+          background:rgba(99,102,241,0.03);
         }
       </style>
 
-      <!-- ── Info bar (mirrors factory bar in contracts) ── -->
-      <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:10px 16px;">
+      <!-- ── Info bar ── -->
+      <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(10,14,30,0.8);border:1px solid rgba(99,102,241,0.15);border-radius:14px;padding:10px 16px;box-shadow:0 2px 16px rgba(0,0,0,0.2);">
         <div class="flex items-center gap-2">
           <div class="w-2 h-2 rounded-full" style="background:#4ade80;animation:pulse 2s infinite;box-shadow:0 0 6px #4ade80;"></div>
-          <span style="color:#90bce0;font-weight:700;">Daat Payments</span>
+          <span style="color:#a5b4fc;font-weight:700;">Daat Payments</span>
         </div>
-        <span style="color:#7aaad0;">Single on-chain ERC-20 transfer</span>
-        <span class="ml-auto" style="color:#6a90b8;">Arc Testnet · Chain 5042002 · No real funds</span>
+        <span style="color:#64748b;">Single on-chain ERC-20 transfer</span>
+        <div class="ml-auto flex items-center gap-2">
+          <span style="color:#475569;">Arc Testnet</span>
+          <span style="color:#374151;">·</span>
+          <span style="color:#475569;">Chain 5042002</span>
+          <span style="color:#374151;">·</span>
+          <span style="color:#f59e0b;font-weight:600;">No real funds</span>
+        </div>
       </div>
 
       <div id="pay-page">
@@ -1718,31 +2229,44 @@ app.get('/', (c) => {
                   <div id="pay-hint-amount" class="pay-field-hint"></div>
                 </div>
 
-                <!-- Gas Speed Selector -->
-                <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.15);border-radius:11px;padding:11px 13px 9px;">
+                <!-- Gas Speed Selector — selectable cards -->
+                <div>
                   <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
-                    <i class="fas fa-tachometer-alt" style="color:#60b4ff;font-size:11px;"></i>
+                    <i class="fas fa-gas-pump" style="color:#60b4ff;font-size:11px;"></i>
                     <span style="color:#8aaac8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Gas Speed</span>
                     <span style="margin-left:auto;cursor:help;" title="Choose transaction speed. Fast: higher gas, ~10s confirmation. Standard: balanced. Slow: lowest gas, ~120s."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </div>
-                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;">
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+                    <!-- Slow card -->
                     <button id="pay-gas-slow" onclick="paySelectGasTier('slow')"
-                      style="padding:7px 5px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
-                      <div style="font-size:10px;font-weight:700;color:#6b7280;">🐢 Slow</div>
-                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
-                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~120s</div>
+                      style="padding:12px 8px;background:rgba(255,255,255,0.03);border:1.5px solid rgba(100,116,139,0.25);border-radius:14px;cursor:pointer;transition:all 0.25s;text-align:center;position:relative;overflow:hidden;">
+                      <div style="width:30px;height:30px;border-radius:10px;background:rgba(100,116,139,0.12);border:1px solid rgba(100,116,139,0.2);display:flex;align-items:center;justify-content:center;margin:0 auto 7px;">
+                        <i class="fas fa-turtle" style="color:#94a3b8;font-size:12px;"></i>
+                      </div>
+                      <div style="font-size:11px;font-weight:800;color:#94a3b8;margin-bottom:3px;">Slow</div>
+                      <div class="gas-cost" style="font-size:9px;color:#64748b;margin-bottom:2px;">—</div>
+                      <div class="gas-time" style="font-size:9px;color:#475569;font-weight:600;">~120s</div>
                     </button>
+                    <!-- Standard card — active by default -->
                     <button id="pay-gas-standard" onclick="paySelectGasTier('standard')"
-                      style="padding:7px 5px;background:rgba(55,138,221,0.18);border:1px solid rgba(55,138,221,0.5);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
-                      <div style="font-size:10px;font-weight:700;color:#60b4ff;">⚡ Standard</div>
-                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
-                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~30s</div>
+                      style="padding:12px 8px;background:rgba(55,138,221,0.1);border:1.5px solid rgba(55,138,221,0.5);border-radius:14px;cursor:pointer;transition:all 0.25s;text-align:center;position:relative;overflow:hidden;box-shadow:0 0 16px rgba(55,138,221,0.15);">
+                      <div style="position:absolute;top:5px;right:5px;font-size:7px;background:rgba(55,138,221,0.25);color:#60b4ff;padding:1px 5px;border-radius:999px;font-weight:800;">DEFAULT</div>
+                      <div style="width:30px;height:30px;border-radius:10px;background:rgba(55,138,221,0.2);border:1px solid rgba(55,138,221,0.4);display:flex;align-items:center;justify-content:center;margin:0 auto 7px;">
+                        <i class="fas fa-bolt" style="color:#60b4ff;font-size:12px;"></i>
+                      </div>
+                      <div style="font-size:11px;font-weight:800;color:#60b4ff;margin-bottom:3px;">Standard</div>
+                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-bottom:2px;">—</div>
+                      <div class="gas-time" style="font-size:9px;color:#7a9cb8;font-weight:600;">~30s</div>
                     </button>
+                    <!-- Fast card -->
                     <button id="pay-gas-fast" onclick="paySelectGasTier('fast')"
-                      style="padding:7px 5px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
-                      <div style="font-size:10px;font-weight:700;color:#34d399;">🚀 Fast</div>
-                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
-                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~10s</div>
+                      style="padding:12px 8px;background:rgba(255,255,255,0.03);border:1.5px solid rgba(52,211,153,0.2);border-radius:14px;cursor:pointer;transition:all 0.25s;text-align:center;position:relative;overflow:hidden;">
+                      <div style="width:30px;height:30px;border-radius:10px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.25);display:flex;align-items:center;justify-content:center;margin:0 auto 7px;">
+                        <i class="fas fa-rocket" style="color:#34d399;font-size:12px;"></i>
+                      </div>
+                      <div style="font-size:11px;font-weight:800;color:#34d399;margin-bottom:3px;">Fast</div>
+                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-bottom:2px;">—</div>
+                      <div class="gas-time" style="font-size:9px;color:#7a9cb8;font-weight:600;">~10s</div>
                     </button>
                   </div>
                 </div>
@@ -4370,264 +4894,401 @@ app.get('/', (c) => {
     <!-- ══ BRIDGE TAB — CCTP Cross-Chain ══════════════════════════════ -->
     <div id="tab-content-bridge" class="tab-content hidden">
 
-      <!-- Bridge local styles -->
+      <!-- Bridge local styles — glassmorphism + glow -->
       <style>
-        .bridge-step-pending  { opacity:0.35; }
+        .bridge-step-pending  { opacity:0.3; }
         .bridge-step-active   { opacity:1; }
         .bridge-step-done     { opacity:1; }
         .bridge-step-error    { opacity:1; }
-        .bridge-step-done  .bridge-step-icon  { background:linear-gradient(135deg,#059669,#10b981); }
+        .bridge-step-done  .bridge-step-icon  { background:linear-gradient(135deg,#059669,#10b981); box-shadow:0 0 14px rgba(16,185,129,0.4); }
         .bridge-step-active .bridge-step-icon { background:linear-gradient(135deg,#1d4ed8,#3b82f6); animation: bridge-pulse 1.2s ease-in-out infinite; }
-        .bridge-step-error .bridge-step-icon  { background:linear-gradient(135deg,#b91c1c,#ef4444); }
-        @keyframes bridge-pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(59,130,246,.5); } 50%{ box-shadow:0 0 0 8px rgba(59,130,246,0); } }
-        .bridge-chain-btn { display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:12px;
-          background:rgba(30,41,59,0.8);border:1px solid rgba(100,116,139,0.35);color:#e2e8f0;
-          font-size:14px;cursor:pointer;transition:all .2s;min-width:140px;white-space:nowrap; }
-        .bridge-chain-btn:hover { border-color:rgba(96,165,250,.5);background:rgba(30,41,59,1); }
-        .bridge-dropdown { position:absolute;top:calc(100% + 6px);left:0;z-index:200;min-width:200px;
-          background:#0f172a;border:1px solid rgba(100,116,139,.35);border-radius:14px;padding:6px;
-          box-shadow:0 20px 40px rgba(0,0,0,.6); }
+        .bridge-step-error .bridge-step-icon  { background:linear-gradient(135deg,#b91c1c,#ef4444); box-shadow:0 0 14px rgba(239,68,68,0.4); }
+        @keyframes bridge-pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(59,130,246,.6); } 50%{ box-shadow:0 0 0 10px rgba(59,130,246,0); } }
+        .bridge-chain-btn {
+          display:flex; align-items:center; gap:6px; padding:9px 14px; border-radius:14px;
+          background:rgba(15,23,42,0.8); border:1px solid rgba(100,116,139,0.3); color:#e2e8f0;
+          font-size:13px; cursor:pointer; transition:all .25s; min-width:140px; white-space:nowrap;
+          backdrop-filter:blur(8px);
+        }
+        .bridge-chain-btn:hover { border-color:rgba(34,211,238,.5); background:rgba(15,23,42,1); box-shadow:0 0 16px rgba(34,211,238,0.1); }
+        .bridge-dropdown {
+          position:absolute; top:calc(100% + 6px); left:0; z-index:200; min-width:210px;
+          background:rgba(10,14,28,0.98); border:1px solid rgba(100,116,139,.3); border-radius:16px; padding:6px;
+          box-shadow:0 20px 50px rgba(0,0,0,.7); backdrop-filter:blur(20px);
+        }
+        /* Bridge glass card */
+        .bridge-glass-card {
+          background:rgba(10,14,30,0.9);
+          border:1px solid rgba(34,211,238,0.2);
+          border-radius:24px;
+          box-shadow:0 0 60px rgba(6,182,212,0.08), 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+          backdrop-filter:blur(24px);
+          position:relative; overflow:hidden;
+        }
+        .bridge-glass-card::before {
+          content:''; position:absolute; top:0; left:0; right:0; height:1px;
+          background:linear-gradient(90deg,transparent,rgba(34,211,238,0.6) 30%,rgba(99,102,241,0.5) 70%,transparent);
+        }
+        /* Amount input field */
+        .bridge-amount-field {
+          background:rgba(15,23,42,0.8);
+          border:1px solid rgba(34,211,238,0.2);
+          border-radius:16px; padding:14px 16px;
+          transition:all 0.25s;
+        }
+        .bridge-amount-field:focus-within {
+          border-color:rgba(34,211,238,0.5);
+          box-shadow:0 0 0 3px rgba(34,211,238,0.1), 0 0 20px rgba(34,211,238,0.08);
+        }
+        /* Loading spinner */
+        @keyframes bridgeSpinner { to { transform:rotate(360deg); } }
+        .bridge-spinner { animation:bridgeSpinner 0.8s linear infinite; }
+        /* Fallback card */
+        .bridge-fallback-card {
+          background:rgba(239,68,68,0.06);
+          border:1px solid rgba(239,68,68,0.25);
+          border-radius:16px; padding:20px;
+        }
+        /* Bridge button — CTA glow */
+        .bridge-cta-btn {
+          width:100%; padding:16px 24px; border-radius:16px;
+          font-weight:800; font-size:15px; cursor:pointer;
+          background:linear-gradient(135deg,#0891b2,#2563eb);
+          color:#fff; border:none; transition:all 0.3s;
+          box-shadow:0 0 30px rgba(8,145,178,0.4), 0 4px 20px rgba(0,0,0,0.3);
+          display:flex; align-items:center; justify-content:center; gap:10px;
+          position:relative; overflow:hidden;
+          letter-spacing:0.02em;
+        }
+        .bridge-cta-btn::after {
+          content:''; position:absolute; inset:0;
+          background:linear-gradient(135deg,rgba(255,255,255,0.12),transparent);
+          opacity:0; transition:opacity 0.3s;
+        }
+        .bridge-cta-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 0 45px rgba(8,145,178,0.6), 0 8px 30px rgba(0,0,0,0.4); }
+        .bridge-cta-btn:hover:not(:disabled)::after { opacity:1; }
+        .bridge-cta-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; box-shadow:none; }
+        /* Mode toggle */
+        .bridge-mode-btn-active { background:linear-gradient(135deg,#ca8a04,#d97706); color:#0f172a; box-shadow:0 2px 12px rgba(202,138,4,0.4); }
+        .bridge-mode-btn-inactive { background:transparent; color:#64748b; }
+        .bridge-mode-btn-inactive:hover { color:#e2e8f0; background:rgba(255,255,255,0.05); }
+        /* Fee summary row */
+        .bridge-fee-row { display:flex; align-items:center; justify-content:space-between; padding:4px 0; }
+        .bridge-fee-row + .bridge-fee-row { border-top:1px solid rgba(55,65,100,0.3); margin-top:4px; padding-top:8px; }
+        /* Route info box */
+        .bridge-route-box {
+          background:rgba(15,23,42,0.6);
+          border:1px solid rgba(55,65,100,0.4);
+          border-radius:14px; padding:12px 16px;
+        }
+        /* Live step line connector */
+        .bridge-step-line { flex-shrink:0; width:36px; height:2px; background:rgba(55,65,100,0.5); position:relative; }
+        .bridge-step-line.active { background:linear-gradient(90deg,#2563eb,rgba(55,65,100,0.3)); }
+        .bridge-step-line.done { background:linear-gradient(90deg,#059669,#10b981); }
       </style>
 
       <!-- ── Page Header ──────────────────────────────────────────────── -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <h2 class="text-2xl font-bold text-white flex items-center gap-3">
-            <span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-cyan-900/40">
-              <i class="fas fa-right-left"></i>
+            <span class="w-10 h-10 rounded-2xl flex items-center justify-center text-lg shadow-lg"
+              style="background:linear-gradient(135deg,#0891b2,#2563eb);box-shadow:0 0 24px rgba(8,145,178,0.4);">
+              <i class="fas fa-right-left text-white"></i>
             </span>
             CCTP Bridge
-            <span class="text-xs font-normal bg-amber-500/10 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-full">
-              <i class="fas fa-flask mr-1 text-[10px]"></i>Testnet
+            <span style="font-size:11px;font-weight:600;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;padding:3px 10px;border-radius:999px;">
+              <i class="fas fa-flask mr-1" style="font-size:9px;"></i>Testnet
             </span>
           </h2>
-          <p class="text-gray-500 text-xs mt-1.5 ml-13">Native USDC · Circle CCTP V2 · Burn &amp; Mint · No wrapped tokens</p>
+          <p style="color:#475569;font-size:12px;margin-top:5px;margin-left:52px;">Native USDC · Circle CCTP V2 · Burn &amp; Mint · No wrapped tokens</p>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="bridgeRefreshBalance()" class="text-xs text-gray-500 hover:text-cyan-400 transition-colors bg-gray-800/60 border border-gray-700/40 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
-            <i class="fas fa-sync-alt text-[10px]"></i> Refresh
+          <button onclick="typeof bridgeRefreshBalance==='function'&&bridgeRefreshBalance()"
+            style="font-size:11px;color:#64748b;background:rgba(15,23,42,0.8);border:1px solid rgba(55,65,100,0.4);border-radius:12px;padding:6px 14px;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:6px;backdrop-filter:blur(8px);"
+            onmouseover="this.style.color='#22d3ee';this.style.borderColor='rgba(34,211,238,0.4)'"
+            onmouseout="this.style.color='#64748b';this.style.borderColor='rgba(55,65,100,0.4)'">
+            <i class="fas fa-sync-alt" style="font-size:10px;"></i> Refresh
           </button>
-          <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-900/60 border border-gray-700/50 rounded-full text-xs">
-            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-            <span class="text-gray-300">Testnet Live</span>
+          <div style="display:flex;align-items:center;gap:6px;padding:5px 14px;background:rgba(10,14,30,0.8);border:1px solid rgba(34,211,238,0.25);border-radius:999px;backdrop-filter:blur(8px);">
+            <span style="width:7px;height:7px;border-radius:50%;background:#22d3ee;animation:pulse 2s infinite;display:inline-block;box-shadow:0 0 8px rgba(34,211,238,0.6);"></span>
+            <span style="font-size:11px;color:#a5f3fc;font-weight:600;">Testnet Live</span>
           </div>
         </div>
       </div>
 
       <!-- ── Security notice ──────────────────────────────────────────── -->
-      <div class="mb-5 bg-blue-900/10 border border-blue-700/30 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3 text-xs">
-        <i class="fas fa-shield-alt text-blue-400 text-base"></i>
-        <span class="text-gray-400">
-          <strong class="text-blue-300">Security notice:</strong>
-          This dApp never asks for your private key. All transactions are signed
-          exclusively in your wallet (MetaMask). Testnet only — no real funds.
+      <div style="margin-bottom:20px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:14px;padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;">
+        <div style="width:32px;height:32px;border-radius:10px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fas fa-shield-alt" style="color:#60a5fa;font-size:13px;"></i>
+        </div>
+        <span style="font-size:12px;color:#94a3b8;flex:1;min-width:200px;">
+          <strong style="color:#93c5fd;">Security notice:</strong>
+          This dApp never asks for your private key. All transactions are signed exclusively in your wallet. Testnet only — no real funds.
         </span>
       </div>
 
-      <!-- ── Main layout ──────────────────────────────────────────────── -->
+      <!-- ── Main layout — centered glass card ──────────────────────── -->
       <div style="width:100%;display:flex;justify-content:center;">
-        <div style="width:100%;max-width:480px;">
+        <div style="width:100%;max-width:500px;">
 
-          <!-- ── Bridge card ────────────────────────────────────────── -->
-          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-4 shadow-xl">
+          <!-- ── Loading state — shown while bridge.js initializes ──── -->
+          <div id="bridge-loading-state" style="display:none;text-align:center;padding:48px 24px;">
+            <div style="width:56px;height:56px;border-radius:18px;background:rgba(8,145,178,0.15);border:1px solid rgba(8,145,178,0.3);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+              <i class="fas fa-sync-alt bridge-spinner" style="color:#22d3ee;font-size:22px;"></i>
+            </div>
+            <p style="color:#e2e8f0;font-size:15px;font-weight:700;margin-bottom:6px;">Loading Bridge…</p>
+            <p style="color:#64748b;font-size:12px;">Connecting to CCTP network</p>
+          </div>
+
+          <!-- ── Fallback UI — shown on CCTP init failure ────────────── -->
+          <div id="bridge-fallback-state" style="display:none;">
+            <div class="bridge-fallback-card">
+              <div class="flex items-center gap-3 mb-4">
+                <div style="width:40px;height:40px;border-radius:12px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <i class="fas fa-exclamation-triangle" style="color:#f87171;font-size:16px;"></i>
+                </div>
+                <div>
+                  <p style="color:#f87171;font-size:14px;font-weight:700;margin:0 0 2px;">Bridge Unavailable</p>
+                  <p style="color:#64748b;font-size:11px;margin:0;">Could not connect to CCTP endpoint</p>
+                </div>
+              </div>
+              <p style="color:#94a3b8;font-size:12px;line-height:1.7;margin-bottom:14px;">
+                The CCTP bridge service is currently unreachable. This may be a temporary issue with the testnet infrastructure. Your funds are safe.
+              </p>
+              <button onclick="typeof bridgeInit==='function'?bridgeInit():window.location.reload()"
+                style="width:100%;padding:11px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;color:#f87171;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s;"
+                onmouseover="this.style.background='rgba(239,68,68,0.18)'" onmouseout="this.style.background='rgba(239,68,68,0.1)'">
+                <i class="fas fa-redo"></i> Retry Connection
+              </button>
+            </div>
+          </div>
+
+          <!-- ── Bridge glass card ───────────────────────────────────── -->
+          <div class="bridge-glass-card p-5 space-y-4">
 
             <!-- Mode toggle -->
-            <div class="flex gap-1.5 bg-gray-900/70 border border-gray-700/40 rounded-2xl p-1.5">
-              <button id="bridge-mode-fast" onclick="bridgeSetMode('fast')"
-                class="flex-1 py-2 px-3 text-xs font-bold rounded-lg bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 shadow transition-all flex items-center justify-center gap-1">
+            <div style="display:flex;gap:6px;background:rgba(15,23,42,0.6);border:1px solid rgba(55,65,100,0.3);border-radius:18px;padding:5px;">
+              <button id="bridge-mode-fast" onclick="typeof bridgeSetMode==='function'&&bridgeSetMode('fast')"
+                class="bridge-mode-btn-active flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5">
                 <i class="fas fa-bolt"></i> Fast Transfer
               </button>
-              <button id="bridge-mode-standard" onclick="bridgeSetMode('standard')"
-                class="flex-1 py-2 px-3 text-xs font-semibold rounded-lg text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all flex items-center justify-center gap-1">
+              <button id="bridge-mode-standard" onclick="typeof bridgeSetMode==='function'&&bridgeSetMode('standard')"
+                class="bridge-mode-btn-inactive flex-1 py-2 px-3 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5">
                 <i class="fas fa-shield-alt"></i> Standard
               </button>
             </div>
 
             <!-- ETA pill -->
-            <div class="flex justify-center">
-              <div class="flex items-center gap-2 text-xs bg-gray-800/50 border border-gray-700/30 rounded-full px-4 py-1.5">
-                <i class="fas fa-clock text-yellow-400 text-[10px]"></i>
-                <span class="text-gray-400">Estimated time:</span>
-                <span id="bridge-eta" class="text-yellow-300 font-semibold">~5–15 seconds</span>
+            <div style="display:flex;justify-content:center;">
+              <div style="display:flex;align-items:center;gap:7px;font-size:11px;background:rgba(15,23,42,0.6);border:1px solid rgba(55,65,100,0.3);border-radius:999px;padding:5px 16px;">
+                <i class="fas fa-clock" style="color:#fbbf24;font-size:10px;"></i>
+                <span style="color:#64748b;">Estimated time:</span>
+                <span id="bridge-eta" style="color:#fcd34d;font-weight:700;">~5–15 seconds</span>
               </div>
             </div>
 
-            <!-- Token (fixed USDC) -->
-            <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3.5 space-y-2">
-              <div class="flex items-center justify-between text-xs text-gray-500">
-                <span class="font-semibold">Amount</span>
-                <div class="flex items-center gap-2">
-                  <span id="bridge-balance">Balance: —</span>
-                  <button onclick="bridgeSetMax()"
-                    class="px-2 py-0.5 bg-cyan-900/50 hover:bg-cyan-700/60 border border-cyan-700/50 text-cyan-400 rounded-md font-bold transition-all text-xs">
+            <!-- Amount input — enhanced -->
+            <div class="bridge-amount-field">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;">Amount</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span id="bridge-balance" style="font-size:11px;color:#64748b;">Balance: —</span>
+                  <button onclick="typeof bridgeSetMax==='function'&&bridgeSetMax()"
+                    style="padding:2px 10px;background:rgba(34,211,238,0.1);border:1px solid rgba(34,211,238,0.3);border-radius:8px;color:#22d3ee;font-size:10px;font-weight:800;cursor:pointer;transition:all 0.2s;"
+                    onmouseover="this.style.background='rgba(34,211,238,0.2)'" onmouseout="this.style.background='rgba(34,211,238,0.1)'">
                     MAX
                   </button>
                 </div>
               </div>
-              <div class="flex items-center gap-3">
-                <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 min-w-fit border border-gray-600/30">
-                  <span class="text-lg">💵</span>
-                  <span class="text-white font-bold text-sm">USDC</span>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="display:flex;align-items:center;gap:8px;background:rgba(15,23,42,0.8);border:1px solid rgba(55,65,100,0.3);border-radius:12px;padding:8px 12px;flex-shrink:0;">
+                  <span style="font-size:18px;">💵</span>
+                  <span style="color:#fff;font-weight:800;font-size:14px;">USDC</span>
                 </div>
                 <input type="number" id="bridge-amount-input" placeholder="0.00" min="0" step="0.000001"
-                  class="flex-1 bg-transparent text-white text-2xl font-bold text-right outline-none placeholder-gray-700 w-0" />
+                  style="flex:1;background:transparent;color:#fff;font-size:26px;font-weight:900;text-align:right;outline:none;border:none;min-width:0;letter-spacing:-0.02em;"
+                  oninput="typeof bridgeUpdateBtn==='function'&&bridgeUpdateBtn()" />
               </div>
             </div>
 
-            <!-- From → To chain selectors -->
-            <div class="flex items-center gap-2">
+            <!-- From → To network selectors -->
+            <div style="display:flex;align-items:flex-end;gap:8px;">
               <!-- From -->
-              <div class="flex-1 relative" id="bridge-from-wrap">
-                <div class="text-xs text-gray-500 font-semibold mb-1.5 ml-1">From</div>
-                <button id="bridge-from-chain" class="bridge-chain-btn w-full justify-between" onclick="bridgeToggleDropdown('from')">
-                  Loading…
+              <div style="flex:1;position:relative;" id="bridge-from-wrap">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:6px;">From</div>
+                <button id="bridge-from-chain" class="bridge-chain-btn" style="width:100%;justify-content:space-between;"
+                  onclick="typeof bridgeToggleDropdown==='function'&&bridgeToggleDropdown('from')">
+                  <span style="display:flex;align-items:center;gap:6px;">Loading…</span>
+                  <i class="fas fa-chevron-down" style="font-size:10px;color:#64748b;"></i>
                 </button>
                 <div id="bridge-from-dropdown" class="bridge-dropdown hidden"></div>
               </div>
 
               <!-- Flip button -->
-              <div class="flex-shrink-0 mt-5">
-                <button onclick="bridgeFlipChains()"
-                  class="w-9 h-9 rounded-xl bg-gray-800 border border-gray-600/50 hover:border-cyan-500/60 hover:bg-gray-700 flex items-center justify-center transition-all shadow-lg group">
-                  <i class="fas fa-arrow-right-arrow-left text-gray-400 group-hover:text-cyan-400 transition-all text-sm"></i>
+              <div style="flex-shrink:0;padding-bottom:0px;">
+                <button onclick="typeof bridgeFlipChains==='function'&&bridgeFlipChains()"
+                  style="width:38px;height:38px;border-radius:12px;background:rgba(15,23,42,0.8);border:1px solid rgba(55,65,100,0.4);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.25s;"
+                  onmouseover="this.style.borderColor='rgba(34,211,238,0.5)';this.style.background='rgba(34,211,238,0.05)'"
+                  onmouseout="this.style.borderColor='rgba(55,65,100,0.4)';this.style.background='rgba(15,23,42,0.8)'">
+                  <i class="fas fa-arrow-right-arrow-left" style="color:#64748b;font-size:13px;" onmouseover="this.style.color='#22d3ee'" onmouseout="this.style.color='#64748b'"></i>
                 </button>
               </div>
 
               <!-- To -->
-              <div class="flex-1 relative" id="bridge-to-wrap">
-                <div class="text-xs text-gray-500 font-semibold mb-1.5 ml-1">To</div>
-                <button id="bridge-to-chain" class="bridge-chain-btn w-full justify-between" onclick="bridgeToggleDropdown('to')">
-                  Loading…
+              <div style="flex:1;position:relative;" id="bridge-to-wrap">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:6px;">To</div>
+                <button id="bridge-to-chain" class="bridge-chain-btn" style="width:100%;justify-content:space-between;"
+                  onclick="typeof bridgeToggleDropdown==='function'&&bridgeToggleDropdown('to')">
+                  <span style="display:flex;align-items:center;gap:6px;">Loading…</span>
+                  <i class="fas fa-chevron-down" style="font-size:10px;color:#64748b;"></i>
                 </button>
                 <div id="bridge-to-dropdown" class="bridge-dropdown hidden"></div>
               </div>
             </div>
 
             <!-- Recipient info -->
-            <div class="flex items-center gap-2 bg-gray-800/40 border border-gray-700/30 rounded-xl px-4 py-2.5">
-              <i class="fas fa-wallet text-gray-500 text-xs"></i>
-              <span class="text-xs text-gray-500">Recipient:</span>
-              <span class="text-xs text-gray-300 font-mono truncate" id="bridge-recipient-addr">—</span>
+            <div style="display:flex;align-items:center;gap:8px;background:rgba(15,23,42,0.5);border:1px solid rgba(55,65,100,0.3);border-radius:12px;padding:10px 14px;">
+              <i class="fas fa-wallet" style="color:#475569;font-size:11px;flex-shrink:0;"></i>
+              <span style="font-size:11px;color:#64748b;">Recipient:</span>
+              <span id="bridge-recipient-addr" style="font-size:11px;color:#cbd5e1;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Connect wallet</span>
+            </div>
+
+            <!-- Route info summary -->
+            <div class="bridge-route-box">
+              <div class="bridge-fee-row">
+                <span style="font-size:11px;color:#64748b;display:flex;align-items:center;gap:5px;">
+                  <i class="fas fa-route" style="font-size:10px;color:#94a3b8;"></i>Protocol
+                </span>
+                <span style="font-size:11px;color:#a5b4fc;font-weight:600;">Circle CCTP V2</span>
+              </div>
+              <div class="bridge-fee-row">
+                <span style="font-size:11px;color:#64748b;display:flex;align-items:center;gap:5px;">
+                  <i class="fas fa-coins" style="font-size:10px;color:#94a3b8;"></i>Protocol fee
+                </span>
+                <span style="font-size:11px;color:#4ade80;font-weight:600;">Free (0 USDC)</span>
+              </div>
+              <div class="bridge-fee-row">
+                <span style="font-size:11px;color:#64748b;display:flex;align-items:center;gap:5px;">
+                  <i class="fas fa-gas-pump" style="font-size:10px;color:#94a3b8;"></i>Gas
+                </span>
+                <span style="font-size:11px;color:#94a3b8;">Paid by sender (each chain)</span>
+              </div>
             </div>
 
             <!-- Step progress (hidden until bridge starts) -->
             <div id="bridge-steps-wrap" class="hidden">
-              <div class="flex items-center gap-1 py-2">
+              <div style="position:relative;padding:12px 0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
 
-                <!-- Step: Burn -->
-                <div id="bridge-step-burn" class="bridge-step-pending flex-1 flex flex-col items-center gap-1.5">
-                  <div class="bridge-step-icon w-8 h-8 rounded-xl bg-gradient-to-br from-orange-600 to-red-600 flex items-center justify-center shadow-md">
-                    <i class="fas fa-fire text-white text-xs"></i>
+                  <!-- Step: Burn -->
+                  <div id="bridge-step-burn" class="bridge-step-pending" style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;">
+                    <div class="bridge-step-icon" style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#c2410c,#ef4444);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(239,68,68,0.3);">
+                      <i class="fas fa-fire" style="color:#fff;font-size:13px;"></i>
+                    </div>
+                    <span style="font-size:10px;color:#94a3b8;font-weight:700;text-align:center;">Burn</span>
                   </div>
-                  <span class="text-[10px] text-gray-400 font-semibold text-center leading-tight">Burn</span>
-                </div>
 
-                <div class="flex-shrink-0 w-8 flex items-center justify-center pb-4">
-                  <div class="w-full h-px bg-gray-700/60"></div>
-                </div>
+                  <div class="bridge-step-line" style="margin-bottom:20px;"></div>
 
-                <!-- Step: Attest -->
-                <div id="bridge-step-attest" class="bridge-step-pending flex-1 flex flex-col items-center gap-1.5">
-                  <div class="bridge-step-icon w-8 h-8 rounded-xl bg-gradient-to-br from-yellow-600 to-amber-600 flex items-center justify-center shadow-md">
-                    <i class="fas fa-hourglass-half text-white text-xs"></i>
+                  <!-- Step: Attest -->
+                  <div id="bridge-step-attest" class="bridge-step-pending" style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;">
+                    <div class="bridge-step-icon" style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#b45309,#f59e0b);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(245,158,11,0.3);">
+                      <i class="fas fa-certificate" style="color:#fff;font-size:13px;"></i>
+                    </div>
+                    <span style="font-size:10px;color:#94a3b8;font-weight:700;text-align:center;">Attest</span>
                   </div>
-                  <span class="text-[10px] text-gray-400 font-semibold text-center leading-tight">Attest</span>
-                </div>
 
-                <div class="flex-shrink-0 w-8 flex items-center justify-center pb-4">
-                  <div class="w-full h-px bg-gray-700/60"></div>
-                </div>
+                  <div class="bridge-step-line" style="margin-bottom:20px;"></div>
 
-                <!-- Step: Mint -->
-                <div id="bridge-step-mint" class="bridge-step-pending flex-1 flex flex-col items-center gap-1.5">
-                  <div class="bridge-step-icon w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md">
-                    <i class="fas fa-coins text-white text-xs"></i>
+                  <!-- Step: Mint -->
+                  <div id="bridge-step-mint" class="bridge-step-pending" style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;">
+                    <div class="bridge-step-icon" style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#1d4ed8,#3b82f6);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(59,130,246,0.3);">
+                      <i class="fas fa-coins" style="color:#fff;font-size:13px;"></i>
+                    </div>
+                    <span style="font-size:10px;color:#94a3b8;font-weight:700;text-align:center;">Mint</span>
                   </div>
-                  <span class="text-[10px] text-gray-400 font-semibold text-center leading-tight">Mint</span>
-                </div>
 
-                <div class="flex-shrink-0 w-8 flex items-center justify-center pb-4">
-                  <div class="w-full h-px bg-gray-700/60"></div>
-                </div>
+                  <div class="bridge-step-line" style="margin-bottom:20px;"></div>
 
-                <!-- Step: Done -->
-                <div id="bridge-step-done" class="bridge-step-pending flex-1 flex flex-col items-center gap-1.5">
-                  <div class="bridge-step-icon w-8 h-8 rounded-xl bg-gradient-to-br from-green-600 to-emerald-600 flex items-center justify-center shadow-md">
-                    <i class="fas fa-check text-white text-xs"></i>
+                  <!-- Step: Done -->
+                  <div id="bridge-step-done" class="bridge-step-pending" style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;">
+                    <div class="bridge-step-icon" style="width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#047857,#10b981);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(16,185,129,0.3);">
+                      <i class="fas fa-check" style="color:#fff;font-size:13px;"></i>
+                    </div>
+                    <span style="font-size:10px;color:#94a3b8;font-weight:700;text-align:center;">Done</span>
                   </div>
-                  <span class="text-[10px] text-gray-400 font-semibold text-center leading-tight">Done</span>
-                </div>
 
+                </div>
               </div>
               <!-- Attestation progress bar -->
-              <div class="h-1 bg-gray-800 rounded-full overflow-hidden mt-1">
-                <div id="bridge-attest-bar" class="h-full bg-gradient-to-r from-yellow-500 to-amber-400 rounded-full transition-all duration-500" style="width:0%"></div>
+              <div style="height:4px;background:rgba(55,65,100,0.4);border-radius:999px;overflow:hidden;margin-top:2px;">
+                <div id="bridge-attest-bar" style="height:100%;background:linear-gradient(90deg,#0891b2,#2563eb);border-radius:999px;transition:width 0.5s ease;width:0%;box-shadow:0 0 8px rgba(8,145,178,0.5);"></div>
               </div>
             </div>
 
             <!-- Status bar -->
             <div id="bridge-status-bar" class="hidden"></div>
 
-            <!-- Bridge button -->
-            <button id="bridge-submit-btn" onclick="bridgeExecute()" disabled
-              class="w-full py-3.5 px-6 rounded-xl font-bold text-sm
-                     bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500
-                     text-white shadow-lg shadow-cyan-900/30 transition-all
-                     disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:from-cyan-600 disabled:hover:to-blue-600
-                     flex items-center justify-center gap-2">
-              <i class="fas fa-right-left mr-1"></i>Bridge USDC
+            <!-- Bridge CTA button -->
+            <button id="bridge-submit-btn" onclick="typeof bridgeExecute==='function'&&bridgeExecute()" disabled
+              class="bridge-cta-btn">
+              <i class="fas fa-right-left"></i>
+              <span>Bridge USDC</span>
             </button>
 
-            <!-- Fee info -->
-            <div class="flex items-center justify-between text-xs text-gray-600 px-1">
-              <span><i class="fas fa-gas-pump mr-1"></i>Gas paid by sender on each chain</span>
-              <span class="text-gray-500">Protocol fee: 0 (CCTP)</span>
-            </div>
+          </div><!-- /bridge glass card -->
 
-          </div><!-- /bridge card -->
-
-          <!-- ── Advanced: CCTP Hooks placeholder ───────────────────── -->
-          <div class="mt-4 bg-gray-900/40 border border-gray-700/20 rounded-2xl p-4">
-            <div class="flex items-center gap-2 mb-2">
-              <i class="fas fa-code text-purple-400 text-xs"></i>
-              <span class="text-xs text-gray-400 font-semibold">CCTP Hooks V2 <span class="text-gray-600 font-normal">(coming soon)</span></span>
+          <!-- ── CCTP Hooks placeholder ───────────────────────────────── -->
+          <div style="margin-top:12px;background:rgba(10,14,30,0.6);border:1px solid rgba(55,65,100,0.25);border-radius:20px;padding:16px 18px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+              <div style="width:26px;height:26px;border-radius:8px;background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.25);display:flex;align-items:center;justify-content:center;">
+                <i class="fas fa-code" style="color:#c084fc;font-size:10px;"></i>
+              </div>
+              <span style="font-size:12px;font-weight:700;color:#a78bfa;">CCTP Hooks V2</span>
+              <span style="font-size:10px;color:#475569;font-weight:500;">(coming soon)</span>
             </div>
-            <div class="flex flex-wrap gap-2">
-              <div class="text-[11px] px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/30 text-gray-500 flex items-center gap-1.5 opacity-50">
-                <i class="fas fa-coins text-[9px]"></i>Auto Stake
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              <div style="font-size:11px;padding:5px 12px;border-radius:10px;background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.15);color:#6b7280;display:flex;align-items:center;gap:5px;opacity:0.6;">
+                <i class="fas fa-coins" style="font-size:9px;color:#a78bfa;"></i>Auto Stake
               </div>
-              <div class="text-[11px] px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/30 text-gray-500 flex items-center gap-1.5 opacity-50">
-                <i class="fas fa-exchange-alt text-[9px]"></i>Auto Swap
+              <div style="font-size:11px;padding:5px 12px;border-radius:10px;background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.15);color:#6b7280;display:flex;align-items:center;gap:5px;opacity:0.6;">
+                <i class="fas fa-exchange-alt" style="font-size:9px;color:#a78bfa;"></i>Auto Swap
               </div>
-              <div class="text-[11px] px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/30 text-gray-500 flex items-center gap-1.5 opacity-50">
-                <i class="fas fa-piggy-bank text-[9px]"></i>Auto Deposit
+              <div style="font-size:11px;padding:5px 12px;border-radius:10px;background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.15);color:#6b7280;display:flex;align-items:center;gap:5px;opacity:0.6;">
+                <i class="fas fa-piggy-bank" style="font-size:9px;color:#a78bfa;"></i>Auto Deposit
               </div>
             </div>
           </div>
 
-          <!-- ── What is Bridge? ─────────────────────────────────────── -->
-          <div class="mt-4 bg-blue-900/10 border border-blue-700/20 rounded-2xl p-5">
-            <h4 class="text-sm font-semibold text-blue-300 mb-2 flex items-center gap-2">
-              <i class="fas fa-question-circle text-xs"></i>What is Bridge?
+          <!-- ── What is Bridge? — updated ──────────────────────────── -->
+          <div style="margin-top:12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.18);border-radius:20px;padding:18px 20px;">
+            <h4 style="font-size:13px;font-weight:700;color:#93c5fd;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              <i class="fas fa-info-circle" style="font-size:11px;"></i>How does the Bridge work?
             </h4>
-            <p class="text-gray-400 text-xs leading-relaxed">
-              This bridge uses native USDC via CCTP on testnet. Funds are burned on the source chain and minted on the destination without wrapped tokens or liquidity pools, ensuring fast and secure transfers.
+            <p style="color:#94a3b8;font-size:12px;line-height:1.7;margin-bottom:12px;">
+              Native USDC transfers via CCTP — funds are burned on the source chain and minted on the destination. No wrapped tokens, no liquidity pools, no custodians.
             </p>
-            <div class="mt-3 grid grid-cols-3 gap-2 text-center">
-              <div class="bg-gray-800/40 rounded-xl p-2.5">
-                <div class="text-orange-400 text-base mb-1"><i class="fas fa-fire"></i></div>
-                <div class="text-[11px] text-white font-semibold">Burn</div>
-                <div class="text-[10px] text-gray-500 mt-0.5">Source chain</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+              <div style="background:rgba(15,23,42,0.7);border:1px solid rgba(55,65,100,0.3);border-radius:14px;padding:12px 8px;text-align:center;">
+                <div style="width:32px;height:32px;border-radius:10px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+                  <i class="fas fa-fire" style="color:#f87171;font-size:13px;"></i>
+                </div>
+                <div style="font-size:11px;color:#e2e8f0;font-weight:700;">Burn</div>
+                <div style="font-size:10px;color:#475569;margin-top:2px;">Source chain</div>
               </div>
-              <div class="bg-gray-800/40 rounded-xl p-2.5">
-                <div class="text-yellow-400 text-base mb-1"><i class="fas fa-certificate"></i></div>
-                <div class="text-[11px] text-white font-semibold">Attest</div>
-                <div class="text-[10px] text-gray-500 mt-0.5">Circle API</div>
+              <div style="background:rgba(15,23,42,0.7);border:1px solid rgba(55,65,100,0.3);border-radius:14px;padding:12px 8px;text-align:center;">
+                <div style="width:32px;height:32px;border-radius:10px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+                  <i class="fas fa-certificate" style="color:#fbbf24;font-size:13px;"></i>
+                </div>
+                <div style="font-size:11px;color:#e2e8f0;font-weight:700;">Attest</div>
+                <div style="font-size:10px;color:#475569;margin-top:2px;">Circle API</div>
               </div>
-              <div class="bg-gray-800/40 rounded-xl p-2.5">
-                <div class="text-green-400 text-base mb-1"><i class="fas fa-coins"></i></div>
-                <div class="text-[11px] text-white font-semibold">Mint</div>
-                <div class="text-[10px] text-gray-500 mt-0.5">Destination</div>
+              <div style="background:rgba(15,23,42,0.7);border:1px solid rgba(55,65,100,0.3);border-radius:14px;padding:12px 8px;text-align:center;">
+                <div style="width:32px;height:32px;border-radius:10px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.25);display:flex;align-items:center;justify-content:center;margin:0 auto 8px;">
+                  <i class="fas fa-coins" style="color:#34d399;font-size:13px;"></i>
+                </div>
+                <div style="font-size:11px;color:#e2e8f0;font-weight:700;">Mint</div>
+                <div style="font-size:10px;color:#475569;margin-top:2px;">Destination</div>
               </div>
             </div>
           </div>
@@ -4636,17 +5297,24 @@ app.get('/', (c) => {
       </div><!-- /center wrapper -->
 
       <!-- ── Transaction History ──────────────────────────────────────── -->
-      <div class="mt-8 max-w-2xl mx-auto">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-white font-semibold flex items-center gap-2 text-sm">
-            <i class="fas fa-history text-cyan-400 text-xs"></i>Bridge History
+      <div style="margin-top:32px;max-width:600px;margin-left:auto;margin-right:auto;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <h3 style="color:#e2e8f0;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;">
+            <i class="fas fa-history" style="color:#22d3ee;font-size:12px;"></i>Bridge History
           </h3>
-          <button onclick="bridgeRenderHistory()" class="text-xs text-gray-600 hover:text-gray-400 transition-colors">
-            <i class="fas fa-sync-alt text-[10px] mr-1"></i>Refresh
+          <button onclick="typeof bridgeRenderHistory==='function'&&bridgeRenderHistory()"
+            style="font-size:11px;color:#475569;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;transition:color 0.2s;"
+            onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#475569'">
+            <i class="fas fa-sync-alt" style="font-size:9px;"></i>Refresh
           </button>
         </div>
         <div id="bridge-history-list" class="space-y-2">
-          <div class="text-gray-600 text-sm text-center py-6"><i class="fas fa-inbox mr-2 opacity-40"></i>No bridge transactions yet.</div>
+          <div style="color:#475569;font-size:13px;text-align:center;padding:32px 0;display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <div style="width:44px;height:44px;border-radius:14px;background:rgba(15,23,42,0.6);border:1px solid rgba(55,65,100,0.3);display:flex;align-items:center;justify-content:center;">
+              <i class="fas fa-inbox" style="font-size:18px;color:#334155;"></i>
+            </div>
+            No bridge transactions yet.
+          </div>
         </div>
       </div>
 
