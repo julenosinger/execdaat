@@ -58,7 +58,9 @@
   function getProfileScore()      { return 0; }
 
   // ─── One-time cleanup: remove any data stored by older versions ──────────────
-  (function cleanupLegacyData() {
+  // NOTE: must be a named function declaration (not IIFE with name) so the
+  // reference is accessible for window.arcPurgeFakeData assignment below.
+  function cleanupLegacyData() {
     try {
       const legacyKeys = [
         'arc_user_profile', 'arc_user_prefs',
@@ -68,7 +70,8 @@
       ];
       legacyKeys.forEach(k => localStorage.removeItem(k));
     } catch (_) {}
-  })();
+  }
+  cleanupLegacyData(); // run once on load
 
   // ─── Expose API (all stubs) ───────────────────────────────────────────────────
   window.getUserProfile         = getUserProfile;
@@ -98,6 +101,7 @@
   window.getProfileScore        = getProfileScore;
 
   window.arcPurgeFakeData       = cleanupLegacyData;
+  window.cleanupLegacyData      = cleanupLegacyData; // expose globally to avoid ReferenceError
   window.arcClearRecentData     = clearAllProfileData;
 
 })();

@@ -425,18 +425,27 @@ global.SafeDaatAgentCore = SafeDaatAgentCore;
 // ─── Auto-initialize on load ──────────────────────────────────────────────────
 _initLog('info', 'DAAT Agent Core Initializer loaded. Version:', INIT_VERSION);
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    _initLog('info', 'DOM ready. Starting initialization...');
+// ─── FIX: defer initialization so daat-agent-core.js has time to register
+//          window.DaatAgentCore before we check for it.
+//          Scripts in <body> are parsed top-to-bottom synchronously; when
+//          daat-agent-core-init.js runs its DOMContentLoaded handler, the
+//          very next script tag (daat-agent-core.js) hasn't executed yet.
+//          A short setTimeout(0) pushes our check AFTER all synchronous
+//          script execution in the same <script> block completes.
+function _startInit() {
+  _initLog('info', 'DOM ready. Starting initialization (deferred)...');
+  // 50 ms gives daat-agent-core.js time to execute and set window.DaatAgentCore
+  setTimeout(() => {
     initializeCore();
     bindChatbots();
     initAutonomaTab();
-  });
+  }, 50);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _startInit);
 } else {
-  _initLog('info', 'DOM already ready. Starting initialization immediately...');
-  initializeCore();
-  bindChatbots();
-  initAutonomaTab();
+  _startInit();
 }
 
 // Also listen for page visibility changes (tab switching)
