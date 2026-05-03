@@ -57,7 +57,7 @@ app.get('/manifest.json', (c) => {
   return c.json({
     name: 'ExecDaat Platform',
     short_name: 'ExecDaat',
-    description: 'Compliance and payment platform for Arc Testnet — AI-powered agent transfers with Permit2',
+    description: 'Secure payments, token swaps, escrow contracts and multi-send on Arc Testnet — Permit2 supported',
     start_url: '/',
     display: 'standalone',
     background_color: '#0f172a',
@@ -468,7 +468,7 @@ function copyIt(){
 app.get('/api/status', (c) => {
   return c.json({
     status: 'online',
-    app: 'ExecDaat - Autonomous Payments & Contracts',
+    app: 'ExecDaat - Secure Payments & Smart Contracts',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     network: {
@@ -536,10 +536,10 @@ app.get('/', (c) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-  <title>ExecDaat — Autonomous Payments & Smart Contracts on Arc Network</title>
+  <title>ExecDaat — Secure Payments & Smart Contracts on Arc Network</title>
 
   <!-- ── SEO & Trust Meta Tags ─────────────────────────────────────────── -->
-  <meta name="description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
+  <meta name="description" content="Decentralized application for secure payments, token swaps, escrow contracts and multi-send on Arc Testnet. Non-custodial, open-source, testnet only.">
   <meta name="keywords" content="ARC Network, testnet, no real funds, web3 testing, dApp testing, USDC testnet, blockchain testing, smart contracts testing, DeFi testnet, development environment, open source dapp">
   <meta name="author" content="ExecDaat — Open Source Project">
   <meta name="robots" content="index, follow">
@@ -551,8 +551,8 @@ app.get('/', (c) => {
   <!-- ── Open Graph (Facebook/LinkedIn/Discord/WhatsApp) ──────────────── -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://execdaatplataform.pages.dev/">
-  <meta property="og:title" content="ExecDaat – Autonomous Payments & Smart Contracts">
-  <meta property="og:description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
+  <meta property="og:title" content="ExecDaat – Secure Payments & Smart Contracts">
+  <meta property="og:description" content="Decentralized application for secure payments, token swaps, escrow contracts and multi-send on Arc Testnet. Non-custodial, open-source, testnet only.">
   <meta property="og:image" content="https://execdaatplataform.pages.dev/static/og-preview.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -561,8 +561,8 @@ app.get('/', (c) => {
 
   <!-- ── Twitter Card ─────────────────────────────────────────────────── -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="ExecDaat – Autonomous Payments & Smart Contracts">
-  <meta name="twitter:description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
+  <meta name="twitter:title" content="ExecDaat – Secure Payments & Smart Contracts">
+  <meta name="twitter:description" content="Decentralized application for secure payments, token swaps, escrow contracts and multi-send on Arc Testnet. Non-custodial, open-source, testnet only.">
   <meta name="twitter:image" content="https://execdaatplataform.pages.dev/static/og-preview.jpg">
 
   <!-- ── Security & Anti-Phishing ─────────────────────────────────────── -->
@@ -786,7 +786,7 @@ app.get('/', (c) => {
         </div>
         <div class="text-left">
           <div class="font-bold text-base leading-none" style="background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.06em;font-weight:900">ExecDaat</div>
-          <div class="text-[10px] text-purple-400 leading-none mt-0.5">Autonomous Payments &amp; Contracts</div>
+          <div class="text-[10px] text-purple-400 leading-none mt-0.5">Secure Payments &amp; Smart Contracts</div>
         </div>
       </button>
       <div class="flex items-center gap-2 sm:gap-3">
@@ -878,12 +878,12 @@ app.get('/', (c) => {
 
         <!-- Subtitle -->
         <p class="text-lg sm:text-xl text-gray-300 font-medium mb-3">
-          Autonomous Payments &amp; Smart Contracts on Arc Network (Testnet)
+          Secure Payments &amp; Smart Contracts on Arc Network (Testnet)
         </p>
 
         <!-- Description -->
         <p class="text-gray-400 text-base max-w-2xl mx-auto mb-10 leading-relaxed">
-          A decentralized platform that allows users to automate financial operations using smart contracts and AI agents on the Arc Network.
+          A decentralized platform for secure payments, token swaps, escrow contracts and multi-send on Arc Network.
           Built entirely open-source — no private keys ever leave your wallet.
         </p>
 
@@ -928,8 +928,8 @@ app.get('/', (c) => {
             <div class="text-xs text-purple-400 font-semibold uppercase tracking-wider mb-2">What is this?</div>
             <h2 class="text-2xl font-bold text-white mb-4">A trustless financial automation platform</h2>
             <p class="text-gray-400 leading-relaxed mb-4">
-              ExecDaat is a decentralized testnet application that lets you explore autonomous financial operations
-              on the Arc Network. Connect your EVM wallet to interact with smart contracts,
+              ExecDaat is a decentralized testnet application for secure payments, token swaps, escrow contracts and multi-send
+              on Arc Network. Connect your EVM wallet to interact with smart contracts,
               send batch payments, swap tokens, and manage on-chain escrow — all without custodians.
             </p>
             <p class="text-gray-500 text-sm leading-relaxed">
@@ -992,7 +992,7 @@ app.get('/', (c) => {
               <i class="fas fa-dollar-sign text-purple-400"></i>
             </div>
             <h3 class="text-white font-semibold mb-1.5 text-sm">Automated Payments</h3>
-            <p class="text-gray-500 text-xs leading-relaxed">P2P, corporate, or batch payments in USDC/EURC. AI agents analyze and execute on-chain transfers with full transaction history.</p>
+            <p class="text-gray-500 text-xs leading-relaxed">P2P, corporate, or batch payments in USDC/EURC. Send tokens securely with full on-chain transaction history.</p>
           </div>
 
           <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-cyan-600/40 transition-colors">
@@ -1024,7 +1024,7 @@ app.get('/', (c) => {
               <i class="fas fa-shield-alt text-orange-400"></i>
             </div>
             <h3 class="text-white font-semibold mb-1.5 text-sm" data-i18n="feat_escrow_title">Integrated Escrow</h3>
-            <p class="text-gray-500 text-xs leading-relaxed" data-i18n="feat_escrow_desc">Each contract is an autonomous escrow. The client deposits USDC directly into the contract; the contractor receives payment per milestone confirmed on-chain.</p>
+            <p class="text-gray-500 text-xs leading-relaxed" data-i18n="feat_escrow_desc">Each contract is a non-custodial escrow. The client deposits USDC directly into the contract; the contractor receives payment per milestone confirmed on-chain.</p>
           </div>
 
           <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-pink-600/40 transition-colors">
