@@ -8,6 +8,7 @@
 
 /* ─── Route definition ────────────────────────────────────── */
 const DAAT_ROUTES = [
+  { path: '/home',       tab: 'home',       label: 'Home',       icon: 'fas fa-house',         color: '#a855f7' },
   { path: '/dashboard',  tab: 'dashboard',  label: 'Dashboard',  icon: 'fas fa-info-circle',   color: '#6366f1' },
   { path: '/payments',   tab: 'payments',   label: 'Payments',   icon: 'fas fa-dollar-sign',   color: '#22c55e' },
   { path: '/contracts',  tab: 'contracts',  label: 'Contracts',  icon: 'fas fa-file-contract', color: '#3b82f6' },
