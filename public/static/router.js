@@ -8,7 +8,6 @@
 
 /* ─── Route definition ────────────────────────────────────── */
 const DAAT_ROUTES = [
-  { path: '/home',       tab: 'home',       label: 'Home',       icon: 'fas fa-house',         color: '#a855f7' },
   { path: '/dashboard',  tab: 'dashboard',  label: 'Dashboard',  icon: 'fas fa-info-circle',   color: '#6366f1' },
   { path: '/payments',   tab: 'payments',   label: 'Payments',   icon: 'fas fa-dollar-sign',   color: '#22c55e' },
   { path: '/contracts',  tab: 'contracts',  label: 'Contracts',  icon: 'fas fa-file-contract', color: '#3b82f6' },
@@ -19,7 +18,6 @@ const DAAT_ROUTES = [
   { path: '/bridge',     tab: 'bridge',     label: 'Bridge',     icon: 'fas fa-right-left',    color: '#06b6d4' },
   { path: '/multisend',  tab: 'multisend',  label: 'MultiSend',  icon: 'fas fa-paper-plane',   color: '#06b6d4' },
   { path: '/history',    tab: 'history',    label: 'History',    icon: 'fas fa-history',       color: '#60a5fa' },
-  { path: '/about',      tab: 'about',      label: 'About Us',   icon: 'fas fa-shield-alt',    color: '#10b981' },
 ];
 
 // tab-name → route path (for reverse lookup)

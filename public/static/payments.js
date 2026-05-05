@@ -1510,6 +1510,365 @@ function downloadPayReceipt(format) {
 }
 
 // ─── History rendering ─────────────────────────────────────────────────────────
+
+// Active filter state for history (survives re-renders within session)
+if (!window._payHistoryFilters) {
+  window._payHistoryFilters = { status: 'all', token: 'all', date: 'all' };
+}
+
+function _payHistoryStatusColor(status) {
+  const map = {
+    completed:  { bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.35)',  color: '#34d399',  dot: '#34d399'  },
+    confirmed:  { bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.35)',  color: '#34d399',  dot: '#34d399'  },
+    scheduled:  { bg: 'rgba(251,191,36,0.10)',  border: 'rgba(251,191,36,0.32)',  color: '#fbbf24',  dot: '#fbbf24'  },
+    processing: { bg: 'rgba(96,165,250,0.10)',  border: 'rgba(96,165,250,0.32)',  color: '#60a5fa',  dot: '#60a5fa'  },
+    failed:     { bg: 'rgba(239,68,68,0.10)',   border: 'rgba(239,68,68,0.32)',   color: '#f87171',  dot: '#f87171'  },
+    cancelled:  { bg: 'rgba(107,114,128,0.10)', border: 'rgba(107,114,128,0.28)', color: '#9ca3af',  dot: '#6b7280'  },
+    cached:     { bg: 'rgba(167,139,250,0.09)', border: 'rgba(167,139,250,0.28)', color: '#c4b5fd',  dot: '#a78bfa'  },
+  };
+  return map[status] || map.cached;
+}
+
+function _payHistoryStatusLabel(status, isCached) {
+  if (isCached) return { icon: 'fa-clock', label: 'Cached' };
+  const map = {
+    completed:  { icon: 'fa-check-circle',  label: 'Completed'  },
+    confirmed:  { icon: 'fa-check-circle',  label: 'Confirmed'  },
+    scheduled:  { icon: 'fa-calendar-alt',  label: 'Scheduled'  },
+    processing: { icon: 'fa-spinner fa-spin', label: 'Processing' },
+    failed:     { icon: 'fa-times-circle',  label: 'Failed'     },
+    cancelled:  { icon: 'fa-ban',           label: 'Cancelled'  },
+  };
+  return map[status] || { icon: 'fa-circle', label: status || 'Pending' };
+}
+
+function _payFmtDateTime(ts) {
+  if (!ts) return { date: '—', time: '' };
+  try {
+    const d = new Date(ts);
+    if (isNaN(d)) return { date: String(ts), time: '' };
+    return {
+      date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+    };
+  } catch { return { date: '—', time: '' }; }
+}
+
+function _payHistoryApplyFilters(items) {
+  const f = window._payHistoryFilters;
+  return items.filter(r => {
+    // Status filter
+    if (f.status !== 'all') {
+      const isCached = r._source === 'local' && !r.txHash && r.status !== 'scheduled';
+      const st = isCached ? 'cached' : (r.status || 'pending');
+      if (st !== f.status) return false;
+    }
+    // Token filter
+    if (f.token !== 'all') {
+      const tok = (r.token || '').toUpperCase();
+      if (tok !== f.token.toUpperCase()) return false;
+    }
+    // Date filter
+    if (f.date !== 'all') {
+      const ts = r.scheduledAt || r.timestamp || r.createdAt;
+      if (!ts) return false;
+      const d = new Date(ts);
+      const now = new Date();
+      if (f.date === '24h' && (now - d) > 86400000) return false;
+      if (f.date === '7d'  && (now - d) > 7*86400000) return false;
+      if (f.date === '30d' && (now - d) > 30*86400000) return false;
+    }
+    return true;
+  });
+}
+
+function _payHistoryRenderFilters(allItems) {
+  const f = window._payHistoryFilters;
+  // Collect unique tokens from all items
+  const tokens = [...new Set(allItems.map(r => (r.token||'').toUpperCase()).filter(Boolean))];
+  const btnBase = 'border-radius:7px;font-size:10px;font-weight:700;padding:3px 10px;cursor:pointer;border:1px solid;transition:all 0.18s;letter-spacing:0.02em;';
+  const btnActive = 'background:rgba(55,138,221,0.22);border-color:rgba(55,138,221,0.55);color:#60b4ff;';
+  const btnInactive = 'background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.08);color:#6a85aa;';
+
+  const statusOpts = [
+    { v:'all', label:'All' },
+    { v:'completed', label:'✓ Done' },
+    { v:'scheduled', label:'⏰ Sched' },
+    { v:'processing', label:'⚡ Proc' },
+    { v:'failed', label:'✗ Failed' },
+    { v:'cancelled', label:'— Cancel' },
+  ];
+  const dateOpts = [
+    { v:'all', label:'All time' },
+    { v:'24h', label:'24h' },
+    { v:'7d',  label:'7 days' },
+    { v:'30d', label:'30 days' },
+  ];
+
+  const statusBtns = statusOpts.map(o =>
+    `<button style="${btnBase}${f.status===o.v?btnActive:btnInactive}" onclick="window._payHistoryFilters.status='${o.v}';renderPaymentHistory();">${o.label}</button>`
+  ).join('');
+
+  const tokenBtns = [
+    `<button style="${btnBase}${f.token==='all'?btnActive:btnInactive}" onclick="window._payHistoryFilters.token='all';renderPaymentHistory();">All</button>`,
+    ...tokens.map(t =>
+      `<button style="${btnBase}${f.token===t?btnActive:btnInactive}" onclick="window._payHistoryFilters.token='${t}';renderPaymentHistory();">${t}</button>`
+    )
+  ].join('');
+
+  const dateBtns = dateOpts.map(o =>
+    `<button style="${btnBase}${f.date===o.v?btnActive:btnInactive}" onclick="window._payHistoryFilters.date='${o.v}';renderPaymentHistory();">${o.label}</button>`
+  ).join('');
+
+  return `
+  <div style="padding:10px 12px 0;display:flex;flex-direction:column;gap:6px;">
+    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+      <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#4a6490;font-weight:700;min-width:36px;">Status</span>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">${statusBtns}</div>
+    </div>
+    ${tokens.length > 0 ? `
+    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+      <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#4a6490;font-weight:700;min-width:36px;">Token</span>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">${tokenBtns}</div>
+    </div>` : ''}
+    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+      <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#4a6490;font-weight:700;min-width:36px;">Date</span>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">${dateBtns}</div>
+    </div>
+    <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(55,138,221,0.2),transparent);margin-top:2px;"></div>
+  </div>`;
+}
+
+function _payHistoryCardHtml(r) {
+  const isScheduled  = r.status === 'scheduled';
+  const isProcessing = r.status === 'processing';
+  const isFailed     = r.status === 'failed';
+  const isCancelled  = r.status === 'cancelled';
+  const isCached     = r._source === 'local' && !r.txHash && !isScheduled;
+  const uid          = r.txHash || r.id || '';
+  const safeid       = uid.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  const stKey   = isCached ? 'cached' : (r.status || 'pending');
+  const stTheme = _payHistoryStatusColor(stKey);
+  const stInfo  = _payHistoryStatusLabel(stKey, isCached);
+
+  const ts       = r.scheduledAt || r.timestamp || r.createdAt;
+  const dtParts  = _payFmtDateTime(ts);
+  const amtStr   = r.amount != null ? Number(r.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : '—';
+  const tokenStr = r.token || '';
+
+  // Explorer link for tx hash
+  const explorerBase = r.explorerUrl
+    ? r.explorerUrl.replace(/\/tx\/0x.+$/, '')
+    : 'https://testnet.arcscan.app';
+  const txHashFull = r.txHash || '';
+  const txHashShort = txHashFull ? txHashFull.slice(0,10) + '…' + txHashFull.slice(-6) : '';
+
+  // Addresses
+  const senderFull    = r.sender || r.from || '';
+  const recipientFull = r.recipient || r.to || '';
+  const senderShort   = senderFull ? shortAddr(senderFull) : '—';
+  const recipientShort = recipientFull ? shortAddr(recipientFull) : '—';
+
+  // Inline copy helper
+  const copyBtn = (val, label) => val
+    ? `<button onclick="navigator.clipboard.writeText('${val.replace(/'/g,"\\'")}').then(()=>showToast('Copied!','success'))" title="Copy ${label}" style="background:none;border:none;color:#4a6490;cursor:pointer;padding:1px 4px;font-size:10px;border-radius:4px;transition:color 0.15s;" onmouseover="this.style.color='#60b4ff'" onmouseout="this.style.color='#4a6490'"><i class='fas fa-copy'></i></button>`
+    : '';
+
+  // Payment type/network inference
+  const payType = r.payType || r.type || (isScheduled ? 'Scheduled' : 'Direct');
+  const network = r.network || r.chainName || 'Arc Testnet';
+  const gasFee  = r.gasFee != null ? `$${Number(r.gasFee).toFixed(6)} ${r.gasCurrency || 'USDC'}` : null;
+
+  // Action buttons
+  const editBtn = isScheduled
+    ? `<button onclick="payEditScheduled('${r.id}')" title="Edit scheduled payment" style="display:inline-flex;align-items:center;gap:4px;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.25);border-radius:7px;color:#60b4ff;font-size:10px;padding:4px 10px;cursor:pointer;transition:all 0.2s;font-weight:600;" onmouseover="this.style.background='rgba(55,138,221,0.18)'" onmouseout="this.style.background='rgba(55,138,221,0.08)'"><i class='fas fa-edit'></i>Edit</button>`
+    : '';
+  const cancelBtn = isScheduled
+    ? `<button onclick="payCancelScheduled('${r.id}')" title="Cancel scheduled payment" style="display:inline-flex;align-items:center;gap:4px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.22);border-radius:7px;color:#f87171;font-size:10px;padding:4px 10px;cursor:pointer;transition:all 0.2s;font-weight:600;" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='rgba(239,68,68,0.07)'"><i class='fas fa-times'></i>Cancel</button>`
+    : '';
+  const retryBtn = isFailed && typeof arcRetryBtn === 'function'
+    ? arcRetryBtn(window.ARC_STORE_PAY || 'payments', r.id)
+    : '';
+  const receiptBtn = `<button onclick="(typeof arcViewPaymentReceipt==='function'?arcViewPaymentReceipt:payOpenReceiptModal)(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="View receipt" style="display:inline-flex;align-items:center;gap:4px;background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.25);border-radius:7px;color:#34d399;font-size:10px;padding:4px 10px;cursor:pointer;transition:all 0.2s;font-weight:600;" onmouseover="this.style.background='rgba(29,158,117,0.18)'" onmouseout="this.style.background='rgba(29,158,117,0.08)'"><i class='fas fa-receipt'></i>Receipt</button>`;
+
+  const dismissBtn = uid
+    ? `<button class="arc-dismiss-btn" onclick="event.stopPropagation();arcAnimatedDismiss('pay-tx-${safeid}',function(){if(typeof arcHidePay==='function')arcHidePay('${uid}');renderPaymentHistory();})" title="Hide from view" style="flex-shrink:0;">✕</button>`
+    : '';
+
+  // Accordion toggle ID
+  const detailId = `pay-tx-detail-${safeid}`;
+  const chevronId = `pay-tx-chev-${safeid}`;
+
+  // Left accent color based on status
+  const accentColor = stTheme.color;
+
+  return `
+  <div id="pay-tx-${safeid}"
+    style="background:linear-gradient(135deg,rgba(14,20,38,0.85) 0%,rgba(8,12,26,0.92) 100%);
+           border:1px solid ${stTheme.border};
+           border-left:3px solid ${accentColor};
+           border-radius:12px;
+           overflow:hidden;
+           backdrop-filter:blur(8px);
+           transition:box-shadow 0.22s,border-color 0.22s;"
+    onmouseover="this.style.boxShadow='0 4px 24px rgba(0,0,0,0.35),0 0 0 1px ${stTheme.border}'"
+    onmouseout="this.style.boxShadow='none'">
+
+    <!-- Summary row (always visible) -->
+    <div style="padding:11px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;"
+         onclick="(function(){const d=document.getElementById('${detailId}');const c=document.getElementById('${chevronId}');if(d.style.display==='none'||!d.style.display){d.style.display='block';c.style.transform='rotate(180deg)'}else{d.style.display='none';c.style.transform='rotate(0deg)'}})()">
+
+      <!-- Status dot -->
+      <div style="width:8px;height:8px;border-radius:50%;background:${stTheme.dot};flex-shrink:0;box-shadow:0 0 6px ${stTheme.dot};"></div>
+
+      <!-- Amount + token -->
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:baseline;gap:5px;">
+          <span style="font-size:15px;font-weight:800;color:#e8edf8;letter-spacing:-0.02em;">${amtStr}</span>
+          <span style="font-size:11px;font-weight:700;color:${tokenStr==='USDC'?'#60b4ff':tokenStr==='EURC'?'#34d399':'#a78bfa'};">${tokenStr}</span>
+        </div>
+        <div style="font-size:10px;color:#4a6490;margin-top:1px;display:flex;align-items:center;gap:5px;">
+          <span>→ <span style="font-family:monospace;color:#8aaac8;">${recipientShort}</span></span>
+          <span style="color:#2a3650;">·</span>
+          <span>${dtParts.date}</span>
+          ${dtParts.time ? `<span style="color:#2a3650;">·</span><span>${dtParts.time}</span>` : ''}
+        </div>
+      </div>
+
+      <!-- Status badge -->
+      <div style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;
+                  background:${stTheme.bg};border:1px solid ${stTheme.border};flex-shrink:0;">
+        <i class="fas ${stInfo.icon}" style="font-size:9px;color:${stTheme.color};"></i>
+        <span style="font-size:10px;font-weight:700;color:${stTheme.color};">${stInfo.label}</span>
+      </div>
+
+      <!-- Chevron + dismiss -->
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+        <i id="${chevronId}" class="fas fa-chevron-down" style="font-size:10px;color:#4a6490;transition:transform 0.2s;"></i>
+        ${dismissBtn}
+      </div>
+    </div>
+
+    <!-- Expandable details -->
+    <div id="${detailId}" style="display:none;">
+      <div style="height:1px;background:linear-gradient(90deg,transparent,${stTheme.border},transparent);"></div>
+      <div style="padding:12px 14px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;">
+
+        <!-- TX Hash -->
+        ${txHashFull ? `
+        <div style="grid-column:1/-1;">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Transaction Hash</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <a href="${explorerBase}/tx/${txHashFull}" target="_blank"
+               style="font-family:monospace;font-size:11px;color:#60b4ff;text-decoration:none;word-break:break-all;transition:color 0.15s;"
+               onmouseover="this.style.color='#93c5fd';this.style.textDecoration='underline'"
+               onmouseout="this.style.color='#60b4ff';this.style.textDecoration='none'"
+               title="View on ArcScan explorer">${txHashShort || txHashFull}</a>
+            ${copyBtn(txHashFull, 'hash')}
+            <a href="${explorerBase}/tx/${txHashFull}" target="_blank"
+               style="font-size:9px;color:#3a4870;text-decoration:none;" title="Open in explorer">
+              <i class="fas fa-external-link-alt"></i>
+            </a>
+          </div>
+        </div>` : ''}
+
+        <!-- Date & Time -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Date &amp; Time</div>
+          <div style="font-size:11px;color:#8aaac8;">${dtParts.date}${dtParts.time ? ' · ' + dtParts.time : ''}</div>
+        </div>
+
+        <!-- Status -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Status</div>
+          <div style="font-size:11px;font-weight:700;color:${stTheme.color};">${stInfo.label}</div>
+        </div>
+
+        <!-- Sender Wallet -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Sender Wallet</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-family:monospace;font-size:11px;color:#8aaac8;" title="${senderFull}">${senderShort}</span>
+            ${copyBtn(senderFull, 'sender address')}
+          </div>
+        </div>
+
+        <!-- Receiver Wallet -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Receiver Wallet</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-family:monospace;font-size:11px;color:#8aaac8;" title="${recipientFull}">${recipientShort}</span>
+            ${copyBtn(recipientFull, 'receiver address')}
+          </div>
+        </div>
+
+        <!-- Token / Asset -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Token / Asset</div>
+          <div style="font-size:11px;font-weight:700;color:${tokenStr==='USDC'?'#60b4ff':tokenStr==='EURC'?'#34d399':'#a78bfa'};">${tokenStr || '—'}</div>
+        </div>
+
+        <!-- Amount -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Amount</div>
+          <div style="font-size:13px;font-weight:800;color:#e8edf8;">${amtStr} <span style="font-size:10px;color:#4a6490;">${tokenStr}</span></div>
+        </div>
+
+        <!-- Network -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Network</div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:#34d399;display:inline-block;"></span>
+            <span style="font-size:11px;color:#8aaac8;">${escHtml(network)}</span>
+          </div>
+        </div>
+
+        <!-- Payment Type -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Payment Type</div>
+          <div style="font-size:11px;color:#8aaac8;">${escHtml(payType)}</div>
+        </div>
+
+        ${gasFee ? `
+        <!-- Gas Fee -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Gas Fee</div>
+          <div style="font-size:11px;color:#8aaac8;">${gasFee}</div>
+        </div>` : ''}
+
+        ${(r.fullname || r.email) ? `
+        <!-- Sender Info -->
+        <div ${gasFee ? '' : ''}>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Sender Info</div>
+          <div style="font-size:11px;color:#8aaac8;">${r.fullname ? escHtml(r.fullname) : ''}${r.email ? `<span style="color:#4a6490;"> &lt;${escHtml(r.email)}&gt;</span>` : ''}</div>
+        </div>` : ''}
+
+        ${(r.recipientName || r.recipientEmail) ? `
+        <!-- Recipient Info -->
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:3px;">Recipient Info</div>
+          <div style="font-size:11px;color:#8aaac8;">${r.recipientName ? escHtml(r.recipientName) : ''}${r.recipientEmail ? `<span style="color:#4a6490;"> &lt;${escHtml(r.recipientEmail)}&gt;</span>` : ''}</div>
+        </div>` : ''}
+
+        ${r.note ? `
+        <!-- Note -->
+        <div style="grid-column:1/-1;">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#3a4870;font-weight:700;margin-bottom:4px;">Note</div>
+          <div style="font-size:12px;color:#c4b5fd;font-style:italic;background:rgba(167,139,250,0.05);border:1px solid rgba(167,139,250,0.15);border-radius:8px;padding:7px 10px;line-height:1.5;word-break:break-word;">"${escHtml(r.note)}"</div>
+        </div>` : ''}
+
+      </div>
+
+      <!-- Action buttons row -->
+      <div style="padding:0 14px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        ${editBtn}${cancelBtn}${retryBtn}${receiptBtn}
+      </div>
+    </div>
+
+  </div>`;
+}
+
 function renderPaymentHistory() {
   const container = payEl('pay-history-list');
   if (!container) return;
@@ -1525,95 +1884,46 @@ function renderPaymentHistory() {
     const ta = a.scheduledAt || a.timestamp || a.createdAt;
     const tb = b.scheduledAt || b.timestamp || b.createdAt;
     return new Date(tb) - new Date(ta);
-  }).slice(0, 25);
+  }).slice(0, 50);
 
-  // Apply local dismiss filter (does not affect payState — only this render)
-  const visibleItems = allItems.filter(r => {
+  // Apply local dismiss filter
+  const notHidden = allItems.filter(r => {
     const uid = r.txHash || r.id || '';
     return uid ? _payDismiss.isVisible(uid) : true;
   });
 
-  if (visibleItems.length === 0) {
+  // Apply user-selected filters
+  const visibleItems = _payHistoryApplyFilters(notHidden);
+
+  // Always render filter bar when there are items (pre-filter)
+  const filterBar = notHidden.length > 0 ? _payHistoryRenderFilters(notHidden) : '';
+
+  if (notHidden.length === 0) {
     container.innerHTML = `
-      <div style="color:#8aaac8;font-size:11px;text-align:center;padding:28px 0;">
-        <i class="fas fa-clock" style="font-size:22px;display:block;margin-bottom:8px;color:#5a7898;"></i>
-        ${window.walletState?.address ? 'No transactions yet' : 'Connect wallet to view history'}
+      <div style="color:#8aaac8;font-size:12px;text-align:center;padding:32px 16px;">
+        <i class="fas fa-clock" style="font-size:28px;display:block;margin-bottom:10px;color:#2a3650;"></i>
+        ${window.walletState?.address ? 'No transactions yet' : 'Connect your wallet to view transaction history'}
       </div>`;
     return;
   }
 
-  container.innerHTML = visibleItems.map(r => {
-    const isScheduled  = r.status === 'scheduled';
-    const isProcessing = r.status === 'processing';
-    const isFailed     = r.status === 'failed';
-    const isCancelled  = r.status === 'cancelled';
-    const isCached     = r._source === 'local' && !r.txHash && !isScheduled;
-    const uid          = r.txHash || r.id || '';
+  const countLabel = visibleItems.length < notHidden.length
+    ? `<div style="font-size:10px;color:#4a6490;padding:6px 14px 0;text-align:right;">${visibleItems.length} of ${notHidden.length} transactions</div>`
+    : `<div style="font-size:10px;color:#4a6490;padding:6px 14px 0;text-align:right;">${notHidden.length} transaction${notHidden.length !== 1 ? 's' : ''}</div>`;
 
-    // Use unified arcStatusBadge if available, else fallback
-    let statusBadge;
-    if (typeof arcStatusBadge === 'function') {
-      const st = isCached ? 'cached' : (r.status || 'pending');
-      statusBadge = arcStatusBadge(st);
-    } else {
-      statusBadge = isScheduled
-        ? '<span class="pay-status-scheduled">⏰ Scheduled</span>'
-        : isProcessing
-          ? '<span class="pay-status-processing">⚡ Processing</span>'
-          : isFailed
-            ? '<span class="pay-status-failed">✗ Failed</span>'
-            : isCancelled
-              ? '<span class="arc-badge-cancelled">— Cancelled</span>'
-              : '<span class="pay-status-completed">✓ Completed</span>';
-    }
+  const emptyFilter = visibleItems.length === 0
+    ? `<div style="color:#4a6490;font-size:11px;text-align:center;padding:20px 16px;">
+        <i class="fas fa-filter" style="margin-bottom:6px;display:block;font-size:18px;"></i>
+        No transactions match the selected filters
+       </div>`
+    : '';
 
-    const dateLabel = isScheduled
-      ? '📅 ' + new Date(r.scheduledAt).toLocaleString()
-      : r.timestamp ? new Date(r.timestamp).toLocaleDateString() : '—';
-
-    const noteSnip = r.note ? `<div style="font-size:10px;color:#8aaac8;margin-top:4px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">"${escHtml(r.note)}"</div>` : '';
-
-    const txLink = r.txHash
-      ? `<a href="${r.explorerUrl}" target="_blank" style="color:#378ADD;text-decoration:none;font-family:monospace;font-size:10px;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${r.txHash.slice(0,10)}…↗</a>`
-      : `<span style="color:#7a9cc0;font-size:10px;">${dateLabel}</span>`;
-
-    const editBtn = isScheduled
-      ? `<button onclick="payEditScheduled('${r.id}')" title="Edit" style="background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.22);border-radius:6px;color:#60b4ff;font-size:10px;padding:2px 7px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(55,138,221,0.18)'" onmouseout="this.style.background='rgba(55,138,221,0.08)'"><i class="fas fa-edit"></i></button>`
-      : '';
-    const cancelBtn = isScheduled
-      ? `<button onclick="payCancelScheduled('${r.id}')" title="Cancel" style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:6px;color:#f87171;font-size:10px;padding:2px 7px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='rgba(239,68,68,0.07)'"><i class="fas fa-times"></i></button>`
-      : '';
-    const retryBtn = isFailed && typeof arcRetryBtn === 'function'
-      ? arcRetryBtn(window.ARC_STORE_PAY || 'payments', r.id)
-      : '';
-    const viewBtn = `<button onclick="(typeof arcViewPaymentReceipt==='function'?arcViewPaymentReceipt:payOpenReceiptModal)(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Open Receipt" style="background:rgba(29,158,117,0.07);border:1px solid rgba(29,158,117,0.22);border-radius:6px;color:#34d399;font-size:10px;padding:2px 7px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(29,158,117,0.15)'" onmouseout="this.style.background='rgba(29,158,117,0.07)'"><i class="fas fa-eye"></i></button>`;
-
-    // ── Hide button — persistent, survives reload ────────────────────────────
-    const dismissBtn = uid
-      ? `<button class="arc-dismiss-btn" onclick="event.stopPropagation();arcAnimatedDismiss('pay-tx-${uid}',function(){if(typeof arcHidePay==='function')arcHidePay('${uid}');renderPaymentHistory();})" title="Hide from view — on-chain transactions cannot be deleted, only hidden">✕</button>`
-      : '';
-
-    return `
-    <div id="pay-tx-${uid}" style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.14);border-radius:10px;padding:10px 12px;transition:border-color 0.2s;max-height:200px;"
-         onmouseover="this.style.borderColor='rgba(55,138,221,0.3)'" onmouseout="this.style.borderColor='rgba(55,138,221,0.14)'">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:6px;">
-        <span style="color:#dde2f0;font-size:12px;font-weight:700;">${Number(r.amount).toFixed(4)} ${r.token}</span>
-        <div style="display:flex;align-items:center;gap:4px;">${statusBadge}${dismissBtn}</div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#8aaac8;margin-bottom:3px;">
-        <span>→ ${shortAddr(r.recipient)}</span>
-        ${txLink}
-      </div>
-      ${noteSnip}
-      <div style="font-size:10px;color:#7a9cc0;margin-top:3px;display:flex;flex-wrap:wrap;gap:6px;">
-        ${r.fullname ? `<span>👤 ${r.fullname}${r.email ? ' &lt;' + r.email + '&gt;' : ''}</span>` : ''}
-        ${r.recipientName ? `<span style="color:#4a9470;">📩 ${r.recipientName}${r.recipientEmail ? ' &lt;' + r.recipientEmail + '&gt;' : ''}</span>` : (r.recipientEmail ? `<span style="color:#4a9470;">📩 ${r.recipientEmail}</span>` : '')}
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;margin-top:7px;justify-content:flex-end;">
-        ${editBtn}${cancelBtn}${retryBtn}${viewBtn}
-      </div>
-    </div>`;
-  }).join('');
+  container.innerHTML =
+    filterBar +
+    countLabel +
+    `<div style="padding:8px 12px 12px;display:flex;flex-direction:column;gap:8px;">` +
+    (emptyFilter || visibleItems.map(_payHistoryCardHtml).join('')) +
+    `</div>`;
 }
 
 // ─── Load history from IndexedDB / localStorage on startup ──────────────────────

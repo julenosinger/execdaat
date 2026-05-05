@@ -1207,6 +1207,17 @@ function cfContractCard(c, wallet) {
       <div style="font-size:10px;color:#3a4870;margin-top:2px;">All interactions have been permanently locked.</div>
     </div>` : '';
 
+  // ── Notes section ──────────────────────────────────────────────────────────
+  const notesHtml = meta.notes ? `
+    <div style="margin-top:8px;padding:10px 12px;background:rgba(167,139,250,0.05);border:1px solid rgba(167,139,250,0.18);border-radius:10px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+        <i class="fas fa-sticky-note" style="color:#a78bfa;font-size:10px;"></i>
+        <span style="font-size:10px;font-weight:700;color:#a78bfa;text-transform:uppercase;letter-spacing:0.07em;">Notes</span>
+        <span style="font-size:9px;color:#4a6490;font-style:italic;margin-left:2px;">(visible to all parties)</span>
+      </div>
+      <p style="font-size:12px;color:#c4b5fd;line-height:1.55;margin:0;white-space:pre-wrap;word-break:break-word;">${meta.notes.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
+    </div>` : '';
+
   // ── Meta info ──────────────────────────────────────────────────────────────
   const metaHtml = (meta.clientEmail || meta.contractorEmail || meta.custodianAddr) ? `
     <div style="margin-top:8px;padding:8px;background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.1);border-radius:10px;">
@@ -1284,6 +1295,7 @@ function cfContractCard(c, wallet) {
         </div>
       </div>` : ''}
 
+      ${notesHtml}
       ${offchainHtml}
       ${metaHtml}
       ${msHtml}
@@ -2990,6 +3002,7 @@ async function cfCreateOffchainContract(mode) {
   const clientEmail     = (document.getElementById('cf-client-email')?.value || '').trim();
   const contractorEmail = (document.getElementById('cf-contractor-email')?.value || '').trim();
   const custodianAddr   = (document.getElementById('cf-custodian-addr')?.value || '').trim();
+  const notes           = (document.getElementById('cf-notes')?.value || '').trim().slice(0, 500);
   const msRows          = document.querySelectorAll('.cf-milestone-row');
 
   if (!contractor || !title || !totalValue) { showToast(t('cf_fill_required_fields'), 'warning'); return; }
@@ -3027,6 +3040,7 @@ async function cfCreateOffchainContract(mode) {
     custodianAddr:   mode === 'custodial' ? custodianAddr : '',
     localId,
     createdByWallet: wallet,
+    notes:           notes || '',
     milestoneDescs,
     milestoneAmounts,
   };
@@ -3089,10 +3103,11 @@ async function cfCreateOffchainContract(mode) {
   showToast(`✅ ${modeInfo.label} contract created! Local ID: ${localId}.`, 'success');
 
   // Reset form
-  ['cf-title','cf-contractor','cf-value','cf-client-email','cf-contractor-email','cf-custodian-addr'].forEach(id => {
+  ['cf-title','cf-contractor','cf-value','cf-client-email','cf-contractor-email','cf-custodian-addr','cf-notes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  const ctr = document.getElementById('cf-notes-counter'); if(ctr) ctr.textContent='0/500';
   cfResetMilestones();
   cfUpdateFeePreview();
 
@@ -3155,6 +3170,7 @@ async function cfCreateContract() {
   const clientEmail      = cfEl('cf-client-email')?.value?.trim();
   const contractorEmail  = cfEl('cf-contractor-email')?.value?.trim();
   const custodianAddr    = (cfEl('cf-custodian-addr')?.value || '').trim();
+  const notes            = (cfEl('cf-notes')?.value || '').trim().slice(0, 500);
   const msRows           = document.querySelectorAll('.cf-milestone-row');
 
   // Validations
@@ -3282,6 +3298,7 @@ async function cfCreateContract() {
         clientEmail: clientEmail || '',
         contractorEmail: contractorEmail || '',
         custodianAddr: (contractMode === 'custodial') ? custodianAddr : '',
+        notes: notes || '',
         proofs: [],
         createdAt: Date.now(),
         txHash: receipt.hash,
@@ -3309,6 +3326,7 @@ async function cfCreateContract() {
     cfEl('cf-value').value = '';
     if (cfEl('cf-client-email'))     cfEl('cf-client-email').value = '';
     if (cfEl('cf-contractor-email')) cfEl('cf-contractor-email').value = '';
+    if (cfEl('cf-notes')) { cfEl('cf-notes').value = ''; const ctr = document.getElementById('cf-notes-counter'); if(ctr) ctr.textContent='0/500'; }
     cfResetMilestones();
     cfUpdateFeePreview();
 

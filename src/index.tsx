@@ -245,7 +245,7 @@ const LEGAL_NAV = `
   <nav class="nav">
     <a href="/" class="nav-brand"><span style="background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:900;letter-spacing:.06em">ExecDaat</span></a>
     <div class="nav-links">
-      <a href="#" onclick="openAboutPage();return false;">About</a>
+      <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener">GitHub</a>
       <a href="/privacy-policy">Privacy</a>
       <a href="/terms-of-service">Terms</a>
     </div>
@@ -767,7 +767,7 @@ app.get('/', (c) => {
     <span style="color:#f59e0b;font-weight:700;letter-spacing:0.03em;">TESTNET ONLY —</span>
     <span style="color:#ccc;font-weight:400;" class="hidden sm:inline">This application runs exclusively on Arc Testnet. No real funds are used. Do not send mainnet assets.</span>
     <span style="color:#ccc;font-weight:400;" class="sm:hidden">Arc Testnet only. No real funds.</span>
-    <a href="#" onclick="openAboutPage();return false;" style="color:#ccc;text-decoration:underline;margin-left:4px;opacity:0.8;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" class="hidden sm:inline">Learn more</a>
+    <a href="https://testnet.arcscan.app" target="_blank" rel="noopener" style="color:#ccc;text-decoration:underline;margin-left:4px;opacity:0.8;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" class="hidden sm:inline">ArcScan ↗</a>
     <button
       onclick="dismissBanner()"
       title="Dismiss"
@@ -894,11 +894,11 @@ app.get('/', (c) => {
             <i class="fas fa-rocket"></i>
             Launch App
           </button>
-          <button onclick="openAboutPage()"
+          <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener"
             class="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 hover:border-emerald-400/60 text-emerald-400 font-semibold rounded-2xl px-6 py-3.5 text-base transition-all hover:scale-105 active:scale-95">
-            <i class="fas fa-shield-alt"></i>
-            About Us
-          </button>
+            <i class="fab fa-github"></i>
+            GitHub
+          </a>
           <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener"
             class="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors">
             <i class="fab fa-github"></i>
@@ -945,8 +945,9 @@ app.get('/', (c) => {
                 class="flex items-center gap-2 text-xs text-gray-400 hover:text-blue-400 border border-gray-700 hover:border-blue-700 rounded-lg px-3 py-2 transition-all">
                 <i class="fas fa-faucet text-blue-500"></i>Get Test USDC
               </a>
-              <a href="#" onclick="openAboutPage();return false;" class="flex items-center gap-2 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg px-3 py-2 transition-all">
-                <i class="fas fa-info-circle"></i>About / Legal
+              <a href="https://testnet.arcscan.app" target="_blank" rel="noopener"
+                class="flex items-center gap-2 text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg px-3 py-2 transition-all">
+                <i class="fas fa-search text-cyan-400"></i>ArcScan Explorer
               </a>
             </div>
           </div>
@@ -1108,7 +1109,7 @@ app.get('/', (c) => {
           <span style="font-weight:700;letter-spacing:.04em">ExecDaat</span><span style="color:#6b7280"> — Open Source Testnet dApp</span>
         </div>
         <div class="flex items-center gap-4">
-          <a href="#" onclick="openAboutPage();return false;" class="hover:text-gray-400 transition-colors">About</a>
+          <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener" class="hover:text-gray-400 transition-colors">GitHub</a>
           <a href="/privacy-policy" class="hover:text-gray-400 transition-colors">Privacy</a>
           <a href="/terms-of-service" class="hover:text-gray-400 transition-colors">Terms</a>
           <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener" class="hover:text-gray-400 transition-colors">GitHub</a>
@@ -1128,9 +1129,6 @@ app.get('/', (c) => {
   <div id="tab-nav" class="bg-gray-900/60 border-b border-gray-800" style="position:sticky;top:var(--topbar-h,0px);z-index:40;transition:top 0.25s ease;">
     <div class="max-w-7xl mx-auto tab-nav-wrapper">
       <div class="flex gap-0 min-w-max">
-        <button onclick="switchTab('home')" id="tab-home" class="tab-btn active px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
-          <i class="fas fa-home mr-1 sm:mr-2"></i><span class="hidden xs:inline sm:inline">Home</span>
-        </button>
         <button onclick="switchTab('payments')" id="tab-payments" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
           <i class="fas fa-dollar-sign mr-1 sm:mr-2"></i><span data-i18n="tab_payments" class="hidden xs:inline sm:inline">Payments</span>
         </button>
@@ -1161,9 +1159,7 @@ app.get('/', (c) => {
         <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all">
           <i class="fas fa-info-circle mr-1 sm:mr-2"></i><span class="hidden sm:inline">Information</span><span class="sm:hidden text-xs">Info</span>
         </button>
-        <button onclick="switchTab('about')" id="tab-about" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-emerald-400 transition-all">
-          <i class="fas fa-shield-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">About Us</span><span class="sm:hidden text-xs">About</span>
-        </button>
+
 
       </div>
     </div>
@@ -1172,296 +1168,6 @@ app.get('/', (c) => {
   <!-- Main Content -->
   <main class="max-w-7xl mx-auto px-6 py-8">
 
-    <!-- HOME TAB -->
-    <div id="tab-content-home" class="tab-content">
-      <style>
-        /* ── Home page styles ── */
-        .home-feat-card {
-          background: rgba(10,14,30,0.85);
-          border: 1px solid rgba(55,65,100,0.5);
-          border-radius: 20px; padding: 22px 18px;
-          transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
-          cursor: pointer; position: relative; overflow: hidden;
-          display: flex; flex-direction: column;
-        }
-        .home-feat-card::after {
-          content: ''; position: absolute; bottom: 0; left: 0; right: 0;
-          height: 2px; opacity: 0; transition: opacity 0.3s;
-          border-radius: 0 0 20px 20px;
-        }
-        .home-feat-card:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(0,0,0,0.35); }
-        .home-feat-card:hover::after { opacity: 1; }
-        .hfc-green:hover  { border-color: rgba(34,197,94,0.5);  }
-        .hfc-green::after  { background: linear-gradient(90deg,transparent,rgba(34,197,94,0.7),transparent); }
-        .hfc-yellow:hover { border-color: rgba(234,179,8,0.5);  }
-        .hfc-yellow::after { background: linear-gradient(90deg,transparent,rgba(234,179,8,0.7),transparent); }
-        .hfc-cyan:hover   { border-color: rgba(6,182,212,0.5);  }
-        .hfc-cyan::after   { background: linear-gradient(90deg,transparent,rgba(6,182,212,0.7),transparent); }
-        .hfc-blue:hover   { border-color: rgba(59,130,246,0.5); }
-        .hfc-blue::after   { background: linear-gradient(90deg,transparent,rgba(59,130,246,0.7),transparent); }
-        .hfc-teal:hover   { border-color: rgba(20,184,166,0.5); }
-        .hfc-teal::after   { background: linear-gradient(90deg,transparent,rgba(20,184,166,0.7),transparent); }
-        .hfc-indigo:hover { border-color: rgba(99,102,241,0.5); }
-        .hfc-indigo::after { background: linear-gradient(90deg,transparent,rgba(99,102,241,0.7),transparent); }
-        .home-feat-icon {
-          width: 44px; height: 44px; border-radius: 13px;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 18px; margin-bottom: 14px; flex-shrink: 0;
-          transition: transform 0.3s;
-        }
-        .home-feat-card:hover .home-feat-icon { transform: scale(1.1) rotate(-3deg); }
-        .home-feat-title { font-size: 14px; font-weight: 800; color: #e2e8f0; margin-bottom: 5px; }
-        .home-feat-desc  { font-size: 11px; color: #64748b; line-height: 1.55; flex: 1; }
-        .home-feat-link  {
-          font-size: 11px; margin-top: 14px; display: flex; align-items: center;
-          gap: 4px; font-weight: 700; opacity: 0.7; transition: opacity 0.2s;
-        }
-        .home-feat-card:hover .home-feat-link { opacity: 1; }
-        .home-qa-btn {
-          display: flex; flex-direction: column; align-items: center; gap: 8px;
-          padding: 16px 10px; border-radius: 14px;
-          background: rgba(15,23,42,0.7); border: 1px solid rgba(55,65,100,0.4);
-          cursor: pointer; transition: all 0.2s; flex: 1; min-width: 0;
-        }
-        .home-qa-btn:hover {
-          border-color: rgba(139,92,246,0.5);
-          background: rgba(139,92,246,0.08);
-          transform: translateY(-2px);
-        }
-        .home-qa-icon {
-          width: 38px; height: 38px; border-radius: 10px;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 15px; transition: transform 0.2s;
-        }
-        .home-qa-btn:hover .home-qa-icon { transform: scale(1.1); }
-        @keyframes homeLiveDot { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:0.7} }
-        .home-live-dot { animation: homeLiveDot 1.5s ease-in-out infinite; }
-        .home-hero-title {
-          font-size: clamp(2rem,4.5vw,3.4rem);
-          font-weight: 900; line-height: 1.07; letter-spacing: -0.03em; color: #fff;
-        }
-        .home-hero-title .accent {
-          background: linear-gradient(135deg,#c084fc,#818cf8,#38bdf8);
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-        .home-cta-primary {
-          display: inline-flex; align-items: center; gap: 9px;
-          padding: 13px 28px; border-radius: 14px; font-weight: 800; font-size: 14px;
-          background: linear-gradient(135deg,#7c3aed,#4f46e5,#2563eb);
-          color: #fff; border: none; cursor: pointer; transition: all 0.3s;
-          box-shadow: 0 0 28px rgba(124,58,237,0.45), 0 4px 16px rgba(0,0,0,0.3);
-        }
-        .home-cta-primary:hover { transform: translateY(-2px); box-shadow: 0 0 44px rgba(124,58,237,0.65), 0 8px 24px rgba(0,0,0,0.4); }
-        .home-cta-secondary {
-          display: inline-flex; align-items: center; gap: 8px;
-          padding: 12px 24px; border-radius: 14px; font-weight: 700; font-size: 13px;
-          background: rgba(255,255,255,0.04); color: #e2e8f0;
-          border: 1px solid rgba(255,255,255,0.16); cursor: pointer; transition: all 0.3s;
-        }
-        .home-cta-secondary:hover { background: rgba(255,255,255,0.08); border-color: rgba(139,92,246,0.5); transform: translateY(-2px); }
-        .home-badge {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 5px 12px; border-radius: 999px; font-size: 11px; font-weight: 600;
-          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #94a3b8;
-        }
-        .home-badge i { font-size: 10px; }
-        .home-dashboard-card {
-          background: rgba(12,16,30,0.92);
-          border: 1px solid rgba(99,102,241,0.35);
-          border-radius: 22px; padding: 22px;
-          box-shadow: 0 0 70px rgba(99,102,241,0.18), 0 20px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
-          backdrop-filter: blur(24px);
-        }
-        .home-section-line {
-          height: 1px; margin: 32px 0;
-          background: linear-gradient(90deg,transparent,rgba(99,102,241,0.3) 30%,rgba(6,182,212,0.3) 70%,transparent);
-        }
-      </style>
-
-      <!-- ── Background glow orbs ─── -->
-      <div style="position:relative;overflow:hidden;">
-        <div style="position:absolute;width:600px;height:600px;top:-200px;left:-150px;background:radial-gradient(circle,rgba(99,102,241,0.12),transparent 68%);border-radius:50%;filter:blur(70px);pointer-events:none;z-index:0;"></div>
-        <div style="position:absolute;width:400px;height:400px;top:0;right:-100px;background:radial-gradient(circle,rgba(139,92,246,0.1),transparent 68%);border-radius:50%;filter:blur(60px);pointer-events:none;z-index:0;"></div>
-
-        <!-- ── Hero ──────────────────────────────────────────────── -->
-        <div class="flex flex-col lg:flex-row items-center gap-10 lg:gap-16 py-10 lg:py-14" style="position:relative;z-index:1;">
-
-          <!-- Left: Copy -->
-          <div class="flex-1 text-center lg:text-left">
-            <!-- Live pill -->
-            <div class="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-full text-xs font-semibold"
-              style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.32);color:#a5b4fc;">
-              <span class="home-live-dot w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
-              Live on Arc Testnet
-            </div>
-
-            <!-- Headline -->
-            <h1 class="home-hero-title mb-5">
-              Secure Payments.<br>
-              <span class="accent">Smart Contracts.</span>
-            </h1>
-
-            <!-- Subtext -->
-            <p style="color:#94a3b8;font-size:14px;line-height:1.75;max-width:460px;margin:0 auto 28px;" class="lg:mx-0">
-              ExecDaat is a decentralized platform on Arc Testnet for secure
-              payments, token swaps, escrow contracts, and multi-send transactions.
-            </p>
-
-            <!-- CTAs -->
-            <div class="flex flex-wrap items-center gap-3 justify-center lg:justify-start mb-8">
-              <button class="home-cta-primary" onclick="document.getElementById('wallet-connect-btn')?.click()">
-                <i class="fas fa-wallet"></i> Connect Wallet
-              </button>
-              <button class="home-cta-secondary" onclick="switchTab('payments')">
-                Explore Platform <i class="fas fa-arrow-right text-xs"></i>
-              </button>
-            </div>
-
-            <!-- Trust badges -->
-            <div class="flex flex-wrap gap-2 justify-center lg:justify-start">
-              <span class="home-badge"><i class="fas fa-shield-alt text-purple-400"></i>100% Decentralized</span>
-              <span class="home-badge"><i class="fas fa-lock text-blue-400"></i>Non-Custodial</span>
-              <span class="home-badge"><i class="fas fa-link text-cyan-400"></i>On-Chain</span>
-              <span class="home-badge"><i class="fas fa-shield-check text-green-400"></i>Secure by Design</span>
-            </div>
-          </div>
-
-          <!-- Right: Dashboard card -->
-          <div class="flex-shrink-0 w-full max-w-sm lg:max-w-md">
-            <div class="home-dashboard-card">
-              <!-- Quick Actions -->
-              <div class="mb-5">
-                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:12px;">Quick Actions</div>
-                <div class="flex gap-2">
-                  <button class="home-qa-btn" onclick="switchTab('dex')">
-                    <div class="home-qa-icon" style="background:rgba(234,179,8,0.14);border:1px solid rgba(234,179,8,0.3);">
-                      <i class="fas fa-exchange-alt text-yellow-400"></i>
-                    </div>
-                    <span style="font-size:11px;font-weight:600;color:#e2e8f0;">Swap</span>
-                  </button>
-                  <button class="home-qa-btn" onclick="switchTab('payments')">
-                    <div class="home-qa-icon" style="background:rgba(34,197,94,0.14);border:1px solid rgba(34,197,94,0.3);">
-                      <i class="fas fa-paper-plane text-green-400"></i>
-                    </div>
-                    <span style="font-size:11px;font-weight:600;color:#e2e8f0;">Send</span>
-                  </button>
-                  <button class="home-qa-btn" onclick="switchTab('contracts')">
-                    <div class="home-qa-icon" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.3);">
-                      <i class="fas fa-file-contract text-blue-400"></i>
-                    </div>
-                    <span style="font-size:11px;font-weight:600;color:#e2e8f0;">Contracts</span>
-                  </button>
-                  <button class="home-qa-btn" onclick="switchTab('bridge')">
-                    <div class="home-qa-icon" style="background:rgba(6,182,212,0.14);border:1px solid rgba(6,182,212,0.3);">
-                      <i class="fas fa-right-left text-cyan-400"></i>
-                    </div>
-                    <span style="font-size:11px;font-weight:600;color:#e2e8f0;">Bridge</span>
-                  </button>
-                  <button class="home-qa-btn" onclick="switchTab('multisend')">
-                    <div class="home-qa-icon" style="background:rgba(20,184,166,0.14);border:1px solid rgba(20,184,166,0.3);">
-                      <i class="fas fa-layer-group text-teal-400"></i>
-                    </div>
-                    <span style="font-size:11px;font-weight:600;color:#e2e8f0;">MultiSend</span>
-                  </button>
-                  <button class="home-qa-btn" onclick="switchTab('otc')">
-                    <div class="home-qa-icon" style="background:rgba(99,102,241,0.14);border:1px solid rgba(99,102,241,0.3);">
-                      <i class="fas fa-handshake text-indigo-400"></i>
-                    </div>
-                    <span style="font-size:11px;font-weight:600;color:#e2e8f0;">OTC</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Divider -->
-              <div style="height:1px;background:rgba(55,65,100,0.4);margin-bottom:16px;"></div>
-
-              <!-- Activity -->
-              <div>
-                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:14px;">Activity</div>
-                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 16px;text-align:center;gap:10px;">
-                  <div style="width:44px;height:44px;border-radius:12px;background:rgba(55,65,100,0.3);border:1px solid rgba(55,65,100,0.4);display:flex;align-items:center;justify-content:center;">
-                    <i class="fas fa-file-alt" style="color:#334155;font-size:18px;"></i>
-                  </div>
-                  <div style="color:#94a3b8;font-size:13px;font-weight:600;">No activity yet</div>
-                  <div style="color:#475569;font-size:11px;">Start using the platform to see your activity here</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- ── Section divider ── -->
-      <div class="home-section-line"></div>
-
-      <!-- ── Platform Features ────────────────────────────────────── -->
-      <div class="mb-8">
-        <div class="flex items-center gap-3 mb-5">
-          <h2 style="font-size:16px;font-weight:800;color:#e2e8f0;">Platform Features</h2>
-          <div class="flex-1 h-px bg-gradient-to-r from-purple-500/30 to-transparent"></div>
-        </div>
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-
-          <div class="home-feat-card hfc-green" onclick="switchTab('payments')">
-            <div class="home-feat-icon" style="background:rgba(34,197,94,0.14);border:1px solid rgba(34,197,94,0.3);">
-              <i class="fas fa-paper-plane text-green-400"></i>
-            </div>
-            <div class="home-feat-title">Payments</div>
-            <div class="home-feat-desc">Send ARC20 tokens securely with a seamless experience.</div>
-            <div class="home-feat-link" style="color:#4ade80;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
-          </div>
-
-          <div class="home-feat-card hfc-yellow" onclick="switchTab('dex')">
-            <div class="home-feat-icon" style="background:rgba(234,179,8,0.14);border:1px solid rgba(234,179,8,0.3);">
-              <i class="fas fa-exchange-alt text-yellow-400"></i>
-            </div>
-            <div class="home-feat-title">Swap</div>
-            <div class="home-feat-desc">Swap tokens instantly with the best available rates.</div>
-            <div class="home-feat-link" style="color:#facc15;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
-          </div>
-
-          <div class="home-feat-card hfc-cyan" onclick="switchTab('bridge')">
-            <div class="home-feat-icon" style="background:rgba(6,182,212,0.14);border:1px solid rgba(6,182,212,0.3);">
-              <i class="fas fa-right-left text-cyan-400"></i>
-            </div>
-            <div class="home-feat-title">Bridge</div>
-            <div class="home-feat-desc">Bridge assets across networks in a secure and efficient way.</div>
-            <div class="home-feat-link" style="color:#22d3ee;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
-          </div>
-
-          <div class="home-feat-card hfc-blue" onclick="switchTab('contracts')">
-            <div class="home-feat-icon" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.3);">
-              <i class="fas fa-file-contract text-blue-400"></i>
-            </div>
-            <div class="home-feat-title">Contracts</div>
-            <div class="home-feat-desc">Deploy and interact with smart contracts on Arc Testnet.</div>
-            <div class="home-feat-link" style="color:#60a5fa;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
-          </div>
-
-          <div class="home-feat-card hfc-teal" onclick="switchTab('multisend')">
-            <div class="home-feat-icon" style="background:rgba(20,184,166,0.14);border:1px solid rgba(20,184,166,0.3);">
-              <i class="fas fa-layer-group text-teal-400"></i>
-            </div>
-            <div class="home-feat-title">MultiSend</div>
-            <div class="home-feat-desc">Send tokens to multiple addresses in a single transaction.</div>
-            <div class="home-feat-link" style="color:#2dd4bf;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
-          </div>
-
-          <div class="home-feat-card hfc-indigo" onclick="switchTab('otc')">
-            <div class="home-feat-icon" style="background:rgba(99,102,241,0.14);border:1px solid rgba(99,102,241,0.3);">
-              <i class="fas fa-handshake text-indigo-400"></i>
-            </div>
-            <div class="home-feat-title">OTC</div>
-            <div class="home-feat-desc">Peer-to-peer OTC deals with on-chain escrow protection.</div>
-            <div class="home-feat-link" style="color:#818cf8;">Open <i class="fas fa-arrow-right" style="font-size:9px;"></i></div>
-          </div>
-
-        </div>
-      </div>
-
-    </div><!-- /tab-content-home -->
 
     <!-- DASHBOARD TAB -->
     <div id="tab-content-dashboard" class="tab-content">
@@ -2150,33 +1856,48 @@ app.get('/', (c) => {
         <div id="pay-right-col">
 
           <!-- History panel -->
-          <div class="pay-side-panel" id="pay-history-panel">
-            <div class="pay-side-hdr">
-              <span style="color:#dde2f0;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">
-                <i class="fas fa-history" style="color:#378ADD;"></i> Transaction History
-              </span>
+          <div id="pay-history-panel"
+            style="background:linear-gradient(160deg,rgba(10,14,30,0.98) 0%,rgba(6,9,20,1) 100%);border:1px solid rgba(55,138,221,0.18);border-radius:16px;overflow:hidden;backdrop-filter:blur(12px);">
+
+            <!-- Header -->
+            <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(55,138,221,0.1);background:rgba(55,138,221,0.03);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,rgba(55,138,221,0.2),rgba(29,158,117,0.15));border:1px solid rgba(55,138,221,0.25);display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-history" style="color:#60b4ff;font-size:13px;"></i>
+                </div>
+                <div>
+                  <div style="color:#dde2f0;font-size:13px;font-weight:800;letter-spacing:0.01em;">Transaction History</div>
+                  <div style="color:#4a6490;font-size:10px;margin-top:1px;">All payments · Expandable details</div>
+                </div>
+              </div>
               <div style="display:flex;align-items:center;gap:6px;">
                 <button onclick="typeof arcShowHiddenPayments==='function'&&arcShowHiddenPayments()"
-                  style="font-size:10px;color:#8aaac8;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.2);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+                  style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#8aaac8;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.18);padding:5px 11px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
                   title="Show hidden transactions"
-                  onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.5)'" onmouseout="this.style.color='#8aaac8';this.style.borderColor='rgba(55,138,221,0.2)'">
-                  <i class="fas fa-eye" style="font-size:9px;"></i> Show Hidden
+                  onmouseover="this.style.color='#60b4ff';this.style.background='rgba(55,138,221,0.14)';this.style.borderColor='rgba(55,138,221,0.4)'"
+                  onmouseout="this.style.color='#8aaac8';this.style.background='rgba(55,138,221,0.06)';this.style.borderColor='rgba(55,138,221,0.18)'">
+                  <i class="fas fa-eye" style="font-size:9px;"></i>Hidden
                 </button>
                 <button onclick="refreshPaymentBalances();renderPaymentHistory()"
-                  style="font-size:10px;color:#8aaac8;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                  onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.5)'" onmouseout="this.style.color='#8aaac8';this.style.borderColor='rgba(55,138,221,0.28)'">
-                  <i class="fas fa-sync" style="font-size:9px;"></i> Refresh
+                  style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#60b4ff;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:5px 11px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+                  onmouseover="this.style.background='rgba(55,138,221,0.18)';this.style.borderColor='rgba(55,138,221,0.5)'"
+                  onmouseout="this.style.background='rgba(55,138,221,0.08)';this.style.borderColor='rgba(55,138,221,0.28)'">
+                  <i class="fas fa-sync" style="font-size:9px;"></i>Refresh
                 </button>
-                <button onclick="(function(p){p.style.transition='opacity 0.2s ease,transform 0.2s ease';p.style.opacity='0';p.style.transform='translateY(-6px)';setTimeout(()=>{p.style.display='none';p.style.opacity='';p.style.transform='';},200);})(document.getElementById('pay-history-panel'))"
-                  title="Close history"
-                  style="width:24px;height:24px;border-radius:6px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;">
+                <button onclick="(function(p){p.style.transition='opacity 0.25s ease,transform 0.25s ease';p.style.opacity='0';p.style.transform='translateY(-8px)';setTimeout(()=>{p.style.display='none';p.style.opacity='';p.style.transform='';},250);})(document.getElementById('pay-history-panel'))"
+                  title="Close history panel"
+                  style="width:28px;height:28px;border-radius:8px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);color:#f87171;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;transition:all 0.2s;"
+                  onmouseover="this.style.background='rgba(239,68,68,0.18)';this.style.borderColor='rgba(239,68,68,0.4)'"
+                  onmouseout="this.style.background='rgba(239,68,68,0.07)';this.style.borderColor='rgba(239,68,68,0.18)'">
                   <i class="fas fa-times"></i>
                 </button>
               </div>
             </div>
-            <div id="pay-history-list" style="padding:12px;display:flex;flex-direction:column;gap:6px;">
-              <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
-                <i class="fas fa-clock" style="font-size:20px;display:block;margin-bottom:8px;color:#5a7898;"></i>
+
+            <!-- List container — renderPaymentHistory() writes here -->
+            <div id="pay-history-list" style="max-height:600px;overflow-y:auto;">
+              <div style="color:#4a6490;font-size:12px;text-align:center;padding:36px 16px;">
+                <i class="fas fa-clock" style="font-size:28px;display:block;margin-bottom:10px;color:#2a3650;"></i>
                 No transactions yet
               </div>
             </div>
@@ -2426,6 +2147,21 @@ app.get('/', (c) => {
                     </div>
                   </div>
                   <div id="cf-ms-sum" style="font-size:11px;color:#8aaac8;margin-top:6px;">Milestones sum: $0.00 USDC</div>
+                </div>
+
+                <!-- Notes field -->
+                <div>
+                  <label class="cf-label">
+                    <i class="fas fa-sticky-note" style="color:#a78bfa;"></i>NOTES
+                    <span style="font-size:10px;font-weight:400;color:#6a85aa;text-transform:none;letter-spacing:0;margin-left:4px;">(optional — visible to all parties)</span>
+                  </label>
+                  <textarea id="cf-notes" rows="2" placeholder="Add context, instructions, or any notes for this contract…"
+                    class="cf-input w-full px-3 py-2.5 text-sm"
+                    style="resize:vertical;min-height:60px;max-height:120px;font-family:inherit;line-height:1.5;"
+                    oninput="this.style.borderColor=this.value.length>500?'rgba(239,68,68,0.6)':'';document.getElementById('cf-notes-counter').textContent=this.value.length+'/500';document.getElementById('cf-notes-counter').style.color=this.value.length>500?'#f87171':this.value.length>400?'#fbbf24':'#6a85aa';"></textarea>
+                  <div style="display:flex;justify-content:flex-end;margin-top:3px;">
+                    <span id="cf-notes-counter" style="font-size:10px;color:#6a85aa;">0/500</span>
+                  </div>
                 </div>
 
                 <!-- Submit button -->
@@ -3682,7 +3418,7 @@ app.get('/', (c) => {
       <!-- Page header -->
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-3">
-          <button onclick="switchTab('home')"
+          <button onclick="switchTab('payments')"
             class="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all">
             <i class="fas fa-arrow-left text-sm"></i>
           </button>
@@ -4105,7 +3841,7 @@ app.get('/', (c) => {
           This dApp never asks for your private key. All transactions are signed
           exclusively in your wallet (MetaMask). No automatic or hidden transactions occur.
         </span>
-        <a href="#" onclick="openAboutPage();return false;" class="ml-auto text-blue-400 hover:text-blue-300 underline whitespace-nowrap">Learn more ↗</a>
+        <a href="https://testnet.arcscan.app" target="_blank" rel="noopener" class="ml-auto text-blue-400 hover:text-blue-300 underline whitespace-nowrap">ArcScan ↗</a>
       </div>
 
       <!-- ── Outer wrapper: swap-center or liq 2-col grid ─────────────────────── -->
@@ -4732,158 +4468,6 @@ app.get('/', (c) => {
 
     <!-- ════════════════════════════════════════════════════════════════ -->
 
-    <!-- ══ ABOUT US TAB ═══════════════════════════════════════════════ -->
-    <div id="tab-content-about" class="tab-content hidden" role="main" aria-label="About This Application">
-      <div class="max-w-3xl mx-auto px-4 py-10 space-y-8">
-
-        <!-- Trust Badges (top) -->
-        <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;">
-          <span style="display:inline-flex;align-items:center;gap:7px;background:rgba(16,185,129,0.14);border:1.5px solid rgba(16,185,129,0.45);border-radius:999px;padding:7px 18px;color:#10b981;font-size:12px;font-weight:800;letter-spacing:0.04em;">
-            <i class="fas fa-flask"></i> TESTNET ONLY
-          </span>
-          <span style="display:inline-flex;align-items:center;gap:7px;background:rgba(239,68,68,0.10);border:1.5px solid rgba(239,68,68,0.35);border-radius:999px;padding:7px 18px;color:#f87171;font-size:12px;font-weight:800;letter-spacing:0.04em;">
-            <i class="fas fa-ban"></i> NO REAL FUNDS INVOLVED
-          </span>
-          <span style="display:inline-flex;align-items:center;gap:7px;background:rgba(245,158,11,0.10);border:1.5px solid rgba(245,158,11,0.35);border-radius:999px;padding:7px 18px;color:#fbbf24;font-size:12px;font-weight:800;letter-spacing:0.04em;">
-            <i class="fas fa-vial"></i> FOR TESTING PURPOSES ONLY
-          </span>
-        </div>
-
-        <!-- Main Section -->
-        <article itemscope itemtype="https://schema.org/WebApplication">
-          <header style="margin-bottom:24px;">
-            <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
-              <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#7c3aed,#4f46e5);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                <i class="fas fa-info-circle" style="color:white;font-size:22px;"></i>
-              </div>
-              <div>
-                <h1 itemprop="name" style="color:#f1f5f9;font-size:26px;font-weight:800;margin:0;letter-spacing:-0.02em;">About This Application</h1>
-                <p style="color:#64748b;font-size:13px;margin:4px 0 0;">Arc Network · Testnet · Open Source</p>
-              </div>
-            </div>
-          </header>
-
-          <section style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.22);border-radius:14px;padding:22px 24px;margin-bottom:20px;">
-            <p itemprop="description" style="color:#cbd5e1;font-size:14px;line-height:1.8;margin:0 0 14px;">
-              This application was built by a user of the <strong style="color:#a5b4fc;">Arc Network</strong> for testing purposes only.
-            </p>
-            <p style="color:#cbd5e1;font-size:14px;line-height:1.8;margin:0 0 14px;">
-              It runs exclusively on <strong style="color:#a5b4fc;">Arc Testnet</strong> and does <strong style="color:#f87171;">NOT</strong> involve real funds, real assets, or real financial transactions.
-            </p>
-            <p style="color:#94a3b8;font-size:14px;line-height:1.8;margin:0;">
-              All interactions are simulated within a test environment designed for development, experimentation, and validation of smart contract behavior.
-            </p>
-          </section>
-        </article>
-
-        <!-- Security & Usage Notice -->
-        <section aria-label="Security and Usage Notice">
-          <header style="margin-bottom:14px;">
-            <h2 style="color:#e2e8f0;font-size:18px;font-weight:800;margin:0;display:flex;align-items:center;gap:10px;">
-              <i class="fas fa-shield-alt" style="color:#34d399;"></i>Security &amp; Usage Notice
-            </h2>
-          </header>
-          <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.22);border-radius:14px;padding:22px 24px;">
-            <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:12px;">
-              <li style="display:flex;align-items:center;gap:12px;">
-                <span style="width:28px;height:28px;border-radius:8px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                  <i class="fas fa-check" style="color:#10b981;font-size:11px;"></i>
-                </span>
-                <span style="color:#cbd5e1;font-size:14px;">This is a <strong style="color:#34d399;">testnet-only</strong> application</span>
-              </li>
-              <li style="display:flex;align-items:center;gap:12px;">
-                <span style="width:28px;height:28px;border-radius:8px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                  <i class="fas fa-check" style="color:#10b981;font-size:11px;"></i>
-                </span>
-                <span style="color:#cbd5e1;font-size:14px;"><strong style="color:#f87171;">No real funds</strong> are used or stored</span>
-              </li>
-              <li style="display:flex;align-items:center;gap:12px;">
-                <span style="width:28px;height:28px;border-radius:8px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                  <i class="fas fa-check" style="color:#10b981;font-size:11px;"></i>
-                </span>
-                <span style="color:#cbd5e1;font-size:14px;">The platform <strong style="color:#fbbf24;">does not store private keys</strong></span>
-              </li>
-              <li style="display:flex;align-items:center;gap:12px;">
-                <span style="width:28px;height:28px;border-radius:8px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                  <i class="fas fa-check" style="color:#10b981;font-size:11px;"></i>
-                </span>
-                <span style="color:#cbd5e1;font-size:14px;">All transactions require <strong style="color:#a5b4fc;">explicit wallet approval</strong></span>
-              </li>
-              <li style="display:flex;align-items:center;gap:12px;">
-                <span style="width:28px;height:28px;border-radius:8px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                  <i class="fas fa-check" style="color:#10b981;font-size:11px;"></i>
-                </span>
-                <span style="color:#cbd5e1;font-size:14px;">This project was built using <strong style="color:#c084fc;">Genspark</strong></span>
-              </li>
-            </ul>
-          </div>
-        </section>
-
-        <!-- ── Verified Contracts Section ─────────────────────────────── -->
-        <section aria-label="Verified Contracts" style="margin-bottom:24px;">
-          <header style="margin-bottom:14px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-              <h2 style="color:#e2e8f0;font-size:18px;font-weight:800;margin:0;display:flex;align-items:center;gap:10px;">
-                <i class="fas fa-file-contract" style="color:#6366f1;"></i>Verified Contracts
-              </h2>
-              <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:4px 12px;color:#818cf8;font-size:11px;font-weight:700;">
-                <i class="fas fa-cubes" style="font-size:10px;"></i>Arc Testnet · Chain 5042002
-              </span>
-            </div>
-            <p style="color:#64748b;font-size:12px;margin:6px 0 0;">All smart contracts deployed and used by this dApp.</p>
-          </header>
-
-          <!-- Container for the dynamic contract list -->
-          <div id="vc-panel">
-            <!-- Loading skeleton -->
-            <div style="text-align:center;padding:30px;color:#475569;font-size:13px;">
-              <i class="fas fa-spinner fa-spin" style="margin-right:8px;color:#6366f1;"></i>Loading contract registry…
-            </div>
-          </div>
-        </section>
-
-        <!-- Disclaimer footer -->
-        <footer>
-          <div role="note" style="background:rgba(15,23,42,0.7);border:1px solid rgba(71,85,105,0.25);border-radius:12px;padding:16px 20px;">
-            <p style="color:#475569;font-size:11px;line-height:1.8;margin:0;" itemprop="about">
-              <strong style="color:#64748b;">Disclaimer:</strong>
-              This is an open-source testnet dApp built for educational and development purposes.
-              It operates exclusively on <strong>Arc Testnet</strong> and involves
-              <strong>no real funds, no financial transactions, and no monetary value</strong>.
-              The platform is not a financial service and is not affiliated with any financial institution.
-              All smart contract interactions are on testnet only.
-            </p>
-          </div>
-        </footer>
-
-        <!-- JSON-LD structured data -->
-        <script type="application/ld+json">
-        {
-          "@context": "https://schema.org",
-          "@type": "WebApplication",
-          "name": "ExecDaat Platform",
-          "url": "https://execdaatplataform.pages.dev",
-          "description": "Open-source testnet dApp for Arc Network. Testnet only. No real funds involved. For development and testing purposes only.",
-          "applicationCategory": "DeveloperApplication",
-          "operatingSystem": "Web Browser",
-          "keywords": "testnet, no real funds, web3 testing, arc network, blockchain testing, dapp development",
-          "author": {
-            "@type": "Person",
-            "description": "Independent developer and Arc Network testnet user"
-          },
-          "additionalProperty": [
-            { "@type": "PropertyValue", "name": "environment",    "value": "testnet-only" },
-            { "@type": "PropertyValue", "name": "real-funds",     "value": "false" },
-            { "@type": "PropertyValue", "name": "financial-risk", "value": "none" },
-            { "@type": "PropertyValue", "name": "purpose",        "value": "testing and development" },
-            { "@type": "PropertyValue", "name": "built-with",     "value": "Genspark AI" }
-          ]
-        }
-        </script>
-
-      </div>
-    </div>
-    <!-- ══ END ABOUT US TAB ════════════════════════════════════════════ -->
 
     <!-- ════════════════════════════════════════════════════════════════ -->
 
@@ -5416,8 +5000,8 @@ app.get('/', (c) => {
         <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Resources</h3>
         <ul class="space-y-2 text-xs text-gray-500">
           <li>
-            <a href="#" onclick="openAboutPage();return false;" class="flex items-center gap-1.5 hover:text-white transition-colors">
-              <i class="fas fa-info-circle text-[10px]"></i>About this App
+            <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 hover:text-white transition-colors">
+              <i class="fab fa-github text-[10px]"></i>Source Code (GitHub)
             </a>
           </li>
           <li>

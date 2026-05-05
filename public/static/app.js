@@ -32,7 +32,7 @@ const API = {
 // ============================================================
 // STATE
 // ============================================================
-let currentTab = 'home';
+let currentTab = 'payments';
 let logCount = 0;
 
 // ============================================================
@@ -183,12 +183,7 @@ function switchTab(tab) {
         if (typeof _otcCheckAlerts === 'function') _otcCheckAlerts();
       }, 50);
     }
-    if (tab === 'about') {
-      // Render Verified Contracts panel when About tab is shown
-      if (typeof window.vcRenderPanel === 'function') {
-        window.vcRenderPanel('vc-panel');
-      }
-    }
+
   }, prevContent && !prevContent.classList.contains('hidden') ? 150 : 0);
 }
 
@@ -799,17 +794,17 @@ function enterApp() {
   const appShell = document.getElementById('app-shell');
   if (landing)  landing.classList.add('hidden');
   if (appShell) appShell.classList.remove('hidden');
-  // Load home tab by default (first tab now)
-  switchTab('home');
+  // Load payments tab by default
+  switchTab('payments');
 }
 
-// Open About Us page without requiring wallet connection
+// openAboutPage — redirects to dashboard/info tab (About Us removed)
 function openAboutPage() {
   const landing  = document.getElementById('landing-page');
   const appShell = document.getElementById('app-shell');
   if (landing)  landing.classList.add('hidden');
   if (appShell) appShell.classList.remove('hidden');
-  switchTab('about');
+  switchTab('payments');
 }
 window.openAboutPage = openAboutPage;
 
