@@ -1125,48 +1125,111 @@ app.get('/', (c) => {
        ══════════════════════════════════════════════════════════════════════ -->
   <div id="app-shell" class="hidden">
 
-  <!-- Tabs -->
-  <div id="tab-nav" class="bg-gray-900/60 border-b border-gray-800" style="position:sticky;top:var(--topbar-h,0px);z-index:40;transition:top 0.25s ease;">
-    <div class="max-w-7xl mx-auto tab-nav-wrapper">
-      <div class="flex gap-0 min-w-max">
-        <button onclick="switchTab('payments')" id="tab-payments" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-dollar-sign mr-1 sm:mr-2"></i><span data-i18n="tab_payments" class="hidden xs:inline sm:inline">Payments</span>
-        </button>
-        <button onclick="switchTab('contracts')" id="tab-contracts" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-file-contract mr-1 sm:mr-2"></i><span data-i18n="tab_contracts" class="hidden xs:inline sm:inline">Contracts</span>
-        </button>
-        <button onclick="switchTab('otc')" id="tab-otc" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all relative">
-          <i class="fas fa-handshake mr-1 sm:mr-2"></i><span class="hidden sm:inline">OTC Contracts</span><span class="sm:hidden text-xs">OTC</span>
-          <span class="absolute top-2 right-1 text-[8px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">NEW</span>
-          <span id="otc-alert-badge" class="hidden absolute top-2 left-1 text-[8px] bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold leading-none"></span>
-        </button>
-        <button onclick="switchTab('multisend')" id="tab-multisend" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
-          <i class="fas fa-paper-plane mr-1 sm:mr-2"></i><span class="hidden sm:inline">MultiSend</span><span class="sm:hidden text-xs">Multi</span>
-        </button>
-        <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-exchange-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">Swap</span><span class="sm:hidden text-xs">Swap</span>
-        </button>
-        <button onclick="switchTab('bridge')" id="tab-bridge" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all relative">
-          <i class="fas fa-right-left mr-1 sm:mr-2"></i><span class="hidden sm:inline">Bridge</span><span class="sm:hidden text-xs">Bridge</span>
-          <span class="absolute top-2 right-0.5 text-[8px] bg-cyan-600 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">CCTP</span>
-        </button>
-        <button onclick="switchTab('autonoma')" id="tab-autonoma" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-purple-400 transition-all">
-          <i class="fas fa-robot mr-1 sm:mr-2"></i><span class="hidden sm:inline">Autonomous</span><span class="sm:hidden text-xs">Auto</span>
-        </button>
-        <button onclick="switchTab('history')" id="tab-history" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-blue-400 transition-all">
-          <i class="fas fa-history mr-1 sm:mr-2"></i><span class="hidden sm:inline">History</span><span class="sm:hidden text-xs">Hist</span>
-        </button>
-        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all">
-          <i class="fas fa-info-circle mr-1 sm:mr-2"></i><span class="hidden sm:inline">Information</span><span class="sm:hidden text-xs">Info</span>
-        </button>
-
-
-      </div>
-    </div>
+  <!-- ═══ MOBILE TOP BAR (hamburger + current tab label) ═══ -->
+  <div id="mob-topbar" class="sidebar-mob-topbar">
+    <button id="sidebar-toggle" onclick="sidebarOpen()" aria-label="Open menu">
+      <i class="fas fa-bars"></i>
+    </button>
+    <span id="mob-tab-label" class="sidebar-mob-label">Payments</span>
+    <div style="width:36px;"></div>
   </div>
 
+  <!-- ═══ SIDEBAR OVERLAY (mobile backdrop) ═══ -->
+  <div id="sidebar-overlay" class="sidebar-overlay" onclick="sidebarClose()"></div>
+
+  <!-- ═══ LEFT SIDEBAR ═══ -->
+  <aside id="left-sidebar" class="left-sidebar">
+    <!-- Logo area -->
+    <div class="sidebar-logo">
+      <button onclick="showLanding()" class="sidebar-brand-btn" title="Back to landing">
+        <div class="sidebar-brand-icon">
+          <i class="fas fa-robot"></i>
+        </div>
+        <div class="sidebar-brand-text">
+          <span class="sidebar-brand-name">ExecDaat</span>
+          <span class="sidebar-brand-sub">Secure Payments</span>
+        </div>
+      </button>
+      <!-- Mobile close -->
+      <button id="sidebar-close-btn" onclick="sidebarClose()" class="sidebar-close-btn" aria-label="Close menu">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <!-- Nav items -->
+    <nav class="sidebar-nav" role="navigation" aria-label="Main navigation">
+      <button onclick="switchTab('payments');sidebarClose();" id="tab-payments" class="tab-btn sidebar-item" data-label="Payments">
+        <span class="sidebar-item-icon"><i class="fas fa-dollar-sign"></i></span>
+        <span class="sidebar-item-label" data-i18n="tab_payments">Payments</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('contracts');sidebarClose();" id="tab-contracts" class="tab-btn sidebar-item" data-label="Contracts">
+        <span class="sidebar-item-icon"><i class="fas fa-file-contract"></i></span>
+        <span class="sidebar-item-label" data-i18n="tab_contracts">Contracts</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('otc');sidebarClose();" id="tab-otc" class="tab-btn sidebar-item" data-label="OTC Contracts">
+        <span class="sidebar-item-icon"><i class="fas fa-handshake"></i></span>
+        <span class="sidebar-item-label">OTC Contracts</span>
+        <span class="sidebar-badge sidebar-badge-new">NEW</span>
+        <span id="otc-alert-badge" class="hidden sidebar-badge sidebar-badge-alert"></span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('multisend');sidebarClose();" id="tab-multisend" class="tab-btn sidebar-item" data-label="MultiSend">
+        <span class="sidebar-item-icon"><i class="fas fa-paper-plane"></i></span>
+        <span class="sidebar-item-label">MultiSend</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('dex');sidebarClose();" id="tab-dex" class="tab-btn sidebar-item" data-label="Swap">
+        <span class="sidebar-item-icon"><i class="fas fa-exchange-alt"></i></span>
+        <span class="sidebar-item-label">Swap</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('bridge');sidebarClose();" id="tab-bridge" class="tab-btn sidebar-item" data-label="Bridge">
+        <span class="sidebar-item-icon"><i class="fas fa-right-left"></i></span>
+        <span class="sidebar-item-label">Bridge</span>
+        <span class="sidebar-badge sidebar-badge-cctp">CCTP</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('autonoma');sidebarClose();" id="tab-autonoma" class="tab-btn sidebar-item" data-label="Autonomous">
+        <span class="sidebar-item-icon"><i class="fas fa-robot"></i></span>
+        <span class="sidebar-item-label">Autonomous</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('history');sidebarClose();" id="tab-history" class="tab-btn sidebar-item" data-label="History">
+        <span class="sidebar-item-icon"><i class="fas fa-history"></i></span>
+        <span class="sidebar-item-label">History</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('dashboard');sidebarClose();" id="tab-dashboard" class="tab-btn sidebar-item" data-label="Information">
+        <span class="sidebar-item-icon"><i class="fas fa-info-circle"></i></span>
+        <span class="sidebar-item-label">Information</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+    </nav>
+
+    <!-- Sidebar footer: network status -->
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-net">
+        <span class="sidebar-footer-dot"></span>
+        <span class="sidebar-footer-netname">Arc Testnet</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ MAIN CONTENT WRAPPER (offset by sidebar) ═══ -->
+  <div id="app-content-wrap" class="app-content-wrap">
+
   <!-- Main Content -->
-  <main class="max-w-7xl mx-auto px-6 py-8">
+  <main class="sidebar-main-content">
 
 
     <!-- DASHBOARD TAB -->
@@ -1915,10 +1978,13 @@ app.get('/', (c) => {
                 <i class="fas fa-sync" style="font-size:9px;"></i> Update
               </button>
             </div>
-            <div id="payments-list" style="padding:12px;">
-              <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
-                <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#5a7898;"></i>
-                No payments in queue
+            <div id="payments-list" style="padding:0;">
+              <div class="pay-queue-empty">
+                <div class="pay-queue-empty-visual">
+                  <i class="fas fa-robot"></i>
+                </div>
+                <div class="pay-queue-empty-label">No payments in queue</div>
+                <div class="pay-queue-empty-sub">Scheduled and agent-triggered payments<br>will appear here automatically.</div>
               </div>
             </div>
           </div>
@@ -4473,6 +4539,7 @@ app.get('/', (c) => {
 
 
   </main>
+  </div><!-- /#app-content-wrap -->
 
   <!-- ===== CHATBOT WIDGET v2 ===== -->
   <!-- Floating Action Button -->

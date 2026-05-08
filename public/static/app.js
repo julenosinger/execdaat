@@ -67,6 +67,8 @@ function switchTab(tab) {
                            'border-blue-500', 'text-blue-400', 'border-cyan-500', 'text-cyan-400');
       btn.classList.add('border-transparent', 'text-gray-400');
     });
+    // Deactivate sidebar items
+    document.querySelectorAll('.sidebar-item').forEach(btn => btn.classList.remove('active'));
 
     // Show selected content with fade-in
     const content = document.getElementById(`tab-content-${tab}`);
@@ -85,23 +87,18 @@ function switchTab(tab) {
     if (tabBtn) {
       tabBtn.classList.add('active');
       tabBtn.classList.remove('border-transparent', 'text-gray-400');
-      // Per-tab accent color
-      const tabColors = {
-        home:      ['border-purple-500', 'text-purple-400'],
-        agents:    ['border-purple-500', 'text-purple-400'],
-        payments:  ['border-green-500',  'text-green-400'],
-        contracts: ['border-blue-500',   'text-blue-400'],
-        otc:       ['border-indigo-500', 'text-indigo-400'],
-        dex:       ['border-yellow-500', 'text-yellow-400'],
-        bridge:    ['border-cyan-500',   'text-cyan-400'],
-        multisend: ['border-cyan-500',   'text-cyan-400'],
-        autonoma:  ['border-purple-500', 'text-purple-400'],
-        history:   ['border-blue-500',   'text-blue-400'],
-        dashboard: ['border-indigo-500', 'text-indigo-400'],
-        about:     ['border-emerald-500','text-emerald-400'],
+    }
+
+    // Update mobile top-bar label
+    const mobLabel = document.getElementById('mob-tab-label');
+    if (mobLabel) {
+      const tabLabels = {
+        payments:'Payments', contracts:'Contracts', otc:'OTC Contracts',
+        multisend:'MultiSend', dex:'Swap', bridge:'Bridge',
+        autonoma:'Autonomous', history:'History', dashboard:'Information',
+        agents:'Agents', home:'Home',
       };
-      const [bc, tc] = tabColors[tab] || ['border-purple-500', 'text-purple-400'];
-      tabBtn.classList.add(bc, tc);
+      mobLabel.textContent = tabLabels[tab] || tab;
     }
 
     currentTab = tab;
@@ -186,6 +183,33 @@ function switchTab(tab) {
 
   }, prevContent && !prevContent.classList.contains('hidden') ? 150 : 0);
 }
+
+// ============================================================
+// SIDEBAR — open/close (mobile drawer + tablet/desktop fixed)
+// ============================================================
+function sidebarOpen() {
+  const sb = document.getElementById('left-sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (!sb) return;
+  sb.classList.add('open');
+  if (ov) { ov.style.display = 'block'; requestAnimationFrame(() => ov.classList.add('active')); }
+  document.body.style.overflow = 'hidden';
+}
+
+function sidebarClose() {
+  const sb = document.getElementById('left-sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (!sb) return;
+  sb.classList.remove('open');
+  if (ov) {
+    ov.classList.remove('active');
+    setTimeout(() => { if (!ov.classList.contains('active')) ov.style.display = ''; }, 260);
+  }
+  document.body.style.overflow = '';
+}
+
+window.sidebarOpen  = sidebarOpen;
+window.sidebarClose = sidebarClose;
 
 // ============================================================
 // TOAST NOTIFICATIONS
@@ -393,9 +417,12 @@ function renderPaymentsList(data) {
   
   if (allTasks.length === 0) {
     list.innerHTML = `
-      <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
-        <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#5a7898;"></i>
-        ${t ? t('no_payments') : 'No payments in queue'}
+      <div class="pay-queue-empty">
+        <div class="pay-queue-empty-visual">
+          <i class="fas fa-robot"></i>
+        </div>
+        <div class="pay-queue-empty-label">No payments in queue</div>
+        <div class="pay-queue-empty-sub">Scheduled and agent-triggered payments<br>will appear here automatically.</div>
       </div>
     `;
     return;
@@ -818,16 +845,6 @@ function showLanding() {
 // Auto-enter app if wallet is already connected (e.g. page refresh with persisted wallet)
 function checkAutoEnter() {
   if (window.walletState?.connected) enterApp();
-}
-
-// Open account creation modal
-function openCreateAccount() {
-  if (window.openAuthModal) {
-    window.openAuthModal('signup');
-  } else {
-    // fallback: go to app
-    enterApp();
-  }
 }
 
 // ============================================================
