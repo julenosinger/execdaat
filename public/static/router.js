@@ -1,8 +1,7 @@
 // ============================================================
-// ExecDaat — SPA Router (Feature 2)
-// Hash-based routing: /app#/contracts, /app#/payments, etc.
-// Also handles direct URL path routing via Cloudflare Pages
-// Build: 20260407a
+// ExecDaat — SPA Router v20260511a
+// Clean URL routing: /payments, /contracts, etc. (sem hash)
+// Usa history.pushState — sem # na URL
 // ============================================================
 'use strict';
 
@@ -18,6 +17,7 @@ const DAAT_ROUTES = [
   { path: '/bridge',     tab: 'bridge',     label: 'Bridge',     icon: 'fas fa-right-left',    color: '#06b6d4' },
   { path: '/multisend',  tab: 'multisend',  label: 'MultiSend',  icon: 'fas fa-paper-plane',   color: '#06b6d4' },
   { path: '/history',    tab: 'history',    label: 'History',    icon: 'fas fa-history',       color: '#60a5fa' },
+  { path: '/home',       tab: 'home',       label: 'Home',       icon: 'fas fa-home',          color: '#6366f1' },
 ];
 
 // tab-name → route path (for reverse lookup)
@@ -29,13 +29,18 @@ let _currentRoute  = null;
 let _popStateBound = false;
 
 /* ─── Helpers ─────────────────────────────────────────────── */
-function _getHashPath() {
-  // Support both /#/payments and /payments (direct URL)
+function _getCurrentPath() {
+  // Clean URL mode: usa pathname
+  // Suporte legado: se ainda há hash #/xxx, migra para clean URL
   const hash = location.hash.replace(/^#/, '');
-  if (hash.startsWith('/')) return hash.split('?')[0];
-  // Fall back to pathname
+  if (hash.startsWith('/')) {
+    // Migrar hash para clean URL sem reload
+    const cleanPath = hash.split('?')[0];
+    history.replaceState(null, '', cleanPath);
+    return cleanPath;
+  }
   const path = location.pathname.replace(/\/$/, '');
-  return path || '/dashboard';
+  return path || '/payments';
 }
 
 function _routeForPath(path) {
@@ -49,21 +54,20 @@ function _tabForPath(path) {
 
 /* ─── Navigation ──────────────────────────────────────────── */
 /**
- * Navigate to a named tab — updates the URL hash and switches tabs.
- * Does NOT reload the page; wallet state is preserved.
+ * Navigate to a named tab — atualiza a URL limpa e troca de aba.
+ * NÃO recarrega a página; estado da wallet é preservado.
  * @param {string} tab  - tab name (e.g. 'payments', 'contracts')
- * @param {boolean} [replace] - use replaceState instead of pushState
+ * @param {boolean} [replace] - usar replaceState em vez de pushState
  */
 function daatNavigate(tab, replace = false) {
-  const path = TAB_TO_PATH[tab] || '/dashboard';
+  const path = TAB_TO_PATH[tab] || '/payments';
 
-  // Update URL without reload
-  const newHash = '#' + path;
-  if (location.hash !== newHash) {
+  // Atualizar URL sem reload (clean URL)
+  if (location.pathname !== path) {
     if (replace) {
-      history.replaceState({ tab, path }, '', newHash);
+      history.replaceState({ tab, path }, '', path);
     } else {
-      history.pushState({ tab, path }, '', newHash);
+      history.pushState({ tab, path }, '', path);
     }
   }
 
@@ -74,44 +78,60 @@ function _applyRoute(tab) {
   if (_currentRoute === tab) return;
   _currentRoute = tab;
 
-  // Show app-shell if hidden — do NOT call enterApp() because it forces 'agents' tab
+  // Mostrar app-shell se oculto
   const shell   = document.getElementById('app-shell');
   const landing = document.getElementById('landing-page');
   if (shell && shell.classList.contains('hidden')) {
     if (landing) landing.classList.add('hidden');
     shell.classList.remove('hidden');
+    // Esconder o header legado (sticky-topbar-anchor) — ele pertence apenas
+    // à landing page. O app-shell tem seu próprio app-topbar-wrap inline.
+    // Sem isso, o header legado ocupa espaço no topo e cria a área escura vazia.
+    const oldTopbar = document.getElementById('sticky-topbar-anchor');
+    if (oldTopbar) {
+      oldTopbar.style.display = 'none';
+      oldTopbar.setAttribute('aria-hidden', 'true');
+    }
+    // Restaurar estado de colapso da sidebar
+    try {
+      if (localStorage.getItem('sidebarCollapsed') === '1') {
+        shell.classList.add('sidebar-collapsed');
+        const icon = document.getElementById('sidebar-collapse-icon');
+        if (icon) icon.style.transform = 'rotate(180deg)';
+      }
+    } catch(e){}
   }
 
-  // Delegate to existing switchTab
+  // Delegar para switchTab existente
   if (typeof window.switchTab === 'function') {
     window.switchTab(tab);
   }
 
-  // Update router-nav active states
+  // Atualizar highlight do nav
   _updateRouterNavHighlight(tab);
 
-  // Update page title
+  // Atualizar título da página
   const route = DAAT_ROUTES.find(r => r.tab === tab);
   if (route) {
     document.title = route.label + ' — ExecDaat';
   }
 }
 
-/* ─── popstate (Back / Forward buttons) ──────────────────── */
+/* ─── popstate (Botões Voltar / Avançar) ──────────────────── */
 function _onPopState(e) {
-  const path = _getHashPath();
+  const path = _getCurrentPath();
   const tab  = _tabForPath(path);
   if (tab) _applyRoute(tab);
 }
 
-/* ─── Router Nav HTML (sidebar / topnav supplement) ──────── */
+/* ─── Router Nav HTML ──────────────────────────────────────── */
 function _buildRouterNav() {
   if (document.getElementById('daat-router-nav')) return;
 
   const nav = document.createElement('nav');
   nav.id        = 'daat-router-nav';
   nav.innerHTML = DAAT_ROUTES.map(r => `
-    <a href="#${r.path}"
+    <a href="${r.path}"
        data-route-tab="${r.tab}"
        onclick="daatNavigate('${r.tab}');return false;"
        class="daat-rnav-link"
@@ -120,17 +140,14 @@ function _buildRouterNav() {
       <span>${r.label}</span>
     </a>`).join('');
 
-  // Insert after tab-nav
   const tabNav = document.getElementById('tab-nav');
   if (tabNav && tabNav.parentNode) {
     tabNav.parentNode.insertBefore(nav, tabNav.nextSibling);
   } else {
-    // fallback: prepend to app-shell
     const shell = document.getElementById('app-shell');
     if (shell) shell.prepend(nav);
   }
 
-  // Inject styles
   _injectRouterStyles();
 }
 
@@ -148,10 +165,8 @@ function _injectRouterStyles() {
   s.id = 'daat-router-styles';
   s.textContent = `
     #daat-router-nav {
-      display: none;           /* hidden by default — shown via URL routing only */
+      display: none;
     }
-
-    /* Route-aware breadcrumb shown in header area */
     #daat-breadcrumb {
       display: inline-flex;
       align-items: center;
@@ -183,14 +198,11 @@ function _updateBreadcrumb(tab) {
 }
 
 /* ─── Settings tab support ────────────────────────────────── */
-// The Settings tab is opened via openSettingsModal() by default.
-// We intercept /settings route to open the modal seamlessly.
 function _handleSettingsRoute() {
   if (typeof window.openSettingsModal === 'function') {
     window.openSettingsModal();
   } else {
-    // Fallback: switch to dashboard
-    daatNavigate('dashboard', true);
+    daatNavigate('payments', true);
   }
 }
 
@@ -200,32 +212,26 @@ function daatRouterInit() {
   _popStateBound = true;
 
   window.addEventListener('popstate', _onPopState);
-  window.addEventListener('hashchange', _onPopState);
 
-  // Intercept switchTab calls to keep URL in sync
+  // Interceptar switchTab para manter URL em sync
   const _origSwitchTab = window.switchTab;
   if (typeof _origSwitchTab === 'function') {
     window.switchTab = function(tab) {
       _origSwitchTab(tab);
-      // Update hash without triggering _applyRoute again
       const path = TAB_TO_PATH[tab];
-      if (path) {
-        const newHash = '#' + path;
-        if (location.hash !== newHash) {
-          history.replaceState({ tab, path }, '', newHash);
-        }
+      if (path && location.pathname !== path) {
+        history.replaceState({ tab, path }, '', path);
       }
       _updateRouterNavHighlight(tab);
       _updateBreadcrumb(tab);
     };
   }
 
-  // Handle initial URL
-  const path = _getHashPath();
+  // Lidar com URL inicial
+  const path = _getCurrentPath();
   const tab  = _tabForPath(path);
 
   if (tab) {
-    // Wait for DOM / app to be ready
     const _initRoute = () => {
       if (tab === 'settings') {
         _handleSettingsRoute();
@@ -234,7 +240,6 @@ function daatRouterInit() {
       const shell   = document.getElementById('app-shell');
       const landing = document.getElementById('landing-page');
       if (shell && shell.classList.contains('hidden')) {
-        // Show app-shell without forcing 'agents' tab (enterApp() would do that)
         if (landing) landing.classList.add('hidden');
         shell.classList.remove('hidden');
         setTimeout(() => {
@@ -264,7 +269,7 @@ function daatRouterInit() {
     document.addEventListener('DOMContentLoaded', _buildRouterNav);
   }
 
-  console.log('[ROUTER] daatRouterInit · v20260407a · path=', path, '→ tab=', tab || '(none)');
+  console.log('[ROUTER] v20260511a · clean URLs · path=', path, '→ tab=', tab || '(none)');
 }
 
 /* ─── Expose globals ──────────────────────────────────────── */
@@ -272,7 +277,7 @@ window.daatNavigate   = daatNavigate;
 window.daatRouterInit = daatRouterInit;
 window.DAAT_ROUTES    = DAAT_ROUTES;
 
-// Auto-init after DOM ready
+// Auto-init após DOM ready
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
   setTimeout(daatRouterInit, 100);
 } else {
