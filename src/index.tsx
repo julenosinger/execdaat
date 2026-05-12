@@ -48,8 +48,8 @@ app.use('*', cors({
   maxAge:        600,
 }))
 
-// Servir arquivos estáticos
-app.use('/static/*', serveStatic({ root: './public' }))
+// NOTA: /static/* é servido diretamente pelo CDN do Cloudflare Pages (via _routes.json exclude).
+// O serveStatic do Hono NÃO é usado aqui — o Worker não intercepta /static/*.
 
 // ── Security & Trust files (read by GoPlus, OKX Wallet, ScamSniffer) ──────────
 // Served as inline routes to avoid Hono serveStatic issues with dotfiles/paths.
@@ -506,31 +506,11 @@ app.get('/api/status', (c) => {
   })
 })
 
-// ─── SPA Route Aliases — redirect path-based URLs to hash-based SPA ──────────
-// e.g. /payments → /#/payments (preserves wallet state, no reload of JS)
-const SPA_ROUTES: Record<string, string> = {
-  '/home':      'home',
-  '/dashboard': 'dashboard',
-  '/payments':  'payments',
-  '/contracts': 'contracts',
-  '/autonoma':  'autonoma',
-  '/settings':  'settings',
-  '/otc':       'otc',
-  '/swap':      'swap',
-  '/bridge':    'bridge',
-  '/multisend': 'multisend',
-  '/history':   'history',
-}
-
-for (const [routePath, tab] of Object.entries(SPA_ROUTES)) {
-  app.get(routePath, (c) => {
-    // Redirect to SPA with hash so the JS router picks it up
-    return c.redirect(`/#/${tab}`, 302)
-  })
-}
-
-// GET / - Interface principal
-app.get('/', (c) => {
+// ─── SPA HTML builder ─────────────────────────────────────────────────────────
+// Compartilhado entre '/' e todas as rotas clean URL da SPA.
+// O JS router.js lê window.location.pathname e ativa a aba correta.
+// ──────────────────────────────────────────────────────────────────────────────
+const buildSPAHtml = (c: any) => {
   return c.html(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -777,27 +757,52 @@ app.get('/', (c) => {
     >✕</button>
   </div>
 
-  <!-- HEADER — stacks directly below banner inside sticky wrapper -->
-  <header id="main-header" class="bg-gray-900/95 border-b border-purple-800/30 px-6 py-3 backdrop-blur-sm" style="position:relative;z-index:50;">
-    <div class="max-w-7xl mx-auto flex items-center justify-between">
-      <button onclick="showLanding()" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
-          <i class="fas fa-robot text-white text-base"></i>
+  <!-- HEADER — Compact futuristic top bar (reference-matched) -->
+  <header id="main-header" class="main-header-bar">
+    <div class="main-header-inner">
+
+      <!-- LEFT: Brand (compact) -->
+      <button onclick="showLanding()" class="hdr-brand-btn" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+        <div class="hdr-brand-icon">
+          <i class="fas fa-robot" style="color:#fff;font-size:13px;"></i>
         </div>
-        <div class="text-left">
-          <div class="font-bold text-base leading-none" style="background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.06em;font-weight:900">ExecDaat</div>
-          <div class="text-[10px] text-purple-400 leading-none mt-0.5">Secure Payments &amp; Smart Contracts</div>
+        <div class="hdr-brand-text">
+          <span class="hdr-brand-name">ExecDaat</span>
+          <span class="hdr-brand-sub">Secure Payments &amp; Smart Contracts</span>
         </div>
       </button>
-      <div class="flex items-center gap-2 sm:gap-3">
+
+      <!-- RIGHT: Status Pills -->
+      <div class="hdr-controls">
+
+        <!-- Network Pill -->
+        <div id="hdr-network-selector" class="hdr-pill hdr-pill-net" title="Arc Testnet · Chain ID 5042002"
+          onmouseover="this.classList.add('hdr-pill-hover')" onmouseout="this.classList.remove('hdr-pill-hover')">
+          <span class="hdr-net-dot"></span>
+          <span class="hdr-pill-label">Arc Testnet</span>
+        </div>
+
+        <!-- Wallet Address Pill (when connected) -->
+        <div id="wallet-info" class="hidden hdr-pill hdr-pill-wallet" style="display:none;" onclick="openWalletModal()"
+          onmouseover="this.style.borderColor='rgba(124,58,237,0.5)';this.style.background='rgba(124,58,237,0.14)'"
+          onmouseout="this.style.borderColor='rgba(124,58,237,0.25)';this.style.background='rgba(124,58,237,0.07)'">
+          <div class="hdr-wallet-avatar" id="wallet-avatar">??</div>
+          <span class="hdr-pill-label" id="wallet-address-display">0x…</span>
+          <div id="wallet-network-display" style="display:none;"></div>
+        </div>
+
+        <!-- Balance Pill (when connected) -->
+        <div id="wallet-balance-display" style="display:none;" class="hdr-pill hdr-pill-balance"></div>
+
         <!-- Language Selector -->
-        <div id="lang-selector" class="relative">
-          <button onclick="toggleLangDropdown()"
-            class="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-500 rounded-xl px-3 py-2 text-sm text-gray-300 transition-all">
-            <i class="fas fa-globe text-purple-400 text-xs"></i>
-            <span id="lang-toggle-label" class="hidden sm:inline">🇺🇸 English <i class="fas fa-chevron-down text-xs ml-1 text-gray-500"></i></span>
+        <div id="lang-selector" class="relative hidden sm:block">
+          <button onclick="toggleLangDropdown()" class="hdr-icon-btn" title="Language"
+            onmouseover="this.style.background='rgba(124,58,237,0.14)';this.style.borderColor='rgba(124,58,237,0.4)'"
+            onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(124,58,237,0.18)'">
+            <i class="fas fa-globe" style="font-size:12px;"></i>
+            <span id="lang-toggle-label" style="font-size:10px;font-weight:600;color:#a78bfa;">EN</span>
           </button>
-          <div id="lang-dropdown" class="hidden absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 min-w-[160px] overflow-hidden">
+          <div id="lang-dropdown" class="hidden absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 min-w-[160px] overflow-hidden" style="background:rgba(10,12,28,0.98);backdrop-filter:blur(16px);border-color:rgba(124,58,237,0.25);">
             <button onclick="setLang('en')" data-lang="en" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇺🇸</span> English</button>
             <button onclick="setLang('pt')" data-lang="pt" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇧🇷</span> Português</button>
             <button onclick="setLang('es')" data-lang="es" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇪🇸</span> Español</button>
@@ -806,45 +811,44 @@ app.get('/', (c) => {
           </div>
         </div>
 
-        <!-- Arc Network badge -->
-        <div class="hidden sm:flex items-center gap-1.5 bg-green-900/30 border border-green-700/40 rounded-full px-3 py-1.5">
-          <div class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
-          <span class="text-xs text-green-400 font-medium">Arc Testnet</span>
-        </div>
-
-
-
-        <!-- Wallet info (when connected) -->
-        <div id="wallet-info" class="hidden items-center gap-2 bg-gray-800/80 border border-gray-700/50 rounded-xl px-3 py-2 cursor-pointer hover:border-purple-600/50 transition-all" onclick="openWalletModal()">
-          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" id="wallet-avatar">??</div>
-          <div class="hidden sm:block">
-            <div class="text-xs text-white font-mono font-medium leading-none" id="wallet-address-display">0x...</div>
-            <div id="wallet-network-display" class="text-xs text-green-400 leading-none mt-0.5"></div>
+        <!-- Notifications -->
+        <div style="position:relative;">
+          <button id="hdr-notif-btn" onclick="arcToggleNotifPanel()" class="hdr-icon-btn hdr-notif-btn" title="Notifications"
+            onmouseover="this.style.background='rgba(124,58,237,0.14)';this.style.borderColor='rgba(124,58,237,0.4)'"
+            onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(124,58,237,0.18)'">
+            <i class="fas fa-bell" style="font-size:13px;"></i>
+            <span id="hdr-notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:linear-gradient(135deg,#7c3aed,#3b82f6);border-radius:50%;font-size:9px;font-weight:800;color:#fff;display:none;align-items:center;justify-content:center;border:2px solid rgba(8,10,22,1);padding:0 3px;line-height:1;">0</span>
+          </button>
+          <!-- Notifications Panel -->
+          <div id="hdr-notif-panel" style="display:none;position:absolute;right:0;top:calc(100% + 8px);width:340px;max-height:420px;background:rgba(10,12,28,0.98);backdrop-filter:blur(20px);border:1px solid rgba(124,58,237,0.25);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.5),0 0 0 1px rgba(124,58,237,0.1);z-index:999;overflow:hidden;animation:hdrNotifSlide 0.2s ease;">
+            <div style="padding:12px 16px;border-bottom:1px solid rgba(124,58,237,0.15);display:flex;align-items:center;justify-content:space-between;">
+              <span style="color:#e2e8f0;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;"><i class="fas fa-bell" style="color:#a78bfa;"></i>Notifications</span>
+              <button onclick="arcClearNotifs()" style="font-size:10px;color:#7a90b0;background:none;border:none;cursor:pointer;transition:color 0.2s;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#7a90b0'">Clear all</button>
+            </div>
+            <div id="hdr-notif-list" style="overflow-y:auto;max-height:340px;padding:8px;">
+              <div style="text-align:center;padding:28px 16px;color:#4a6490;">
+                <i class="fas fa-bell-slash" style="font-size:24px;display:block;margin-bottom:8px;color:#2a3654;"></i>
+                <div style="font-size:12px;">No notifications yet</div>
+              </div>
+            </div>
           </div>
-          <div id="wallet-balance-display" class="hidden text-xs text-blue-400 font-medium bg-blue-900/30 px-2 py-0.5 rounded-full"></div>
         </div>
 
-        <!-- Settings -->
-        <button onclick="openSettingsModal()" id="settings-btn"
-          class="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-500 rounded-xl text-gray-400 hover:text-white transition-all relative" title="Settings">
-          <i class="fas fa-cog text-sm"></i>
-          <span id="settings-dot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full border-2 border-gray-900"></span>
-        </button>
-
-        <!-- Profile -->
-        <button onclick="openProfileModal()" id="profile-btn"
-          class="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-purple-700 to-blue-700 hover:from-purple-600 hover:to-blue-600 border border-purple-600/40 rounded-xl text-white font-bold text-xs transition-all" title="Profile">
-          <span id="profile-avatar-btn">👤</span>
-        </button>
-
-        <!-- Connect Wallet Button -->
+        <!-- Connect Wallet Button (when disconnected) -->
         <button id="wallet-connect-btn" onclick="openWalletModal()"
-          class="wallet-connect-pulse flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-lg shadow-purple-900/30">
-          <i class="fas fa-wallet"></i>
-          <span class="hidden sm:inline" data-i18n="btn_connect">Connect</span>
+          class="wallet-connect-pulse hdr-connect-btn"
+          onmouseover="this.style.boxShadow='0 0 28px rgba(124,58,237,0.7)';this.style.transform='translateY(-1px)'"
+          onmouseout="this.style.boxShadow='0 0 16px rgba(124,58,237,0.35)';this.style.transform='translateY(0)'">
+          <i class="fas fa-wallet" style="font-size:11px;"></i>
+          <span data-i18n="btn_connect">Connect</span>
         </button>
 
-        <div id="wallet-badge" class="hidden sm:hidden w-2 h-2 rounded-full bg-green-400"></div>
+        <!-- Hidden legacy IDs preserved for JS compatibility -->
+        <div id="wallet-badge" class="hidden" style="display:none;width:8px;height:8px;border-radius:50%;background:#4ade80;"></div>
+        <span id="settings-dot" class="hidden" style="display:none;"></span>
+        <!-- Settings & Profile: moved to sidebar — keep hidden triggers for JS compatibility -->
+        <button id="settings-btn" onclick="openSettingsModal()" style="display:none;" aria-hidden="true"></button>
+        <button id="profile-btn" onclick="openProfileModal()" style="display:none;" aria-hidden="true"><span id="profile-avatar-btn"></span></button>
       </div>
     </div>
   </header>
@@ -1216,17 +1220,120 @@ app.get('/', (c) => {
       </button>
     </nav>
 
-    <!-- Sidebar footer: network status -->
-    <div class="sidebar-footer">
-      <div class="sidebar-footer-net">
-        <span class="sidebar-footer-dot"></span>
-        <span class="sidebar-footer-netname">Arc Testnet</span>
+    <!-- Sidebar bottom utility section -->
+    <div class="sidebar-bottom-section">
+
+      <!-- Separator -->
+      <div class="sidebar-bottom-sep"></div>
+
+      <!-- Profile & Settings actions -->
+      <div class="sidebar-util-group">
+        <button onclick="openProfileModal()" class="sidebar-util-item" title="Profile">
+          <span class="sidebar-item-icon"><i class="fas fa-user-circle"></i></span>
+          <span class="sidebar-item-label">Profile</span>
+        </button>
+        <button onclick="openSettingsModal()" class="sidebar-util-item" title="Settings">
+          <span class="sidebar-item-icon"><i class="fas fa-cog"></i></span>
+          <span class="sidebar-item-label">Settings</span>
+          <span id="sidebar-settings-dot" class="hidden sidebar-badge sidebar-badge-alert" style="width:8px;height:8px;padding:0;"></span>
+        </button>
       </div>
-    </div>
+
+      <!-- Network status -->
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-grid">
+          <div class="sidebar-footer-row">
+            <span class="sidebar-footer-key">Network</span>
+            <div class="sidebar-footer-net">
+              <span class="sidebar-footer-dot"></span>
+              <span class="sidebar-footer-netname">Arc Testnet</span>
+            </div>
+          </div>
+          <div class="sidebar-footer-row">
+            <span class="sidebar-footer-key">Chain ID</span>
+            <span class="sidebar-footer-chainid">5042002</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ask me CTA button -->
+      <div class="sidebar-askme-wrap">
+        <button onclick="toggleChat()" class="sidebar-askme-btn" id="sidebar-askme-btn">
+          <i class="fas fa-robot sidebar-askme-icon"></i>
+          <span class="sidebar-item-label">Ask me</span>
+        </button>
+      </div>
+
+    </div><!-- /.sidebar-bottom-section -->
   </aside>
+
+  <!-- Sidebar collapse toggle button -->
+  <button id="sidebar-collapse-btn" class="sidebar-collapse-btn" onclick="arcToggleSidebarCollapse()" title="Toggle sidebar">
+    <i class="fas fa-chevron-left" id="sidebar-collapse-icon"></i>
+  </button>
 
   <!-- ═══ MAIN CONTENT WRAPPER (offset by sidebar) ═══ -->
   <div id="app-content-wrap" class="app-content-wrap">
+
+  <!-- ═══ INLINE COMPACT HEADER (inside content area — respects sidebar margin) ═══ -->
+  <div id="app-topbar-wrap" class="app-topbar-wrap">
+    <!-- Testnet warning banner (compact) -->
+    <div id="app-testnet-banner" class="app-testnet-banner">
+      <span style="color:#f59e0b;font-size:12px;">⚠</span>
+      <span style="color:#f59e0b;font-weight:700;font-size:11px;letter-spacing:0.03em;">TESTNET ONLY —</span>
+      <span style="color:#94a3b8;font-size:11px;" class="hidden sm:inline">Arc Testnet. No real funds.</span>
+      <a href="https://testnet.arcscan.app" target="_blank" rel="noopener" style="color:#64748b;text-decoration:underline;font-size:10px;margin-left:2px;" class="hidden sm:inline">ArcScan ↗</a>
+      <button onclick="dismissAppBanner()" style="margin-left:auto;background:none;border:none;color:#64748b;font-size:12px;cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#64748b'" title="Dismiss">✕</button>
+    </div>
+    <!-- Compact header row -->
+    <div class="app-header-row">
+      <!-- Network pill -->
+      <div class="hdr-pill hdr-pill-net" title="Arc Testnet · Chain ID 5042002">
+        <span class="hdr-net-dot"></span>
+        <span class="hdr-pill-label hidden sm:inline">Arc Testnet</span>
+      </div>
+
+      <div style="flex:1;"></div>
+
+      <!-- Wallet Address Pill (when connected) -->
+      <div id="app-wallet-info" class="hidden hdr-pill hdr-pill-wallet" style="cursor:pointer;" onclick="openWalletModal()"
+        onmouseover="this.style.borderColor='rgba(124,58,237,0.5)';this.style.background='rgba(124,58,237,0.14)'"
+        onmouseout="this.style.borderColor='rgba(124,58,237,0.25)';this.style.background='rgba(124,58,237,0.07)'">
+        <div class="hdr-wallet-avatar" id="app-wallet-avatar">??</div>
+        <span class="hdr-pill-label hidden sm:inline" id="app-wallet-address">0x…</span>
+      </div>
+
+      <!-- Balance Pill (when connected) -->
+      <div id="app-balance-pill" style="display:none;" class="hdr-pill hdr-pill-balance"></div>
+
+      <!-- Language Selector -->
+      <div class="relative hidden sm:block">
+        <button onclick="toggleLangDropdown()" class="hdr-icon-btn" title="Language"
+          onmouseover="this.style.background='rgba(124,58,237,0.14)';this.style.borderColor='rgba(124,58,237,0.4)'"
+          onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(124,58,237,0.18)'">
+          <i class="fas fa-globe" style="font-size:12px;"></i>
+        </button>
+      </div>
+
+      <!-- Notifications -->
+      <div style="position:relative;">
+        <button onclick="arcToggleNotifPanel()" class="hdr-icon-btn hdr-notif-btn" title="Notifications"
+          onmouseover="this.style.background='rgba(124,58,237,0.14)';this.style.borderColor='rgba(124,58,237,0.4)'"
+          onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(124,58,237,0.18)'">
+          <i class="fas fa-bell" style="font-size:13px;"></i>
+          <span id="app-notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:linear-gradient(135deg,#7c3aed,#3b82f6);border-radius:50%;font-size:9px;font-weight:800;color:#fff;align-items:center;justify-content:center;border:2px solid rgba(8,10,22,1);padding:0 3px;line-height:1;"></span>
+        </button>
+      </div>
+
+      <!-- Connect Wallet (when disconnected) -->
+      <button id="app-wallet-connect-btn" onclick="openWalletModal()" class="hdr-connect-btn"
+        onmouseover="this.style.boxShadow='0 0 24px rgba(124,58,237,0.7)';this.style.transform='translateY(-1px)'"
+        onmouseout="this.style.boxShadow='0 0 14px rgba(124,58,237,0.35)';this.style.transform='translateY(0)'">
+        <i class="fas fa-wallet" style="font-size:11px;"></i>
+        <span>Connect</span>
+      </button>
+    </div>
+  </div>
 
   <!-- Main Content -->
   <main class="sidebar-main-content">
@@ -1654,30 +1761,59 @@ app.get('/', (c) => {
 
           <!-- Main form panel -->
           <div class="pay-cf-panel">
-            <div style="height:2px;background:linear-gradient(90deg,transparent,#378ADD 40%,#1D9E75 60%,transparent);"></div>
-            <div class="p-5">
+            <!-- Premium top accent bar -->
+            <div style="height:2px;background:linear-gradient(90deg,transparent,#7c3aed 30%,#60b4ff 55%,#1D9E75 80%,transparent);"></div>
+            <div style="padding:20px 20px 16px;">
 
-              <!-- Panel header -->
-              <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <div style="width:32px;height:32px;border-radius:10px;background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.25);display:flex;align-items:center;justify-content:center;">
-                    <i class="fas fa-paper-plane" style="color:#60b4ff;font-size:13px;"></i>
+              <!-- Panel header with token switcher -->
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,rgba(124,58,237,0.2),rgba(55,138,221,0.15));border:1px solid rgba(124,58,237,0.3);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(124,58,237,0.2);">
+                    <i class="fas fa-paper-plane" style="color:#a78bfa;font-size:14px;"></i>
                   </div>
                   <div>
-                    <p style="color:#dde2f0;font-size:14px;font-weight:800;margin:0;">Send Payment</p>
-                    <p style="color:#8aaac8;font-size:10px;margin:0;">Single on-chain transfer · Arc Testnet</p>
+                    <p style="color:#f0f4ff;font-size:15px;font-weight:800;margin:0;letter-spacing:-0.01em;">Send Payment</p>
+                    <p style="color:#6a90b8;font-size:10px;margin:2px 0 0;display:flex;align-items:center;gap:4px;">
+                      <span style="width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 6px rgba(52,211,153,0.7);display:inline-block;flex-shrink:0;"></span>
+                      ERC-20 Transfer · Arc Testnet · Chain 5042002
+                    </p>
                   </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:5px;">
-                  <button id="pay-token-usdc" class="pay-tok-btn tok-usdc" onclick="selectPayToken('USDC')">USDC</button>
-                  <button id="pay-token-eurc" class="pay-tok-btn tok-off"  onclick="selectPayToken('EURC')">EURC</button>
+                <!-- Token switcher with real addresses -->
+                <div style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.03);border:1px solid rgba(124,58,237,0.15);border-radius:12px;padding:4px;">
+                  <button id="pay-token-usdc" class="pay-tok-btn tok-usdc" onclick="selectPayToken('USDC')"
+                    title="USDC · 0x3600000000000000000000000000000000000000">
+                    <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png" style="width:14px;height:14px;border-radius:50%;margin-right:4px;vertical-align:middle;" onerror="this.style.display='none'">USDC
+                  </button>
+                  <button id="pay-token-eurc" class="pay-tok-btn tok-off" onclick="selectPayToken('EURC')"
+                    title="EURC · 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a">
+                    <i class="fas fa-euro-sign" style="margin-right:3px;font-size:10px;"></i>EURC
+                  </button>
                 </div>
               </div>
 
-              <!-- Anti-phishing -->
-              <div class="mb-4" style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);border-radius:10px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px;">
-                <i class="fas fa-shield-alt" style="color:#f87171;font-size:11px;flex-shrink:0;margin-top:1px;"></i>
-                <p style="color:#fca5a5;font-size:11px;margin:0;">Never enter private keys or seed phrases. All interactions use wallet approval only.</p>
+              <!-- Balance display bar -->
+              <div id="pay-balance-bar" style="background:linear-gradient(135deg,rgba(124,58,237,0.06),rgba(55,138,221,0.04));border:1px solid rgba(124,58,237,0.14);border-radius:10px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <i class="fas fa-wallet" style="color:#a78bfa;font-size:11px;"></i>
+                  <span style="color:#8aaac8;font-size:10px;font-weight:600;">Available Balance</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span id="pay-bal-display-usdc" style="font-size:11px;font-weight:700;color:#60b4ff;">— USDC</span>
+                  <span style="color:#2a3654;font-size:10px;">·</span>
+                  <span id="pay-bal-display-eurc" style="font-size:11px;font-weight:700;color:#a78bfa;">— EURC</span>
+                </div>
+              </div>
+
+              <!-- Security warning card (subtle red gradient) -->
+              <div style="background:linear-gradient(135deg,rgba(239,68,68,0.06),rgba(185,28,28,0.04));border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:10px 14px;display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;">
+                <div style="width:28px;height:28px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">
+                  <i class="fas fa-shield-alt" style="color:#f87171;font-size:11px;"></i>
+                </div>
+                <div>
+                  <p style="color:#fca5a5;font-size:11px;font-weight:700;margin:0 0 2px;">No Private Keys Required</p>
+                  <p style="color:rgba(252,165,165,0.7);font-size:10px;margin:0;line-height:1.4;">All transactions use wallet approval only. We never request or store private keys or seed phrases. Your keys remain in your wallet at all times.</p>
+                </div>
               </div>
 
               <!-- KYC Status Bar -->
@@ -1686,80 +1822,106 @@ app.get('/', (c) => {
               <!-- Smart Autofill Profile Bar -->
               <div id="pay-form-top"></div>
 
-              <div class="space-y-3">
+              <div style="display:flex;flex-direction:column;gap:14px;">
 
-                <!-- Recipient wallet + ENS -->
+                <!-- ── Recipient wallet + ENS ── -->
                 <div>
                   <label class="pay-cf-label">
-                    <i class="fas fa-hard-hat" style="color:#1D9E75;"></i>
-                    RECIPIENT WALLET (0x…)
-                    <span style="margin-left:auto;cursor:help;" title="Enter a 0x EVM wallet address (42 chars). Must match Arc Testnet (Chain 5042002). You can also type an ENS name and click ENS to resolve."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                    <i class="fas fa-user-circle" style="color:#a78bfa;font-size:12px;"></i>
+                    RECIPIENT WALLET
+                    <span style="color:#6a90b8;font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;margin-left:2px;">(0x… or ENS)</span>
+                    <span style="margin-left:auto;cursor:help;" title="Enter a 0x EVM wallet address (42 chars) or an ENS name. Address will be validated and checksummed. Arc Testnet only."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </label>
                   <div style="display:flex;gap:6px;align-items:flex-start;">
-                    <div style="flex:1;">
-                      <input type="text" id="pay-recipient" class="pay-cf-input px-3 py-2.5 text-sm font-mono"
+                    <div style="flex:1;position:relative;">
+                      <input type="text" id="pay-recipient" class="pay-cf-input"
+                        style="padding:10px 12px;font-family:'JetBrains Mono',monospace,sans-serif;font-size:12px;letter-spacing:0.02em;"
                         placeholder="0x… or vitalik.eth"
                         autocomplete="off" spellcheck="false"
                         inputmode="text"
-                        oninput="payValidateField('recipient'); updatePayPreview(); payValidateForm()">
-                      <div id="pay-hint-recipient" class="pay-field-hint"></div>
+                        oninput="payRecipientFormat(this);payValidateField('recipient');updatePayPreview();payValidateForm()">
+                      <div id="pay-hint-recipient" class="pay-field-hint" style="min-height:16px;"></div>
                     </div>
                     <button id="pay-ens-btn" onclick="payResolveENS()"
                       title="Resolve ENS name to wallet address"
-                      style="flex-shrink:0;padding:9px 10px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:9px;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;white-space:nowrap;"
-                      onmouseover="this.style.background='rgba(167,139,250,0.2)'" onmouseout="this.style.background='rgba(167,139,250,0.1)'">
-                      <i class="fas fa-search"></i> ENS
+                      style="flex-shrink:0;padding:10px 12px;background:linear-gradient(135deg,rgba(167,139,250,0.1),rgba(124,58,237,0.08));border:1px solid rgba(167,139,250,0.3);border-radius:10px;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;white-space:nowrap;display:flex;align-items:center;gap:5px;"
+                      onmouseover="this.style.background='linear-gradient(135deg,rgba(167,139,250,0.2),rgba(124,58,237,0.15))';this.style.boxShadow='0 0 14px rgba(167,139,250,0.3)'"
+                      onmouseout="this.style.background='linear-gradient(135deg,rgba(167,139,250,0.1),rgba(124,58,237,0.08))';this.style.boxShadow='none'">
+                      <i class="fas fa-at" style="font-size:10px;"></i> ENS
                     </button>
                   </div>
                 </div>
 
-                <!-- Amount -->
+                <!-- ── Amount with live balance + fiat ── -->
                 <div>
                   <label class="pay-cf-label">
-                    <i class="fas fa-coins" style="color:#1D9E75;"></i>
-                    AMOUNT (<span id="pay-label-token">USDC</span>)
-                    <span id="pay-max-hint" style="font-size:10px;color:#8aaac8;font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto;"></span>
-                    <span style="cursor:help;" title="Enter the amount to send. Use MAX to fill your full balance. Amounts are in token units (6 decimals for USDC/EURC)."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                    <i class="fas fa-coins" style="color:#60b4ff;font-size:12px;"></i>
+                    AMOUNT
+                    <span style="color:#6a90b8;font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;margin-left:2px;">(<span id="pay-label-token">USDC</span>)</span>
+                    <span id="pay-max-hint" style="font-size:10px;color:#8aaac8;font-weight:500;text-transform:none;letter-spacing:0;margin-left:auto;"></span>
+                    <span style="cursor:help;margin-left:4px;" title="Enter amount in token units (6 decimals for USDC/EURC). Click MAX to use full balance."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </label>
                   <div style="position:relative;">
-                    <input type="number" id="pay-amount" class="pay-cf-input px-3 py-2.5 text-sm pr-24"
-                      placeholder="0.000000" min="0" step="0.000001"
-                      autocomplete="off"
-                      inputmode="decimal"
-                      oninput="payValidateField('amount'); updatePayPreview(); payValidateForm()">
+                    <input type="number" id="pay-amount" class="pay-cf-input"
+                      style="padding:10px 88px 10px 12px;font-size:14px;font-weight:700;"
+                      placeholder="0.00" min="0" step="0.000001"
+                      autocomplete="off" inputmode="decimal"
+                      oninput="payValidateField('amount');updatePayPreview();payValidateForm();arcPayUpdateFiatEstimate()">
                     <button onclick="setPayMax()"
-                      style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;color:#378ADD;background:rgba(55,138,221,0.12);padding:2px 8px;border-radius:8px;border:1px solid rgba(55,138,221,0.25);cursor:pointer;transition:all 0.2s;"
-                      onmouseover="this.style.background='rgba(55,138,221,0.22)'" onmouseout="this.style.background='rgba(55,138,221,0.12)'">MAX</button>
+                      style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:800;color:#7c3aed;background:linear-gradient(135deg,rgba(124,58,237,0.15),rgba(55,138,221,0.1));padding:4px 10px;border-radius:8px;border:1px solid rgba(124,58,237,0.35);cursor:pointer;transition:all 0.2s;letter-spacing:0.05em;"
+                      onmouseover="this.style.background='linear-gradient(135deg,rgba(124,58,237,0.28),rgba(55,138,221,0.2))';this.style.boxShadow='0 0 12px rgba(124,58,237,0.4)'"
+                      onmouseout="this.style.background='linear-gradient(135deg,rgba(124,58,237,0.15),rgba(55,138,221,0.1))';this.style.boxShadow='none'">MAX</button>
                   </div>
-                  <div id="pay-hint-amount" class="pay-field-hint"></div>
+                  <!-- Live fiat estimation -->
+                  <div id="pay-fiat-estimate" style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;min-height:16px;">
+                    <div id="pay-hint-amount" class="pay-field-hint" style="flex:1;margin-top:0;"></div>
+                    <div id="pay-fiat-val" style="font-size:10px;color:#6a90b8;font-weight:600;display:none;">≈ $<span id="pay-fiat-usd">0.00</span> USD</div>
+                  </div>
                 </div>
 
-                <!-- Gas Speed Selector -->
-                <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.15);border-radius:11px;padding:11px 13px 9px;">
-                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
-                    <i class="fas fa-tachometer-alt" style="color:#60b4ff;font-size:11px;"></i>
-                    <span style="color:#8aaac8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Gas Speed</span>
-                    <span style="margin-left:auto;cursor:help;" title="Choose transaction speed. Fast: higher gas, ~10s confirmation. Standard: balanced. Slow: lowest gas, ~120s."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                <!-- ── Gas Speed Selector Premium ── -->
+                <div style="background:rgba(8,10,22,0.6);border:1px solid rgba(124,58,237,0.15);border-radius:12px;padding:12px 14px;overflow:hidden;position:relative;">
+                  <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,0.4) 50%,transparent);pointer-events:none;"></div>
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;">
+                    <i class="fas fa-gas-pump" style="color:#a78bfa;font-size:11px;"></i>
+                    <span style="color:#a8c4e0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;">Gas Speed</span>
+                    <div id="pay-gas-live-gwei" style="margin-left:auto;font-size:9px;color:#4a6490;font-family:monospace;background:rgba(0,0,0,0.2);padding:2px 7px;border-radius:6px;"></div>
+                    <span style="cursor:help;" title="Choose transaction speed. Estimates update live from Arc Testnet gas oracle."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.6;"></i></span>
                   </div>
-                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;">
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
+                    <!-- Slow -->
                     <button id="pay-gas-slow" onclick="paySelectGasTier('slow')"
-                      style="padding:7px 5px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
-                      <div style="font-size:10px;font-weight:700;color:#6b7280;">🐢 Slow</div>
-                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
-                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~120s</div>
+                      style="padding:10px 6px;background:rgba(107,114,128,0.06);border:1px solid rgba(107,114,128,0.18);border-radius:10px;cursor:pointer;transition:all 0.2s;text-align:center;"
+                      onmouseover="if(document.getElementById('pay-gas-slow').style.borderColor.includes('0.18'))this.style.borderColor='rgba(107,114,128,0.35)'"
+                      onmouseout="if(document.getElementById('pay-gas-slow').style.borderColor.includes('0.35'))this.style.borderColor='rgba(107,114,128,0.18)'">
+                      <div style="font-size:16px;margin-bottom:3px;">🐢</div>
+                      <div style="font-size:10px;font-weight:700;color:#9ca3af;">Slow</div>
+                      <div class="gas-cost" style="font-size:9px;color:#6b7280;margin-top:2px;font-family:monospace;">—</div>
+                      <div class="gas-time" style="font-size:9px;color:#4b5563;margin-top:1px;">~120s</div>
                     </button>
+                    <!-- Standard (default active) -->
                     <button id="pay-gas-standard" onclick="paySelectGasTier('standard')"
-                      style="padding:7px 5px;background:rgba(55,138,221,0.18);border:1px solid rgba(55,138,221,0.5);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
-                      <div style="font-size:10px;font-weight:700;color:#60b4ff;">⚡ Standard</div>
-                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
-                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~30s</div>
+                      style="padding:10px 6px;background:linear-gradient(135deg,rgba(124,58,237,0.12),rgba(55,138,221,0.1));border:1px solid rgba(124,58,237,0.4);border-radius:10px;cursor:pointer;transition:all 0.2s;text-align:center;box-shadow:0 0 14px rgba(124,58,237,0.12);">
+                      <div style="font-size:16px;margin-bottom:3px;">⚡</div>
+                      <div style="font-size:10px;font-weight:800;color:#a78bfa;">Standard</div>
+                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;font-family:monospace;">—</div>
+                      <div class="gas-time" style="font-size:9px;color:#6a90b8;margin-top:1px;">~30s</div>
                     </button>
+                    <!-- Fast -->
                     <button id="pay-gas-fast" onclick="paySelectGasTier('fast')"
-                      style="padding:7px 5px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
-                      <div style="font-size:10px;font-weight:700;color:#34d399;">🚀 Fast</div>
-                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
-                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~10s</div>
+                      style="padding:10px 6px;background:rgba(52,211,153,0.05);border:1px solid rgba(52,211,153,0.15);border-radius:10px;cursor:pointer;transition:all 0.2s;text-align:center;"
+                      onmouseover="if(document.getElementById('pay-gas-fast').style.borderColor.includes('0.15'))this.style.borderColor='rgba(52,211,153,0.35)'"
+                      onmouseout="if(document.getElementById('pay-gas-fast').style.borderColor.includes('0.35'))this.style.borderColor='rgba(52,211,153,0.15)'">
+                      <div style="font-size:16px;margin-bottom:3px;">🚀</div>
+                      <div style="font-size:10px;font-weight:700;color:#34d399;">Fast</div>
+                      <div class="gas-cost" style="font-size:9px;color:#6b7280;margin-top:2px;font-family:monospace;">—</div>
+                      <div class="gas-time" style="font-size:9px;color:#4b5563;margin-top:1px;">~10s</div>
                     </button>
+                  </div>
+                  <!-- Gas fee summary row -->
+                  <div id="pay-gas-summary" style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid rgba(124,58,237,0.08);">
+                    <span style="font-size:10px;color:#4a6490;">Estimated gas fee</span>
+                    <span id="pay-gas-usd-display" style="font-size:10px;font-weight:700;color:#6a90b8;font-family:monospace;">—</span>
                   </div>
                 </div>
 
@@ -1772,67 +1934,75 @@ app.get('/', (c) => {
                   <div id="pay-fee-total"></div>
                 </div>
 
-                <!-- Payment Note -->
+                <!-- ── Payment Note ── -->
                 <div>
                   <label class="pay-cf-label">
-                    <i class="fas fa-sticky-note" style="color:#a78bfa;"></i>
+                    <i class="fas fa-comment-alt" style="color:#a78bfa;font-size:11px;"></i>
                     PAYMENT NOTE
-                    <span class="opt">(optional)</span>
-                    <span style="margin-left:auto;cursor:help;" title="A short text memo included in the receipt. Not stored on-chain. Max 300 characters."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                    <span style="color:#6a90b8;font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;margin-left:2px;">(optional, max 300 chars)</span>
+                    <span style="margin-left:auto;cursor:help;" title="Optional memo attached to the receipt. Not stored on-chain. UTF-8 supported. Max 300 characters."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </label>
-                  <textarea id="pay-note" class="pay-note-input px-3 py-2"
-                    placeholder="e.g. Freelance payment, invoice #123, salary…"
-                    maxlength="300"
-                    oninput="payUpdateNoteCounter(); updatePayPreview(); payValidateForm()"
-                    rows="2"></textarea>
-                  <div class="pay-note-counter"><span id="pay-note-count">0</span>/300</div>
+                  <div style="position:relative;">
+                    <textarea id="pay-note" class="pay-note-input"
+                      style="padding:10px 12px;font-size:12px;min-height:68px;"
+                      placeholder="e.g. Freelance payment · Invoice #123 · Monthly salary · Project milestone…"
+                      maxlength="300"
+                      oninput="payUpdateNoteCounter();updatePayPreview();payValidateForm()"
+                      rows="2"></textarea>
+                    <!-- Counter overlay -->
+                    <div class="pay-note-counter" id="pay-note-counter-wrap" style="position:absolute;bottom:6px;right:10px;font-size:9px;"><span id="pay-note-count">0</span>/300</div>
+                  </div>
                 </div>
 
-                <!-- Schedule Payment -->
-                <div class="pay-sched-panel">
+                <!-- ── Send Timing ── -->
+                <div style="background:rgba(8,10,22,0.6);border:1px solid rgba(167,139,250,0.15);border-radius:12px;padding:12px 14px;overflow:hidden;position:relative;">
+                  <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(167,139,250,0.4) 50%,transparent);pointer-events:none;"></div>
                   <div class="pay-cf-label" style="margin-bottom:10px;">
-                    <i class="fas fa-clock" style="color:#a78bfa;"></i>
+                    <i class="fas fa-clock" style="color:#a78bfa;font-size:12px;"></i>
                     <span data-i18n="sched_send_timing">SEND TIMING</span>
-                    <span style="margin-left:auto;cursor:help;" data-i18n-title="sched_send_timing_tooltip" title="Send Now executes immediately. Schedule queues the payment and executes at the specified time (MM/DD/YYYY, local → UTC). Gas estimate may vary at execution."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                    <span style="margin-left:auto;cursor:help;" title="Send Now executes immediately. Schedule queues the payment for future execution with timezone handling."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </div>
-                  <div class="pay-sched-toggle">
-                    <button type="button" class="pay-sched-opt active-now" id="pay-sched-now" onclick="paySetSchedule('now')">
-                      <i class="fas fa-bolt" style="margin-right:4px;"></i><span data-i18n="sched_send_now">Send Now</span>
+                  <div class="pay-sched-toggle" style="gap:6px;">
+                    <button type="button" class="pay-sched-opt active-now" id="pay-sched-now" onclick="paySetSchedule('now')"
+                      style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                      <i class="fas fa-bolt" style="font-size:10px;"></i><span data-i18n="sched_send_now">Send Now</span>
                     </button>
-                    <button type="button" class="pay-sched-opt" id="pay-sched-later" onclick="paySetSchedule('later')">
-                      <i class="fas fa-calendar-alt" style="margin-right:4px;"></i><span data-i18n="sched_send_later">Schedule for Later</span>
+                    <button type="button" class="pay-sched-opt" id="pay-sched-later" onclick="paySetSchedule('later')"
+                      style="display:flex;align-items:center;justify-content:center;gap:6px;">
+                      <i class="fas fa-calendar-alt" style="font-size:10px;"></i><span data-i18n="sched_send_later">Schedule for Later</span>
                     </button>
                   </div>
-                  <div id="pay-sched-inputs" style="display:none;">
-                    <div>
-                      <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;margin-top:2px;">
-                        <i class="fas fa-calendar" style="color:#60b4ff;"></i><span data-i18n="sched_date_label">DATE (MM/DD/YYYY)</span>
-                      </label>
-                      <input type="date" id="pay-sched-date" class="pay-cf-input px-3 py-2 text-sm"
-                        oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
+                  <div id="pay-sched-inputs" style="display:none;margin-top:12px;display:none;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                      <div>
+                        <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;">
+                          <i class="fas fa-calendar" style="color:#60b4ff;"></i><span data-i18n="sched_date_label">DATE</span>
+                        </label>
+                        <input type="date" id="pay-sched-date" class="pay-cf-input" style="padding:8px 10px;font-size:12px;"
+                          oninput="payValidateSched();updatePayPreview();payValidateForm()">
+                      </div>
+                      <div>
+                        <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;">
+                          <i class="fas fa-clock" style="color:#60b4ff;"></i><span data-i18n="sched_time_label">TIME</span>
+                        </label>
+                        <input type="time" id="pay-sched-time" class="pay-cf-input" style="padding:8px 10px;font-size:12px;"
+                          oninput="payValidateSched();updatePayPreview();payValidateForm()">
+                      </div>
                     </div>
-                    <div>
-                      <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;margin-top:2px;">
-                        <i class="fas fa-clock" style="color:#60b4ff;"></i><span data-i18n="sched_time_label">TIME</span>
-                      </label>
-                      <input type="time" id="pay-sched-time" class="pay-cf-input px-3 py-2 text-sm"
-                        oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
-                    </div>
-                    <div style="grid-column:1/-1;">
+                    <div style="margin-top:8px;">
                       <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;">
                         <i class="fas fa-globe" style="color:#34d399;"></i><span data-i18n="sched_tz_label">TIMEZONE</span>
                       </label>
-                      <select id="pay-sched-tz" class="pay-cf-input px-3 py-2 text-sm"
-                        oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
+                      <select id="pay-sched-tz" class="pay-cf-input" style="padding:8px 10px;font-size:12px;"
+                        oninput="payValidateSched();updatePayPreview();payValidateForm()">
                       </select>
                     </div>
-                    <div id="pay-sched-hint" class="pay-sched-hint" style="grid-column:1/-1;"></div>
-                    <!-- Future cost warning for scheduled payments -->
-                    <div id="pay-future-cost-warn" style="display:none;grid-column:1/-1;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:7px 10px;margin-top:4px;"></div>
+                    <div id="pay-sched-hint" class="pay-sched-hint" style="margin-top:6px;"></div>
+                    <div id="pay-future-cost-warn" style="display:none;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:7px 10px;margin-top:6px;font-size:10px;color:#fbbf24;"></div>
                   </div>
                 </div>
 
-                <!-- Preview box removed (hidden elements kept for JS compatibility) -->
+                <!-- Preview box (hidden elements kept for JS compatibility) -->
                 <div id="pay-preview-box" style="display:none;">
                   <span id="prev-token"></span>
                   <span id="prev-amount"></span>
@@ -1852,33 +2022,53 @@ app.get('/', (c) => {
                   <div id="prev-note-row" style="display:none;"></div>
                 </div>
 
+                <!-- ── Validation Status Bar ── -->
+                <div id="pay-validation-bar" style="border-radius:10px;padding:9px 12px;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;transition:all 0.25s;background:rgba(74,100,144,0.08);border:1px solid rgba(74,100,144,0.18);color:#4a6490;">
+                  <i id="pay-val-icon" class="fas fa-circle-notch fa-spin" style="color:#4a6490;font-size:10px;flex-shrink:0;"></i>
+                  <span id="pay-val-msg">Waiting for input…</span>
+                </div>
+
                 <!-- Error box -->
-                <div id="pay-error-box">
-                  <i class="fas fa-exclamation-circle" style="color:#f87171;flex-shrink:0;"></i>
-                  <span id="pay-error-text" style="color:#fca5a5;font-size:12px;flex:1;"></span>
-                  <button onclick="hidePayError()" style="background:none;border:none;color:#8aaac8;cursor:pointer;font-size:14px;padding:0;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#8aaac8'">✕</button>
+                <div id="pay-error-box" style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.28);border-radius:10px;padding:9px 13px;display:none;align-items:flex-start;gap:8px;">
+                  <i class="fas fa-exclamation-triangle" style="color:#f87171;flex-shrink:0;margin-top:1px;"></i>
+                  <span id="pay-error-text" style="color:#fca5a5;font-size:11px;flex:1;line-height:1.4;"></span>
+                  <button onclick="hidePayError()" style="background:none;border:none;color:#6a90b8;cursor:pointer;font-size:13px;padding:0;flex-shrink:0;transition:color 0.2s;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#6a90b8'">✕</button>
                 </div>
 
                 <!-- Retry button -->
                 <button id="pay-retry-btn" onclick="executePayment()"
-                  style="display:none;width:100%;padding:9px;background:rgba(251,191,36,0.09);border:1px solid rgba(251,191,36,0.3);border-radius:10px;color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;align-items:center;justify-content:center;gap:7px;"
-                  onmouseover="this.style.background='rgba(251,191,36,0.16)'" onmouseout="this.style.background='rgba(251,191,36,0.09)'">
+                  style="display:none;width:100%;padding:10px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.28);border-radius:11px;color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;align-items:center;justify-content:center;gap:7px;"
+                  onmouseover="this.style.background='rgba(251,191,36,0.16)';this.style.boxShadow='0 0 16px rgba(251,191,36,0.2)'"
+                  onmouseout="this.style.background='rgba(251,191,36,0.08)';this.style.boxShadow='none'">
                   <i class="fas fa-redo"></i> Retry Transaction
                 </button>
 
-                <!-- Submit button -->
-                <button type="button" id="pay-send-btn" onclick="executePayment()" disabled
-                  onmouseover="if(!this.disabled)this.style.boxShadow='0 0 30px rgba(55,138,221,0.5)'" onmouseout="if(!this.disabled)this.style.boxShadow='0 0 20px rgba(55,138,221,0.3)'">
-                  <i class="fas fa-paper-plane"></i>
-                  <span id="pay-send-btn-text">Sign &amp; Send</span>
-                </button>
+                <!-- ── Execution buttons ── -->
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <!-- Primary CTA: glowing purple gradient -->
+                  <button type="button" id="pay-send-btn" onclick="executePayment()" disabled
+                    style="width:100%;padding:14px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:13px;font-size:13px;font-weight:800;cursor:pointer;transition:all 0.3s;box-shadow:0 0 24px rgba(124,58,237,0.35);letter-spacing:0.04em;display:flex;align-items:center;justify-content:center;gap:9px;position:relative;overflow:hidden;"
+                    onmouseover="if(!this.disabled){this.style.boxShadow='0 0 40px rgba(124,58,237,0.6)';this.style.transform='translateY(-1px)';}"
+                    onmouseout="if(!this.disabled){this.style.boxShadow='0 0 24px rgba(124,58,237,0.35)';this.style.transform='translateY(0)';}">
+                    <span id="pay-btn-shimmer" style="position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.06) 50%,transparent 100%);transform:translateX(-100%);animation:payBtnShimmer 2.5s ease infinite;pointer-events:none;"></span>
+                    <i class="fas fa-paper-plane" style="font-size:12px;"></i>
+                    <span id="pay-send-btn-text">Sign &amp; Send</span>
+                  </button>
+                  <!-- Secondary outlined button -->
+                  <button type="button" onclick="if(window.payResetForm)payResetForm();else{document.getElementById('pay-recipient').value='';document.getElementById('pay-amount').value='';payValidateForm();}"
+                    style="width:100%;padding:10px;background:rgba(255,255,255,0.02);color:#6a90b8;border:1px solid rgba(100,116,139,0.2);border-radius:11px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;"
+                    onmouseover="this.style.background='rgba(124,58,237,0.06)';this.style.borderColor='rgba(124,58,237,0.25)';this.style.color='#a78bfa'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.02)';this.style.borderColor='rgba(100,116,139,0.2)';this.style.color='#6a90b8'">
+                    <i class="fas fa-times-circle" style="font-size:10px;"></i> Clear Form
+                  </button>
+                </div>
 
-                <p style="font-size:10px;color:#7a9cc0;text-align:center;margin-top:4px;">
-                  ERC-20 · Arc Testnet (5042002) · No real funds
+                <p style="font-size:9px;color:#4a6490;text-align:center;margin-top:2px;">
+                  ERC-20 · Arc Testnet (Chain 5042002) · No real funds · All approvals via MetaMask
                 </p>
-              </div><!-- end space-y-3 -->
+              </div><!-- end flex column -->
 
-            </div><!-- end p-5 -->
+            </div><!-- end padding -->
           </div><!-- end pay-cf-panel -->
 
           <!-- Transaction Steps -->
@@ -5010,7 +5200,7 @@ app.get('/', (c) => {
   <!-- ══════════════════════════════════════════════════════════════════════
        SITE FOOTER — Institutional, Legal & Transparency
   ═══════════════════════════════════════════════════════════════════════ -->
-  <footer class="mt-16 border-t border-gray-800/60 bg-gray-950/90">
+  <footer class="site-footer mt-16 border-t border-gray-800/60 bg-gray-950/90">
 
     <!-- Main footer content -->
     <div class="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -5495,7 +5685,23 @@ app.get('/', (c) => {
   </script>
 </body>
 </html>`)
-})
+}
+
+// GET / - SPA principal
+app.get('/', (c) => buildSPAHtml(c))
+
+// ─── SPA Clean URL Routes ───────────────────────────────────────────────────
+// O Worker intercepta /* antes do _redirects do Cloudflare Pages.
+// Então cada rota SPA precisa ser registrada aqui para servir o HTML diretamente.
+// O JS router.js lê window.location.pathname e ativa a aba correta sem reload.
+const SPA_PATHS = [
+  '/home', '/dashboard', '/payments', '/contracts', '/autonoma',
+  '/settings', '/otc', '/swap', '/bridge', '/multisend', '/history',
+]
+
+for (const routePath of SPA_PATHS) {
+  app.get(routePath, (c) => buildSPAHtml(c))
+}
 
 export default app
 

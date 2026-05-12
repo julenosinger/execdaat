@@ -212,6 +212,35 @@ window.sidebarOpen  = sidebarOpen;
 window.sidebarClose = sidebarClose;
 
 // ============================================================
+// SIDEBAR COLLAPSE (desktop toggle)
+// ============================================================
+function arcToggleSidebarCollapse() {
+  const shell = document.getElementById('app-shell');
+  const btn   = document.getElementById('sidebar-collapse-btn');
+  const icon  = document.getElementById('sidebar-collapse-icon');
+  if (!shell) return;
+  const collapsed = shell.classList.toggle('sidebar-collapsed');
+  try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch(e){}
+  if (icon) {
+    icon.style.transform = collapsed ? 'rotate(180deg)' : 'rotate(0deg)';
+  }
+}
+
+// Restore sidebar collapse state on load
+(function restoreSidebarState() {
+  try {
+    if (localStorage.getItem('sidebarCollapsed') === '1') {
+      const shell = document.getElementById('app-shell');
+      const icon  = document.getElementById('sidebar-collapse-icon');
+      if (shell) shell.classList.add('sidebar-collapsed');
+      if (icon)  icon.style.transform = 'rotate(180deg)';
+    }
+  } catch(e) {}
+})();
+
+window.arcToggleSidebarCollapse = arcToggleSidebarCollapse;
+
+// ============================================================
 // TOAST NOTIFICATIONS
 // ============================================================
 function showToast(message, type = 'info') {
@@ -819,8 +848,22 @@ function getMilestoneColor(status) {
 function enterApp() {
   const landing  = document.getElementById('landing-page');
   const appShell = document.getElementById('app-shell');
-  if (landing)  landing.classList.add('hidden');
-  if (appShell) appShell.classList.remove('hidden');
+  const oldTopbar = document.getElementById('sticky-topbar-anchor');
+  if (landing)   landing.classList.add('hidden');
+  if (appShell)  appShell.classList.remove('hidden');
+  // Hide the landing-era header — the inline app-topbar-wrap takes over
+  if (oldTopbar) {
+    oldTopbar.style.display = 'none';
+    oldTopbar.setAttribute('aria-hidden', 'true');
+  }
+  // Restore sidebar collapse state
+  try {
+    if (localStorage.getItem('sidebarCollapsed') === '1') {
+      appShell && appShell.classList.add('sidebar-collapsed');
+      var icon = document.getElementById('sidebar-collapse-icon');
+      if (icon) icon.style.transform = 'rotate(180deg)';
+    }
+  } catch(e){}
   // Load payments tab by default
   switchTab('payments');
 }
@@ -829,8 +872,10 @@ function enterApp() {
 function openAboutPage() {
   const landing  = document.getElementById('landing-page');
   const appShell = document.getElementById('app-shell');
-  if (landing)  landing.classList.add('hidden');
-  if (appShell) appShell.classList.remove('hidden');
+  const oldTopbar = document.getElementById('sticky-topbar-anchor');
+  if (landing)   landing.classList.add('hidden');
+  if (appShell)  appShell.classList.remove('hidden');
+  if (oldTopbar) { oldTopbar.style.display = 'none'; oldTopbar.setAttribute('aria-hidden','true'); }
   switchTab('payments');
 }
 window.openAboutPage = openAboutPage;
@@ -838,8 +883,14 @@ window.openAboutPage = openAboutPage;
 function showLanding() {
   const landing  = document.getElementById('landing-page');
   const appShell = document.getElementById('app-shell');
+  const oldTopbar = document.getElementById('sticky-topbar-anchor');
   if (appShell) appShell.classList.add('hidden');
   if (landing)  landing.classList.remove('hidden');
+  // Restore the landing header when going back to landing
+  if (oldTopbar) {
+    oldTopbar.style.display = '';
+    oldTopbar.removeAttribute('aria-hidden');
+  }
 }
 
 // Auto-enter app if wallet is already connected (e.g. page refresh with persisted wallet)
@@ -1418,3 +1469,109 @@ window.addEventListener('agentExecutor:update', function() {
 });
 
 console.log('[APP] Agent Executor panel functions loaded');
+
+// ============================================================
+// INLINE APP-TOPBAR — Wallet + Notif sync for the new header
+// ============================================================
+
+function dismissAppBanner() {
+  var b = document.getElementById('app-testnet-banner');
+  if (!b) return;
+  b.style.maxHeight  = '0';
+  b.style.padding    = '0 18px';
+  b.style.opacity    = '0';
+  b.style.overflow   = 'hidden';
+  setTimeout(function() { b.style.display = 'none'; }, 260);
+  try { sessionStorage.setItem('arc-app-banner-dismissed','1'); } catch(e){}
+}
+window.dismissAppBanner = dismissAppBanner;
+
+// Restore banner state
+(function() {
+  try {
+    if (sessionStorage.getItem('arc-app-banner-dismissed') === '1') {
+      var b = document.getElementById('app-testnet-banner');
+      if (b) b.style.display = 'none';
+    }
+  } catch(e){}
+})();
+
+// Sync inline app-topbar with wallet state
+function syncAppTopbarWallet(connected, address, shortAddress, balance) {
+  var connectBtn  = document.getElementById('app-wallet-connect-btn');
+  var walletPill  = document.getElementById('app-wallet-info');
+  var avatarEl    = document.getElementById('app-wallet-avatar');
+  var addressEl   = document.getElementById('app-wallet-address');
+  var balancePill = document.getElementById('app-balance-pill');
+
+  if (connected) {
+    if (connectBtn)  connectBtn.style.display  = 'none';
+    if (walletPill) {
+      walletPill.style.display = 'flex';
+      walletPill.classList.remove('hidden');
+    }
+    if (avatarEl && address)       avatarEl.textContent   = address.slice(2,4).toUpperCase();
+    if (addressEl && shortAddress) addressEl.textContent  = shortAddress;
+    if (balancePill && balance !== null && balance !== undefined) {
+      balancePill.style.display = 'flex';
+      balancePill.textContent   = '$' + balance + ' USDC';
+    }
+  } else {
+    if (connectBtn)  connectBtn.style.display  = '';
+    if (walletPill) {
+      walletPill.style.display = 'none';
+      walletPill.classList.add('hidden');
+    }
+    if (balancePill) balancePill.style.display  = 'none';
+  }
+}
+window.syncAppTopbarWallet = syncAppTopbarWallet;
+
+// Listen to wallet events and sync app-topbar
+window.addEventListener('walletConnected', function(e) {
+  var d = e.detail || {};
+  syncAppTopbarWallet(true, d.address, d.shortAddress, d.usdcBalance);
+});
+window.addEventListener('walletDisconnected', function() {
+  syncAppTopbarWallet(false);
+});
+
+// Sync notification badge in app-topbar
+function syncAppNotifBadge(count) {
+  var badge = document.getElementById('app-notif-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent  = count > 9 ? '9+' : String(count);
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Patch arcUpdateNotifBadge to also update the inline badge
+var _origArcUpdateNotifBadge = window.arcUpdateNotifBadge;
+window.arcUpdateNotifBadge = function(count) {
+  if (typeof _origArcUpdateNotifBadge === 'function') _origArcUpdateNotifBadge(count);
+  syncAppNotifBadge(count);
+};
+
+// Also patch hdr-notif-badge to keep in sync
+var _hdrNotifBadge   = document.getElementById('hdr-notif-badge');
+var _appNotifBadge   = document.getElementById('app-notif-badge');
+if (_hdrNotifBadge && _appNotifBadge) {
+  var _hdrObs = new MutationObserver(function() {
+    var count = parseInt(_hdrNotifBadge.textContent, 10) || 0;
+    syncAppNotifBadge(count);
+  });
+  _hdrObs.observe(_hdrNotifBadge, { childList: true, characterData: true, subtree: true });
+}
+
+// Init sync on DOMContentLoaded (in case wallet already connected)
+document.addEventListener('DOMContentLoaded', function() {
+  var ws = window.walletState;
+  if (ws && ws.connected) {
+    syncAppTopbarWallet(true, ws.address, ws.shortAddress, ws.usdcBalance);
+  }
+});
+
+console.log('[APP] App-topbar sync module loaded');

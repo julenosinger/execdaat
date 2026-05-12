@@ -507,6 +507,11 @@ async function refreshPaymentBalances() {
     paySet('pay-wallet-short', 'Not connected');
     paySet('pay-network-name', '—');
     paySet('pay-from-display', '—');
+    // Update new balance bar
+    const dispUsdc = payEl('pay-bal-display-usdc');
+    const dispEurc = payEl('pay-bal-display-eurc');
+    if (dispUsdc) dispUsdc.textContent = '— USDC';
+    if (dispEurc) dispEurc.textContent = '— EURC';
     return;
   }
   paySet('pay-wallet-short', shortAddr(address));
@@ -523,6 +528,26 @@ async function refreshPaymentBalances() {
   payState.senderBalance.EURC = eurcBal;
   paySet('pay-balance-usdc', usdcBal !== null ? usdcBal.toFixed(4) + ' USDC' : '— USDC');
   paySet('pay-balance-eurc', eurcBal !== null ? eurcBal.toFixed(4) + ' EURC' : '— EURC');
+
+  // Update premium balance bar
+  const dispUsdc = payEl('pay-bal-display-usdc');
+  const dispEurc = payEl('pay-bal-display-eurc');
+  if (dispUsdc) {
+    dispUsdc.textContent = usdcBal !== null ? usdcBal.toFixed(4) + ' USDC' : '— USDC';
+    dispUsdc.style.color = usdcBal !== null && usdcBal > 0 ? '#60b4ff' : '#4a6490';
+  }
+  if (dispEurc) {
+    dispEurc.textContent = eurcBal !== null ? eurcBal.toFixed(4) + ' EURC' : '— EURC';
+    dispEurc.style.color = eurcBal !== null && eurcBal > 0 ? '#a78bfa' : '#4a6490';
+  }
+
+  // Update header balance display
+  const hdrBal = document.getElementById('wallet-balance-display');
+  if (hdrBal && usdcBal !== null) {
+    hdrBal.textContent = usdcBal.toFixed(2) + ' USDC';
+    hdrBal.style.display = 'block';
+  }
+
   updatePayMaxHint();
   payValidateForm();
 }
@@ -801,7 +826,83 @@ function payValidateField(field) {
   }
 }
 
-// ─── Form-level validation ─────────────────────────────────────────────────────
+// ─── Validation Status Bar ─────────────────────────────────────────────────────
+function payUpdateValidationBar(ok, reason, state) {
+  const bar  = payEl('pay-validation-bar');
+  const icon = payEl('pay-val-icon');
+  const msg  = payEl('pay-val-msg');
+  if (!bar || !icon || !msg) return;
+
+  const styles = {
+    idle:        { bg: 'rgba(74,100,144,0.08)',  border: 'rgba(74,100,144,0.18)',  color: '#4a6490',  icon: 'fas fa-circle-notch fa-spin' },
+    invalid:     { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.25)',   color: '#f87171',  icon: 'fas fa-times-circle' },
+    warning:     { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.22)',  color: '#fbbf24',  icon: 'fas fa-exclamation-triangle' },
+    approval:    { bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)', color: '#a78bfa',  icon: 'fas fa-unlock-alt' },
+    ready:       { bg: 'rgba(52,211,153,0.07)',  border: 'rgba(52,211,153,0.25)',  color: '#34d399',  icon: 'fas fa-check-circle' },
+    processing:  { bg: 'rgba(55,138,221,0.08)',  border: 'rgba(55,138,221,0.25)',  color: '#60b4ff',  icon: 'fas fa-spinner fa-spin' },
+    scheduled:   { bg: 'rgba(96,165,250,0.07)',  border: 'rgba(96,165,250,0.22)',  color: '#60a5fa',  icon: 'fas fa-calendar-check' },
+  };
+
+  const s = styles[state] || styles.idle;
+  bar.style.background   = s.bg;
+  bar.style.borderColor  = s.border;
+  bar.style.color        = s.color;
+  icon.className         = s.icon;
+  icon.style.color       = s.color;
+  msg.textContent        = reason;
+}
+
+// ─── Fiat Estimate ─────────────────────────────────────────────────────────────
+function arcPayUpdateFiatEstimate() {
+  const amountStr = (payEl('pay-amount')?.value || '').trim();
+  const amount = parseFloat(amountStr);
+  const token = payState.token;
+  const tokenMeta = PAY_TOKENS[token];
+  const fiatEl = payEl('pay-fiat-val');
+  const usdEl  = payEl('pay-fiat-usd');
+  if (!fiatEl || !usdEl) return;
+  if (isNaN(amount) || amount <= 0) {
+    fiatEl.style.display = 'none';
+    return;
+  }
+  const usdVal = amount * (tokenMeta?.usdRate || 1.0);
+  usdEl.textContent = usdVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  fiatEl.style.display = 'flex';
+}
+
+// ─── Gas Live Gwei display ─────────────────────────────────────────────────────
+function payUpdateGasLiveDisplay() {
+  const gweiEl = payEl('pay-gas-live-gwei');
+  const usdEl  = payEl('pay-gas-usd-display');
+  if (gweiEl && payState.gasGwei > 0) {
+    gweiEl.textContent = payState.gasGwei.toFixed(1) + ' gwei';
+  }
+  if (usdEl) {
+    const fmtGas = payState.gasUSD < 0.0001 ? '<$0.0001' : '$' + payState.gasUSD.toFixed(5);
+    usdEl.textContent = fmtGas;
+  }
+}
+
+// ─── Recipient address auto-format ────────────────────────────────────────────
+function payRecipientFormat(input) {
+  if (!input) return;
+  const val = input.value;
+  // If it looks like an ENS name don't modify
+  if (val.includes('.')) return;
+  // If it starts with 0x try to checksumify display (keep raw)
+  if (val.startsWith('0x') && val.length === 42 && window.ethers?.getAddress) {
+    try {
+      const checksummed = window.ethers.getAddress(val);
+      if (checksummed !== val) {
+        const pos = input.selectionStart;
+        input.value = checksummed;
+        input.setSelectionRange(pos, pos);
+      }
+    } catch (_) {}
+  }
+}
+
+// ─── Form-level validation (enhanced) ─────────────────────────────────────────
 function payValidateForm() {
   const btn     = payEl('pay-send-btn');
   const btnText = payEl('pay-send-btn-text');

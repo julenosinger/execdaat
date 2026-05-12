@@ -473,6 +473,9 @@ async function refreshBalance() {
   if (headerBal && balance !== null) {
     headerBal.textContent = `$${balance} USDC`;
   }
+  // Sync inline app-topbar balance pill
+  const appBalPill = document.getElementById('app-balance-pill');
+  if (appBalPill && balance !== null) { appBalPill.textContent = `$${balance} USDC`; appBalPill.style.display = 'flex'; }
 }
 
 // ============================================================
@@ -1542,6 +1545,9 @@ function walletStartBalancePolling() {
         if (panelBal) panelBal.textContent = bal;
         const headerBal = document.getElementById('wallet-balance-display');
         if (headerBal) headerBal.textContent = `$${bal} USDC`;
+        // Sync inline app-topbar balance pill
+        const appBalPill2 = document.getElementById('app-balance-pill');
+        if (appBalPill2 && bal !== null) { appBalPill2.textContent = `$${bal} USDC`; appBalPill2.style.display = 'flex'; }
         // Flash visual se saldo mudou
         if (prev !== null && prev !== bal) {
           [panelBal, headerBal].forEach(el => {
