@@ -507,11 +507,6 @@ async function refreshPaymentBalances() {
     paySet('pay-wallet-short', 'Not connected');
     paySet('pay-network-name', '—');
     paySet('pay-from-display', '—');
-    // Update new balance bar
-    const dispUsdc = payEl('pay-bal-display-usdc');
-    const dispEurc = payEl('pay-bal-display-eurc');
-    if (dispUsdc) dispUsdc.textContent = '— USDC';
-    if (dispEurc) dispEurc.textContent = '— EURC';
     return;
   }
   paySet('pay-wallet-short', shortAddr(address));
@@ -528,26 +523,6 @@ async function refreshPaymentBalances() {
   payState.senderBalance.EURC = eurcBal;
   paySet('pay-balance-usdc', usdcBal !== null ? usdcBal.toFixed(4) + ' USDC' : '— USDC');
   paySet('pay-balance-eurc', eurcBal !== null ? eurcBal.toFixed(4) + ' EURC' : '— EURC');
-
-  // Update premium balance bar
-  const dispUsdc = payEl('pay-bal-display-usdc');
-  const dispEurc = payEl('pay-bal-display-eurc');
-  if (dispUsdc) {
-    dispUsdc.textContent = usdcBal !== null ? usdcBal.toFixed(4) + ' USDC' : '— USDC';
-    dispUsdc.style.color = usdcBal !== null && usdcBal > 0 ? '#60b4ff' : '#4a6490';
-  }
-  if (dispEurc) {
-    dispEurc.textContent = eurcBal !== null ? eurcBal.toFixed(4) + ' EURC' : '— EURC';
-    dispEurc.style.color = eurcBal !== null && eurcBal > 0 ? '#a78bfa' : '#4a6490';
-  }
-
-  // Update header balance display
-  const hdrBal = document.getElementById('wallet-balance-display');
-  if (hdrBal && usdcBal !== null) {
-    hdrBal.textContent = usdcBal.toFixed(2) + ' USDC';
-    hdrBal.style.display = 'block';
-  }
-
   updatePayMaxHint();
   payValidateForm();
 }
@@ -786,6 +761,16 @@ function updatePayPreview() {
     if (noteRow) noteRow.style.display = 'none';
   }
 
+  // Update Payment Summary info card (right column)
+  const sumToken = document.getElementById('pay-info-token');
+  const sumAmount = document.getElementById('pay-info-amount');
+  const sumRecipient = document.getElementById('pay-info-recipient');
+  const sumFee = document.getElementById('pay-info-fee');
+  if (sumToken) sumToken.textContent = token;
+  if (sumAmount) sumAmount.textContent = amountNum > 0 ? amountNum.toFixed(6) + ' ' + token : '—';
+  if (sumRecipient) sumRecipient.textContent = isValidAddress(recipient) ? shortAddr(recipient) : (recipient || '—');
+  if (sumFee) sumFee.textContent = token === 'EURC' ? '~0.002 USDC' : '~0.001 USDC';
+
   // Trigger fee recalculation
   if (amountNum > 0 || payState.totalCostUSD > 0) {
     clearTimeout(payState._feeTimer);
@@ -826,83 +811,7 @@ function payValidateField(field) {
   }
 }
 
-// ─── Validation Status Bar ─────────────────────────────────────────────────────
-function payUpdateValidationBar(ok, reason, state) {
-  const bar  = payEl('pay-validation-bar');
-  const icon = payEl('pay-val-icon');
-  const msg  = payEl('pay-val-msg');
-  if (!bar || !icon || !msg) return;
-
-  const styles = {
-    idle:        { bg: 'rgba(74,100,144,0.08)',  border: 'rgba(74,100,144,0.18)',  color: '#4a6490',  icon: 'fas fa-circle-notch fa-spin' },
-    invalid:     { bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.25)',   color: '#f87171',  icon: 'fas fa-times-circle' },
-    warning:     { bg: 'rgba(251,191,36,0.07)',  border: 'rgba(251,191,36,0.22)',  color: '#fbbf24',  icon: 'fas fa-exclamation-triangle' },
-    approval:    { bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)', color: '#a78bfa',  icon: 'fas fa-unlock-alt' },
-    ready:       { bg: 'rgba(52,211,153,0.07)',  border: 'rgba(52,211,153,0.25)',  color: '#34d399',  icon: 'fas fa-check-circle' },
-    processing:  { bg: 'rgba(55,138,221,0.08)',  border: 'rgba(55,138,221,0.25)',  color: '#60b4ff',  icon: 'fas fa-spinner fa-spin' },
-    scheduled:   { bg: 'rgba(96,165,250,0.07)',  border: 'rgba(96,165,250,0.22)',  color: '#60a5fa',  icon: 'fas fa-calendar-check' },
-  };
-
-  const s = styles[state] || styles.idle;
-  bar.style.background   = s.bg;
-  bar.style.borderColor  = s.border;
-  bar.style.color        = s.color;
-  icon.className         = s.icon;
-  icon.style.color       = s.color;
-  msg.textContent        = reason;
-}
-
-// ─── Fiat Estimate ─────────────────────────────────────────────────────────────
-function arcPayUpdateFiatEstimate() {
-  const amountStr = (payEl('pay-amount')?.value || '').trim();
-  const amount = parseFloat(amountStr);
-  const token = payState.token;
-  const tokenMeta = PAY_TOKENS[token];
-  const fiatEl = payEl('pay-fiat-val');
-  const usdEl  = payEl('pay-fiat-usd');
-  if (!fiatEl || !usdEl) return;
-  if (isNaN(amount) || amount <= 0) {
-    fiatEl.style.display = 'none';
-    return;
-  }
-  const usdVal = amount * (tokenMeta?.usdRate || 1.0);
-  usdEl.textContent = usdVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  fiatEl.style.display = 'flex';
-}
-
-// ─── Gas Live Gwei display ─────────────────────────────────────────────────────
-function payUpdateGasLiveDisplay() {
-  const gweiEl = payEl('pay-gas-live-gwei');
-  const usdEl  = payEl('pay-gas-usd-display');
-  if (gweiEl && payState.gasGwei > 0) {
-    gweiEl.textContent = payState.gasGwei.toFixed(1) + ' gwei';
-  }
-  if (usdEl) {
-    const fmtGas = payState.gasUSD < 0.0001 ? '<$0.0001' : '$' + payState.gasUSD.toFixed(5);
-    usdEl.textContent = fmtGas;
-  }
-}
-
-// ─── Recipient address auto-format ────────────────────────────────────────────
-function payRecipientFormat(input) {
-  if (!input) return;
-  const val = input.value;
-  // If it looks like an ENS name don't modify
-  if (val.includes('.')) return;
-  // If it starts with 0x try to checksumify display (keep raw)
-  if (val.startsWith('0x') && val.length === 42 && window.ethers?.getAddress) {
-    try {
-      const checksummed = window.ethers.getAddress(val);
-      if (checksummed !== val) {
-        const pos = input.selectionStart;
-        input.value = checksummed;
-        input.setSelectionRange(pos, pos);
-      }
-    } catch (_) {}
-  }
-}
-
-// ─── Form-level validation (enhanced) ─────────────────────────────────────────
+// ─── Form-level validation ─────────────────────────────────────────────────────
 function payValidateForm() {
   const btn     = payEl('pay-send-btn');
   const btnText = payEl('pay-send-btn-text');
@@ -1614,7 +1523,7 @@ function downloadPayReceipt(format) {
 
 // Active filter state for history (survives re-renders within session)
 if (!window._payHistoryFilters) {
-  window._payHistoryFilters = { status: 'all', date: 'all' };
+  window._payHistoryFilters = { status: 'all', token: 'all', date: 'all' };
 }
 
 function _payHistoryStatusColor(status) {
@@ -1644,40 +1553,38 @@ function _payHistoryStatusLabel(status, isCached) {
 }
 
 function _payFmtDateTime(ts) {
-  if (!ts) return { date: '—', time: '', full: '' };
+  if (!ts) return { date: '—', time: '' };
   try {
     const d = new Date(ts);
-    if (isNaN(d)) return { date: String(ts), time: '', full: String(ts) };
-    const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    if (isNaN(d)) return { date: String(ts), time: '' };
     return {
-      date: dateStr,
-      time: timeStr,
-      full: dateStr + ' • ' + timeStr,
+      date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
     };
-  } catch { return { date: '—', time: '', full: '—' }; }
+  } catch { return { date: '—', time: '' }; }
 }
 
 function _payHistoryApplyFilters(items) {
   const f = window._payHistoryFilters;
   return items.filter(r => {
-    // Status filter — map 'pending' UI filter to scheduled/processing states
+    // Status filter
     if (f.status !== 'all') {
       const isCached = r._source === 'local' && !r.txHash && r.status !== 'scheduled';
       const st = isCached ? 'cached' : (r.status || 'pending');
-      if (f.status === 'pending') {
-        // Pending filter catches scheduled, processing and cached
-        if (st !== 'scheduled' && st !== 'processing' && st !== 'cached') return false;
-      } else {
-        if (st !== f.status) return false;
-      }
+      if (st !== f.status) return false;
     }
-    // Simplified date filter
+    // Token filter
+    if (f.token !== 'all') {
+      const tok = (r.token || '').toUpperCase();
+      if (tok !== f.token.toUpperCase()) return false;
+    }
+    // Date filter
     if (f.date !== 'all') {
       const ts = r.scheduledAt || r.timestamp || r.createdAt;
       if (!ts) return false;
       const d = new Date(ts);
       const now = new Date();
+      if (f.date === '24h' && (now - d) > 86400000) return false;
       if (f.date === '7d'  && (now - d) > 7*86400000) return false;
       if (f.date === '30d' && (now - d) > 30*86400000) return false;
     }
@@ -1688,77 +1595,26 @@ function _payHistoryApplyFilters(items) {
 function _payHistoryRenderFilters(allItems) {
   const f = window._payHistoryFilters;
 
-  // Status options — Pending replaces Scheduled+Processing
   const statusOpts = [
-    { v:'all',       label:'All',       icon:'fa-bars',         color:'#8b9cc8' },
-    { v:'completed', label:'Completed', icon:'fa-check-circle', color:'#34d399' },
-    { v:'pending',   label:'Pending',   icon:'fa-clock',        color:'#fbbf24' },
-    { v:'failed',    label:'Failed',    icon:'fa-times-circle', color:'#f87171' },
-    { v:'cancelled', label:'Cancelled', icon:'fa-ban',          color:'#6b7280' },
+    { v:'all', label:'All' },
+    { v:'completed', label:'Completed' },
+    { v:'processing', label:'Pending' },
+    { v:'failed', label:'Failed' },
+    { v:'scheduled', label:'Scheduled' },
+    { v:'cancelled', label:'Cancelled' },
   ];
 
-  // Simplified date options
-  const dateOpts = [
-    { v:'all', label:'All time' },
-    { v:'7d',  label:'7 days'   },
-    { v:'30d', label:'30 days'  },
-  ];
-
-  const buildStatusBtn = (o) => {
-    const isActive = f.status === o.v;
-    const bg  = isActive ? `rgba(124,58,237,0.18)` : 'rgba(255,255,255,0.02)';
-    const bc  = isActive ? `rgba(124,58,237,0.5)`  : 'rgba(255,255,255,0.07)';
-    const clr = isActive ? '#e2e8f0' : '#5a7090';
-    const ic  = isActive ? o.color  : '#3a4a68';
-    const sh  = isActive ? '0 0 10px rgba(124,58,237,0.2)' : 'none';
-    return `<button
-      onclick="window._payHistoryFilters.status='${o.v}';renderPaymentHistory();"
-      class="pay-hist-filter-btn"
-      style="display:flex;align-items:center;gap:7px;width:100%;padding:7px 10px;border-radius:9px;
-             border:1px solid ${bc};background:${bg};color:${clr};cursor:pointer;
-             font-size:12px;font-weight:600;text-align:left;transition:all 0.18s;
-             box-shadow:${sh};letter-spacing:0.01em;">
-      <i class="fas ${o.icon}" style="font-size:11px;color:${ic};width:14px;text-align:center;"></i>
-      <span>${o.label}</span>
-    </button>`;
-  };
-
-  const buildDateBtn = (o) => {
-    const isActive = f.date === o.v;
-    const bg  = isActive ? 'rgba(96,165,250,0.14)' : 'rgba(255,255,255,0.02)';
-    const bc  = isActive ? 'rgba(96,165,250,0.4)'  : 'rgba(255,255,255,0.07)';
-    const clr = isActive ? '#93c5fd' : '#5a7090';
-    return `<button
-      onclick="window._payHistoryFilters.date='${o.v}';renderPaymentHistory();"
-      class="pay-hist-filter-btn"
-      style="display:flex;align-items:center;justify-content:center;padding:5px 10px;border-radius:8px;
-             border:1px solid ${bc};background:${bg};color:${clr};cursor:pointer;
-             font-size:11px;font-weight:600;transition:all 0.18s;flex:1;">
-      ${o.label}
-    </button>`;
-  };
+  const statusBtns = statusOpts.map(o =>
+    `<button onclick="window._payHistoryFilters.status='${o.v}';renderPaymentHistory();"
+      class="text-xs px-3 py-1.5 rounded-lg transition font-semibold ${f.status===o.v ? 'bg-blue-700/40 border border-blue-600/40 text-blue-300' : 'bg-gray-800/60 border border-gray-700/40 text-gray-400 hover:text-gray-300 hover:border-gray-600/40'}">${o.label}</button>`
+  ).join('');
 
   return `
-  <div class="pay-hist-filters" style="padding:12px 12px 6px;display:flex;flex-direction:column;gap:10px;">
-
-    <!-- Status filters — vertical stack -->
-    <div style="display:flex;flex-direction:column;gap:4px;">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#3a4a68;font-weight:700;margin-bottom:4px;padding:0 2px;">Status</div>
-      ${statusOpts.map(buildStatusBtn).join('')}
-    </div>
-
-    <!-- Divider -->
-    <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,0.2),transparent);"></div>
-
-    <!-- Date filter — horizontal pills -->
-    <div style="display:flex;flex-direction:column;gap:4px;">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#3a4a68;font-weight:700;margin-bottom:4px;padding:0 2px;">Period</div>
-      <div style="display:flex;gap:5px;">${dateOpts.map(buildDateBtn).join('')}</div>
-    </div>
-
-    <!-- Divider -->
-    <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(96,165,250,0.15),transparent);"></div>
-  </div>`;
+  <div style="padding:12px 14px 0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+    <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#4a6490;font-weight:700;">Status</span>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;">${statusBtns}</div>
+  </div>
+  <div style="height:1px;margin:8px 0 0;background:linear-gradient(90deg,transparent,rgba(55,138,221,0.2),transparent);"></div>`;
 }
 
 function _payHistoryCardHtml(r) {
@@ -1783,231 +1639,83 @@ function _payHistoryCardHtml(r) {
   const explorerBase = r.explorerUrl
     ? r.explorerUrl.replace(/\/tx\/0x.+$/, '')
     : 'https://testnet.arcscan.app';
-  const txHashFull  = r.txHash || '';
+  const txHashFull = r.txHash || '';
   const txHashShort = txHashFull ? txHashFull.slice(0,10) + '…' + txHashFull.slice(-6) : '';
 
   // Addresses
-  const senderFull     = r.sender || r.from || '';
-  const recipientFull  = r.recipient || r.to || '';
-  const senderShort    = senderFull    ? shortAddr(senderFull)    : '—';
+  const senderFull    = r.sender || r.from || '';
+  const recipientFull = r.recipient || r.to || '';
+  const senderShort   = senderFull ? shortAddr(senderFull) : '—';
   const recipientShort = recipientFull ? shortAddr(recipientFull) : '—';
 
-  // Payment type / network / gas
+  // Inline copy helper
+  const copyBtn = (val, label) => val
+    ? `<button onclick="navigator.clipboard.writeText('${val.replace(/'/g,"\\'")}').then(()=>showToast('Copied!','success'))" title="Copy ${label}" style="background:none;border:none;color:#4a6490;cursor:pointer;padding:1px 4px;font-size:10px;border-radius:4px;transition:color 0.15s;" onmouseover="this.style.color='#60b4ff'" onmouseout="this.style.color='#4a6490'"><i class='fas fa-copy'></i></button>`
+    : '';
+
+  // Payment type/network inference
   const payType = r.payType || r.type || (isScheduled ? 'Scheduled' : 'Direct');
   const network = r.network || r.chainName || 'Arc Testnet';
   const gasFee  = r.gasFee != null ? `$${Number(r.gasFee).toFixed(6)} ${r.gasCurrency || 'USDC'}` : null;
 
-  // Token color
-  const tokColor = tokenStr === 'USDC' ? '#60b4ff' : tokenStr === 'EURC' ? '#34d399' : '#a78bfa';
+  // Action buttons
+  const editBtn = isScheduled
+    ? `<button onclick="payEditScheduled('${r.id}')" title="Edit scheduled payment" style="display:inline-flex;align-items:center;gap:4px;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.25);border-radius:7px;color:#60b4ff;font-size:10px;padding:4px 10px;cursor:pointer;transition:all 0.2s;font-weight:600;" onmouseover="this.style.background='rgba(55,138,221,0.18)'" onmouseout="this.style.background='rgba(55,138,221,0.08)'"><i class='fas fa-edit'></i>Edit</button>`
+    : '';
+  const cancelBtn = isScheduled
+    ? `<button onclick="payCancelScheduled('${r.id}')" title="Cancel scheduled payment" style="display:inline-flex;align-items:center;gap:4px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.22);border-radius:7px;color:#f87171;font-size:10px;padding:4px 10px;cursor:pointer;transition:all 0.2s;font-weight:600;" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='rgba(239,68,68,0.07)'"><i class='fas fa-times'></i>Cancel</button>`
+    : '';
+  const retryBtn = isFailed && typeof arcRetryBtn === 'function'
+    ? arcRetryBtn(window.ARC_STORE_PAY || 'payments', r.id)
+    : '';
+  const receiptBtn = `<button onclick="(typeof arcViewPaymentReceipt==='function'?arcViewPaymentReceipt:payOpenReceiptModal)(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="View receipt" style="display:inline-flex;align-items:center;gap:4px;background:rgba(29,158,117,0.08);border:1px solid rgba(29,158,117,0.25);border-radius:7px;color:#34d399;font-size:10px;padding:4px 10px;cursor:pointer;transition:all 0.2s;font-weight:600;" onmouseover="this.style.background='rgba(29,158,117,0.18)'" onmouseout="this.style.background='rgba(29,158,117,0.08)'"><i class='fas fa-receipt'></i>Receipt</button>`;
 
-  // Inline copy helper
-  const copyBtn = (val, label) => val
-    ? `<button onclick="event.stopPropagation();navigator.clipboard.writeText('${val.replace(/'/g,"\\'")}').then(()=>showToast('Copied!','success'))" title="Copy ${label}"
-         style="background:none;border:none;color:#4a6490;cursor:pointer;padding:1px 5px;font-size:10px;border-radius:4px;transition:color 0.15s;"
-         onmouseover="this.style.color='#a78bfa'" onmouseout="this.style.color='#4a6490'"><i class='fas fa-copy'></i></button>`
+  const dismissBtn = uid
+    ? `<button class="arc-dismiss-btn" onclick="event.stopPropagation();arcAnimatedDismiss('pay-tx-${safeid}',function(){if(typeof arcHidePay==='function')arcHidePay('${uid}');renderPaymentHistory();})" title="Hide from view" style="flex-shrink:0;">✕</button>`
     : '';
 
-  // Action buttons (compact, right-aligned)
-  const actionStyle = 'display:inline-flex;align-items:center;gap:4px;border-radius:7px;font-size:10px;padding:4px 10px;cursor:pointer;transition:all 0.2s;font-weight:600;border:1px solid;';
-  const editBtn = isScheduled
-    ? `<button onclick="event.stopPropagation();payEditScheduled('${r.id}')" title="Edit" style="${actionStyle}background:rgba(55,138,221,0.08);border-color:rgba(55,138,221,0.25);color:#60b4ff;" onmouseover="this.style.background='rgba(55,138,221,0.18)'" onmouseout="this.style.background='rgba(55,138,221,0.08)'"><i class='fas fa-edit'></i>Edit</button>` : '';
-  const cancelBtn = isScheduled
-    ? `<button onclick="event.stopPropagation();payCancelScheduled('${r.id}')" title="Cancel" style="${actionStyle}background:rgba(239,68,68,0.07);border-color:rgba(239,68,68,0.22);color:#f87171;" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='rgba(239,68,68,0.07)'"><i class='fas fa-times'></i>Cancel</button>` : '';
-  const retryBtn = isFailed && typeof arcRetryBtn === 'function'
-    ? arcRetryBtn(window.ARC_STORE_PAY || 'payments', r.id) : '';
-  const receiptBtn = `<button onclick="event.stopPropagation();(typeof arcViewPaymentReceipt==='function'?arcViewPaymentReceipt:payOpenReceiptModal)(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Receipt" style="${actionStyle}background:rgba(52,211,153,0.08);border-color:rgba(52,211,153,0.25);color:#34d399;" onmouseover="this.style.background='rgba(52,211,153,0.18)'" onmouseout="this.style.background='rgba(52,211,153,0.08)'"><i class='fas fa-receipt'></i>Receipt</button>`;
-  const dismissBtn = uid
-    ? `<button class="arc-dismiss-btn" onclick="event.stopPropagation();arcAnimatedDismiss('pay-tx-${safeid}',function(){if(typeof arcHidePay==='function')arcHidePay('${uid}');renderPaymentHistory();})" title="Hide" style="flex-shrink:0;background:none;border:none;color:#3a4870;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:5px;transition:color 0.15s;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#3a4870'">✕</button>` : '';
-
-  // Accordion IDs
-  const detailId  = `pay-tx-detail-${safeid}`;
+  // Accordion toggle ID
+  const detailId = `pay-tx-detail-${safeid}`;
   const chevronId = `pay-tx-chev-${safeid}`;
 
-  // Chain ID display
-  const chainId = r.chainId || PAY_CHAIN_ID;
+  // Left accent color based on status
+  const accentColor = stTheme.color;
+
+  // Icon per payment type
+  const typeIcon = isScheduled ? 'fa-calendar' : 'fa-paper-plane';
+  const typeBg   = isScheduled ? 'bg-purple-900/30 border-purple-700/30' : (isFailed ? 'bg-red-900/30 border-red-700/30' : 'bg-blue-900/30 border-blue-700/30');
+  const typeColor= isScheduled ? 'text-purple-400' : (isFailed ? 'text-red-400' : 'text-blue-400');
+  const typeLabel= isScheduled ? 'Scheduled' : 'Payment';
 
   return `
-  <div id="pay-tx-${safeid}" class="pay-hist-card"
-    style="background:linear-gradient(135deg,rgba(10,14,30,0.92) 0%,rgba(6,9,20,0.96) 100%);
-           border:1px solid ${stTheme.border};
-           border-left:3px solid ${stTheme.color};
-           border-radius:14px;overflow:hidden;
-           backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-           animation:payCardFadeIn 0.28s ease both;
-           transition:box-shadow 0.22s ease,border-color 0.22s ease,transform 0.18s ease;"
-    onmouseover="this.style.boxShadow='0 8px 32px rgba(0,0,0,0.5),0 0 0 1px ${stTheme.border},0 0 24px ${stTheme.color}22';this.style.transform='translateY(-2px)';this.style.borderColor='${stTheme.color}'"
-    onmouseout="this.style.boxShadow='none';this.style.transform='translateY(0)';this.style.borderColor='${stTheme.border}'">
-
-    <!-- ══ MAIN ROW: 3-column grid ══ -->
-    <div style="padding:14px 16px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.1fr);gap:0 16px;align-items:center;cursor:pointer;min-height:68px;"
-         onclick="(function(){var d=document.getElementById('${detailId}');var c=document.getElementById('${chevronId}');if(!d||!c)return;var open=d.style.display!=='none'&&d.style.display!=='';d.style.display=open?'none':'block';c.style.transform=open?'rotate(0deg)':'rotate(180deg)';})()">
-
-      <!-- ── LEFT COLUMN: status icon/label + bold amount + payment type ── -->
-      <div style="display:flex;flex-direction:column;gap:5px;min-width:0;">
-        <!-- Status pill -->
-        <div style="display:inline-flex;align-items:center;gap:5px;width:fit-content;">
-          <span style="width:7px;height:7px;border-radius:50%;background:${stTheme.dot};flex-shrink:0;
-                       box-shadow:0 0 7px ${stTheme.dot};animation:payDotPulse 2.5s ease-in-out infinite;"></span>
-          <i class="fas ${stInfo.icon}" style="font-size:10px;color:${stTheme.color};"></i>
-          <span style="font-size:10px;font-weight:700;color:${stTheme.color};letter-spacing:0.05em;text-transform:uppercase;">${stInfo.label}</span>
-        </div>
-        <!-- Amount (bold, prominent) -->
-        <div style="display:flex;align-items:baseline;gap:5px;">
-          <span style="font-size:17px;font-weight:800;color:#f0f6ff;letter-spacing:-0.02em;line-height:1.1;">${amtStr}</span>
-          <span style="font-size:11px;font-weight:700;color:${tokColor};letter-spacing:0.02em;">${tokenStr}</span>
-        </div>
-        <!-- Payment type badge -->
-        <div style="display:inline-flex;align-items:center;gap:4px;">
-          <i class="fas fa-arrow-right" style="font-size:8px;color:#3a4a68;"></i>
-          <span style="font-size:10px;color:#4a5878;font-weight:500;letter-spacing:0.01em;">${escHtml(payType)}</span>
-        </div>
+  <div id="pay-tx-${safeid}" class="bg-gray-900/60 border border-gray-700/40 rounded-xl px-4 py-3 hover:bg-gray-900/80 transition-colors" style="border-left:3px solid ${accentColor};">
+    <div class="flex flex-wrap sm:flex-nowrap items-start gap-3">
+      <div class="w-9 h-9 rounded-xl ${typeBg} border flex items-center justify-center flex-shrink-0 mt-0.5">
+        <i class="fas ${typeIcon} ${typeColor} text-sm"></i>
       </div>
-
-      <!-- ── CENTER COLUMN: from/to addresses with copy buttons ── -->
-      <div style="display:flex;flex-direction:column;gap:6px;min-width:0;
-                  border-left:1px solid rgba(255,255,255,0.05);
-                  border-right:1px solid rgba(255,255,255,0.05);
-                  padding:0 16px;">
-        ${senderFull ? `
-        <div style="display:flex;align-items:center;gap:5px;min-width:0;">
-          <span style="font-size:9px;color:#2e3d5c;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;width:24px;flex-shrink:0;">From</span>
-          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#7a9abf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${senderFull}">${senderShort}</span>
-          ${copyBtn(senderFull,'sender')}
-        </div>` : ''}
-        <div style="display:flex;align-items:center;gap:5px;min-width:0;">
-          <span style="font-size:9px;color:#2e3d5c;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;width:24px;flex-shrink:0;">To</span>
-          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#7a9abf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${recipientFull}">${recipientShort}</span>
-          ${copyBtn(recipientFull,'recipient')}
-        </div>
-      </div>
-
-      <!-- ── RIGHT COLUMN: date/time (12h) + network/chain + gas + actions ── -->
-      <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;min-width:0;">
-        <!-- Date & time in 12-hour format -->
-        <div style="text-align:right;">
-          <div style="font-size:11px;color:#8aaac8;font-weight:500;white-space:nowrap;">${dtParts.date}</div>
-          ${dtParts.time ? `<div style="font-size:11px;color:#4a6490;font-weight:500;white-space:nowrap;">${dtParts.time}</div>` : ''}
-        </div>
-        <!-- Network + Chain ID badge -->
-        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end;">
-          <span style="width:5px;height:5px;border-radius:50%;background:#34d399;flex-shrink:0;box-shadow:0 0 4px #34d399;"></span>
-          <span style="font-size:10px;color:#3a5070;white-space:nowrap;">${escHtml(network)}</span>
-          <span style="font-size:9px;color:#2a3a54;padding:1px 5px;border:1px solid rgba(52,211,153,0.15);border-radius:4px;background:rgba(52,211,153,0.06);">
-            Chain&nbsp;${chainId}
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap mb-0.5">
+          <span class="text-white font-semibold text-sm">${typeLabel}</span>
+          ${tokenStr ? `<span class="text-xs font-mono text-blue-400">${tokenStr}</span>` : ''}
+          <span class="text-xs px-2 py-0.5 rounded-full border" style="background:${stTheme.bg};border-color:${stTheme.border};color:${stTheme.color};">
+            ${stInfo.label}
           </span>
         </div>
-        <!-- Gas fee -->
-        ${gasFee ? `<div style="font-size:10px;color:#3a4a68;text-align:right;">⛽ ${gasFee}</div>` : ''}
-        <!-- Actions row -->
-        <div style="display:flex;align-items:center;gap:5px;margin-top:1px;flex-wrap:wrap;justify-content:flex-end;">
-          ${editBtn}${cancelBtn}${retryBtn}${receiptBtn}
-          <i id="${chevronId}" class="fas fa-chevron-down"
-             style="font-size:10px;color:#3a4a68;transition:transform 0.22s ease;cursor:pointer;padding:3px;"></i>
-          ${dismissBtn}
+        <div class="text-xs text-gray-500 flex items-center gap-1.5 flex-wrap">
+          <span class="font-mono">${recipientShort}</span>
+          ${ts ? `<span class="text-gray-600">&middot; ${dtParts.date}${dtParts.time ? ' ' + dtParts.time : ''}</span>` : ''}
         </div>
       </div>
-
-    </div><!-- end main row -->
-
-    <!-- ══ EXPANDABLE DETAILS ══ -->
-    <div id="${detailId}" style="display:none;">
-      <div style="height:1px;background:linear-gradient(90deg,transparent,${stTheme.border},rgba(96,165,250,0.12),transparent);"></div>
-      <div style="padding:14px 18px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;background:rgba(0,0,0,0.18);">
-
+      <div class="text-right flex-shrink-0 min-w-[80px]">
+        <div class="text-white font-bold text-sm mb-0.5">${amtStr} ${tokenStr}</div>
         ${txHashFull ? `
-        <div style="grid-column:1/-1;padding:10px 12px;background:rgba(96,165,250,0.04);border:1px solid rgba(96,165,250,0.12);border-radius:10px;">
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:6px;">Transaction Hash</div>
-          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
-            <a href="${explorerBase}/tx/${txHashFull}" target="_blank"
-               style="font-family:monospace;font-size:11px;color:#60b4ff;text-decoration:none;word-break:break-all;transition:color 0.15s;"
-               onmouseover="this.style.color='#93c5fd';this.style.textDecoration='underline'"
-               onmouseout="this.style.color='#60b4ff';this.style.textDecoration='none'">${txHashShort || txHashFull}</a>
-            ${copyBtn(txHashFull,'hash')}
-            <a href="${explorerBase}/tx/${txHashFull}" target="_blank"
-               style="font-size:10px;color:#2e4060;text-decoration:none;padding:2px 7px;border:1px solid rgba(96,165,250,0.2);border-radius:5px;background:rgba(96,165,250,0.06);"
-               title="View on ArcScan"><i class="fas fa-external-link-alt"></i> ArcScan</a>
-          </div>
-        </div>` : ''}
-
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Date &amp; Time</div>
-          <div style="font-size:11px;color:#7a9abf;">${dtParts.date}${dtParts.time ? '<br><span style="color:#4a6490;">' + dtParts.time + '</span>' : ''}</div>
-        </div>
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Status</div>
-          <div style="font-size:11px;font-weight:700;color:${stTheme.color};display:flex;align-items:center;gap:5px;">
-            <i class="fas ${stInfo.icon}" style="font-size:10px;"></i>${stInfo.label}
-          </div>
-        </div>
-
-        ${senderFull ? `
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Sender Wallet</div>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <span style="font-family:monospace;font-size:10px;color:#7a9abf;word-break:break-all;" title="${senderFull}">${senderShort}</span>
-            ${copyBtn(senderFull,'sender address')}
-          </div>
-        </div>` : ''}
-
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Receiver Wallet</div>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <span style="font-family:monospace;font-size:10px;color:#7a9abf;word-break:break-all;" title="${recipientFull}">${recipientShort}</span>
-            ${copyBtn(recipientFull,'receiver address')}
-          </div>
-        </div>
-
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Token / Asset</div>
-          <div style="font-size:12px;font-weight:700;color:${tokColor};">${tokenStr || '—'}</div>
-        </div>
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Amount</div>
-          <div style="font-size:13px;font-weight:800;color:#e8f0ff;">${amtStr} <span style="font-size:10px;color:#3a4a68;font-weight:600;">${tokenStr}</span></div>
-        </div>
-
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Network</div>
-          <div style="display:flex;align-items:center;gap:5px;">
-            <span style="width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 5px #34d399;"></span>
-            <span style="font-size:11px;color:#7a9abf;">${escHtml(network)}</span>
-            <span style="font-size:9px;color:#3a5070;">· Chain ${chainId}</span>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Payment Type</div>
-          <div style="font-size:11px;color:#7a9abf;">${escHtml(payType)}</div>
-        </div>
-
-        ${gasFee ? `
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Gas Fee</div>
-          <div style="font-size:11px;color:#7a9abf;">⛽ ${gasFee}</div>
-        </div>` : ''}
-
-        ${(r.fullname || r.email) ? `
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Sender Info</div>
-          <div style="font-size:11px;color:#7a9abf;">${r.fullname ? escHtml(r.fullname) : ''}${r.email ? `<span style="color:#3a5070;"> &lt;${escHtml(r.email)}&gt;</span>` : ''}</div>
-        </div>` : ''}
-
-        ${(r.recipientName || r.recipientEmail) ? `
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:4px;">Recipient Info</div>
-          <div style="font-size:11px;color:#7a9abf;">${r.recipientName ? escHtml(r.recipientName) : ''}${r.recipientEmail ? `<span style="color:#3a5070;"> &lt;${escHtml(r.recipientEmail)}&gt;</span>` : ''}</div>
-        </div>` : ''}
-
-        ${r.note ? `
-        <div style="grid-column:1/-1;">
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:#2e3d5c;font-weight:700;margin-bottom:6px;">Note</div>
-          <div style="font-size:12px;color:#c4b5fd;font-style:italic;
-                      background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.18);
-                      border-radius:9px;padding:8px 12px;line-height:1.5;word-break:break-word;">"${escHtml(r.note)}"</div>
-        </div>` : ''}
-
+        <a href="${explorerBase}/tx/${txHashFull}" target="_blank" rel="noopener"
+          class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline font-mono flex items-center gap-1 justify-end">
+          ${txHashShort || txHashFull.slice(0,10)+'&hellip;'}
+          <i class="fas fa-external-link-alt text-[9px]"></i>
+        </a>` : '<div class="text-xs text-gray-600">&mdash;</div>'}
       </div>
-    </div><!-- end details -->
-
+    </div>
   </div>`;
 }
 
@@ -2037,23 +1745,11 @@ function renderPaymentHistory() {
   // Apply user-selected filters
   const visibleItems = _payHistoryApplyFilters(notHidden);
 
-  // Always render filter bar when there are items (pre-filter)
-  const filterBar = notHidden.length > 0 ? _payHistoryRenderFilters(notHidden) : '';
-
   if (notHidden.length === 0) {
-    const msg = window.walletState?.address
-      ? 'No transactions yet'
-      : 'Connect your wallet to view transaction history';
-    const sub = window.walletState?.address
-      ? 'Send a payment to see your transaction history here.'
-      : 'Transactions will appear here once your wallet is connected.';
     container.innerHTML = `
-      <div class="pay-hist-empty">
-        <div class="pay-hist-empty-icon">
-          <i class="fas ${window.walletState?.address ? 'fa-clock' : 'fa-wallet'}"></i>
-        </div>
-        <div class="pay-hist-empty-text">${msg}</div>
-        <div class="pay-hist-empty-sub">${sub}</div>
+      <div style="color:#8aaac8;font-size:12px;text-align:center;padding:32px 16px;">
+        <i class="fas fa-clock" style="font-size:28px;display:block;margin-bottom:10px;color:#2a3650;"></i>
+        ${window.walletState?.address ? 'No transactions yet' : 'Connect your wallet to view transaction history'}
       </div>`;
     return;
   }
@@ -2063,35 +1759,70 @@ function renderPaymentHistory() {
     : `<div style="font-size:10px;color:#4a6490;padding:6px 14px 0;text-align:right;">${notHidden.length} transaction${notHidden.length !== 1 ? 's' : ''}</div>`;
 
   const emptyFilter = visibleItems.length === 0
-    ? `<div style="padding:28px 16px;text-align:center;">
-        <div style="width:40px;height:40px;border-radius:50%;background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.2);
-                    display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
-          <i class="fas fa-filter" style="font-size:16px;color:#4a5878;"></i>
-        </div>
-        <div style="font-size:12px;color:#3a4a68;font-weight:500;">No transactions match the selected filters</div>
-        <button onclick="window._payHistoryFilters={status:'all',date:'all'};renderPaymentHistory();"
-                style="margin-top:10px;font-size:10px;padding:4px 12px;border-radius:6px;border:1px solid rgba(124,58,237,0.25);
-                       background:rgba(124,58,237,0.08);color:#7a5cbf;cursor:pointer;transition:all 0.15s;"
-                onmouseover="this.style.background='rgba(124,58,237,0.18)'"
-                onmouseout="this.style.background='rgba(124,58,237,0.08)'">Clear filters</button>
+    ? `<div style="color:#4a6490;font-size:11px;text-align:center;padding:20px 16px;">
+        <i class="fas fa-filter" style="margin-bottom:6px;display:block;font-size:18px;"></i>
+        No transactions match the selected filters
        </div>`
     : '';
 
-  // New layout: filters on left, cards on right (inside the container)
   container.innerHTML =
-    `<div class="pay-hist-layout" style="display:grid;grid-template-columns:150px 1fr;gap:0;min-height:100px;">
-      <!-- Vertical filters sidebar -->
-      <div class="pay-hist-filter-sidebar" style="border-right:1px solid rgba(255,255,255,0.04);">
-        ${filterBar}
-      </div>
-      <!-- Cards column -->
-      <div style="display:flex;flex-direction:column;min-width:0;">
-        ${countLabel.replace('padding:6px 14px 0','padding:8px 12px 4px')}
-        <div style="padding:6px 10px 10px;display:flex;flex-direction:column;gap:8px;">
-          ${emptyFilter || visibleItems.map(_payHistoryCardHtml).join('')}
-        </div>
-      </div>
-    </div>`;
+    countLabel +
+    (emptyFilter || _payHistoryTableHtml(visibleItems));
+}
+
+// ─── Render history as a table (matching Bridge style) ────────────────────────
+function _payHistoryTableHtml(items) {
+  return `
+  <table class="br-history-table" style="width:100%;">
+    <thead><tr>
+      <th>Status</th>
+      <th>Recipient</th>
+      <th>Amount</th>
+      <th>Transaction</th>
+      <th>Date</th>
+      <th></th>
+    </tr></thead>
+    <tbody>
+      ${items.map(r => {
+        const isScheduled  = r.status === 'scheduled';
+        const isProcessing = r.status === 'processing';
+        const isFailed     = r.status === 'failed';
+        const isCancelled  = r.status === 'cancelled';
+        const isCached     = r._source === 'local' && !r.txHash && !isScheduled;
+        const uid          = r.txHash || r.id || '';
+        const safeid       = uid.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        const stKey   = isCached ? 'cached' : (r.status || 'pending');
+        const stTheme = _payHistoryStatusColor(stKey);
+        const stInfo  = _payHistoryStatusLabel(stKey, isCached);
+
+        const ts = r.scheduledAt || r.timestamp || r.createdAt;
+        const date = ts ? new Date(ts).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+        const amtStr = r.amount != null ? Number(r.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : '—';
+        const tokenStr = r.token || '';
+
+        const explorerBase = 'https://testnet.arcscan.app';
+        const txHashFull = r.txHash || '';
+        const txHashShort = txHashFull ? txHashFull.slice(0,10) + '…' + txHashFull.slice(-6) : '';
+        const recipientFull = r.recipient || r.to || '';
+        const recipientShort = recipientFull ? shortAddr(recipientFull) : '—';
+
+        const dismissBtn = uid
+          ? `<button onclick="event.stopPropagation();arcAnimatedDismiss('pay-tx-${safeid}',function(){if(typeof arcHidePay==='function')arcHidePay('${uid}');renderPaymentHistory();})" style="color:#4a6490;background:none;border:none;cursor:pointer;font-size:11px;padding:0;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#4a6490'" title="Hide">✕</button>`
+          : '';
+
+        return `
+        <tr>
+          <td><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;background:${stTheme.bg};border:1px solid ${stTheme.border};color:${stTheme.color};"><i class="fas ${stInfo.icon}" style="font-size:9px;"></i>${stInfo.label}</span></td>
+          <td><span style="font-family:monospace;font-size:11px;color:#8aaac8;" title="${recipientFull}">${recipientShort}</span></td>
+          <td><span style="font-weight:700;color:#e8edf8;">${amtStr}</span> <span style="color:#60b4ff;font-size:10px;">${tokenStr}</span></td>
+          <td>${txHashFull ? `<a href="${explorerBase}/tx/${txHashFull}" target="_blank" style="color:#60b4ff;font-size:10px;text-decoration:none;font-family:monospace;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${txHashFull}">${txHashShort}</a>` : '—'}</td>
+          <td style="color:#6a85aa;font-size:11px;">${date}</td>
+          <td style="text-align:center;">${dismissBtn}${txHashFull ? `<a href="${explorerBase}/tx/${txHashFull}" target="_blank" style="color:#4a6490;margin-left:4px;" onmouseover="this.style.color='#22d3ee'" onmouseout="this.style.color='#4a6490'"><i class="fas fa-external-link-alt" style="font-size:10px;"></i></a>` : ''}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
 }
 
 // ─── Load history from IndexedDB / localStorage on startup ──────────────────────
@@ -2316,6 +2047,38 @@ window.payUpdateNoteCounter    = payUpdateNoteCounter;
 window.payCancelScheduled      = payCancelScheduled;
 window.payEditScheduled        = payEditScheduled;
 window.payState                = payState;
+
+// ─── Export payments history as CSV ─────────────────────────────────────────────
+function _payExportCSV() {
+  const scheduled = payLoadScheduled();
+  const history   = payState.history || [];
+  const all = [...scheduled.map(s => ({ ...s, _source: 'scheduled' })), ...history.map(h => ({ ...h, _source: 'history' }))];
+  if (!all.length) { showToast('No transactions to export', 'warning'); return; }
+
+  const headers = ['Status', 'Token', 'Amount', 'Sender', 'Recipient', 'Date', 'TX Hash', 'Network', 'Type', 'Note'];
+  const rows = all.map(r => [
+    r.status || '',
+    r.token || '',
+    r.amount != null ? Number(r.amount).toFixed(6) : '',
+    r.sender || r.from || '',
+    r.recipient || r.to || '',
+    r.scheduledAt || r.timestamp || r.createdAt || '',
+    r.txHash || '',
+    r.network || r.chainName || 'Arc Testnet',
+    r.payType || r.type || (r.status === 'scheduled' ? 'Scheduled' : 'Direct'),
+    r.note || '',
+  ]);
+  const csvContent = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href     = url;
+  link.download = `execdaat-payments-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('Payment history exported as CSV', 'success');
+}
+window._payExportCSV = _payExportCSV;
 
 // ─── Wallet event listeners ────────────────────────────────────────────────────
 

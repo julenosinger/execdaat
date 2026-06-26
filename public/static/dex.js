@@ -277,9 +277,11 @@ function ammUpdateBalanceUI() {
   setText('amm-liq-bal-lp',   parseFloat(lp).toFixed(4)   + ' LP');
   setText('amm-remove-lp-bal', parseFloat(lp).toFixed(4)  + ' LP');
 
-  // MAX buttons
+  // Swap balances
   const swapFromBal = ammState.swapFrom === 'EURC' ? eurc : usdc;
+  const swapToBal   = ammState.swapTo   === 'EURC' ? eurc : usdc;
   setText('amm-swap-from-bal', parseFloat(swapFromBal).toFixed(4) + ' ' + ammState.swapFrom);
+  setText('amm-swap-to-bal',   parseFloat(swapToBal).toFixed(4)   + ' ' + ammState.swapTo);
 
   // Update remove preview with fresh balances
   ammUpdateRemovePreview();
@@ -486,6 +488,35 @@ window.ammSwitchTab = function(tab) {
     if (swapInner) swapInner.style.maxWidth = '480px';
   }
 
+  // ── 2.5 Auto-fill liquidity inputs with equalized EURC/USDC amounts ─────────
+  if (isLiq && ammState.reserves.A > 0n && ammState.reserves.B > 0n) {
+    const eurcBal = Number(ammFormatUnits(ammState.balances.EURC));
+    const usdcBal = Number(ammFormatUnits(ammState.balances.USDC));
+    if (eurcBal > 0 && usdcBal > 0) {
+      const rA = Number(ammState.reserves.A) / 1e6;
+      const rB = Number(ammState.reserves.B) / 1e6;
+      const ratio = rB / rA; // USDC per EURC
+      // Max EURC we can pair with available USDC
+      const maxEurcFromUsdc = usdcBal / ratio;
+      // Max USDC we can pair with available EURC
+      const maxUsdcFromEurc = eurcBal * ratio;
+      // Use the smaller of the two to ensure both sides are covered
+      let eurcAmt, usdcAmt;
+      if (eurcBal <= maxEurcFromUsdc) {
+        eurcAmt = eurcBal;
+        usdcAmt = eurcBal * ratio;
+      } else {
+        usdcAmt = usdcBal;
+        eurcAmt = usdcBal / ratio;
+      }
+      const elA = $('amm-liq-input-a');
+      const elB = $('amm-liq-input-b');
+      if (elA) elA.value = eurcAmt.toFixed(6);
+      if (elB) elB.value = usdcAmt.toFixed(6);
+      ammUpdateLiqPreview('a');
+    }
+  }
+
   // ── 3. Responsive re-check on window resize ─────────────────────────────────
   if (!window._ammResizeHandler) {
     window._ammResizeHandler = function() {
@@ -539,20 +570,36 @@ window.ammSetLiqMaxA = function() {
   const bal   = ammState.balances.EURC;
   const human = ammFormatUnits(bal);
   const el    = $('amm-liq-input-a');
-  if (el) { el.value = parseFloat(human).toFixed(6); ammUpdateLiqPreview(); }
+  if (el) { el.value = parseFloat(human).toFixed(6); ammUpdateLiqPreview('a'); }
 };
 
 window.ammSetLiqMaxB = function() {
   const bal   = ammState.balances.USDC;
   const human = ammFormatUnits(bal);
   const el    = $('amm-liq-input-b');
-  if (el) { el.value = parseFloat(human).toFixed(6); ammUpdateLiqPreview(); }
+  if (el) { el.value = parseFloat(human).toFixed(6); ammUpdateLiqPreview('b'); }
 };
 
 // ─── Liquidity preview ────────────────────────────────────────────────────────
-function ammUpdateLiqPreview() {
-  const amtA = parseFloat($('amm-liq-input-a')?.value || '0') || 0;
-  const amtB = parseFloat($('amm-liq-input-b')?.value || '0') || 0;
+function ammUpdateLiqPreview(source) {
+  const elA = $('amm-liq-input-a');
+  const elB = $('amm-liq-input-b');
+  let amtA = parseFloat(elA?.value || '0') || 0;
+  let amtB = parseFloat(elB?.value || '0') || 0;
+
+  // Auto-fill proportional amount based on pool ratio
+  if (ammState.reserves.A > 0n && ammState.reserves.B > 0n) {
+    const rA = Number(ammState.reserves.A) / 1e6;
+    const rB = Number(ammState.reserves.B) / 1e6;
+    const ratio = rB / rA; // USDC per EURC
+    if (source === 'a' && amtA > 0) {
+      amtB = amtA * ratio;
+      if (elB) elB.value = amtB.toFixed(6);
+    } else if (source === 'b' && amtB > 0) {
+      amtA = amtB / ratio;
+      if (elA) elA.value = amtA.toFixed(6);
+    }
+  }
 
   let lpEst = 0;
   if (amtA > 0 && amtB > 0) {
@@ -972,8 +1019,8 @@ async function ammInit() {
 
   const liqA = $('amm-liq-input-a');
   const liqB = $('amm-liq-input-b');
-  if (liqA) liqA.addEventListener('input', () => ammUpdateLiqPreview());
-  if (liqB) liqB.addEventListener('input', () => ammUpdateLiqPreview());
+  if (liqA) liqA.addEventListener('input', function() { ammUpdateLiqPreview('a'); });
+  if (liqB) liqB.addEventListener('input', function() { ammUpdateLiqPreview('b'); });
 
   const pctInput = $('amm-remove-pct');
   if (pctInput) pctInput.addEventListener('input', () => {

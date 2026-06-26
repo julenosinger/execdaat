@@ -1,5 +1,5 @@
 // ============================================================
-// CCTP Bridge — ExecDaat dApp
+// CCTP Bridge — ExecDaat dApp  |  build: 20260626-fix-empty-data
 // Circle Cross-Chain Transfer Protocol (CCTP V2)
 // Testnet ONLY — Fast Execution optimised
 // ============================================================
@@ -64,6 +64,20 @@ const BRIDGE_CHAINS = {
     messageTransmitterV2:   '0xe737e5cebeeba77efe34d4aa090756590b1ce275',
     tokenMinterV2:          '0xe997d7d2f6e065a9a93fa2175e878fb9081f1f0a',
   },
+  arc: {
+    name:       'Arc Testnet',
+    shortName:  'Arc',
+    icon:       '🟣',
+    chainId:    5042002,
+    chainHex:   '0x4cef52',
+    domain:     26,
+    rpcUrl:     'https://rpc.testnet.arc.network',
+    explorer:   'https://testnet.arcscan.app',
+    usdcAddress:            '0x3600000000000000000000000000000000000000',
+    tokenMessengerV2:       '0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA',
+    messageTransmitterV2:   '0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275',
+    tokenMinterV2:          '0xb43db544E2c27092c107639Ad201b3dEfAbcF192',
+  },
 };
 
 // ─── ABIs (minimal) ───────────────────────────────────────────────────────────
@@ -93,47 +107,14 @@ const bridgeState = {
   fromChain:    'sepolia',
   toChain:      'basesepolia',
   amount:       '',
-  mode:         'fast',       // 'fast' | 'standard'
+  mode:         'fast',
   pending:      false,
-  history:      [],           // [{id, from, to, amount, status, txHash, attestationTxHash, ts}]
+  history:      [],
   pollTimer:    null,
   usdcBalance:  null,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function bridgeGetProvider(chainKey) {
-  // If chainKey matches connected wallet chain → use wallet provider
-  const chain = BRIDGE_CHAINS[chainKey];
-  const walletChainId = window.walletState?.chainId;
-  if (walletChainId && Number(walletChainId) === chain.chainId) {
-    const raw = window.walletState?.provider;
-    if (!raw) throw new Error('Wallet not connected');
-    if (window.ethers?.BrowserProvider) return new window.ethers.BrowserProvider(raw);
-    if (window.ethers?.providers?.Web3Provider) return new window.ethers.providers.Web3Provider(raw);
-    throw new Error('ethers.js not loaded');
-  }
-  // Otherwise use public RPC read-only provider
-  if (window.ethers?.JsonRpcProvider) return new window.ethers.JsonRpcProvider(chain.rpcUrl);
-  if (window.ethers?.providers?.JsonRpcProvider) return new window.ethers.providers.JsonRpcProvider(chain.rpcUrl);
-  throw new Error('ethers.js not loaded');
-}
-
-async function bridgeGetSignerForChain(chainKey) {
-  const chain = BRIDGE_CHAINS[chainKey];
-  const raw   = window.walletState?.provider;
-  if (!raw) throw new Error('Wallet not connected');
-
-  if (window.ethers?.BrowserProvider) {
-    const p = new window.ethers.BrowserProvider(raw);
-    return p.getSigner();
-  }
-  if (window.ethers?.providers?.Web3Provider) {
-    const p = new window.ethers.providers.Web3Provider(raw);
-    return p.getSigner();
-  }
-  throw new Error('ethers.js not loaded');
-}
-
 function bridgeToBytes32(address) {
   // Pad address to bytes32
   if (window.ethers?.zeroPadValue) return window.ethers.zeroPadValue(address, 32);
@@ -175,33 +156,44 @@ function bridgeSetStatus(text, type = 'idle') {
   const el = bridgeEl('bridge-status-bar');
   if (!el) return;
   const colors = {
-    idle:    'bg-gray-800/60 border-gray-700/40 text-gray-400',
-    burn:    'bg-orange-900/30 border-orange-700/40 text-orange-300',
-    attest:  'bg-yellow-900/30 border-yellow-700/40 text-yellow-300',
-    mint:    'bg-blue-900/30 border-blue-700/40 text-blue-300',
-    done:    'bg-green-900/30 border-green-700/40 text-green-300',
-    error:   'bg-red-900/30 border-red-700/40 text-red-300',
+    idle:    'br-status-idle',
+    burn:    'br-status-burn',
+    attest:  'br-status-attest',
+    mint:    'br-status-mint',
+    done:    'br-status-done',
+    error:   'br-status-error',
   };
-  el.className = `rounded-xl px-4 py-3 text-sm flex items-center gap-2 border transition-all ${colors[type] || colors.idle}`;
+  el.className = `${colors[type] || colors.idle}`;
   el.innerHTML = text;
   el.classList.remove('hidden');
 }
 
 function bridgeSetStep(step) {
-  // step: null | 'burn' | 'attest' | 'mint' | 'done' | 'error'
   const steps = ['burn', 'attest', 'mint', 'done'];
   steps.forEach(s => {
     const el = bridgeEl(`bridge-step-${s}`);
     if (!el) return;
-    el.classList.remove('bridge-step-active', 'bridge-step-done', 'bridge-step-pending', 'bridge-step-error');
-    if (!step) { el.classList.add('bridge-step-pending'); return; }
+    el.classList.remove('br-step-active', 'br-step-done', 'br-step-pending', 'br-step-error');
+    if (!step) { el.classList.add('br-step-pending'); return; }
     const idx = steps.indexOf(s);
     const cur = steps.indexOf(step === 'error' ? 'burn' : step);
-    if (step === 'error' && s === 'burn') { el.classList.add('bridge-step-error'); }
-    else if (idx < cur || (step === 'done' && idx <= steps.indexOf('done'))) { el.classList.add('bridge-step-done'); }
-    else if (idx === cur) { el.classList.add('bridge-step-active'); }
-    else { el.classList.add('bridge-step-pending'); }
+    if (step === 'error' && s === 'burn') { el.classList.add('br-step-error'); }
+    else if (idx < cur || (step === 'done' && idx <= steps.indexOf('done'))) { el.classList.add('br-step-done'); }
+    else if (idx === cur) { el.classList.add('br-step-active'); }
+    else { el.classList.add('br-step-pending'); }
   });
+
+  // Update connecting lines
+  for (let i = 1; i <= 3; i++) {
+    const line = bridgeEl(`bridge-step-line${i}`);
+    if (!line) continue;
+    line.classList.remove('br-step-line-active', 'br-step-line-done');
+    if (!step) continue;
+    const stepIdx = steps.indexOf(step === 'error' ? 'burn' : step);
+    if (step === 'done') { line.classList.add('br-step-line-done'); }
+    else if (i <= stepIdx) { line.classList.add('br-step-line-active'); }
+  }
+
   const stepsWrap = bridgeEl('bridge-steps-wrap');
   if (stepsWrap) stepsWrap.classList.toggle('hidden', !step);
 }
@@ -219,21 +211,52 @@ function bridgeUpdateBtn() {
   btn.innerHTML = bridgeState.pending
     ? '<i class="fas fa-spinner fa-spin mr-2"></i>Bridging…'
     : `<i class="fas fa-right-left mr-2"></i>Bridge ${bridgeFmt(bridgeState.amount)} USDC`;
+  bridgeUpdateSummary();
+}
+
+function bridgeUpdateSummary() {
+  const amt = parseFloat(bridgeState.amount) || 0;
+  const from = BRIDGE_CHAINS[bridgeState.fromChain];
+  const to   = BRIDGE_CHAINS[bridgeState.toChain];
+
+  // Update transaction summary row
+  const sumReceive = bridgeEl('bridge-sum-receive');
+  const sumTime    = bridgeEl('bridge-sum-time');
+  const sumFee     = bridgeEl('bridge-sum-fee');
+  if (sumReceive) sumReceive.textContent = amt > 0 ? bridgeFmt(amt) : '—';
+  if (sumTime)    sumTime.textContent    = '~15 min';
+  if (sumFee)     sumFee.textContent     = '0.00';
+
+  // Update right info card
+  const infoFrom = bridgeEl('bridge-info-from');
+  const infoTo   = bridgeEl('bridge-info-to');
+  const infoTime = bridgeEl('bridge-info-time');
+  const infoFee  = bridgeEl('bridge-info-fee');
+  if (infoFrom) infoFrom.textContent = from ? from.name : '—';
+  if (infoTo)   infoTo.textContent   = to   ? to.name   : '—';
+  if (infoTime) infoTime.textContent = '~15 min';
+  if (infoFee)  infoFee.textContent  = '0.00 USDC';
 }
 
 async function bridgeRefreshBalance() {
   const wallet = window.walletState?.address;
   const chain  = BRIDGE_CHAINS[bridgeState.fromChain];
   const el     = bridgeEl('bridge-balance');
+  const eth    = window.ethereum;
   if (!el) return;
-  if (!wallet) { el.textContent = 'Balance: —'; return; }
+  if (!wallet || !eth) { el.textContent = 'Balance: —'; return; }
   try {
-    const provider = bridgeGetProvider(bridgeState.fromChain);
-    const usdc = new window.ethers.Contract(chain.usdcAddress, BRIDGE_ERC20_ABI, provider);
-    const [bal, dec] = await Promise.all([usdc.balanceOf(wallet), usdc.decimals()]);
+    const usdcIface = new window.ethers.Interface(BRIDGE_ERC20_ABI);
+    const balanceData = usdcIface.encodeFunctionData('balanceOf', [wallet]);
+    const decimalsData = usdcIface.encodeFunctionData('decimals', []);
+    const [balanceHex, decimalsHex] = await Promise.all([
+      eth.request({ method: 'eth_call', params: [{ to: chain.usdcAddress, data: balanceData }, 'latest'] }),
+      eth.request({ method: 'eth_call', params: [{ to: chain.usdcAddress, data: decimalsData }, 'latest'] }),
+    ]);
+    const dec = parseInt(decimalsHex, 16) || 6;
     const fmt = window.ethers?.formatUnits
-      ? window.ethers.formatUnits(bal, dec)
-      : (Number(bal) / Math.pow(10, dec)).toFixed(6);
+      ? window.ethers.formatUnits(BigInt(balanceHex), dec)
+      : (Number(BigInt(balanceHex)) / Math.pow(10, dec)).toFixed(6);
     bridgeState.usdcBalance = parseFloat(fmt);
     el.textContent = `Balance: ${bridgeFmt(fmt)} USDC`;
   } catch (e) {
@@ -293,6 +316,9 @@ function bridgeRenderSelectors() {
   // Render dropdowns
   bridgeRenderChainDropdown('bridge-from-dropdown', bridgeState.fromChain, (k) => { bridgeSelectFrom(k); bridgeEl('bridge-from-dropdown').classList.add('hidden'); });
   bridgeRenderChainDropdown('bridge-to-dropdown',   bridgeState.toChain,   (k) => { bridgeSelectTo(k);   bridgeEl('bridge-to-dropdown').classList.add('hidden'); });
+
+  // Update info cards
+  bridgeUpdateSummary();
 }
 
 function bridgeRenderChainDropdown(id, selected, onSelect) {
@@ -327,17 +353,27 @@ function bridgeSetMode(mode) {
   bridgeState.mode = mode;
   const fast = bridgeEl('bridge-mode-fast');
   const std  = bridgeEl('bridge-mode-standard');
+  const slow = bridgeEl('bridge-mode-slow');
   if (!fast || !std) return;
+
+  // Reset all
+  [fast, std, slow].forEach(el => { if (el) { el.classList.remove('active'); } });
+
   if (mode === 'fast') {
-    fast.className = 'flex-1 py-2 px-3 text-xs font-bold rounded-lg bg-gradient-to-r from-yellow-500 to-amber-500 text-gray-900 shadow transition-all flex items-center justify-center gap-1';
-    std.className  = 'flex-1 py-2 px-3 text-xs font-semibold rounded-lg text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all flex items-center justify-center gap-1';
+    if (fast) fast.classList.add('active');
+  } else if (mode === 'slow') {
+    if (slow) slow.classList.add('active');
   } else {
-    std.className  = 'flex-1 py-2 px-3 text-xs font-bold rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow transition-all flex items-center justify-center gap-1';
-    fast.className = 'flex-1 py-2 px-3 text-xs font-semibold rounded-lg text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all flex items-center justify-center gap-1';
+    if (std) std.classList.add('active');
   }
+
   // Update ETA display
   const etaEl = bridgeEl('bridge-eta');
-  if (etaEl) etaEl.textContent = mode === 'fast' ? '~5–15 seconds' : '~15 minutes';
+  if (etaEl) {
+    if (mode === 'fast') etaEl.textContent = '~5–15 seconds';
+    else if (mode === 'slow') etaEl.textContent = '~3–5 minutes';
+    else etaEl.textContent = '~15 minutes';
+  }
 }
 
 // ─── Core CCTP Flow ───────────────────────────────────────────────────────────
@@ -348,17 +384,25 @@ async function bridgeSwitchWalletChain(chainKey) {
   try {
     await raw.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chain.chainHex }] });
   } catch (switchErr) {
-    if (switchErr.code === 4902) {
-      await raw.request({
-        method: 'wallet_addEthereumChain',
-        params: [{
-          chainId:          chain.chainHex,
-          chainName:        chain.name,
-          rpcUrls:          [chain.rpcUrl],
-          nativeCurrency:   { name: 'ETH', symbol: 'ETH', decimals: 18 },
-          blockExplorerUrls:[chain.explorer],
-        }],
-      });
+    const isUnknown = switchErr.code === 4902
+      || (switchErr.message && switchErr.message.toLowerCase().includes('unrecognized chain'));
+    if (isUnknown) {
+      try {
+        await raw.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId:          chain.chainHex,
+            chainName:        chain.name,
+            rpcUrls:          [chain.rpcUrl],
+            nativeCurrency:   chainKey === 'arc'
+              ? { name: 'USDC', symbol: 'USDC', decimals: 18 }
+              : { name: 'ETH', symbol: 'ETH', decimals: 18 },
+            blockExplorerUrls:[chain.explorer],
+          }],
+        });
+      } catch (addErr) {
+        throw new Error('Failed to add ' + chain.name + ': ' + (addErr.message || addErr));
+      }
     } else throw switchErr;
   }
 }
@@ -366,32 +410,50 @@ async function bridgeSwitchWalletChain(chainKey) {
 async function bridgeBurn(fromChainKey, toChainKey, amount, recipient) {
   const fromChain = BRIDGE_CHAINS[fromChainKey];
   const toChain   = BRIDGE_CHAINS[toChainKey];
+  const eth = window.ethereum;
+  if (!eth) throw new Error('MetaMask not available');
 
   bridgeLog(`Switching wallet to ${fromChain.name}…`);
   await bridgeSwitchWalletChain(fromChainKey);
 
-  const signer    = await bridgeGetSignerForChain(fromChainKey);
-  const provider  = bridgeGetProvider(fromChainKey);
-  const usdc      = new window.ethers.Contract(fromChain.usdcAddress, BRIDGE_ERC20_ABI, signer);
-  const messenger = new window.ethers.Contract(fromChain.tokenMessengerV2, BRIDGE_TOKEN_MESSENGER_ABI, signer);
+  const senderAddr = window.walletState?.address;
+  if (!senderAddr) throw new Error('Wallet not connected');
 
-  // Parse amount
-  const decimals = await usdc.decimals();
-  const amountBN = window.ethers.parseUnits
-    ? window.ethers.parseUnits(String(amount), decimals)
-    : window.ethers.utils.parseUnits(String(amount), decimals);
+  // Parse amount using ethers
+  const usdcIface = new window.ethers.Interface(BRIDGE_ERC20_ABI);
+  const decimals = 6;
+  const amountBN = window.ethers.parseUnits(String(amount), decimals);
 
-  // Check balance
-  const balance = await usdc.balanceOf(await signer.getAddress());
+  // Check balance via eth_call (wallet provider, avoids CSP blocking)
+  const balanceData = usdcIface.encodeFunctionData('balanceOf', [senderAddr]);
+  const balanceHex = await eth.request({ method: 'eth_call', params: [{ to: fromChain.usdcAddress, data: balanceData }, 'latest'] });
+  const balance = BigInt(balanceHex);
   if (balance < amountBN) throw new Error('Insufficient USDC balance');
 
-  // Approve
+  // Arc: CCTP manual not supported for native USDC source. Bridge TO Arc works (destination).
+  if (fromChainKey === 'arc') {
+    throw new Error('Bridging FROM Arc Testnet is not supported via direct CCTP. Bridge TO Arc works — select Arc as the destination chain.');
+  }
+
+  // Standard CCTP flow (non-Arc chains) — approve USDC
   bridgeLog('Approving USDC…');
   bridgeSetStatus('<i class="fas fa-lock mr-2"></i>Approving USDC spend…', 'burn');
-  const currentAllowance = await usdc.allowance(await signer.getAddress(), fromChain.tokenMessengerV2);
+  const allowanceData = usdcIface.encodeFunctionData('allowance', [senderAddr, fromChain.tokenMessengerV2]);
+  const allowanceHex = await eth.request({ method: 'eth_call', params: [{ to: fromChain.usdcAddress, data: allowanceData }, 'latest'] });
+  const currentAllowance = BigInt(allowanceHex);
+
   if (currentAllowance < amountBN) {
-    const approveTx = await usdc.approve(fromChain.tokenMessengerV2, amountBN);
-    await approveTx.wait(1);
+    const approveCalldata = usdcIface.encodeFunctionData('approve', [fromChain.tokenMessengerV2, amountBN]);
+    const approveHash = await eth.request({
+      method: 'eth_sendTransaction',
+      params: [{ from: senderAddr, to: fromChain.usdcAddress, data: approveCalldata, gas: '0x' + (100000).toString(16) }],
+    });
+    bridgeLog('Approve tx: ' + approveHash);
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const receipt = await eth.request({ method: 'eth_getTransactionReceipt', params: [approveHash] });
+      if (receipt && receipt.blockNumber) break;
+    }
     bridgeLog('Approval confirmed');
   } else {
     bridgeLog('Allowance sufficient, skipping approve');
@@ -401,16 +463,46 @@ async function bridgeBurn(fromChainKey, toChainKey, amount, recipient) {
   bridgeLog(`Burning ${amount} USDC on ${fromChain.name} → domain ${toChain.domain}…`);
   bridgeSetStatus('<i class="fas fa-fire mr-2 animate-pulse"></i>Burning USDC on source chain…', 'burn');
   const mintRecipientBytes32 = bridgeToBytes32(recipient);
-  const burnTx = await messenger.depositForBurn(
-    amountBN,
-    toChain.domain,
-    mintRecipientBytes32,
-    fromChain.usdcAddress
-  );
-  bridgeLog('Burn tx sent: ' + burnTx.hash);
-  const receipt = await burnTx.wait(1);
-  bridgeLog('Burn confirmed in block ' + receipt.blockNumber, 'success');
-  return { txHash: burnTx.hash, receipt };
+
+  const messengerIface = new window.ethers.Interface(BRIDGE_TOKEN_MESSENGER_ABI);
+  const burnCalldata = messengerIface.encodeFunctionData('depositForBurn', [
+    amountBN, toChain.domain, mintRecipientBytes32, fromChain.usdcAddress
+  ]);
+
+  if (!burnCalldata || burnCalldata === '0x') {
+    throw new Error('Bridge calldata missing');
+  }
+
+  // Build tx params
+  const txParams = {
+    from: senderAddr,
+    to: fromChain.tokenMessengerV2,
+    data: burnCalldata,
+    gas: '0x' + (500000).toString(16),
+  };
+
+  const burnTxHash = await eth.request({
+    method: 'eth_sendTransaction',
+    params: [txParams],
+  });
+
+  bridgeLog('Burn tx sent: ' + burnTxHash);
+
+  // Wait for receipt via wallet provider (avoids CSP blocking external RPCs)
+  let burnReceipt = null;
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    burnReceipt = await eth.request({ method: 'eth_getTransactionReceipt', params: [burnTxHash] });
+    if (burnReceipt && burnReceipt.blockNumber) break;
+  }
+  if (!burnReceipt || !burnReceipt.blockNumber) {
+    throw new Error('Burn transaction not confirmed within 2 minutes');
+  }
+  if (parseInt(burnReceipt.status, 16) !== 1) {
+    throw new Error('Burn transaction reverted on-chain');
+  }
+  bridgeLog('Burn confirmed in block ' + parseInt(burnReceipt.blockNumber, 16), 'success');
+  return { txHash: burnTxHash, receipt: burnReceipt };
 }
 
 async function bridgePollAttestation(txHash, mode, onProgress) {
@@ -454,20 +546,52 @@ async function bridgePollAttestation(txHash, mode, onProgress) {
 }
 
 async function bridgeMint(toChainKey, messageBytes, attestation) {
-  const toChain   = BRIDGE_CHAINS[toChainKey];
+  const toChain = BRIDGE_CHAINS[toChainKey];
+  const eth = window.ethereum;
+  if (!eth) throw new Error('MetaMask not available');
+
   bridgeLog(`Switching wallet to ${toChain.name} for mint…`);
   await bridgeSwitchWalletChain(toChainKey);
 
-  const signer      = await bridgeGetSignerForChain(toChainKey);
-  const transmitter = new window.ethers.Contract(toChain.messageTransmitterV2, BRIDGE_MESSAGE_TRANSMITTER_ABI, signer);
+  const senderAddr = window.walletState?.address;
+  if (!senderAddr) throw new Error('Wallet not connected');
+
+  const transmitterIface = new window.ethers.Interface(BRIDGE_MESSAGE_TRANSMITTER_ABI);
+  const mintCalldata = transmitterIface.encodeFunctionData('receiveMessage', [messageBytes, attestation]);
+
+  if (!mintCalldata || mintCalldata === '0x') {
+    throw new Error('Mint calldata missing — receiveMessage encoding failed');
+  }
 
   bridgeLog('Calling receiveMessage on ' + toChain.name + '…');
   bridgeSetStatus('<i class="fas fa-coins mr-2 animate-pulse"></i>Minting USDC on destination chain…', 'mint');
-  const mintTx = await transmitter.receiveMessage(messageBytes, attestation);
-  bridgeLog('Mint tx sent: ' + mintTx.hash);
-  const receipt = await mintTx.wait(1);
+
+  const mintTxHash = await eth.request({
+    method: 'eth_sendTransaction',
+    params: [{
+      from: senderAddr,
+      to: toChain.messageTransmitterV2,
+      data: mintCalldata,
+      gas: '0x' + (500000).toString(16),
+    }],
+  });
+
+  bridgeLog('Mint tx sent: ' + mintTxHash);
+
+  let mintReceipt = null;
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    mintReceipt = await eth.request({ method: 'eth_getTransactionReceipt', params: [mintTxHash] });
+    if (mintReceipt && mintReceipt.blockNumber) break;
+  }
+  if (!mintReceipt || !mintReceipt.blockNumber) {
+    throw new Error('Mint transaction not confirmed within 2 minutes');
+  }
+  if (parseInt(mintReceipt.status, 16) !== 1) {
+    throw new Error('Mint transaction reverted on-chain');
+  }
   bridgeLog('Mint confirmed!', 'success');
-  return { txHash: mintTx.hash, receipt };
+  return { txHash: mintTxHash, receipt: mintReceipt };
 }
 
 // ─── Main bridge execute ──────────────────────────────────────────────────────
@@ -495,9 +619,10 @@ async function bridgeExecute() {
   // Confirmation modal
   const fromName = BRIDGE_CHAINS[fromKey].name;
   const toName   = BRIDGE_CHAINS[toKey].name;
-  const modeLabel = bridgeState.mode === 'fast' ? '⚡ Fast (~5–15s)' : '🛡️ Standard (~15min)';
-  const confirmed = window.confirm(
-    `Confirm Bridge\n\nAmount: ${bridgeFmt(amount)} USDC\nFrom: ${fromName}\nTo: ${toName}\nMode: ${modeLabel}\nRecipient: ${recipient}\n\nThis will burn USDC on ${fromName} and mint on ${toName}.`
+  const confirmFn = window._showConfirm || window.confirm;
+  const confirmed = await confirmFn(
+    `Amount: ${bridgeFmt(amount)} USDC\nFrom: ${fromName}\nTo: ${toName}\nRecipient: ${recipient}\n\nThis will burn USDC on ${fromName} and mint on ${toName}.`,
+    'Confirm Bridge'
   );
   if (!confirmed) return;
 
@@ -619,48 +744,59 @@ function bridgeRenderHistory() {
   const el = bridgeEl('bridge-history-list');
   if (!el) return;
   if (!bridgeState.history.length) {
-    el.innerHTML = `<div class="text-gray-600 text-sm text-center py-6"><i class="fas fa-inbox mr-2 opacity-40"></i>No bridge transactions yet.</div>`;
+    el.innerHTML = `<div style="text-align:center;padding:40px 16px;">
+      <div style="width:44px;height:44px;border-radius:13px;background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.12);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+        <i class="fas fa-inbox" style="color:#4a6490;font-size:18px;"></i>
+      </div>
+      <div style="color:#6a85aa;font-weight:600;font-size:12px;">No bridge transactions yet</div>
+      <div style="color:#4a6490;font-size:10px;margin-top:3px;">Completed bridges will appear here</div>
+    </div>`;
     return;
   }
-  el.innerHTML = bridgeState.history.slice(0, 20).map(e => {
-    const from  = BRIDGE_CHAINS[e.from] || { icon: '?', shortName: e.from, explorer: '' };
-    const to    = BRIDGE_CHAINS[e.to]   || { icon: '?', shortName: e.to,   explorer: '' };
-    const date  = new Date(e.ts).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-    const statusMap = {
-      burning:   ['<i class="fas fa-fire text-orange-400 animate-pulse"></i>', 'text-orange-400', 'Burning…'],
-      attesting: ['<i class="fas fa-hourglass-half text-yellow-400 animate-spin"></i>', 'text-yellow-400', 'Attesting…'],
-      minting:   ['<i class="fas fa-coins text-blue-400 animate-pulse"></i>', 'text-blue-400', 'Minting…'],
-      done:      ['<i class="fas fa-check-circle text-green-400"></i>', 'text-green-400', 'Completed'],
-      error:     ['<i class="fas fa-exclamation-circle text-red-400"></i>', 'text-red-400', 'Failed'],
-    };
-    const [icon, cls, label] = statusMap[e.status] || ['', 'text-gray-400', e.status];
-    const burnLink = e.burnTxHash && from.explorer
-      ? `<a href="${from.explorer}/tx/${e.burnTxHash}" target="_blank" class="text-xs text-gray-500 hover:text-blue-400 transition-colors underline">${bridgeShortAddr(e.burnTxHash)} ↗</a>`
-      : '';
-    const mintLink = e.mintTxHash && to.explorer
-      ? `<a href="${to.explorer}/tx/${e.mintTxHash}" target="_blank" class="text-xs text-gray-500 hover:text-green-400 transition-colors underline">${bridgeShortAddr(e.mintTxHash)} ↗</a>`
-      : '';
-    const retryBtn = (e.status === 'error' && e.messageHex && e.attestation)
-      ? `<button onclick="bridgeRetryMint('${e.id}')" class="ml-2 text-xs px-2 py-0.5 rounded-lg bg-blue-600/20 border border-blue-600/40 text-blue-400 hover:bg-blue-600/40 transition-all">Retry Mint</button>`
-      : '';
-    return `
-      <div class="bg-gray-800/50 border border-gray-700/40 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
-        <div class="flex items-center gap-2 flex-1 min-w-0">
-          <span class="text-base">${from.icon}</span>
-          <i class="fas fa-arrow-right text-gray-600 text-xs"></i>
-          <span class="text-base">${to.icon}</span>
-          <div class="min-w-0">
-            <div class="text-white text-sm font-semibold truncate">${bridgeFmt(e.amount)} USDC</div>
-            <div class="text-gray-500 text-xs">${from.shortName} → ${to.shortName}</div>
-          </div>
-        </div>
-        <div class="flex flex-col items-end gap-1 text-right">
-          <div class="flex items-center gap-1.5 text-xs ${cls}">${icon}<span>${label}</span>${retryBtn}</div>
-          <div class="text-gray-600 text-xs">${date}</div>
-          <div class="flex gap-2">${burnLink}${mintLink}</div>
-        </div>
-      </div>`;
-  }).join('');
+  el.innerHTML = `
+    <table class="br-history-table">
+      <thead><tr>
+        <th>Status</th>
+        <th>From → To</th>
+        <th>Amount</th>
+        <th>Transaction</th>
+        <th>Time</th>
+        <th>Explorer</th>
+      </tr></thead>
+      <tbody>
+        ${bridgeState.history.slice(0, 20).map(e => {
+          const from  = BRIDGE_CHAINS[e.from] || { icon: '?', shortName: e.from, explorer: '' };
+          const to    = BRIDGE_CHAINS[e.to]   || { icon: '?', shortName: e.to,   explorer: '' };
+          const date  = new Date(e.ts).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+          const statusMap = {
+            burning:   { icon:'fa-fire',        cls:'color:#fb923c;', bg:'background:rgba(251,146,60,0.1);border:1px solid rgba(251,146,60,0.25);', label:'Burning' },
+            attesting: { icon:'fa-spinner fa-spin', cls:'color:#facc15;', bg:'background:rgba(250,204,21,0.1);border:1px solid rgba(250,204,21,0.25);', label:'Attesting' },
+            minting:   { icon:'fa-coins',       cls:'color:#60a5fa;', bg:'background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.25);', label:'Minting' },
+            done:      { icon:'fa-circle-check',cls:'color:#4ade80;', bg:'background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.25);', label:'Completed' },
+            error:     { icon:'fa-circle-xmark',cls:'color:#f87171;', bg:'background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.25);', label:'Failed' },
+          };
+          const st = statusMap[e.status] || { icon:'fa-minus', cls:'color:#9ca3af;', bg:'background:rgba(156,163,175,0.08);border:1px solid rgba(156,163,175,0.2);', label:e.status };
+          const burnLink = e.burnTxHash && from.explorer
+            ? `<a href="${from.explorer}/tx/${e.burnTxHash}" target="_blank" style="color:#60b4ff;font-size:10px;text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Burn ↗</a>`
+            : '';
+          const mintLink = e.mintTxHash && to.explorer
+            ? `<a href="${to.explorer}/tx/${e.mintTxHash}" target="_blank" style="color:#34d399;font-size:10px;text-decoration:none;margin-left:6px;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Mint ↗</a>`
+            : '';
+          const retryBtn = (e.status === 'error' && e.messageHex && e.attestation)
+            ? `<button onclick="bridgeRetryMint('${e.id}')" style="margin-left:6px;font-size:9px;padding:2px 8px;border-radius:8px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);color:#60a5fa;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(59,130,246,0.22)'" onmouseout="this.style.background='rgba(59,130,246,0.12)'">Retry</button>`
+            : '';
+          return `
+          <tr>
+            <td><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;${st.bg}${st.cls}"><i class="fas ${st.icon}" style="font-size:9px;"></i>${st.label}</span></td>
+            <td><span style="font-size:14px;">${from.icon}</span> <i class="fas fa-arrow-right" style="color:#4a6490;font-size:9px;margin:0 4px;"></i> <span style="font-size:14px;">${to.icon}</span> <span style="font-size:10px;color:#8aaac8;">${from.shortName} → ${to.shortName}</span></td>
+            <td><span style="font-weight:700;color:#e8edf8;">${bridgeFmt(e.amount)}</span> <span style="color:#22d3ee;font-size:10px;">USDC</span></td>
+            <td>${burnLink}${mintLink}${retryBtn}</td>
+            <td style="color:#6a85aa;">${date}</td>
+            <td style="text-align:center;">${(e.burnTxHash || e.mintTxHash) ? `<a href="${(from.explorer || to.explorer)}/tx/${e.burnTxHash || e.mintTxHash}" target="_blank" style="color:#4a6490;" onmouseover="this.style.color='#22d3ee'" onmouseout="this.style.color='#4a6490'"><i class="fas fa-external-link-alt" style="font-size:11px;"></i></a>` : '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
 }
 
 // ─── Initialisation ───────────────────────────────────────────────────────────

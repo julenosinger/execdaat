@@ -476,4 +476,147 @@ dexRouter.post('/liquidity/add', async (c) => {
   }
 });
 
+// ─── PoolFactory endpoints ─────────────────────────────────────────────────────
+
+// Factory address — update after deploying with deployPoolFactory.js
+const FACTORY_ADDRESS: string = (globalThis as any).FACTORY_ADDRESS
+  || '0x0000000000000000000000000000000000000000';
+
+// Minimal PoolFactory ABI for read operations
+const FACTORY_ABI = [
+  'function getAllPools() view returns (address[])',
+  'function getPoolCount() view returns (uint256)',
+  'function findPool(address,address,uint256) view returns (address)',
+  'function createPool(address,address,uint256,string,string) returns (address)',
+  'event PoolCreated(address indexed token0, address indexed token1, uint256 feeBps, address pool, uint256 poolIndex)',
+];
+
+// Minimal LiquidityPool ABI for read operations
+const LP_POOL_ABI = [
+  'function getReserves() view returns (uint256,uint256)',
+  'function token0() view returns (address)',
+  'function token1() view returns (address)',
+  'function feeBps() view returns (uint256)',
+  'function name() view returns (string)',
+  'function symbol() view returns (string)',
+  'function totalSupply() view returns (uint256)',
+  'function quoteSwap(uint256,bool) view returns (uint256)',
+];
+
+function getTokenInfo(addr: string) {
+  const lower = addr.toLowerCase();
+  const eurcAddr = TOKEN_REGISTRY.EURC.address.toLowerCase();
+  const usdcAddr = TOKEN_REGISTRY.USDC.address.toLowerCase();
+  if (lower === eurcAddr) return { symbol: 'EURC', decimals: 6 };
+  if (lower === usdcAddr) return { symbol: 'USDC', decimals: 6 };
+  return { symbol: addr.slice(0, 6) + '\u2026' + addr.slice(-4), decimals: 6 };
+}
+
+// Decode string from eth_call result (offset at 32 bytes, then length, then string)
+function decodeString(hex: string): string {
+  if (!hex || hex === '0x') return '';
+  const data = hex.startsWith('0x') ? hex.slice(2) : hex;
+  if (data.length < 128) return '';
+  const offset = parseInt(data.slice(0, 64), 16) * 2;
+  const length = parseInt(data.slice(offset, offset + 64), 16) * 2;
+  const strHex = data.slice(offset + 64, offset + 64 + length);
+  let str = '';
+  for (let i = 0; i < strHex.length; i += 2) str += String.fromCharCode(parseInt(strHex.slice(i, i + 2), 16));
+  return str;
+}
+
+// GET /api/dex/factory/pools — list all factory pools + legacy pool
+dexRouter.get('/factory/pools', async (c) => {
+  try {
+    const pools: any[] = [];
+
+    // Legacy pool
+    try {
+      const [resHex, tsHex] = await Promise.all([
+        ethCall(AMM_ADDRESS, SEL.getReserves),
+        ethCall(AMM_ADDRESS, SEL.totalSupply),
+      ]);
+      const resA = decUint256('0x' + (resHex || '').slice(2, 66));
+      const resB = decUint256('0x' + (resHex || '').slice(66, 130));
+      pools.push({
+        address: AMM_ADDRESS,
+        token0: TOKEN_A, token1: TOKEN_B,
+        token0Symbol: 'EURC', token1Symbol: 'USDC',
+        feeBps: 30, feePct: '0.30',
+        reserve0: resA.toString(), reserve1: resB.toString(),
+        totalSupply: decUint256(tsHex).toString(),
+        isLegacy: true,
+        name: 'USDC / EURC',
+      });
+    } catch (_) {}
+
+    // Factory pools
+    if (FACTORY_ADDRESS !== '0x0000000000000000000000000000000000000000') {
+      try {
+        // getPoolCount() → uint256
+        const countHex = await ethCall(FACTORY_ADDRESS, '0x2e1a7d4d');
+        const count = Number(decUint256(countHex));
+        // allPools(uint256) → address
+        for (let i = 0; i < Math.min(count, 50); i++) {
+          try {
+            const idxHex = encUint256(i);
+            const addrRes = await ethCall(FACTORY_ADDRESS, '0xb5d3ca00' + idxHex);
+            const addr = '0x' + (addrRes || '').slice(26, 66);
+            if (addr === '0x' + '0'.repeat(40)) continue;
+
+            const [t0Hex, t1Hex, feeHex, nameHex, symHex, tsHex2, resHex2] = await Promise.all([
+              ethCall(addr, '0x0dfe1681'),
+              ethCall(addr, '0xd21220a7'),
+              ethCall(addr, '0x5404911a'),
+              ethCall(addr, '0x06fdde03'),
+              ethCall(addr, '0x95d89b41'),
+              ethCall(addr, '0x18160ddd'),
+              ethCall(addr, '0x0902f1ac'),
+            ]);
+
+            const t0 = '0x' + (t0Hex || '').slice(26, 66);
+            const t1 = '0x' + (t1Hex || '').slice(26, 66);
+            const t0Info = getTokenInfo(t0);
+            const t1Info = getTokenInfo(t1);
+
+            pools.push({
+              address: addr, token0: t0, token1: t1,
+              token0Symbol: t0Info.symbol, token1Symbol: t1Info.symbol,
+              feeBps: Number(decUint256(feeHex)),
+              feePct: (Number(decUint256(feeHex)) / 100).toFixed(2),
+              reserve0: decUint256('0x' + (resHex2 || '').slice(2, 66)).toString(),
+              reserve1: decUint256('0x' + (resHex2 || '').slice(66, 130)).toString(),
+              totalSupply: decUint256(tsHex2).toString(),
+              isLegacy: false,
+              name: decodeString(nameHex),
+              symbol: decodeString(symHex),
+            });
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    return c.json({ success: true, pools });
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500);
+  }
+});
+
+// GET /api/dex/factory/info
+dexRouter.get('/factory/info', async (c) => {
+  try {
+    const info: any = { factoryAddress: FACTORY_ADDRESS, legacyPool: AMM_ADDRESS, poolCount: 1, factoryPoolCount: 0 };
+    if (FACTORY_ADDRESS !== '0x0000000000000000000000000000000000000000') {
+      try {
+        const countHex = await ethCall(FACTORY_ADDRESS, '0x2e1a7d4d');
+        info.factoryPoolCount = Number(decUint256(countHex));
+        info.poolCount = 1 + info.factoryPoolCount;
+      } catch (_) {}
+    }
+    return c.json({ success: true, ...info });
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500);
+  }
+});
+
 export default dexRouter;

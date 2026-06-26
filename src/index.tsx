@@ -48,8 +48,8 @@ app.use('*', cors({
   maxAge:        600,
 }))
 
-// NOTA: /static/* é servido diretamente pelo CDN do Cloudflare Pages (via _routes.json exclude).
-// O serveStatic do Hono NÃO é usado aqui — o Worker não intercepta /static/*.
+// Servir arquivos estáticos
+app.use('/static/*', serveStatic({ root: './public' }))
 
 // ── Security & Trust files (read by GoPlus, OKX Wallet, ScamSniffer) ──────────
 // Served as inline routes to avoid Hono serveStatic issues with dotfiles/paths.
@@ -506,11 +506,31 @@ app.get('/api/status', (c) => {
   })
 })
 
-// ─── SPA HTML builder ─────────────────────────────────────────────────────────
-// Compartilhado entre '/' e todas as rotas clean URL da SPA.
-// O JS router.js lê window.location.pathname e ativa a aba correta.
-// ──────────────────────────────────────────────────────────────────────────────
-const buildSPAHtml = (c: any) => {
+// ─── SPA Route Aliases — redirect path-based URLs to hash-based SPA ──────────
+// e.g. /payments → /#/payments (preserves wallet state, no reload of JS)
+const SPA_ROUTES: Record<string, string> = {
+  '/home':      'home',
+  '/dashboard': 'dashboard',
+  '/payments':  'payments',
+  '/contracts': 'contracts',
+  '/autonoma':  'autonoma',
+  '/settings':  'settings',
+  '/otc':       'otc',
+  '/swap':      'swap',
+  '/bridge':    'bridge',
+  '/multisend': 'multisend',
+  '/history':   'history',
+}
+
+for (const [routePath, tab] of Object.entries(SPA_ROUTES)) {
+  app.get(routePath, (c) => {
+    // Redirect to SPA with hash so the JS router picks it up
+    return c.redirect(`/#/${tab}`, 302)
+  })
+}
+
+// GET / - Interface principal
+app.get('/', (c) => {
   return c.html(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -619,13 +639,12 @@ const buildSPAHtml = (c: any) => {
 
   <!-- ══════════════════════════════════════════════════════════════════════
        HEADER LAYOUT CONTROLLER — inline script runs immediately
-       Manages banner dismiss animation + CSS variable for tab-nav sticky offset
+       Manages banner dismiss animation + CSS variable for sticky offset
        + Hide-on-scroll-down / show-on-scroll-up behaviour
        ══════════════════════════════════════════════════════════════════════ -->
   <script>
-    // Update --topbar-h so the tab nav always sticks directly below the topbar.
-    // When the topbar is hidden (translateY(-100%)) we set the var to 0px so
-    // the tab-nav slides up to the very top of the viewport.
+    // Update --topbar-h for the sticky topbar height.
+    // When the topbar is hidden (translateY(-100%)) we set the var to 0px.
     function updateTopbarHeight() {
       var tb = document.getElementById('sticky-topbar-anchor');
       if (!tb) return;
@@ -633,24 +652,6 @@ const buildSPAHtml = (c: any) => {
       document.documentElement.style.setProperty('--topbar-h', h + 'px');
       // Also store the real height for the hide/show logic
       document.documentElement.style.setProperty('--topbar-real-h', h + 'px');
-    }
-
-    // Dismiss the testnet banner with a smooth collapse animation
-    function dismissBanner() {
-      var banner = document.getElementById('testnet-banner');
-      if (!banner) return;
-      // Collapse: fade out then remove height
-      banner.style.transition = 'max-height 0.25s ease, padding 0.2s ease, opacity 0.15s ease';
-      banner.style.opacity    = '0';
-      banner.style.maxHeight  = '0';
-      banner.style.padding    = '0 16px';
-      // After animation ends, hide completely and sync height var
-      setTimeout(function() {
-        banner.style.display = 'none';
-        updateTopbarHeight();
-      }, 270);
-      // Remember preference
-      try { sessionStorage.setItem('arc-banner-dismissed', '1'); } catch(e){}
     }
 
     // ── Hide-on-scroll-down / Show-on-scroll-up ─────────────────────────────
@@ -662,19 +663,17 @@ const buildSPAHtml = (c: any) => {
 
       function setTopbarVisibility(hide) {
         var tb  = document.getElementById('sticky-topbar');   // inner: gets transform
-        var nav = document.getElementById('tab-nav');
         if (!tb) return;
         if (hide === hidden) return;   // nothing changed
         hidden = hide;
         if (hide) {
           // Slide header up out of view
           tb.style.transform = 'translateY(-100%)';
-          // Move tab-nav to top:0 so it fills the space the header left
           document.documentElement.style.setProperty('--topbar-h', '0px');
         } else {
           // Bring header back
           tb.style.transform = 'translateY(0)';
-          // Restore tab-nav offset
+          // Restore topbar offset
           var realH = getComputedStyle(document.documentElement)
                         .getPropertyValue('--topbar-real-h') || '0px';
           document.documentElement.style.setProperty('--topbar-h', realH);
@@ -706,24 +705,13 @@ const buildSPAHtml = (c: any) => {
           tb.style.transition = 'transform 0.3s cubic-bezier(0.4,0,0.2,1)';
           tb.style.willChange = 'transform';
         }
-        // tab-nav already has transition:top 0.25s ease; also add for --topbar-h
-        var nav = document.getElementById('tab-nav');
-        if (nav) {
-          nav.style.transition = 'top 0.3s cubic-bezier(0.4,0,0.2,1)';
-        }
         window.addEventListener('scroll', onScroll, { passive: true });
       });
     })();
     // ── end hide-on-scroll ───────────────────────────────────────────────────
 
-    // Restore banner state on page load (if dismissed in this session)
+    // Restore banner state on page load
     document.addEventListener('DOMContentLoaded', function() {
-      try {
-        if (sessionStorage.getItem('arc-banner-dismissed') === '1') {
-          var banner = document.getElementById('testnet-banner');
-          if (banner) banner.style.display = 'none';
-        }
-      } catch(e){}
       // Set initial topbar height after DOM is ready
       updateTopbarHeight();
       // Also update on resize (handles mobile orientation change etc.)
@@ -741,115 +729,36 @@ const buildSPAHtml = (c: any) => {
   <!-- inner: slide target — receives translateY for hide/show animation -->
   <div id="sticky-topbar">
 
-  <!-- TESTNET WARNING BANNER — dismissible -->
-  <div id="testnet-banner" style="background:#111;border-bottom:1px solid #2a2a2a;color:#fff;font-size:12px;padding:7px 16px;display:flex;align-items:center;justify-content:center;gap:8px;overflow:hidden;transition:max-height 0.25s ease,padding 0.25s ease,opacity 0.2s ease;max-height:48px;opacity:1;">
-    <span style="color:#f59e0b;font-size:14px;">⚠</span>
-    <span style="color:#f59e0b;font-weight:700;letter-spacing:0.03em;">TESTNET ONLY —</span>
-    <span style="color:#ccc;font-weight:400;" class="hidden sm:inline">This application runs exclusively on Arc Testnet. No real funds are used. Do not send mainnet assets.</span>
-    <span style="color:#ccc;font-weight:400;" class="sm:hidden">Arc Testnet only. No real funds.</span>
-    <a href="https://testnet.arcscan.app" target="_blank" rel="noopener" style="color:#ccc;text-decoration:underline;margin-left:4px;opacity:0.8;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" class="hidden sm:inline">ArcScan ↗</a>
-    <button
-      onclick="dismissBanner()"
-      title="Dismiss"
-      style="margin-left:12px;background:none;border:none;color:#888;font-size:14px;cursor:pointer;padding:0 2px;line-height:1;display:flex;align-items:center;flex-shrink:0;"
-      onmouseover="this.style.color='#fff'"
-      onmouseout="this.style.color='#888'"
-    >✕</button>
-  </div>
+  <!-- HEADER — directly inside sticky wrapper -->
+  <header id="main-header" class="bg-gray-900/95 border-b border-purple-800/30 px-6 py-3 backdrop-blur-sm" style="position:relative;z-index:50;">
+    <div class="max-w-7xl mx-auto flex items-center justify-end gap-2 sm:gap-3">
 
-  <!-- HEADER — Compact futuristic top bar (reference-matched) -->
-  <header id="main-header" class="main-header-bar">
-    <div class="main-header-inner">
-
-      <!-- LEFT: Brand (compact) -->
-      <button onclick="showLanding()" class="hdr-brand-btn" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-        <div class="hdr-brand-icon">
-          <i class="fas fa-robot" style="color:#fff;font-size:13px;"></i>
-        </div>
-        <div class="hdr-brand-text">
-          <span class="hdr-brand-name">ExecDaat</span>
-          <span class="hdr-brand-sub">Secure Payments &amp; Smart Contracts</span>
-        </div>
-      </button>
-
-      <!-- RIGHT: Status Pills -->
-      <div class="hdr-controls">
-
-        <!-- Network Pill -->
-        <div id="hdr-network-selector" class="hdr-pill hdr-pill-net" title="Arc Testnet · Chain ID 5042002"
-          onmouseover="this.classList.add('hdr-pill-hover')" onmouseout="this.classList.remove('hdr-pill-hover')">
-          <span class="hdr-net-dot"></span>
-          <span class="hdr-pill-label">Arc Testnet</span>
+        <!-- Arc Network badge -->
+        <div class="hidden sm:flex items-center gap-1.5 bg-green-900/30 border border-green-700/40 rounded-full px-3 py-1.5">
+          <div class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
+          <span class="text-xs text-green-400 font-medium">Arc Testnet</span>
         </div>
 
-        <!-- Wallet Address Pill (when connected) -->
-        <div id="wallet-info" class="hidden hdr-pill hdr-pill-wallet" style="display:none;" onclick="openWalletModal()"
-          onmouseover="this.style.borderColor='rgba(124,58,237,0.5)';this.style.background='rgba(124,58,237,0.14)'"
-          onmouseout="this.style.borderColor='rgba(124,58,237,0.25)';this.style.background='rgba(124,58,237,0.07)'">
-          <div class="hdr-wallet-avatar" id="wallet-avatar">??</div>
-          <span class="hdr-pill-label" id="wallet-address-display">0x…</span>
-          <div id="wallet-network-display" style="display:none;"></div>
-        </div>
 
-        <!-- Balance Pill (when connected) -->
-        <div id="wallet-balance-display" style="display:none;" class="hdr-pill hdr-pill-balance"></div>
 
-        <!-- Language Selector -->
-        <div id="lang-selector" class="relative hidden sm:block">
-          <button onclick="toggleLangDropdown()" class="hdr-icon-btn" title="Language"
-            onmouseover="this.style.background='rgba(124,58,237,0.14)';this.style.borderColor='rgba(124,58,237,0.4)'"
-            onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(124,58,237,0.18)'">
-            <i class="fas fa-globe" style="font-size:12px;"></i>
-            <span id="lang-toggle-label" style="font-size:10px;font-weight:600;color:#a78bfa;">EN</span>
-          </button>
-          <div id="lang-dropdown" class="hidden absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 min-w-[160px] overflow-hidden" style="background:rgba(10,12,28,0.98);backdrop-filter:blur(16px);border-color:rgba(124,58,237,0.25);">
-            <button onclick="setLang('en')" data-lang="en" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇺🇸</span> English</button>
-            <button onclick="setLang('pt')" data-lang="pt" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇧🇷</span> Português</button>
-            <button onclick="setLang('es')" data-lang="es" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇪🇸</span> Español</button>
-            <button onclick="setLang('zh')" data-lang="zh" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇨🇳</span> 中文</button>
-            <button onclick="setLang('ko')" data-lang="ko" class="lang-option w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 border border-transparent transition-all"><span class="text-base">🇰🇷</span> 한국어</button>
+        <!-- Wallet info (when connected) -->
+        <div id="wallet-info" class="hidden items-center gap-2 bg-gray-800/80 border border-gray-700/50 rounded-xl px-3 py-2 cursor-pointer hover:border-purple-600/50 transition-all" onclick="openWalletModal()">
+          <div class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" id="wallet-avatar">??</div>
+          <div class="hidden sm:block">
+            <div class="text-xs text-white font-mono font-medium leading-none" id="wallet-address-display">0x...</div>
+            <div id="wallet-network-display" class="text-xs text-green-400 leading-none mt-0.5"></div>
           </div>
+          <div id="wallet-balance-display" class="hidden text-xs text-blue-400 font-medium bg-blue-900/30 px-2 py-0.5 rounded-full"></div>
         </div>
 
-        <!-- Notifications -->
-        <div style="position:relative;">
-          <button id="hdr-notif-btn" onclick="arcToggleNotifPanel()" class="hdr-icon-btn hdr-notif-btn" title="Notifications"
-            onmouseover="this.style.background='rgba(124,58,237,0.14)';this.style.borderColor='rgba(124,58,237,0.4)'"
-            onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(124,58,237,0.18)'">
-            <i class="fas fa-bell" style="font-size:13px;"></i>
-            <span id="hdr-notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:linear-gradient(135deg,#7c3aed,#3b82f6);border-radius:50%;font-size:9px;font-weight:800;color:#fff;display:none;align-items:center;justify-content:center;border:2px solid rgba(8,10,22,1);padding:0 3px;line-height:1;">0</span>
-          </button>
-          <!-- Notifications Panel -->
-          <div id="hdr-notif-panel" style="display:none;position:absolute;right:0;top:calc(100% + 8px);width:340px;max-height:420px;background:rgba(10,12,28,0.98);backdrop-filter:blur(20px);border:1px solid rgba(124,58,237,0.25);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.5),0 0 0 1px rgba(124,58,237,0.1);z-index:999;overflow:hidden;animation:hdrNotifSlide 0.2s ease;">
-            <div style="padding:12px 16px;border-bottom:1px solid rgba(124,58,237,0.15);display:flex;align-items:center;justify-content:space-between;">
-              <span style="color:#e2e8f0;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;"><i class="fas fa-bell" style="color:#a78bfa;"></i>Notifications</span>
-              <button onclick="arcClearNotifs()" style="font-size:10px;color:#7a90b0;background:none;border:none;cursor:pointer;transition:color 0.2s;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#7a90b0'">Clear all</button>
-            </div>
-            <div id="hdr-notif-list" style="overflow-y:auto;max-height:340px;padding:8px;">
-              <div style="text-align:center;padding:28px 16px;color:#4a6490;">
-                <i class="fas fa-bell-slash" style="font-size:24px;display:block;margin-bottom:8px;color:#2a3654;"></i>
-                <div style="font-size:12px;">No notifications yet</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Connect Wallet Button (when disconnected) -->
+        <!-- Connect Wallet Button -->
         <button id="wallet-connect-btn" onclick="openWalletModal()"
-          class="wallet-connect-pulse hdr-connect-btn"
-          onmouseover="this.style.boxShadow='0 0 28px rgba(124,58,237,0.7)';this.style.transform='translateY(-1px)'"
-          onmouseout="this.style.boxShadow='0 0 16px rgba(124,58,237,0.35)';this.style.transform='translateY(0)'">
-          <i class="fas fa-wallet" style="font-size:11px;"></i>
-          <span data-i18n="btn_connect">Connect</span>
+          class="wallet-connect-pulse flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-lg shadow-purple-900/30">
+          <i class="fas fa-wallet"></i>
+          <span class="inline" data-i18n="btn_connect">Connect</span>
         </button>
 
-        <!-- Hidden legacy IDs preserved for JS compatibility -->
-        <div id="wallet-badge" class="hidden" style="display:none;width:8px;height:8px;border-radius:50%;background:#4ade80;"></div>
-        <span id="settings-dot" class="hidden" style="display:none;"></span>
-        <!-- Settings & Profile: moved to sidebar — keep hidden triggers for JS compatibility -->
-        <button id="settings-btn" onclick="openSettingsModal()" style="display:none;" aria-hidden="true"></button>
-        <button id="profile-btn" onclick="openProfileModal()" style="display:none;" aria-hidden="true"><span id="profile-avatar-btn"></span></button>
-      </div>
+        <div id="wallet-badge" class="hidden sm:hidden w-2 h-2 rounded-full bg-green-400"></div>
     </div>
   </header>
 
@@ -1113,7 +1022,7 @@ const buildSPAHtml = (c: any) => {
           <span style="font-weight:700;letter-spacing:.04em">ExecDaat</span><span style="color:#6b7280"> — Open Source Testnet dApp</span>
         </div>
         <div class="flex items-center gap-4">
-          <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener" class="hover:text-gray-400 transition-colors">GitHub</a>
+          <a href="/about" class="hover:text-gray-400 transition-colors">About</a>
           <a href="/privacy-policy" class="hover:text-gray-400 transition-colors">Privacy</a>
           <a href="/terms-of-service" class="hover:text-gray-400 transition-colors">Terms</a>
           <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener" class="hover:text-gray-400 transition-colors">GitHub</a>
@@ -1218,126 +1127,37 @@ const buildSPAHtml = (c: any) => {
         <span class="sidebar-item-label">Information</span>
         <span class="sidebar-item-active-bar"></span>
       </button>
+
+      <button onclick="switchTab('agents');sidebarClose();" id="tab-agents" class="tab-btn sidebar-item" data-label="AI Agents">
+        <span class="sidebar-item-icon"><i class="fas fa-brain"></i></span>
+        <span class="sidebar-item-label">AI Agents</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
     </nav>
 
-    <!-- Sidebar bottom utility section -->
-    <div class="sidebar-bottom-section">
-
-      <!-- Separator -->
-      <div class="sidebar-bottom-sep"></div>
-
-      <!-- Profile & Settings actions -->
-      <div class="sidebar-util-group">
-        <button onclick="openProfileModal()" class="sidebar-util-item" title="Profile">
-          <span class="sidebar-item-icon"><i class="fas fa-user-circle"></i></span>
-          <span class="sidebar-item-label">Profile</span>
+    <!-- Sidebar footer: settings, profile & network status -->
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-actions">
+        <button onclick="openSettingsModal()" class="sidebar-footer-btn" title="Settings">
+          <i class="fas fa-cog"></i>
+          <span id="settings-dot" class="hidden" style="position:absolute;top:2px;right:2px;width:8px;height:8px;background:#a78bfa;border-radius:50%;border:2px solid #0f172a;"></span>
         </button>
-        <button onclick="openSettingsModal()" class="sidebar-util-item" title="Settings">
-          <span class="sidebar-item-icon"><i class="fas fa-cog"></i></span>
-          <span class="sidebar-item-label">Settings</span>
-          <span id="sidebar-settings-dot" class="hidden sidebar-badge sidebar-badge-alert" style="width:8px;height:8px;padding:0;"></span>
+        <button onclick="openProfileModal()" class="sidebar-footer-btn" title="Profile">
+          <span id="profile-avatar-btn">👤</span>
         </button>
       </div>
-
-      <!-- Network status -->
-      <div class="sidebar-footer">
-        <div class="sidebar-footer-grid">
-          <div class="sidebar-footer-row">
-            <span class="sidebar-footer-key">Network</span>
-            <div class="sidebar-footer-net">
-              <span class="sidebar-footer-dot"></span>
-              <span class="sidebar-footer-netname">Arc Testnet</span>
-            </div>
-          </div>
-          <div class="sidebar-footer-row">
-            <span class="sidebar-footer-key">Chain ID</span>
-            <span class="sidebar-footer-chainid">5042002</span>
-          </div>
-        </div>
+      <div class="sidebar-footer-net">
+        <span class="sidebar-footer-dot"></span>
+        <span class="sidebar-footer-netname">Arc Testnet</span>
       </div>
-
-      <!-- Ask me CTA button -->
-      <div class="sidebar-askme-wrap">
-        <button onclick="toggleChat()" class="sidebar-askme-btn" id="sidebar-askme-btn">
-          <i class="fas fa-robot sidebar-askme-icon"></i>
-          <span class="sidebar-item-label">Ask me</span>
-        </button>
-      </div>
-
-    </div><!-- /.sidebar-bottom-section -->
+    </div>
   </aside>
-
-  <!-- Sidebar collapse toggle button -->
-  <button id="sidebar-collapse-btn" class="sidebar-collapse-btn" onclick="arcToggleSidebarCollapse()" title="Toggle sidebar">
-    <i class="fas fa-chevron-left" id="sidebar-collapse-icon"></i>
-  </button>
 
   <!-- ═══ MAIN CONTENT WRAPPER (offset by sidebar) ═══ -->
   <div id="app-content-wrap" class="app-content-wrap">
 
-  <!-- ═══ INLINE COMPACT HEADER (inside content area — respects sidebar margin) ═══ -->
-  <div id="app-topbar-wrap" class="app-topbar-wrap">
-    <!-- Testnet warning banner (compact) -->
-    <div id="app-testnet-banner" class="app-testnet-banner">
-      <span style="color:#f59e0b;font-size:12px;">⚠</span>
-      <span style="color:#f59e0b;font-weight:700;font-size:11px;letter-spacing:0.03em;">TESTNET ONLY —</span>
-      <span style="color:#94a3b8;font-size:11px;" class="hidden sm:inline">Arc Testnet. No real funds.</span>
-      <a href="https://testnet.arcscan.app" target="_blank" rel="noopener" style="color:#64748b;text-decoration:underline;font-size:10px;margin-left:2px;" class="hidden sm:inline">ArcScan ↗</a>
-      <button onclick="dismissAppBanner()" style="margin-left:auto;background:none;border:none;color:#64748b;font-size:12px;cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#64748b'" title="Dismiss">✕</button>
-    </div>
-    <!-- Compact header row -->
-    <div class="app-header-row">
-      <!-- Network pill -->
-      <div class="hdr-pill hdr-pill-net" title="Arc Testnet · Chain ID 5042002">
-        <span class="hdr-net-dot"></span>
-        <span class="hdr-pill-label hidden sm:inline">Arc Testnet</span>
-      </div>
-
-      <div style="flex:1;"></div>
-
-      <!-- Wallet Address Pill (when connected) -->
-      <div id="app-wallet-info" class="hidden hdr-pill hdr-pill-wallet" style="cursor:pointer;" onclick="openWalletModal()"
-        onmouseover="this.style.borderColor='rgba(124,58,237,0.5)';this.style.background='rgba(124,58,237,0.14)'"
-        onmouseout="this.style.borderColor='rgba(124,58,237,0.25)';this.style.background='rgba(124,58,237,0.07)'">
-        <div class="hdr-wallet-avatar" id="app-wallet-avatar">??</div>
-        <span class="hdr-pill-label hidden sm:inline" id="app-wallet-address">0x…</span>
-      </div>
-
-      <!-- Balance Pill (when connected) -->
-      <div id="app-balance-pill" style="display:none;" class="hdr-pill hdr-pill-balance"></div>
-
-      <!-- Language Selector -->
-      <div class="relative hidden sm:block">
-        <button onclick="toggleLangDropdown()" class="hdr-icon-btn" title="Language"
-          onmouseover="this.style.background='rgba(124,58,237,0.14)';this.style.borderColor='rgba(124,58,237,0.4)'"
-          onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(124,58,237,0.18)'">
-          <i class="fas fa-globe" style="font-size:12px;"></i>
-        </button>
-      </div>
-
-      <!-- Notifications -->
-      <div style="position:relative;">
-        <button onclick="arcToggleNotifPanel()" class="hdr-icon-btn hdr-notif-btn" title="Notifications"
-          onmouseover="this.style.background='rgba(124,58,237,0.14)';this.style.borderColor='rgba(124,58,237,0.4)'"
-          onmouseout="this.style.background='rgba(255,255,255,0.04)';this.style.borderColor='rgba(124,58,237,0.18)'">
-          <i class="fas fa-bell" style="font-size:13px;"></i>
-          <span id="app-notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;background:linear-gradient(135deg,#7c3aed,#3b82f6);border-radius:50%;font-size:9px;font-weight:800;color:#fff;align-items:center;justify-content:center;border:2px solid rgba(8,10,22,1);padding:0 3px;line-height:1;"></span>
-        </button>
-      </div>
-
-      <!-- Connect Wallet (when disconnected) -->
-      <button id="app-wallet-connect-btn" onclick="openWalletModal()" class="hdr-connect-btn"
-        onmouseover="this.style.boxShadow='0 0 24px rgba(124,58,237,0.7)';this.style.transform='translateY(-1px)'"
-        onmouseout="this.style.boxShadow='0 0 14px rgba(124,58,237,0.35)';this.style.transform='translateY(0)'">
-        <i class="fas fa-wallet" style="font-size:11px;"></i>
-        <span>Connect</span>
-      </button>
-    </div>
-  </div>
-
   <!-- Main Content -->
   <main class="sidebar-main-content">
-
 
     <!-- DASHBOARD TAB -->
     <div id="tab-content-dashboard" class="tab-content">
@@ -1525,7 +1345,25 @@ const buildSPAHtml = (c: any) => {
       <style>
         /* ── Layout ── */
         #pay-page { display:grid; grid-template-columns:1fr; gap:20px; }
-        @media(min-width:1280px){ #pay-page { grid-template-columns:minmax(0,2fr) minmax(0,3fr); gap:20px; } }
+        @media(min-width:1280px){ #pay-page { grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); gap:20px; } }
+
+        /* Info cards (right) */
+        .pay-info-card {
+          background:linear-gradient(160deg,rgba(10,14,30,0.95) 0%,rgba(6,11,22,0.98) 100%);
+          border:1px solid rgba(55,138,221,0.15);
+          border-radius:16px; padding:16px; backdrop-filter:blur(8px);
+        }
+        .pay-info-card h4 {
+          color:#dde2f0; font-size:13px; font-weight:700; margin:0 0 10px;
+          display:flex; align-items:center; gap:8px;
+        }
+        .pay-info-card h4 i { color:#60b4ff; font-size:13px; }
+        .pay-info-row { display:flex; justify-content:space-between; align-items:center; padding:5px 0; }
+        .pay-info-row .pil { font-size:11px; color:#4a6490; }
+        .pay-info-row .piv { font-size:11px; color:#8aaac8; font-weight:600; }
+
+        /* History section below */
+        #pay-history-section { padding:0 0 24px 0; }
 
         /* ── Panel (mirrors .cf-panel) ── */
         .pay-cf-panel {
@@ -1761,59 +1599,30 @@ const buildSPAHtml = (c: any) => {
 
           <!-- Main form panel -->
           <div class="pay-cf-panel">
-            <!-- Premium top accent bar -->
-            <div style="height:2px;background:linear-gradient(90deg,transparent,#7c3aed 30%,#60b4ff 55%,#1D9E75 80%,transparent);"></div>
-            <div style="padding:20px 20px 16px;">
+            <div style="height:2px;background:linear-gradient(90deg,transparent,#378ADD 40%,#1D9E75 60%,transparent);"></div>
+            <div class="p-5">
 
-              <!-- Panel header with token switcher -->
-              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap;">
-                <div style="display:flex;align-items:center;gap:12px;">
-                  <div style="width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,rgba(124,58,237,0.2),rgba(55,138,221,0.15));border:1px solid rgba(124,58,237,0.3);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(124,58,237,0.2);">
-                    <i class="fas fa-paper-plane" style="color:#a78bfa;font-size:14px;"></i>
+              <!-- Panel header -->
+              <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <div style="width:32px;height:32px;border-radius:10px;background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.25);display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-paper-plane" style="color:#60b4ff;font-size:13px;"></i>
                   </div>
                   <div>
-                    <p style="color:#f0f4ff;font-size:15px;font-weight:800;margin:0;letter-spacing:-0.01em;">Send Payment</p>
-                    <p style="color:#6a90b8;font-size:10px;margin:2px 0 0;display:flex;align-items:center;gap:4px;">
-                      <span style="width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 6px rgba(52,211,153,0.7);display:inline-block;flex-shrink:0;"></span>
-                      ERC-20 Transfer · Arc Testnet · Chain 5042002
-                    </p>
+                    <p style="color:#dde2f0;font-size:14px;font-weight:800;margin:0;">Send Payment</p>
+                    <p style="color:#8aaac8;font-size:10px;margin:0;">Single on-chain transfer · Arc Testnet</p>
                   </div>
                 </div>
-                <!-- Token switcher with real addresses -->
-                <div style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.03);border:1px solid rgba(124,58,237,0.15);border-radius:12px;padding:4px;">
-                  <button id="pay-token-usdc" class="pay-tok-btn tok-usdc" onclick="selectPayToken('USDC')"
-                    title="USDC · 0x3600000000000000000000000000000000000000">
-                    <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png" style="width:14px;height:14px;border-radius:50%;margin-right:4px;vertical-align:middle;" onerror="this.style.display='none'">USDC
-                  </button>
-                  <button id="pay-token-eurc" class="pay-tok-btn tok-off" onclick="selectPayToken('EURC')"
-                    title="EURC · 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a">
-                    <i class="fas fa-euro-sign" style="margin-right:3px;font-size:10px;"></i>EURC
-                  </button>
+                <div style="display:flex;align-items:center;gap:5px;">
+                  <button id="pay-token-usdc" class="pay-tok-btn tok-usdc" onclick="selectPayToken('USDC')">USDC</button>
+                  <button id="pay-token-eurc" class="pay-tok-btn tok-off"  onclick="selectPayToken('EURC')">EURC</button>
                 </div>
               </div>
 
-              <!-- Balance display bar -->
-              <div id="pay-balance-bar" style="background:linear-gradient(135deg,rgba(124,58,237,0.06),rgba(55,138,221,0.04));border:1px solid rgba(124,58,237,0.14);border-radius:10px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap;">
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <i class="fas fa-wallet" style="color:#a78bfa;font-size:11px;"></i>
-                  <span style="color:#8aaac8;font-size:10px;font-weight:600;">Available Balance</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <span id="pay-bal-display-usdc" style="font-size:11px;font-weight:700;color:#60b4ff;">— USDC</span>
-                  <span style="color:#2a3654;font-size:10px;">·</span>
-                  <span id="pay-bal-display-eurc" style="font-size:11px;font-weight:700;color:#a78bfa;">— EURC</span>
-                </div>
-              </div>
-
-              <!-- Security warning card (subtle red gradient) -->
-              <div style="background:linear-gradient(135deg,rgba(239,68,68,0.06),rgba(185,28,28,0.04));border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:10px 14px;display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;">
-                <div style="width:28px;height:28px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">
-                  <i class="fas fa-shield-alt" style="color:#f87171;font-size:11px;"></i>
-                </div>
-                <div>
-                  <p style="color:#fca5a5;font-size:11px;font-weight:700;margin:0 0 2px;">No Private Keys Required</p>
-                  <p style="color:rgba(252,165,165,0.7);font-size:10px;margin:0;line-height:1.4;">All transactions use wallet approval only. We never request or store private keys or seed phrases. Your keys remain in your wallet at all times.</p>
-                </div>
+              <!-- Anti-phishing -->
+              <div class="mb-4" style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);border-radius:10px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px;">
+                <i class="fas fa-shield-alt" style="color:#f87171;font-size:11px;flex-shrink:0;margin-top:1px;"></i>
+                <p style="color:#fca5a5;font-size:11px;margin:0;">Never enter private keys or seed phrases. All interactions use wallet approval only.</p>
               </div>
 
               <!-- KYC Status Bar -->
@@ -1822,106 +1631,80 @@ const buildSPAHtml = (c: any) => {
               <!-- Smart Autofill Profile Bar -->
               <div id="pay-form-top"></div>
 
-              <div style="display:flex;flex-direction:column;gap:14px;">
+              <div class="space-y-3">
 
-                <!-- ── Recipient wallet + ENS ── -->
+                <!-- Recipient wallet + ENS -->
                 <div>
                   <label class="pay-cf-label">
-                    <i class="fas fa-user-circle" style="color:#a78bfa;font-size:12px;"></i>
-                    RECIPIENT WALLET
-                    <span style="color:#6a90b8;font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;margin-left:2px;">(0x… or ENS)</span>
-                    <span style="margin-left:auto;cursor:help;" title="Enter a 0x EVM wallet address (42 chars) or an ENS name. Address will be validated and checksummed. Arc Testnet only."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                    <i class="fas fa-hard-hat" style="color:#1D9E75;"></i>
+                    RECIPIENT WALLET (0x…)
+                    <span style="margin-left:auto;cursor:help;" title="Enter a 0x EVM wallet address (42 chars). Must match Arc Testnet (Chain 5042002). You can also type an ENS name and click ENS to resolve."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </label>
                   <div style="display:flex;gap:6px;align-items:flex-start;">
-                    <div style="flex:1;position:relative;">
-                      <input type="text" id="pay-recipient" class="pay-cf-input"
-                        style="padding:10px 12px;font-family:'JetBrains Mono',monospace,sans-serif;font-size:12px;letter-spacing:0.02em;"
+                    <div style="flex:1;">
+                      <input type="text" id="pay-recipient" class="pay-cf-input px-3 py-2.5 text-sm font-mono"
                         placeholder="0x… or vitalik.eth"
                         autocomplete="off" spellcheck="false"
                         inputmode="text"
-                        oninput="payRecipientFormat(this);payValidateField('recipient');updatePayPreview();payValidateForm()">
-                      <div id="pay-hint-recipient" class="pay-field-hint" style="min-height:16px;"></div>
+                        oninput="payValidateField('recipient'); updatePayPreview(); payValidateForm()">
+                      <div id="pay-hint-recipient" class="pay-field-hint"></div>
                     </div>
                     <button id="pay-ens-btn" onclick="payResolveENS()"
                       title="Resolve ENS name to wallet address"
-                      style="flex-shrink:0;padding:10px 12px;background:linear-gradient(135deg,rgba(167,139,250,0.1),rgba(124,58,237,0.08));border:1px solid rgba(167,139,250,0.3);border-radius:10px;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;white-space:nowrap;display:flex;align-items:center;gap:5px;"
-                      onmouseover="this.style.background='linear-gradient(135deg,rgba(167,139,250,0.2),rgba(124,58,237,0.15))';this.style.boxShadow='0 0 14px rgba(167,139,250,0.3)'"
-                      onmouseout="this.style.background='linear-gradient(135deg,rgba(167,139,250,0.1),rgba(124,58,237,0.08))';this.style.boxShadow='none'">
-                      <i class="fas fa-at" style="font-size:10px;"></i> ENS
+                      style="flex-shrink:0;padding:9px 10px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:9px;color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;white-space:nowrap;"
+                      onmouseover="this.style.background='rgba(167,139,250,0.2)'" onmouseout="this.style.background='rgba(167,139,250,0.1)'">
+                      <i class="fas fa-search"></i> ENS
                     </button>
                   </div>
                 </div>
 
-                <!-- ── Amount with live balance + fiat ── -->
+                <!-- Amount -->
                 <div>
                   <label class="pay-cf-label">
-                    <i class="fas fa-coins" style="color:#60b4ff;font-size:12px;"></i>
-                    AMOUNT
-                    <span style="color:#6a90b8;font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;margin-left:2px;">(<span id="pay-label-token">USDC</span>)</span>
-                    <span id="pay-max-hint" style="font-size:10px;color:#8aaac8;font-weight:500;text-transform:none;letter-spacing:0;margin-left:auto;"></span>
-                    <span style="cursor:help;margin-left:4px;" title="Enter amount in token units (6 decimals for USDC/EURC). Click MAX to use full balance."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                    <i class="fas fa-coins" style="color:#1D9E75;"></i>
+                    AMOUNT (<span id="pay-label-token">USDC</span>)
+                    <span id="pay-max-hint" style="font-size:10px;color:#8aaac8;font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto;"></span>
+                    <span style="cursor:help;" title="Enter the amount to send. Use MAX to fill your full balance. Amounts are in token units (6 decimals for USDC/EURC)."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </label>
                   <div style="position:relative;">
-                    <input type="number" id="pay-amount" class="pay-cf-input"
-                      style="padding:10px 88px 10px 12px;font-size:14px;font-weight:700;"
-                      placeholder="0.00" min="0" step="0.000001"
-                      autocomplete="off" inputmode="decimal"
-                      oninput="payValidateField('amount');updatePayPreview();payValidateForm();arcPayUpdateFiatEstimate()">
+                    <input type="number" id="pay-amount" class="pay-cf-input px-3 py-2.5 text-sm pr-24"
+                      placeholder="0.000000" min="0" step="0.000001"
+                      autocomplete="off"
+                      inputmode="decimal"
+                      oninput="payValidateField('amount'); updatePayPreview(); payValidateForm()">
                     <button onclick="setPayMax()"
-                      style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:800;color:#7c3aed;background:linear-gradient(135deg,rgba(124,58,237,0.15),rgba(55,138,221,0.1));padding:4px 10px;border-radius:8px;border:1px solid rgba(124,58,237,0.35);cursor:pointer;transition:all 0.2s;letter-spacing:0.05em;"
-                      onmouseover="this.style.background='linear-gradient(135deg,rgba(124,58,237,0.28),rgba(55,138,221,0.2))';this.style.boxShadow='0 0 12px rgba(124,58,237,0.4)'"
-                      onmouseout="this.style.background='linear-gradient(135deg,rgba(124,58,237,0.15),rgba(55,138,221,0.1))';this.style.boxShadow='none'">MAX</button>
+                      style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;color:#378ADD;background:rgba(55,138,221,0.12);padding:2px 8px;border-radius:8px;border:1px solid rgba(55,138,221,0.25);cursor:pointer;transition:all 0.2s;"
+                      onmouseover="this.style.background='rgba(55,138,221,0.22)'" onmouseout="this.style.background='rgba(55,138,221,0.12)'">MAX</button>
                   </div>
-                  <!-- Live fiat estimation -->
-                  <div id="pay-fiat-estimate" style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;min-height:16px;">
-                    <div id="pay-hint-amount" class="pay-field-hint" style="flex:1;margin-top:0;"></div>
-                    <div id="pay-fiat-val" style="font-size:10px;color:#6a90b8;font-weight:600;display:none;">≈ $<span id="pay-fiat-usd">0.00</span> USD</div>
-                  </div>
+                  <div id="pay-hint-amount" class="pay-field-hint"></div>
                 </div>
 
-                <!-- ── Gas Speed Selector Premium ── -->
-                <div style="background:rgba(8,10,22,0.6);border:1px solid rgba(124,58,237,0.15);border-radius:12px;padding:12px 14px;overflow:hidden;position:relative;">
-                  <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,0.4) 50%,transparent);pointer-events:none;"></div>
-                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;">
-                    <i class="fas fa-gas-pump" style="color:#a78bfa;font-size:11px;"></i>
-                    <span style="color:#a8c4e0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;">Gas Speed</span>
-                    <div id="pay-gas-live-gwei" style="margin-left:auto;font-size:9px;color:#4a6490;font-family:monospace;background:rgba(0,0,0,0.2);padding:2px 7px;border-radius:6px;"></div>
-                    <span style="cursor:help;" title="Choose transaction speed. Estimates update live from Arc Testnet gas oracle."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.6;"></i></span>
+                <!-- Gas Speed Selector -->
+                <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.15);border-radius:11px;padding:11px 13px 9px;">
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
+                    <i class="fas fa-tachometer-alt" style="color:#60b4ff;font-size:11px;"></i>
+                    <span style="color:#8aaac8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">Gas Speed</span>
+                    <span style="margin-left:auto;cursor:help;" title="Choose transaction speed. Fast: higher gas, ~10s confirmation. Standard: balanced. Slow: lowest gas, ~120s."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </div>
-                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
-                    <!-- Slow -->
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;">
                     <button id="pay-gas-slow" onclick="paySelectGasTier('slow')"
-                      style="padding:10px 6px;background:rgba(107,114,128,0.06);border:1px solid rgba(107,114,128,0.18);border-radius:10px;cursor:pointer;transition:all 0.2s;text-align:center;"
-                      onmouseover="if(document.getElementById('pay-gas-slow').style.borderColor.includes('0.18'))this.style.borderColor='rgba(107,114,128,0.35)'"
-                      onmouseout="if(document.getElementById('pay-gas-slow').style.borderColor.includes('0.35'))this.style.borderColor='rgba(107,114,128,0.18)'">
-                      <div style="font-size:16px;margin-bottom:3px;">🐢</div>
-                      <div style="font-size:10px;font-weight:700;color:#9ca3af;">Slow</div>
-                      <div class="gas-cost" style="font-size:9px;color:#6b7280;margin-top:2px;font-family:monospace;">—</div>
-                      <div class="gas-time" style="font-size:9px;color:#4b5563;margin-top:1px;">~120s</div>
+                      style="padding:7px 5px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
+                      <div style="font-size:10px;font-weight:700;color:#6b7280;">🐢 Slow</div>
+                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
+                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~120s</div>
                     </button>
-                    <!-- Standard (default active) -->
                     <button id="pay-gas-standard" onclick="paySelectGasTier('standard')"
-                      style="padding:10px 6px;background:linear-gradient(135deg,rgba(124,58,237,0.12),rgba(55,138,221,0.1));border:1px solid rgba(124,58,237,0.4);border-radius:10px;cursor:pointer;transition:all 0.2s;text-align:center;box-shadow:0 0 14px rgba(124,58,237,0.12);">
-                      <div style="font-size:16px;margin-bottom:3px;">⚡</div>
-                      <div style="font-size:10px;font-weight:800;color:#a78bfa;">Standard</div>
-                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;font-family:monospace;">—</div>
-                      <div class="gas-time" style="font-size:9px;color:#6a90b8;margin-top:1px;">~30s</div>
+                      style="padding:7px 5px;background:rgba(55,138,221,0.18);border:1px solid rgba(55,138,221,0.5);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
+                      <div style="font-size:10px;font-weight:700;color:#60b4ff;">⚡ Standard</div>
+                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
+                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~30s</div>
                     </button>
-                    <!-- Fast -->
                     <button id="pay-gas-fast" onclick="paySelectGasTier('fast')"
-                      style="padding:10px 6px;background:rgba(52,211,153,0.05);border:1px solid rgba(52,211,153,0.15);border-radius:10px;cursor:pointer;transition:all 0.2s;text-align:center;"
-                      onmouseover="if(document.getElementById('pay-gas-fast').style.borderColor.includes('0.15'))this.style.borderColor='rgba(52,211,153,0.35)'"
-                      onmouseout="if(document.getElementById('pay-gas-fast').style.borderColor.includes('0.35'))this.style.borderColor='rgba(52,211,153,0.15)'">
-                      <div style="font-size:16px;margin-bottom:3px;">🚀</div>
-                      <div style="font-size:10px;font-weight:700;color:#34d399;">Fast</div>
-                      <div class="gas-cost" style="font-size:9px;color:#6b7280;margin-top:2px;font-family:monospace;">—</div>
-                      <div class="gas-time" style="font-size:9px;color:#4b5563;margin-top:1px;">~10s</div>
+                      style="padding:7px 5px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);border-radius:9px;cursor:pointer;transition:all 0.2s;text-align:center;">
+                      <div style="font-size:10px;font-weight:700;color:#34d399;">🚀 Fast</div>
+                      <div class="gas-cost" style="font-size:9px;color:#8aaac8;margin-top:2px;">—</div>
+                      <div class="gas-time" style="font-size:8px;color:#5a7090;">~10s</div>
                     </button>
-                  </div>
-                  <!-- Gas fee summary row -->
-                  <div id="pay-gas-summary" style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid rgba(124,58,237,0.08);">
-                    <span style="font-size:10px;color:#4a6490;">Estimated gas fee</span>
-                    <span id="pay-gas-usd-display" style="font-size:10px;font-weight:700;color:#6a90b8;font-family:monospace;">—</span>
                   </div>
                 </div>
 
@@ -1934,75 +1717,67 @@ const buildSPAHtml = (c: any) => {
                   <div id="pay-fee-total"></div>
                 </div>
 
-                <!-- ── Payment Note ── -->
+                <!-- Payment Note -->
                 <div>
                   <label class="pay-cf-label">
-                    <i class="fas fa-comment-alt" style="color:#a78bfa;font-size:11px;"></i>
+                    <i class="fas fa-sticky-note" style="color:#a78bfa;"></i>
                     PAYMENT NOTE
-                    <span style="color:#6a90b8;font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;margin-left:2px;">(optional, max 300 chars)</span>
-                    <span style="margin-left:auto;cursor:help;" title="Optional memo attached to the receipt. Not stored on-chain. UTF-8 supported. Max 300 characters."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                    <span class="opt">(optional)</span>
+                    <span style="margin-left:auto;cursor:help;" title="A short text memo included in the receipt. Not stored on-chain. Max 300 characters."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </label>
-                  <div style="position:relative;">
-                    <textarea id="pay-note" class="pay-note-input"
-                      style="padding:10px 12px;font-size:12px;min-height:68px;"
-                      placeholder="e.g. Freelance payment · Invoice #123 · Monthly salary · Project milestone…"
-                      maxlength="300"
-                      oninput="payUpdateNoteCounter();updatePayPreview();payValidateForm()"
-                      rows="2"></textarea>
-                    <!-- Counter overlay -->
-                    <div class="pay-note-counter" id="pay-note-counter-wrap" style="position:absolute;bottom:6px;right:10px;font-size:9px;"><span id="pay-note-count">0</span>/300</div>
-                  </div>
+                  <textarea id="pay-note" class="pay-note-input px-3 py-2"
+                    placeholder="e.g. Freelance payment, invoice #123, salary…"
+                    maxlength="300"
+                    oninput="payUpdateNoteCounter(); updatePayPreview(); payValidateForm()"
+                    rows="2"></textarea>
+                  <div class="pay-note-counter"><span id="pay-note-count">0</span>/300</div>
                 </div>
 
-                <!-- ── Send Timing ── -->
-                <div style="background:rgba(8,10,22,0.6);border:1px solid rgba(167,139,250,0.15);border-radius:12px;padding:12px 14px;overflow:hidden;position:relative;">
-                  <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(167,139,250,0.4) 50%,transparent);pointer-events:none;"></div>
+                <!-- Schedule Payment -->
+                <div class="pay-sched-panel">
                   <div class="pay-cf-label" style="margin-bottom:10px;">
-                    <i class="fas fa-clock" style="color:#a78bfa;font-size:12px;"></i>
+                    <i class="fas fa-clock" style="color:#a78bfa;"></i>
                     <span data-i18n="sched_send_timing">SEND TIMING</span>
-                    <span style="margin-left:auto;cursor:help;" title="Send Now executes immediately. Schedule queues the payment for future execution with timezone handling."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
+                    <span style="margin-left:auto;cursor:help;" data-i18n-title="sched_send_timing_tooltip" title="Send Now executes immediately. Schedule queues the payment and executes at the specified time (MM/DD/YYYY, local → UTC). Gas estimate may vary at execution."><i class="fas fa-info-circle" style="color:#60b4ff;font-size:10px;opacity:0.7;"></i></span>
                   </div>
-                  <div class="pay-sched-toggle" style="gap:6px;">
-                    <button type="button" class="pay-sched-opt active-now" id="pay-sched-now" onclick="paySetSchedule('now')"
-                      style="display:flex;align-items:center;justify-content:center;gap:6px;">
-                      <i class="fas fa-bolt" style="font-size:10px;"></i><span data-i18n="sched_send_now">Send Now</span>
+                  <div class="pay-sched-toggle">
+                    <button type="button" class="pay-sched-opt active-now" id="pay-sched-now" onclick="paySetSchedule('now')">
+                      <i class="fas fa-bolt" style="margin-right:4px;"></i><span data-i18n="sched_send_now">Send Now</span>
                     </button>
-                    <button type="button" class="pay-sched-opt" id="pay-sched-later" onclick="paySetSchedule('later')"
-                      style="display:flex;align-items:center;justify-content:center;gap:6px;">
-                      <i class="fas fa-calendar-alt" style="font-size:10px;"></i><span data-i18n="sched_send_later">Schedule for Later</span>
+                    <button type="button" class="pay-sched-opt" id="pay-sched-later" onclick="paySetSchedule('later')">
+                      <i class="fas fa-calendar-alt" style="margin-right:4px;"></i><span data-i18n="sched_send_later">Schedule for Later</span>
                     </button>
                   </div>
-                  <div id="pay-sched-inputs" style="display:none;margin-top:12px;display:none;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                      <div>
-                        <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;">
-                          <i class="fas fa-calendar" style="color:#60b4ff;"></i><span data-i18n="sched_date_label">DATE</span>
-                        </label>
-                        <input type="date" id="pay-sched-date" class="pay-cf-input" style="padding:8px 10px;font-size:12px;"
-                          oninput="payValidateSched();updatePayPreview();payValidateForm()">
-                      </div>
-                      <div>
-                        <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;">
-                          <i class="fas fa-clock" style="color:#60b4ff;"></i><span data-i18n="sched_time_label">TIME</span>
-                        </label>
-                        <input type="time" id="pay-sched-time" class="pay-cf-input" style="padding:8px 10px;font-size:12px;"
-                          oninput="payValidateSched();updatePayPreview();payValidateForm()">
-                      </div>
+                  <div id="pay-sched-inputs" style="display:none;">
+                    <div>
+                      <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;margin-top:2px;">
+                        <i class="fas fa-calendar" style="color:#60b4ff;"></i><span data-i18n="sched_date_label">DATE (MM/DD/YYYY)</span>
+                      </label>
+                      <input type="date" id="pay-sched-date" class="pay-cf-input px-3 py-2 text-sm"
+                        oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
                     </div>
-                    <div style="margin-top:8px;">
+                    <div>
+                      <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;margin-top:2px;">
+                        <i class="fas fa-clock" style="color:#60b4ff;"></i><span data-i18n="sched_time_label">TIME</span>
+                      </label>
+                      <input type="time" id="pay-sched-time" class="pay-cf-input px-3 py-2 text-sm"
+                        oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
+                    </div>
+                    <div style="grid-column:1/-1;">
                       <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;">
                         <i class="fas fa-globe" style="color:#34d399;"></i><span data-i18n="sched_tz_label">TIMEZONE</span>
                       </label>
-                      <select id="pay-sched-tz" class="pay-cf-input" style="padding:8px 10px;font-size:12px;"
-                        oninput="payValidateSched();updatePayPreview();payValidateForm()">
+                      <select id="pay-sched-tz" class="pay-cf-input px-3 py-2 text-sm"
+                        oninput="payValidateSched(); updatePayPreview(); payValidateForm()">
                       </select>
                     </div>
-                    <div id="pay-sched-hint" class="pay-sched-hint" style="margin-top:6px;"></div>
-                    <div id="pay-future-cost-warn" style="display:none;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:7px 10px;margin-top:6px;font-size:10px;color:#fbbf24;"></div>
+                    <div id="pay-sched-hint" class="pay-sched-hint" style="grid-column:1/-1;"></div>
+                    <!-- Future cost warning for scheduled payments -->
+                    <div id="pay-future-cost-warn" style="display:none;grid-column:1/-1;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:7px 10px;margin-top:4px;"></div>
                   </div>
                 </div>
 
-                <!-- Preview box (hidden elements kept for JS compatibility) -->
+                <!-- Preview box removed (hidden elements kept for JS compatibility) -->
                 <div id="pay-preview-box" style="display:none;">
                   <span id="prev-token"></span>
                   <span id="prev-amount"></span>
@@ -2022,53 +1797,33 @@ const buildSPAHtml = (c: any) => {
                   <div id="prev-note-row" style="display:none;"></div>
                 </div>
 
-                <!-- ── Validation Status Bar ── -->
-                <div id="pay-validation-bar" style="border-radius:10px;padding:9px 12px;display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;transition:all 0.25s;background:rgba(74,100,144,0.08);border:1px solid rgba(74,100,144,0.18);color:#4a6490;">
-                  <i id="pay-val-icon" class="fas fa-circle-notch fa-spin" style="color:#4a6490;font-size:10px;flex-shrink:0;"></i>
-                  <span id="pay-val-msg">Waiting for input…</span>
-                </div>
-
                 <!-- Error box -->
-                <div id="pay-error-box" style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.28);border-radius:10px;padding:9px 13px;display:none;align-items:flex-start;gap:8px;">
-                  <i class="fas fa-exclamation-triangle" style="color:#f87171;flex-shrink:0;margin-top:1px;"></i>
-                  <span id="pay-error-text" style="color:#fca5a5;font-size:11px;flex:1;line-height:1.4;"></span>
-                  <button onclick="hidePayError()" style="background:none;border:none;color:#6a90b8;cursor:pointer;font-size:13px;padding:0;flex-shrink:0;transition:color 0.2s;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#6a90b8'">✕</button>
+                <div id="pay-error-box">
+                  <i class="fas fa-exclamation-circle" style="color:#f87171;flex-shrink:0;"></i>
+                  <span id="pay-error-text" style="color:#fca5a5;font-size:12px;flex:1;"></span>
+                  <button onclick="hidePayError()" style="background:none;border:none;color:#8aaac8;cursor:pointer;font-size:14px;padding:0;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#8aaac8'">✕</button>
                 </div>
 
                 <!-- Retry button -->
                 <button id="pay-retry-btn" onclick="executePayment()"
-                  style="display:none;width:100%;padding:10px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.28);border-radius:11px;color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;align-items:center;justify-content:center;gap:7px;"
-                  onmouseover="this.style.background='rgba(251,191,36,0.16)';this.style.boxShadow='0 0 16px rgba(251,191,36,0.2)'"
-                  onmouseout="this.style.background='rgba(251,191,36,0.08)';this.style.boxShadow='none'">
+                  style="display:none;width:100%;padding:9px;background:rgba(251,191,36,0.09);border:1px solid rgba(251,191,36,0.3);border-radius:10px;color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s;align-items:center;justify-content:center;gap:7px;"
+                  onmouseover="this.style.background='rgba(251,191,36,0.16)'" onmouseout="this.style.background='rgba(251,191,36,0.09)'">
                   <i class="fas fa-redo"></i> Retry Transaction
                 </button>
 
-                <!-- ── Execution buttons ── -->
-                <div style="display:flex;flex-direction:column;gap:8px;">
-                  <!-- Primary CTA: glowing purple gradient -->
-                  <button type="button" id="pay-send-btn" onclick="executePayment()" disabled
-                    style="width:100%;padding:14px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:13px;font-size:13px;font-weight:800;cursor:pointer;transition:all 0.3s;box-shadow:0 0 24px rgba(124,58,237,0.35);letter-spacing:0.04em;display:flex;align-items:center;justify-content:center;gap:9px;position:relative;overflow:hidden;"
-                    onmouseover="if(!this.disabled){this.style.boxShadow='0 0 40px rgba(124,58,237,0.6)';this.style.transform='translateY(-1px)';}"
-                    onmouseout="if(!this.disabled){this.style.boxShadow='0 0 24px rgba(124,58,237,0.35)';this.style.transform='translateY(0)';}">
-                    <span id="pay-btn-shimmer" style="position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.06) 50%,transparent 100%);transform:translateX(-100%);animation:payBtnShimmer 2.5s ease infinite;pointer-events:none;"></span>
-                    <i class="fas fa-paper-plane" style="font-size:12px;"></i>
-                    <span id="pay-send-btn-text">Sign &amp; Send</span>
-                  </button>
-                  <!-- Secondary outlined button -->
-                  <button type="button" onclick="if(window.payResetForm)payResetForm();else{document.getElementById('pay-recipient').value='';document.getElementById('pay-amount').value='';payValidateForm();}"
-                    style="width:100%;padding:10px;background:rgba(255,255,255,0.02);color:#6a90b8;border:1px solid rgba(100,116,139,0.2);border-radius:11px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;"
-                    onmouseover="this.style.background='rgba(124,58,237,0.06)';this.style.borderColor='rgba(124,58,237,0.25)';this.style.color='#a78bfa'"
-                    onmouseout="this.style.background='rgba(255,255,255,0.02)';this.style.borderColor='rgba(100,116,139,0.2)';this.style.color='#6a90b8'">
-                    <i class="fas fa-times-circle" style="font-size:10px;"></i> Clear Form
-                  </button>
-                </div>
+                <!-- Submit button -->
+                <button type="button" id="pay-send-btn" onclick="executePayment()" disabled
+                  onmouseover="if(!this.disabled)this.style.boxShadow='0 0 30px rgba(55,138,221,0.5)'" onmouseout="if(!this.disabled)this.style.boxShadow='0 0 20px rgba(55,138,221,0.3)'">
+                  <i class="fas fa-paper-plane"></i>
+                  <span id="pay-send-btn-text">Sign &amp; Send</span>
+                </button>
 
-                <p style="font-size:9px;color:#4a6490;text-align:center;margin-top:2px;">
-                  ERC-20 · Arc Testnet (Chain 5042002) · No real funds · All approvals via MetaMask
+                <p style="font-size:10px;color:#7a9cc0;text-align:center;margin-top:4px;">
+                  ERC-20 · Arc Testnet (5042002) · No real funds
                 </p>
-              </div><!-- end flex column -->
+              </div><!-- end space-y-3 -->
 
-            </div><!-- end padding -->
+            </div><!-- end p-5 -->
           </div><!-- end pay-cf-panel -->
 
           <!-- Transaction Steps -->
@@ -2105,82 +1860,83 @@ const buildSPAHtml = (c: any) => {
 
         </div><!-- end left col -->
 
-        <!-- ══ RIGHT COLUMN ══ -->
-        <div id="pay-right-col">
+        <!-- ══ RIGHT COLUMN — Info cards ══ -->
+        <div id="pay-right-col" style="display:flex;flex-direction:column;gap:16px;">
 
-          <!-- History panel -->
-          <div id="pay-history-panel"
-            style="background:linear-gradient(160deg,rgba(10,14,30,0.98) 0%,rgba(6,9,20,1) 100%);border:1px solid rgba(55,138,221,0.18);border-radius:16px;overflow:hidden;backdrop-filter:blur(12px);">
-
-            <!-- Header -->
-            <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(55,138,221,0.1);background:rgba(55,138,221,0.03);">
-              <div style="display:flex;align-items:center;gap:8px;">
-                <div style="width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,rgba(55,138,221,0.2),rgba(29,158,117,0.15));border:1px solid rgba(55,138,221,0.25);display:flex;align-items:center;justify-content:center;">
-                  <i class="fas fa-history" style="color:#60b4ff;font-size:13px;"></i>
-                </div>
-                <div>
-                  <div style="color:#dde2f0;font-size:13px;font-weight:800;letter-spacing:0.01em;">Transaction History</div>
-                  <div style="color:#4a6490;font-size:10px;margin-top:1px;">All payments · Expandable details</div>
-                </div>
+          <!-- About Payments -->
+          <div class="pay-info-card">
+            <h4><i class="fas fa-circle-info"></i>About Payments</h4>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
+                <i class="fas fa-shield-check" style="color:#60b4ff;font-size:12px;"></i>Direct ERC-20 transfer
               </div>
-              <div style="display:flex;align-items:center;gap:6px;">
-                <button onclick="typeof arcShowHiddenPayments==='function'&&arcShowHiddenPayments()"
-                  style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#8aaac8;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.18);padding:5px 11px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                  title="Show hidden transactions"
-                  onmouseover="this.style.color='#60b4ff';this.style.background='rgba(55,138,221,0.14)';this.style.borderColor='rgba(55,138,221,0.4)'"
-                  onmouseout="this.style.color='#8aaac8';this.style.background='rgba(55,138,221,0.06)';this.style.borderColor='rgba(55,138,221,0.18)'">
-                  <i class="fas fa-eye" style="font-size:9px;"></i>Hidden
-                </button>
-                <button onclick="refreshPaymentBalances();renderPaymentHistory()"
-                  style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#60b4ff;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:5px 11px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                  onmouseover="this.style.background='rgba(55,138,221,0.18)';this.style.borderColor='rgba(55,138,221,0.5)'"
-                  onmouseout="this.style.background='rgba(55,138,221,0.08)';this.style.borderColor='rgba(55,138,221,0.28)'">
-                  <i class="fas fa-sync" style="font-size:9px;"></i>Refresh
-                </button>
-                <button onclick="(function(p){p.style.transition='opacity 0.25s ease,transform 0.25s ease';p.style.opacity='0';p.style.transform='translateY(-8px)';setTimeout(()=>{p.style.display='none';p.style.opacity='';p.style.transform='';},250);})(document.getElementById('pay-history-panel'))"
-                  title="Close history panel"
-                  style="width:28px;height:28px;border-radius:8px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);color:#f87171;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;transition:all 0.2s;"
-                  onmouseover="this.style.background='rgba(239,68,68,0.18)';this.style.borderColor='rgba(239,68,68,0.4)'"
-                  onmouseout="this.style.background='rgba(239,68,68,0.07)';this.style.borderColor='rgba(239,68,68,0.18)'">
-                  <i class="fas fa-times"></i>
-                </button>
+              <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
+                <i class="fas fa-bolt" style="color:#60b4ff;font-size:12px;"></i>Instant on-chain settlement
               </div>
-            </div>
-
-            <!-- List container — renderPaymentHistory() writes here -->
-            <div id="pay-history-list" style="max-height:600px;overflow-y:auto;">
-              <div style="color:#4a6490;font-size:12px;text-align:center;padding:36px 16px;">
-                <i class="fas fa-clock" style="font-size:28px;display:block;margin-bottom:10px;color:#2a3650;"></i>
-                No transactions yet
+              <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
+                <i class="fas fa-coins" style="color:#60b4ff;font-size:12px;"></i>USDC &amp; EURC supported
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
+                <i class="fas fa-flask" style="color:#facc15;font-size:12px;"></i>Arc Testnet — no real funds
               </div>
             </div>
           </div>
 
-          <!-- Agent Queue panel -->
-          <div class="pay-side-panel">
-            <div class="pay-side-hdr">
-              <span style="color:#dde2f0;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">
-                <i class="fas fa-robot" style="color:#1D9E75;"></i> Agent Payment Queue
-              </span>
-              <button onclick="loadPayments()"
-                style="font-size:10px;color:#8aaac8;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:3px 10px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
-                onmouseover="this.style.color='#60b4ff';this.style.borderColor='rgba(55,138,221,0.5)'" onmouseout="this.style.color='#8aaac8';this.style.borderColor='rgba(55,138,221,0.28)'">
-                <i class="fas fa-sync" style="font-size:9px;"></i> Update
-              </button>
-            </div>
-            <div id="payments-list" style="padding:0;">
-              <div class="pay-queue-empty">
-                <div class="pay-queue-empty-visual">
-                  <i class="fas fa-robot"></i>
-                </div>
-                <div class="pay-queue-empty-label">No payments in queue</div>
-                <div class="pay-queue-empty-sub">Scheduled and agent-triggered payments<br>will appear here automatically.</div>
-              </div>
+          <!-- Payment Summary -->
+          <div class="pay-info-card">
+            <h4><i class="fas fa-file-lines"></i>Payment Summary</h4>
+            <div class="pay-info-row"><span class="pil">Network</span><span class="piv">Arc Testnet</span></div>
+            <div class="pay-info-row"><span class="pil">Token</span><span class="piv" id="pay-info-token">—</span></div>
+            <div class="pay-info-row"><span class="pil">Amount</span><span class="piv" id="pay-info-amount">—</span></div>
+            <div class="pay-info-row"><span class="pil">Recipient</span><span class="piv" id="pay-info-recipient" style="font-family:monospace;font-size:10px;">—</span></div>
+            <div class="pay-info-row"><span class="pil">Est. Fee</span><span class="piv" id="pay-info-fee">~0.001 USDC</span></div>
+            <div style="text-align:center;margin-top:8px;">
+              <span style="font-size:9px;font-weight:700;background:rgba(234,179,8,0.1);color:#facc15;border:1px solid rgba(234,179,8,0.2);border-radius:999px;padding:2px 10px;">Testnet</span>
             </div>
           </div>
 
         </div><!-- end right col -->
       </div><!-- end #pay-page -->
+
+      <!-- ══ HISTORY SECTION (full width below, same padding as pay-page) ══ -->
+      <div id="pay-history-section" style="margin-top:20px;width:100%;">
+        <div id="pay-history-panel"
+          style="background:linear-gradient(160deg,rgba(10,14,30,0.98) 0%,rgba(6,9,20,1) 100%);border:1px solid rgba(55,138,221,0.18);border-radius:16px;overflow:hidden;backdrop-filter:blur(12px);">
+
+          <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(55,138,221,0.1);background:rgba(55,138,221,0.03);">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,rgba(55,138,221,0.25),rgba(29,158,117,0.2));border:1px solid rgba(55,138,221,0.3);display:flex;align-items:center;justify-content:center;box-shadow:0 0 16px rgba(55,138,221,0.12);">
+                <i class="fas fa-history" style="color:#60b4ff;font-size:15px;"></i>
+              </div>
+              <div>
+                <div style="color:#dde2f0;font-size:14px;font-weight:800;letter-spacing:0.01em;line-height:1.2;">Payment Transaction History</div>
+                <div style="color:#4a6490;font-size:10px;margin-top:1px;">Track your sent payments and payment activity</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <button onclick="window._payExportCSV && window._payExportCSV()"
+                style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#22d3ee;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.25);padding:5px 11px;border-radius:8px;cursor:pointer;transition:all 0.2s;"><i class="fas fa-download" style="font-size:9px;"></i>Export</button>
+              <button onclick="typeof arcShowHiddenPayments==='function'&&arcShowHiddenPayments()"
+                style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#8aaac8;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.18);padding:5px 11px;border-radius:8px;cursor:pointer;transition:all 0.2s;"><i class="fas fa-eye" style="font-size:9px;"></i>Hidden</button>
+              <button onclick="refreshPaymentBalances();renderPaymentHistory()"
+                style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#60b4ff;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.28);padding:5px 11px;border-radius:8px;cursor:pointer;transition:all 0.2s;"><i class="fas fa-sync" style="font-size:9px;"></i>Refresh</button>
+            </div>
+          </div>
+
+          <div id="pay-history-list" style="max-height:500px;overflow-y:auto;">
+            <div style="color:#4a6490;font-size:12px;text-align:center;padding:40px 16px;">
+              <div style="width:44px;height:44px;border-radius:12px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.12);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+                <i class="fas fa-receipt" style="font-size:16px;color:#3a4870;"></i>
+              </div>
+              <div style="color:#8aaac8;font-weight:600;font-size:13px;">No payment transactions yet</div>
+              <div style="color:#4a6490;font-size:11px;margin-top:3px;">Your sent payments will appear here</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden: Agent Queue (preserved for JS compatibility) -->
+      <div style="display:none;" aria-hidden="true"><div id="payments-list"></div></div>
 
       <!-- ══ RECEIPT MODAL ══ -->
       <div id="pay-receipt-modal" onclick="if(event.target===this)payCloseReceiptModal()">
@@ -3669,256 +3425,93 @@ const buildSPAHtml = (c: any) => {
          AUTONOMA SUBPAGE — /agents/autonoma
          2-column layout: Agent Executor Intents (left) + Embedded Chatbot (right)
     ═══════════════════════════════════════════════════════════════ -->
-    <div id="tab-content-autonoma" class="tab-content hidden">
+    <div id="tab-content-autonoma" class="tab-content hidden" style="height:100%;">
 
-      <!-- Page header -->
-      <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center gap-3">
-          <button onclick="switchTab('payments')"
-            class="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all">
-            <i class="fas fa-arrow-left text-sm"></i>
-          </button>
-          <div>
-            <h2 class="text-xl font-bold text-white flex items-center gap-2">
-              <span class="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
-                <i class="fas fa-robot text-white text-sm"></i>
-              </span>
-              Autonoma
-            </h2>
-            <p class="text-gray-500 text-xs mt-0.5 ml-11">Autonomous operations · Agent Executor + AI Assistant</p>
-          </div>
-        </div>
-        <!-- Status dot -->
-        <div class="flex items-center gap-1.5 text-xs text-green-400">
-          <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-          Arc Testnet · Online
+      <!-- Minimal top bar -->
+      <div class="flex items-center justify-between px-4 py-2 border-b border-gray-800/40">
+        <button onclick="switchTab('payments')"
+          class="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-800/60 hover:bg-gray-700 text-gray-400 hover:text-white transition-all">
+          <i class="fas fa-arrow-left text-xs"></i>
+        </button>
+        <span id="autonoma-arcpay-status-text" class="text-[11px] text-gray-500">Daat Agent · ready</span>
+        <div class="flex items-center gap-1">
+          <button id="autonoma-arcpay-auth-btn"
+            onclick="if(typeof executeArcPayAuthorization=='function')executeArcPayAuthorization()"
+            class="hidden text-[10px] font-bold text-white px-2.5 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600"><i class="fas fa-shield-alt mr-1"></i>Authorize</button>
+          <button onclick="autonomaClearChat()" class="text-gray-600 hover:text-gray-400 p-1 rounded hover:bg-gray-800/60" title="Clear"><i class="fas fa-trash text-[10px]"></i></button>
         </div>
       </div>
 
-      <!-- 2-column grid layout -->
-      <div class="autonoma-grid">
+      <!-- Full-page chat -->
+      <div id="autonoma-chat-widget"
+        class="flex flex-col"
+        style="height:calc(100vh - 110px);">
 
-        <!-- ═══ LEFT COLUMN — Agent Executor Intents ═══ -->
-        <div class="autonoma-col-left">
-          <div class="autonoma-col-header">
-            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center flex-shrink-0">
-              <i class="fas fa-bolt text-white text-sm"></i>
+        <div id="autonoma-chat-messages" class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          <div id="autonoma-empty-state" class="flex flex-col items-center justify-center h-full text-center px-4">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600/20 to-blue-600/20 border border-purple-700/30 flex items-center justify-center mb-5">
+              <i class="fas fa-robot text-purple-400 text-2xl"></i>
             </div>
-            <div>
-              <h3 class="text-white font-semibold text-sm">Agent Executor — Intents</h3>
-              <p class="text-purple-400 text-xs">Autonomous execution · on-chain · 3s poll</p>
-            </div>
-          </div>
-
-          <!-- Permit2 status banner -->
-          <!-- Stats row -->
-          <div class="grid grid-cols-4 gap-1.5 mb-3">
-            <div class="bg-gray-800/50 rounded-lg p-2 text-center">
-              <p class="text-base font-bold text-white" id="autonoma-stat-total">—</p>
-              <p class="text-[10px] text-gray-500">Total</p>
-            </div>
-            <div class="bg-yellow-900/20 rounded-lg p-2 text-center border border-yellow-800/30">
-              <p class="text-base font-bold text-yellow-400" id="autonoma-stat-pending">—</p>
-              <p class="text-[10px] text-gray-500">Queued</p>
-            </div>
-            <div class="bg-green-900/20 rounded-lg p-2 text-center border border-green-800/30">
-              <p class="text-base font-bold text-green-400" id="autonoma-stat-completed">—</p>
-              <p class="text-[10px] text-gray-500">Done</p>
-            </div>
-            <div class="bg-red-900/20 rounded-lg p-2 text-center border border-red-800/30">
-              <p class="text-base font-bold text-red-400" id="autonoma-stat-failed">—</p>
-              <p class="text-[10px] text-gray-500">Failed</p>
-            </div>
-          </div>
-
-          <!-- Intents list -->
-          <div class="bg-gray-900/60 border border-purple-700/30 rounded-xl p-4" id="autonoma-intents-section">
-            <div class="flex items-center justify-between mb-3">
-              <span class="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                <i class="fas fa-list text-purple-400"></i> Intent History
-                <span id="autonoma-pending-badge" class="hidden bg-purple-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none ml-1">0</span>
-              </span>
-              <div class="flex items-center gap-1.5">
-                <button onclick="autonomaRefreshIntents()"
-                  class="text-[11px] text-purple-400 hover:text-purple-300 bg-purple-900/20 border border-purple-700/30 rounded-lg px-2.5 py-1 transition-colors">
-                  <i class="fas fa-sync mr-1"></i> Refresh
-                </button>
-                <button onclick="autonomaClearIntents()"
-                  class="text-[11px] text-gray-600 hover:text-red-400 bg-gray-800/40 border border-gray-700/30 rounded-lg px-2.5 py-1 transition-colors">
-                  <i class="fas fa-trash mr-1"></i> Clear
-                </button>
-              </div>
-            </div>
-
-            <!-- Intents list body -->
-            <div id="autonoma-intents-list" class="space-y-1.5 max-h-52 overflow-y-auto">
-              <div class="text-center text-gray-600 text-xs py-5" id="autonoma-intents-empty">
-                <i class="fas fa-inbox text-gray-700 text-2xl mb-2 block"></i>
-                <span id="autonoma-empty-msg">Ask the assistant to send a payment.</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Quick intent actions -->
-          <div class="mt-3 bg-gray-900/40 border border-gray-700/40 rounded-xl p-4">
-            <h4 class="text-[10px] text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <i class="fas fa-bolt text-purple-400"></i> Quick Actions
-            </h4>
-            <div class="grid grid-cols-1 gap-2">
-              <button onclick="autonomaSendChat('send 10 USDC to 0x1234567890123456789012345678901234567890')"
-                class="text-left bg-purple-900/20 border border-purple-700/20 rounded-lg p-2.5 hover:border-purple-500/40 transition-colors">
-                <div class="text-xs text-purple-300 font-medium mb-0.5">⚡ Test: send 10 USDC</div>
-                <div class="text-[11px] text-gray-500 font-mono">send 10 USDC to 0x1234…7890</div>
+            <h3 class="text-white font-semibold text-lg mb-2">How can I help?</h3>
+            <p class="text-gray-500 text-sm mb-6 max-w-md">Ask me to send payments, swap tokens, check balances, or manage your autonomous operations.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
+              <button onclick="autonomaSendChat('check my balance')" class="text-left bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 hover:border-purple-500/40 transition-all">
+                <div class="text-purple-400 text-sm mb-0.5"><i class="fas fa-coins mr-1.5"></i>Check Balance</div>
+                <div class="text-[11px] text-gray-500">View your USDC and EURC</div>
               </button>
-              <button onclick="autonomaSendChat('allow the agent to spend 100 USDC for 24 hours')"
-                class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
-                <div class="text-xs text-yellow-300 font-medium mb-0.5">🔐 Create USDC Permit (24h)</div>
-                <div class="text-[11px] text-gray-500 font-mono">allow 100 USDC for 24 hours</div>
+              <button onclick="autonomaSendChat('send 10 USDC to 0x1234567890123456789012345678901234567890')" class="text-left bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 hover:border-purple-500/40 transition-all">
+                <div class="text-purple-400 text-sm mb-0.5"><i class="fas fa-paper-plane mr-1.5"></i>Send Payment</div>
+                <div class="text-[11px] text-gray-500">Transfer USDC to any wallet</div>
               </button>
-              <button onclick="autonomaSendChat('show my intents')"
-                class="text-left bg-gray-800/50 border border-gray-700/30 rounded-lg p-2.5 hover:border-gray-500/40 transition-colors">
-                <div class="text-xs text-gray-300 font-medium mb-0.5">📋 View active intents</div>
-                <div class="text-[11px] text-gray-500 font-mono">show my intents</div>
+              <button onclick="autonomaSendChat('swap 5 USDC to EURC')" class="text-left bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 hover:border-purple-500/40 transition-all">
+                <div class="text-purple-400 text-sm mb-0.5"><i class="fas fa-exchange-alt mr-1.5"></i>Swap Tokens</div>
+                <div class="text-[11px] text-gray-500">Exchange USDC ↔ EURC</div>
               </button>
-              <button onclick="autonomaSendChat('cancel all pending intents')"
-                class="text-left bg-red-900/20 border border-red-700/20 rounded-lg p-2.5 hover:border-red-500/40 transition-colors">
-                <div class="text-xs text-red-400 font-medium mb-0.5">🗑️ Cancel pending</div>
-                <div class="text-[11px] text-gray-500 font-mono">cancel all pending intents</div>
+              <button onclick="autonomaSendChat('show my transactions')" class="text-left bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 hover:border-purple-500/40 transition-all">
+                <div class="text-purple-400 text-sm mb-0.5"><i class="fas fa-history mr-1.5"></i>Transaction History</div>
+                <div class="text-[11px] text-gray-500">View recent activity</div>
               </button>
             </div>
           </div>
         </div>
 
-        <!-- ═══ RIGHT COLUMN — AI Execution Assistant (inline chat) ═══ -->
-        <div class="autonoma-col-right">
-          <div class="autonoma-col-header">
-            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
-              <i class="fas fa-robot text-white text-sm"></i>
-            </div>
-            <div>
-              <h3 class="text-white font-semibold text-sm">AI Execution Assistant</h3>
-              <p class="text-purple-400 text-xs">All features · Agent Executor · Permit2 · Brain Mode</p>
-            </div>
-          </div>
+        <div id="autonoma-csv-drop-overlay" class="absolute inset-0 z-20 hidden flex-col items-center justify-center" style="background:rgba(88,28,135,0.85);backdrop-filter:blur(4px);border:2px dashed #a855f7;margin:0 4px;">
+          <i class="fas fa-file-csv text-purple-300 text-4xl mb-3"></i>
+          <p class="text-white font-semibold text-sm">Drop CSV here</p>
+          <p class="text-purple-300 text-xs mt-1">address, amount [, token]</p>
+        </div>
 
-          <!-- Inline chat widget -->
-          <div id="autonoma-chat-widget"
-            class="flex flex-col bg-gray-900 border border-purple-700/50 rounded-2xl shadow-xl shadow-purple-900/20 overflow-hidden"
-            style="height: calc(100vh - 260px); min-height: 480px; max-height: 800px;">
-
-            <!-- Chat header -->
-            <div class="flex items-center justify-between px-3 py-2.5 border-b border-gray-700/60 bg-gradient-to-r from-purple-900/60 to-blue-900/40 flex-shrink-0">
-              <div class="flex items-center gap-2 min-w-0">
-                <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
-                  <i class="fas fa-robot text-white text-xs"></i>
-                </div>
-                <div class="min-w-0">
-                  <p class="text-white font-semibold text-xs leading-tight">ARC AI Assistant</p>
-                  <div class="flex items-center gap-1">
-                    <div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
-                    <p class="text-[10px] text-green-400 leading-tight">Online · Arc Testnet · Brain Mode</p>
-                  </div>
-                </div>
-              </div>
-              <div class="flex items-center gap-1">
-                <button onclick="autonomaClearChat()" title="Clear conversation"
-                  class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
-                  <i class="fas fa-trash text-xs"></i>
-                </button>
-                <button onclick="if(typeof toggleChat==='function')toggleChat()" title="Open floating chat"
-                  class="text-gray-500 hover:text-purple-400 p-1 rounded hover:bg-gray-800 transition-all" title="Pop-out">
-                  <i class="fas fa-external-link-alt text-xs"></i>
-                </button>
-              </div>
-            </div>
-
-            <!-- Daat status bar -->
-            <div class="px-3 py-2 border-b border-gray-800/60 flex-shrink-0 bg-gray-950/30">
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-[10px] flex items-center gap-1.5 flex-1 min-w-0 truncate text-gray-400">
-                  <i class="fas fa-robot text-purple-400 text-[9px]"></i>
-                  <span id="autonoma-arcpay-status-text">Daat Agent · checking…</span>
-                </span>
-                <button id="autonoma-arcpay-auth-btn"
-                  onclick="if(typeof executeArcPayAuthorization==='function')executeArcPayAuthorization()"
-                  class="flex-shrink-0 text-[11px] font-bold text-white px-2.5 py-0.5 rounded-lg border border-purple-500/40 transition-all hidden"
-                  style="background:linear-gradient(135deg,#6d28d9,#3b82f6);">
-                  <i class="fas fa-shield-alt mr-1"></i>Authorize
-                </button>
-              </div>
-            </div>
-
-            <!-- Messages area -->
-            <div id="autonoma-chat-messages" class="flex-1 overflow-y-auto px-3 py-2 space-y-2 scroll-smooth"></div>
-
-            <!-- Quick actions -->
-            <div class="px-2 pb-1 flex gap-1.5 overflow-x-auto flex-shrink-0 border-t border-gray-800/40 pt-1.5" style="scrollbar-width:none">
-              <button onclick="autonomaSendChat('my wallet')"         class="autonoma-quick-btn">💳 Wallet</button>
-              <button onclick="autonomaSendChat('check balance')"     class="autonoma-quick-btn">💰 Balance</button>
-              <button onclick="autonomaSendChat('send 5 USDC to 0x1234567890123456789012345678901234567890')" class="autonoma-quick-btn">⚡ Send</button>
-              <button onclick="autonomaSendChat('swap 5 USDC to EURC')" class="autonoma-quick-btn">🔄 Swap</button>
-              <button onclick="autonomaSendChat('show my intents')"   class="autonoma-quick-btn">📋 Intents</button>
-              <button onclick="autonomaSendChat('show my permissions')" class="autonoma-quick-btn">🔐 Permits</button>
-              <button onclick="autonomaSendChat('my transactions')"   class="autonoma-quick-btn">📜 History</button>
-              <button onclick="autonomaSendChat('guardian')"          class="autonoma-quick-btn">🛡️ Guardian</button>
-              <button onclick="autonomaSendChat('network status')"    class="autonoma-quick-btn">⛓️ Network</button>
-              <button onclick="autonomaSendChat('show contracts')"    class="autonoma-quick-btn">📄 Contracts</button>
-              <button onclick="autonomaSendChat('help')"              class="autonoma-quick-btn">❓ Help</button>
-            </div>
-
-            <!-- CSV Drag-and-Drop Overlay -->
-            <div id="autonoma-csv-drop-overlay"
-              class="absolute inset-0 z-20 hidden flex-col items-center justify-center rounded-2xl pointer-events-none"
-              style="background:rgba(88,28,135,0.85);backdrop-filter:blur(4px);border:2px dashed #a855f7;">
-              <i class="fas fa-file-csv text-purple-300 text-4xl mb-3"></i>
-              <p class="text-white font-semibold text-sm">Drop CSV here</p>
-              <p class="text-purple-300 text-xs mt-1">address, amount [, token]</p>
-            </div>
-
-            <!-- CSV Preview Banner (shows after upload) -->
-            <div id="autonoma-csv-banner" class="hidden mx-2 mb-1 flex-shrink-0">
-              <div class="flex items-center gap-2 bg-purple-900/30 border border-purple-700/40 rounded-lg px-3 py-1.5">
-                <i class="fas fa-file-csv text-purple-400 text-xs flex-shrink-0"></i>
-                <span id="autonoma-csv-banner-text" class="text-xs text-purple-200 flex-1 truncate"></span>
-                <button onclick="autonomaCsvCancel()" class="text-purple-400 hover:text-white transition-colors flex-shrink-0" title="Clear CSV">
-                  <i class="fas fa-times text-xs"></i>
-                </button>
-              </div>
-            </div>
-
-            <!-- Input area -->
-            <div class="px-2 pb-2.5 flex-shrink-0">
-              <!-- Hidden file input for CSV -->
-              <input id="autonoma-csv-file-input" type="file" accept=".csv" class="hidden"
-                onchange="autonomaHandleCSVInput(this)">
-
-              <div class="flex items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500 transition-all">
-                <!-- CSV Upload (+) button -->
-                <button id="autonoma-csv-btn"
-                  title="Upload CSV for batch payment (drag & drop supported)"
-                  onclick="document.getElementById('autonoma-csv-file-input').click()"
-                  class="w-6 h-6 flex items-center justify-center rounded-md text-gray-500 hover:text-purple-400 hover:bg-purple-900/30 transition-all flex-shrink-0 group relative">
-                  <i class="fas fa-plus text-xs"></i>
-                  <span class="absolute bottom-7 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 text-gray-300 text-[10px] px-2 py-1 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                    Upload CSV (.csv)
-                  </span>
-                </button>
-
-                <input id="autonoma-chat-input" type="text"
-                  placeholder="send · CSV · swap · intents · guardian · balance…"
-                  class="flex-1 bg-transparent text-xs text-white placeholder-gray-600 focus:outline-none min-w-0"
-                  onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();autonomaSendMessage();}">
-                <button onclick="autonomaSendMessage()" id="autonoma-send-btn"
-                  class="w-7 h-7 bg-purple-600 hover:bg-purple-500 rounded-lg flex items-center justify-center text-white transition-all flex-shrink-0">
-                  <i class="fas fa-paper-plane text-xs"></i>
-                </button>
-              </div>
-              <p class="text-center text-gray-700 text-[10px] mt-1">Enter to send · ➕ CSV batch · 🤖 Agent Executor · Permit2</p>
-            </div>
+        <div id="autonoma-csv-banner" class="hidden mx-4 mb-1">
+          <div class="flex items-center gap-2 bg-purple-900/30 border border-purple-700/40 rounded-lg px-3 py-1.5">
+            <i class="fas fa-file-csv text-purple-400 text-xs"></i>
+            <span id="autonoma-csv-banner-text" class="text-xs text-purple-200 flex-1 truncate"></span>
+            <button onclick="autonomaCsvCancel()" class="text-purple-400 hover:text-white"><i class="fas fa-times text-xs"></i></button>
           </div>
         </div>
 
-      </div><!-- /autonoma-grid -->
+        <div class="px-4 pb-4 pt-2 border-t border-gray-800/60 bg-gray-950/20">
+          <input id="autonoma-csv-file-input" type="file" accept=".csv" class="hidden" onchange="autonomaHandleCSVInput(this)">
+          <div class="flex items-center gap-2 bg-gray-800/80 border border-gray-700 rounded-2xl px-4 py-3 focus-within:border-purple-500 focus-within:shadow-lg focus-within:shadow-purple-900/20 transition-all">
+            <button id="autonoma-csv-btn" title="Upload CSV" onclick="document.getElementById('autonoma-csv-file-input').click()" class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-purple-400 hover:bg-purple-900/20 transition-all flex-shrink-0">
+              <i class="fas fa-plus text-sm"></i>
+            </button>
+            <input id="autonoma-chat-input" type="text"
+              placeholder="Ask anything to your agent..."
+              class="flex-1 bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none min-w-0 py-1"
+              onkeydown="if(event.key=='Enter'&&!event.shiftKey){event.preventDefault();autonomaSendMessage();}">
+            <button onclick="autonomaSendMessage()" id="autonoma-send-btn"
+              class="w-9 h-9 bg-purple-600 hover:bg-purple-500 rounded-xl flex items-center justify-center text-white transition-all flex-shrink-0">
+              <i class="fas fa-arrow-up text-sm"></i>
+            </button>
+          </div>
+          <p class="text-center text-gray-700 text-[10px] mt-2">AI may produce inaccurate responses. Verify on-chain.</p>
+        </div>
+      </div>
+
+      <div style="display:none;" aria-hidden="true">
+        <div id="autonoma-intents-section"><div id="autonoma-intents-list"><div id="autonoma-intents-empty"><span id="autonoma-empty-msg"></span></div></div></div>
+        <span id="autonoma-pending-badge"></span><span id="autonoma-stat-total"></span><span id="autonoma-stat-pending"></span><span id="autonoma-stat-completed"></span><span id="autonoma-stat-failed"></span>
+      </div>
     </div><!-- /tab-content-autonoma -->
 
 
@@ -4015,6 +3608,37 @@ const buildSPAHtml = (c: any) => {
       </div>
     </div>
 
+    <!-- ══════════════════════════ AI AGENTS TAB ══════════════════════════ -->
+    <div id="tab-content-agents" class="tab-content hidden">
+
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-5">
+        <div><div class="flex items-center gap-3 mb-1"><span class="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-900/30 flex-shrink-0"><i class="fas fa-brain text-white text-lg"></i></span><div><h2 class="text-2xl font-bold text-white tracking-tight">AI Agents</h2><p class="text-gray-400 text-xs mt-0.5">Manage autonomous agents and permissions</p></div></div></div>
+        <div class="flex items-center gap-1.5 text-xs text-green-400 bg-green-950/40 border border-green-800/30 rounded-full px-3 py-1.5"><div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>Arc Testnet · Online</div>
+      </div>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <div class="bg-gradient-to-br from-gray-900/80 to-gray-900/40 border border-gray-700/40 rounded-xl p-4"><div class="flex items-center justify-between mb-2"><span class="text-xs text-gray-500 uppercase tracking-wider">Total Agents</span><span class="w-7 h-7 rounded-lg bg-violet-900/30 border border-violet-700/30 flex items-center justify-center"><i class="fas fa-robot text-violet-400 text-xs"></i></span></div><div class="text-2xl font-bold text-white">4</div><div class="text-[10px] text-gray-600 mt-1">Payment · Contract · Compliance · Yield</div></div>
+        <div class="bg-gradient-to-br from-gray-900/80 to-gray-900/40 border border-green-700/30 rounded-xl p-4"><div class="flex items-center justify-between mb-2"><span class="text-xs text-gray-500 uppercase tracking-wider">Active</span><span class="w-7 h-7 rounded-lg bg-green-900/30 border border-green-700/30 flex items-center justify-center"><i class="fas fa-check-circle text-green-400 text-xs"></i></span></div><div class="text-2xl font-bold text-green-400">3</div><div class="text-[10px] text-gray-600 mt-1">Running on Arc Testnet</div></div>
+        <div class="bg-gradient-to-br from-gray-900/80 to-gray-900/40 border border-blue-700/30 rounded-xl p-4"><div class="flex items-center justify-between mb-2"><span class="text-xs text-gray-500 uppercase tracking-wider">Tasks Executed</span><span class="w-7 h-7 rounded-lg bg-blue-900/30 border border-blue-700/30 flex items-center justify-center"><i class="fas fa-tasks text-blue-400 text-xs"></i></span></div><div class="text-2xl font-bold text-blue-400">—</div><div class="text-[10px] text-gray-600 mt-1">Autonomous operations</div></div>
+        <div class="bg-gradient-to-br from-gray-900/80 to-gray-900/40 border border-yellow-700/30 rounded-xl p-4"><div class="flex items-center justify-between mb-2"><span class="text-xs text-gray-500 uppercase tracking-wider">Pending</span><span class="w-7 h-7 rounded-lg bg-yellow-900/30 border border-yellow-700/30 flex items-center justify-center"><i class="fas fa-clock text-yellow-400 text-xs"></i></span></div><div class="text-2xl font-bold text-yellow-400">—</div><div class="text-[10px] text-gray-600 mt-1">Awaiting approval</div></div>
+      </div>
+
+      <div class="mb-5"><div class="flex items-center justify-between mb-3"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-lg bg-green-900/30 border border-green-700/30 flex items-center justify-center"><i class="fas fa-robot text-green-400 text-xs"></i></div><h3 class="text-white font-semibold text-sm">My Agents</h3></div><span class="text-[10px] text-gray-500">4 agents configured</span></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="bg-gradient-to-b from-gray-900/80 to-gray-900/40 border border-gray-700/40 rounded-xl p-4 hover:border-green-700/40 transition-all duration-200"><div class="flex items-center justify-between mb-3"><div class="w-8 h-8 rounded-lg bg-blue-900/30 border border-blue-700/30 flex items-center justify-center"><i class="fas fa-dollar-sign text-blue-400 text-sm"></i></div><span class="text-[10px] font-bold bg-green-950/40 border border-green-700/30 text-green-400 rounded-full px-2.5 py-0.5">Active</span></div><h4 class="text-white font-semibold text-sm mb-1">Daat Agent v1.0</h4><p class="text-gray-500 text-[11px] mb-2">Payment automation</p><div class="flex flex-wrap gap-1 mb-3"><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Risk Analysis</span><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Auto Approval</span><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Fraud Detection</span><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Batch Payments</span></div><div class="flex items-center justify-between"><span class="text-[10px] text-green-400 flex items-center gap-1"><i class="fas fa-circle text-[6px]"></i>Running</span><button onclick="switchTab('payments')" class="text-[10px] text-violet-400 hover:text-violet-300"><i class="fas fa-external-link-alt mr-1"></i>Open</button></div></div>
+        <div class="bg-gradient-to-b from-gray-900/80 to-gray-900/40 border border-gray-700/40 rounded-xl p-4 hover:border-violet-700/40 transition-all duration-200"><div class="flex items-center justify-between mb-3"><div class="w-8 h-8 rounded-lg bg-violet-900/30 border border-violet-700/30 flex items-center justify-center"><i class="fas fa-file-contract text-violet-400 text-sm"></i></div><span class="text-[10px] font-bold bg-green-950/40 border border-green-700/30 text-green-400 rounded-full px-2.5 py-0.5">Active</span></div><h4 class="text-white font-semibold text-sm mb-1">Daat Contract Agent</h4><p class="text-gray-500 text-[11px] mb-2">Contract management</p><div class="flex flex-wrap gap-1 mb-3"><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Create Contracts</span><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Escrow</span><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Milestones</span></div><div class="flex items-center justify-between"><span class="text-[10px] text-green-400 flex items-center gap-1"><i class="fas fa-circle text-[6px]"></i>Running</span><button onclick="switchTab('contracts')" class="text-[10px] text-violet-400 hover:text-violet-300"><i class="fas fa-external-link-alt mr-1"></i>Open</button></div></div>
+        <div class="bg-gradient-to-b from-gray-900/80 to-gray-900/40 border border-gray-700/40 rounded-xl p-4 hover:border-cyan-700/40 transition-all duration-200"><div class="flex items-center justify-between mb-3"><div class="w-8 h-8 rounded-lg bg-cyan-900/30 border border-cyan-700/30 flex items-center justify-center"><i class="fas fa-shield-halved text-cyan-400 text-sm"></i></div><span class="text-[10px] font-bold bg-green-950/40 border border-green-700/30 text-green-400 rounded-full px-2.5 py-0.5">Active</span></div><h4 class="text-white font-semibold text-sm mb-1">Guardian Agent</h4><p class="text-gray-500 text-[11px] mb-2">Compliance &amp; security</p><div class="flex flex-wrap gap-1 mb-3"><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">KYC/AML</span><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Risk Scoring</span><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Audit Trail</span></div><div class="flex items-center justify-between"><span class="text-[10px] text-green-400 flex items-center gap-1"><i class="fas fa-circle text-[6px]"></i>Running</span><button onclick="switchTab('contracts')" class="text-[10px] text-violet-400 hover:text-violet-300"><i class="fas fa-external-link-alt mr-1"></i>Open</button></div></div>
+        <div class="bg-gradient-to-b from-gray-900/80 to-gray-900/40 border border-gray-700/40 rounded-xl p-4 hover:border-yellow-700/40 transition-all duration-200"><div class="flex items-center justify-between mb-3"><div class="w-8 h-8 rounded-lg bg-yellow-900/30 border border-yellow-700/30 flex items-center justify-center"><i class="fas fa-chart-line text-yellow-400 text-sm"></i></div><span class="text-[10px] font-bold bg-gray-800/40 border border-gray-700/30 text-gray-400 rounded-full px-2.5 py-0.5">Idle</span></div><h4 class="text-white font-semibold text-sm mb-1">Yield Optimizer</h4><p class="text-gray-500 text-[11px] mb-2">Liquidity optimization</p><div class="flex flex-wrap gap-1 mb-3"><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Pool Monitoring</span><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Rebalancing</span><span class="text-[9px] bg-gray-800/60 text-gray-400 rounded-full px-2 py-0.5">Yield Farming</span></div><div class="flex items-center justify-between"><span class="text-[10px] text-gray-500 flex items-center gap-1"><i class="fas fa-circle text-[6px]"></i>Idle</span><button onclick="switchTab('dex')" class="text-[10px] text-violet-400 hover:text-violet-300"><i class="fas fa-external-link-alt mr-1"></i>Open</button></div></div>
+      </div></div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+        <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5"><div class="flex items-center gap-3 mb-4"><div class="w-9 h-9 rounded-xl bg-amber-900/30 border border-amber-700/30 flex items-center justify-center"><i class="fas fa-lock text-amber-400 text-sm"></i></div><div><h3 class="text-white font-semibold text-sm">Permissions</h3><p class="text-gray-500 text-[10px]">Wallet access · Auto execution</p></div></div><div class="space-y-3"><div class="bg-gray-800/50 border border-gray-700/30 rounded-xl p-3"><div class="flex items-center justify-between mb-2"><span class="text-white font-medium text-xs">Wallet Access</span><span class="text-[10px] bg-green-950/40 border border-green-700/30 text-green-400 rounded-full px-2 py-0.5">Granted</span></div><div class="space-y-1.5"><div class="flex items-center gap-2 text-[11px]"><i class="fas fa-check-circle text-green-400 text-[10px]"></i><span class="text-gray-400">Read balance</span></div><div class="flex items-center gap-2 text-[11px]"><i class="fas fa-check-circle text-green-400 text-[10px]"></i><span class="text-gray-400">Analyze transactions</span></div><div class="flex items-center gap-2 text-[11px]"><i class="fas fa-check-circle text-green-400 text-[10px]"></i><span class="text-gray-400">Create transaction request</span></div></div></div><div class="bg-gray-800/50 border border-gray-700/30 rounded-xl p-3"><div class="flex items-center justify-between"><div><span class="text-white font-medium text-xs block">Auto Execution</span><span class="text-gray-500 text-[10px]">Allow agents to execute without approval</span></div><div class="w-10 h-5 rounded-full bg-gray-700 border border-gray-600 cursor-pointer relative" onclick="this.classList.toggle('bg-green-600');this.classList.toggle('border-green-500');var d=this.querySelector('div');d.style.transform=d.style.transform==='translateX(20px)'?'translateX(2px)':'translateX(20px)'"><div class="w-4 h-4 rounded-full bg-white absolute top-0.5 left-0.5 transition-transform" style="transform:translateX(0px)"></div></div></div></div><div class="bg-gray-800/50 border border-gray-700/30 rounded-xl p-3"><div class="text-white font-medium text-xs mb-2">Risk Levels</div><div class="space-y-1.5"><div class="flex items-center gap-2 text-[11px]"><span class="w-2 h-2 rounded-full bg-green-400"></span><span class="text-green-400 font-medium">Low risk</span><span class="text-gray-500">— Auto analysis</span></div><div class="flex items-center gap-2 text-[11px]"><span class="w-2 h-2 rounded-full bg-yellow-400"></span><span class="text-yellow-400 font-medium">Medium</span><span class="text-gray-500">— User approval required</span></div><div class="flex items-center gap-2 text-[11px]"><span class="w-2 h-2 rounded-full bg-red-400"></span><span class="text-red-400 font-medium">High</span><span class="text-gray-500">— Blocked</span></div></div></div></div></div>
+        <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5"><div class="flex items-center gap-3 mb-4"><div class="w-9 h-9 rounded-xl bg-cyan-900/30 border border-cyan-700/30 flex items-center justify-center"><i class="fas fa-clock-rotate-left text-cyan-400 text-sm"></i></div><div><h3 class="text-white font-semibold text-sm">Agent Activity</h3><p class="text-gray-500 text-[10px]">Recent autonomous operations</p></div></div><div class="space-y-0 relative"><div class="flex gap-3 pb-4 border-l border-gray-700/50 pl-4 relative"><div class="absolute w-2 h-2 rounded-full bg-green-400 -left-[5px] top-1.5"></div><div class="flex-1"><div class="flex items-center justify-between mb-0.5"><span class="text-white font-medium text-xs">Daat Agent</span><span class="text-[10px] text-gray-600">14:32</span></div><p class="text-gray-400 text-[11px]">Analyzed payment request — 10 USDC</p><span class="text-[10px] bg-green-950/40 border border-green-700/30 text-green-400 rounded-full px-2 py-0.5 inline-block mt-1">Completed</span></div></div><div class="flex gap-3 pb-4 border-l border-gray-700/50 pl-4 relative"><div class="absolute w-2 h-2 rounded-full bg-yellow-400 -left-[5px] top-1.5"></div><div class="flex-1"><div class="flex items-center justify-between mb-0.5"><span class="text-white font-medium text-xs">Guardian Agent</span><span class="text-[10px] text-gray-600">14:40</span></div><p class="text-gray-400 text-[11px]">Risk check required — above auto-approval threshold</p><span class="text-[10px] bg-yellow-950/40 border border-yellow-700/30 text-yellow-400 rounded-full px-2 py-0.5 inline-block mt-1">Pending Approval</span></div></div><div class="flex gap-3 pb-4 border-l border-gray-700/50 pl-4 relative"><div class="absolute w-2 h-2 rounded-full bg-green-400 -left-[5px] top-1.5"></div><div class="flex-1"><div class="flex items-center justify-between mb-0.5"><span class="text-white font-medium text-xs">Daat Agent</span><span class="text-[10px] text-gray-600">14:28</span></div><p class="text-gray-400 text-[11px]">Batch payment executed — 15 recipients · 150 USDC</p><span class="text-[10px] bg-green-950/40 border border-green-700/30 text-green-400 rounded-full px-2 py-0.5 inline-block mt-1">Completed</span></div></div><div class="flex gap-3 pl-4 relative"><div class="absolute w-2 h-2 rounded-full bg-violet-400 -left-[5px] top-1.5"></div><div class="flex-1"><div class="flex items-center justify-between mb-0.5"><span class="text-white font-medium text-xs">Contract Agent</span><span class="text-[10px] text-gray-600">14:15</span></div><p class="text-gray-400 text-[11px]">Contract #42 created — 3 milestones · Escrow</p><span class="text-[10px] bg-green-950/40 border border-green-700/30 text-green-400 rounded-full px-2 py-0.5 inline-block mt-1">Completed</span></div></div></div></div>
+      </div>
+
+      <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5"><div class="flex items-center gap-3 mb-4"><div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 flex items-center justify-center"><i class="fas fa-plus text-white text-sm"></i></div><div><h3 class="text-white font-semibold text-sm">Create Agent</h3><p class="text-gray-500 text-[10px]">Configure a new autonomous agent</p></div></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div><label class="text-[10px] text-gray-500 uppercase tracking-wider block mb-2">Agent Type</label><div class="grid grid-cols-2 gap-2"><button class="text-left bg-gray-800/50 border border-gray-700/30 rounded-xl p-3 hover:border-violet-500/60 transition-all text-xs text-white font-medium"><i class="fas fa-dollar-sign text-blue-400 mr-1.5"></i>Payment</button><button class="text-left bg-gray-800/50 border border-gray-700/30 rounded-xl p-3 hover:border-violet-500/60 transition-all text-xs text-white font-medium"><i class="fas fa-vault text-amber-400 mr-1.5"></i>Treasury</button><button class="text-left bg-gray-800/50 border border-gray-700/30 rounded-xl p-3 hover:border-violet-500/60 transition-all text-xs text-white font-medium"><i class="fas fa-chart-line text-green-400 mr-1.5"></i>Liquidity</button><button class="text-left bg-gray-800/50 border border-gray-700/30 rounded-xl p-3 hover:border-violet-500/60 transition-all text-xs text-white font-medium"><i class="fas fa-shield-halved text-cyan-400 mr-1.5"></i>Compliance</button><button class="text-left bg-gray-800/50 border border-gray-700/30 rounded-xl p-3 hover:border-violet-500/60 transition-all text-xs text-white font-medium col-span-2"><i class="fas fa-file-contract text-violet-400 mr-1.5"></i>Contract</button></div></div><div><label class="text-[10px] text-gray-500 uppercase tracking-wider block mb-2">Configuration</label><input type="text" placeholder="Agent name" class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-violet-500 focus:outline-none mb-2"><div class="space-y-1.5"><label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" checked class="rounded"> Read balance</label><label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" checked class="rounded"> Analyze transactions</label><label class="flex items-center gap-2 text-[11px] text-gray-400"><input type="checkbox" class="rounded"> Auto execution</label></div></div><div><label class="text-[10px] text-gray-500 uppercase tracking-wider block mb-2">Risk Limits</label><div class="space-y-2"><div><div class="flex justify-between text-[10px] text-gray-500 mb-1"><span>Max per transaction</span><span>10 USDC</span></div><input type="range" min="1" max="100" value="10" class="w-full accent-violet-500"></div><div><div class="flex justify-between text-[10px] text-gray-500 mb-1"><span>Daily limit</span><span>100 USDC</span></div><input type="range" min="10" max="1000" value="100" class="w-full accent-violet-500"></div><button class="w-full py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white transition-all mt-2"><i class="fas fa-plus mr-1.5"></i>Create Agent</button></div></div></div></div>
+    </div><!-- /tab-content-agents -->
+
     <!-- ══════════════════════════ SWAP TAB — ARC Swap ══════════════════════════ -->
     <div id="tab-content-dex" class="tab-content hidden">
 
@@ -4062,43 +3686,6 @@ const buildSPAHtml = (c: any) => {
           flex-shrink: 0;
         }
       </style>
-
-      <!-- ── Page Header ─────────────────────────────────────────────────────── -->
-      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 class="text-2xl font-bold text-white flex items-center gap-3">
-            <span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-cyan-900/40">
-              <i class="fas fa-exchange-alt"></i>
-            </span>
-            ARC Swap
-            <span class="text-xs font-normal bg-amber-500/10 border border-amber-500/30 text-amber-400 px-2.5 py-1 rounded-full">
-              <i class="fas fa-flask mr-1 text-[10px]"></i>Testnet
-            </span>
-          </h2>
-          <p class="text-gray-500 text-xs mt-1.5 ml-13">EURC / USDC · Constant Product AMM (x·y=k) · 0.3% fee · Arc Testnet</p>
-        </div>
-        <!-- Status + refresh -->
-        <div class="flex items-center gap-2">
-          <button onclick="ammRefreshAll()" class="text-xs text-gray-500 hover:text-cyan-400 transition-colors bg-gray-800/60 border border-gray-700/40 rounded-xl px-3 py-1.5 flex items-center gap-1.5">
-            <i class="fas fa-sync-alt text-[10px]"></i> Refresh
-          </button>
-          <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-900/60 border border-gray-700/50 rounded-full text-xs">
-            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-            <span id="amm-status" class="text-gray-300">Loading…</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Anti-phishing notice ───────────────────────────────────────────── -->
-      <div class="mb-5 bg-blue-900/10 border border-blue-700/30 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3 text-xs">
-        <i class="fas fa-shield-alt text-blue-400 text-base"></i>
-        <span class="text-gray-400">
-          <strong class="text-blue-300">Security notice:</strong>
-          This dApp never asks for your private key. All transactions are signed
-          exclusively in your wallet (MetaMask). No automatic or hidden transactions occur.
-        </span>
-        <a href="https://testnet.arcscan.app" target="_blank" rel="noopener" class="ml-auto text-blue-400 hover:text-blue-300 underline whitespace-nowrap">ArcScan ↗</a>
-      </div>
 
       <!-- ── Outer wrapper: swap-center or liq 2-col grid ─────────────────────── -->
       <div id="dex-swap-center">
@@ -4160,7 +3747,9 @@ const buildSPAHtml = (c: any) => {
               <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl px-4 py-3.5 space-y-2">
                 <div class="flex items-center justify-between text-xs text-gray-500">
                   <span class="font-semibold">You Receive</span>
-                  <span id="amm-swap-to-label" class="text-gray-500">USDC</span>
+                  <div class="flex items-center gap-2">
+                    <span id="amm-swap-to-bal" class="text-gray-500">Balance: —</span>
+                  </div>
                 </div>
                 <div class="flex items-center gap-3">
                   <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 min-w-fit border border-gray-600/30">
@@ -4289,9 +3878,9 @@ const buildSPAHtml = (c: any) => {
                   <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 border border-gray-600/30">
                     <span>💶</span><span class="text-white font-bold text-sm">EURC</span>
                   </div>
-                  <input type="number" id="amm-liq-input-a" placeholder="0.00" min="0" step="0.000001"
+                   <input type="number" id="amm-liq-input-a" placeholder="0.00" min="0" step="0.000001"
                     class="flex-1 bg-transparent text-white text-xl font-bold text-right outline-none placeholder-gray-700 w-0"
-                    oninput="ammUpdateLiqPreview()" />
+                    oninput="ammUpdateLiqPreview('a')" />
                 </div>
               </div>
 
@@ -4314,9 +3903,9 @@ const buildSPAHtml = (c: any) => {
                   <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 border border-gray-600/30">
                     <span>💵</span><span class="text-white font-bold text-sm">USDC</span>
                   </div>
-                  <input type="number" id="amm-liq-input-b" placeholder="0.00" min="0" step="0.000001"
+                   <input type="number" id="amm-liq-input-b" placeholder="0.00" min="0" step="0.000001"
                     class="flex-1 bg-transparent text-white text-xl font-bold text-right outline-none placeholder-gray-700 w-0"
-                    oninput="ammUpdateLiqPreview()" />
+                    oninput="ammUpdateLiqPreview('b')" />
                 </div>
               </div>
 
@@ -4602,6 +4191,8 @@ const buildSPAHtml = (c: any) => {
 
       </div><!-- end dex-swap-center -->
 
+    </div><!-- end tab-content-dex -->
+
     <!-- ════════════════════════════════════════════════════════════════ -->
 
     <!-- ════════════════════════════════════════════════════════════════ -->
@@ -4609,117 +4200,392 @@ const buildSPAHtml = (c: any) => {
     <!-- ══ BRIDGE TAB — CCTP Cross-Chain ══════════════════════════════ -->
     <!-- ══ BRIDGE TAB — CCTP Cross-Chain ═════════════════════════════ -->
 <div id="tab-content-bridge" class="tab-content hidden">
-  <div class="max-w-xl mx-auto px-4 py-8 space-y-5">
 
-    <div class="flex items-center gap-3 mb-2">
-      <div class="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center">
-        <i class="fas fa-right-left text-cyan-400 text-lg"></i>
-      </div>
-      <div>
-        <h2 class="text-lg font-semibold text-white">Bridge</h2>
-        <p class="text-xs text-gray-500">Cross-chain USDC via CCTP V2 · Testnet only</p>
-      </div>
-      <span class="ml-auto text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded-full px-2 py-0.5">CCTP</span>
-    </div>
+  <!-- ══ BRIDGE INLINE STYLES ══ -->
+  <style>
+    /* Layout */
+    .bridge-page { display:grid; grid-template-columns:1fr; gap:20px; padding:20px 24px 0; }
+    @media(min-width:1024px){ .bridge-page { grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); } }
+    .bridge-history-section { padding:0 24px 20px; }
 
-    <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 space-y-4">
+    /* Glass card */
+    .br-card {
+      background:linear-gradient(160deg,rgba(10,15,28,0.95) 0%,rgba(6,11,22,0.98) 100%);
+      border:1px solid rgba(6,182,212,0.15);
+      border-radius:18px;
+      overflow:hidden;
+      backdrop-filter:blur(10px);
+      position:relative;
+    }
+    .br-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:1px;
+      background:linear-gradient(90deg,transparent,rgba(6,182,212,0.5) 20%,rgba(34,211,238,0.4) 80%,transparent);
+      pointer-events:none; z-index:1;
+    }
+    .br-card-header {
+      padding:18px 20px 0;
+      display:flex; align-items:flex-start; gap:12px;
+    }
+    .br-card-body { padding:18px 20px 20px; display:flex; flex-direction:column; gap:14px; }
 
-      <div>
-        <label class="text-xs text-gray-500 mb-1 block">From</label>
-        <div id="bridge-from-wrap" class="relative">
-          <button id="bridge-from-chain" onclick="bridgeToggleDropdown('from')"
-            class="w-full flex items-center gap-2 bg-gray-800/80 border border-gray-700/40 rounded-xl px-4 py-3 text-sm text-white hover:border-cyan-500/40 transition-colors">
-          </button>
-          <div id="bridge-from-dropdown" class="hidden absolute z-50 top-full mt-1 w-full bg-gray-900 border border-gray-700/60 rounded-xl shadow-xl overflow-hidden"></div>
+    /* Info card (right) */
+    .br-info-card {
+      background:linear-gradient(160deg,rgba(10,15,28,0.92) 0%,rgba(6,11,22,0.96) 100%);
+      border:1px solid rgba(6,182,212,0.12);
+      border-radius:16px;
+      padding:16px;
+      backdrop-filter:blur(8px);
+    }
+    .br-info-card h4 {
+      color:#dde2f0; font-size:13px; font-weight:700; margin:0 0 10px;
+      display:flex; align-items:center; gap:8px;
+    }
+    .br-info-card h4 i { color:#22d3ee; font-size:13px; }
+
+    /* Chain selector */
+    .br-chain-btn {
+      width:100%; display:flex; align-items:center; gap:10px;
+      background:rgba(255,255,255,0.04); border:1px solid rgba(6,182,212,0.2);
+      border-radius:14px; padding:14px 16px; color:#fff; font-size:13px; font-weight:600;
+      cursor:pointer; transition:all 0.22s;
+    }
+    .br-chain-btn:hover { border-color:rgba(6,182,212,0.5); background:rgba(6,182,212,0.06); }
+    .br-chain-btn i.chain-icon { font-size:18px; flex-shrink:0; }
+    .br-chain-btn i.chevron { color:#4a6490; margin-left:auto; font-size:10px; transition:transform 0.2s; }
+
+    /* Flip button */
+    .br-flip-btn {
+      width:38px; height:38px; border-radius:50%;
+      background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.25);
+      display:flex; align-items:center; justify-content:center; cursor:pointer;
+      transition:all 0.25s; color:#22d3ee; font-size:13px; margin:0 auto;
+    }
+    .br-flip-btn:hover { background:rgba(6,182,212,0.18); border-color:rgba(6,182,212,0.5); transform:rotate(180deg); }
+
+    /* Amount input */
+    .br-amount-wrap {
+      background:rgba(255,255,255,0.03); border:1px solid rgba(6,182,212,0.18);
+      border-radius:14px; padding:3px; display:flex; align-items:center; gap:8px;
+      transition:border-color 0.2s;
+    }
+    .br-amount-wrap:focus-within { border-color:rgba(6,182,212,0.5); box-shadow:0 0 0 3px rgba(6,182,212,0.08); }
+    .br-amount-wrap .usdc-icon {
+      width:34px; height:34px; border-radius:10px;
+      background:rgba(6,182,212,0.12); display:flex; align-items:center; justify-content:center;
+      flex-shrink:0; color:#22d3ee; font-size:14px; font-weight:800;
+    }
+    #bridge-amount-input {
+      flex:1; background:transparent; border:none; color:#e8edf8; font-size:18px; font-weight:700;
+      padding:6px 0; outline:none; min-width:0;
+    }
+    #bridge-amount-input::placeholder { color:#3a4870; }
+
+    /* Summary row */
+    .br-summary-row {
+      display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+      background:rgba(255,255,255,0.02); border:1px solid rgba(6,182,212,0.1);
+      border-radius:12px; padding:14px;
+    }
+    .br-summary-item { text-align:center; }
+    .br-summary-item .br-sum-label { font-size:9px; text-transform:uppercase; letter-spacing:0.06em; color:#4a6490; font-weight:700; margin-bottom:4px; }
+    .br-summary-item .br-sum-value { font-size:14px; font-weight:800; color:#e8edf8; }
+    .br-summary-item .br-sum-sub  { font-size:9px; color:#6a85aa; margin-top:1px; }
+
+    /* Submit button */
+    .br-submit-btn {
+      width:100%; padding:14px; border-radius:14px; font-size:14px; font-weight:700;
+      background:linear-gradient(135deg,#06b6d4,#0891b2); color:#fff; border:none; cursor:pointer;
+      transition:all 0.22s; letter-spacing:0.02em;
+      box-shadow:0 4px 20px rgba(6,182,212,0.2);
+    }
+    .br-submit-btn:hover:not(:disabled) {
+      box-shadow:0 6px 30px rgba(6,182,212,0.35); transform:translateY(-1px);
+    }
+    .br-submit-btn:disabled {
+      background:rgba(75,85,99,0.4); color:#6b7280; cursor:not-allowed; box-shadow:none;
+    }
+
+    /* Info row */
+    .br-info-row { display:flex; justify-content:space-between; align-items:center; padding:5px 0; }
+    .br-info-row .br-info-label { font-size:11px; color:#4a6490; }
+    .br-info-row .br-info-value { font-size:11px; color:#8aaac8; font-weight:600; }
+
+    /* Status bar */
+    #bridge-status-bar { border-radius:14px; padding:14px 18px; font-size:13px; display:flex; align-items:center; gap:10px; }
+    .br-status-idle   { background:rgba(55,65,81,0.3); border:1px solid rgba(75,85,99,0.3); color:#9ca3af; }
+    .br-status-burn   { background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.3); color:#22d3ee; }
+    .br-status-attest { background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.3); color:#facc15; }
+    .br-status-mint   { background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.25); color:#4ade80; }
+    .br-status-done   { background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.35); color:#22c55e; }
+    .br-status-error  { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); color:#f87171; }
+
+    /* Steps */
+    .br-step { display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .br-step .br-step-circle {
+      width:32px; height:32px; border-radius:50%; border:2px solid rgba(75,85,99,0.4);
+      display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
+      color:#6b7280; background:rgba(20,24,38,0.6); transition:all 0.3s;
+    }
+    .br-step .br-step-label { font-size:10px; color:#6b7280; font-weight:600; transition:color 0.3s; }
+    .br-step-active .br-step-circle {
+      border-color:#22d3ee; color:#22d3ee; background:rgba(6,182,212,0.15);
+      box-shadow:0 0 14px rgba(6,182,212,0.25);
+    }
+    .br-step-active .br-step-label { color:#22d3ee; }
+    .br-step-done .br-step-circle {
+      border-color:#22c55e; background:rgba(34,197,94,0.15); color:#22c55e;
+      font-size:0; /* hide number, show check */
+    }
+    .br-step-done .br-step-circle::after { content:'✓'; font-size:12px; }
+    .br-step-done .br-step-label { color:#22c55e; }
+    .br-step-error .br-step-circle {
+      border-color:#f87171; background:rgba(239,68,68,0.12); color:#f87171;
+    }
+    .br-step-error .br-step-label { color:#f87171; }
+    .br-step-line {
+      flex:1; height:2px; background:rgba(75,85,99,0.3); margin:0 4px; margin-bottom:18px; transition:background 0.3s;
+      border-radius:1px;
+    }
+    .br-step-line-active { background:linear-gradient(90deg,#22d3ee,#4ade80); }
+    .br-step-line-done   { background:#22c55e; }
+
+    /* History table */
+    .br-history-table { width:100%; border-collapse:collapse; font-size:11px; }
+    .br-history-table th {
+      text-align:left; padding:10px 12px; font-size:9px; text-transform:uppercase;
+      letter-spacing:0.06em; color:#4a6490; font-weight:700; border-bottom:1px solid rgba(6,182,212,0.1);
+    }
+    .br-history-table td {
+      padding:10px 12px; border-bottom:1px solid rgba(6,182,212,0.06); color:#8aaac8;
+    }
+    .br-history-table tr:hover td { background:rgba(6,182,212,0.03); }
+
+    /* Responsive */
+    @media(max-width:1023px){
+      .br-summary-row { grid-template-columns:1fr; gap:10px; }
+      .br-history-table { font-size:10px; }
+      .br-history-table th, .br-history-table td { padding:8px 6px; }
+    }
+  </style>
+
+  <!-- ══ MAIN LAYOUT ══ -->
+  <div class="bridge-page">
+
+    <!-- LEFT: Main Bridge Card -->
+    <div>
+      <div class="br-card">
+
+        <!-- Header -->
+        <div class="br-card-header">
+          <div style="width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,rgba(6,182,212,0.2),rgba(34,211,238,0.12));border:1px solid rgba(6,182,212,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 20px rgba(6,182,212,0.1);">
+            <i class="fas fa-bridge-water" style="color:#22d3ee;font-size:18px;"></i>
+          </div>
+          <div style="flex:1;">
+            <h2 style="color:#dde2f0;font-size:16px;font-weight:800;margin:0;letter-spacing:0.01em;">Bridge</h2>
+            <p style="color:#4a6490;font-size:10px;margin:2px 0 0;">Cross-chain USDC via CCTP V2</p>
+          </div>
+          <span style="font-size:10px;font-weight:700;background:rgba(6,182,212,0.12);color:#22d3ee;border:1px solid rgba(6,182,212,0.3);border-radius:999px;padding:3px 10px;letter-spacing:0.04em;flex-shrink:0;">CCTP</span>
         </div>
-      </div>
 
-      <div class="flex justify-center">
-        <button onclick="bridgeFlipChains()"
-          class="w-9 h-9 rounded-full bg-gray-800 border border-gray-700/40 flex items-center justify-center hover:bg-gray-700 hover:border-cyan-500/40 transition-colors">
-          <i class="fas fa-arrow-up-arrow-down text-gray-400 text-xs"></i>
-        </button>
-      </div>
+        <!-- Body -->
+        <div class="br-card-body">
 
-      <div>
-        <label class="text-xs text-gray-500 mb-1 block">To</label>
-        <div id="bridge-to-wrap" class="relative">
-          <button id="bridge-to-chain" onclick="bridgeToggleDropdown('to')"
-            class="w-full flex items-center gap-2 bg-gray-800/80 border border-gray-700/40 rounded-xl px-4 py-3 text-sm text-white hover:border-cyan-500/40 transition-colors">
+          <!-- FROM chain -->
+          <div>
+            <label style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#4a6490;display:block;margin-bottom:6px;">From</label>
+            <div id="bridge-from-wrap" style="position:relative;">
+              <button id="bridge-from-chain" onclick="bridgeToggleDropdown('from')" class="br-chain-btn"></button>
+              <div id="bridge-from-dropdown" class="hidden" style="position:absolute;z-index:50;top:100%;left:0;right:0;margin-top:4px;background:rgba(10,15,28,0.98);border:1px solid rgba(6,182,212,0.25);border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);"></div>
+            </div>
+          </div>
+
+          <!-- Flip direction -->
+          <div style="display:flex;justify-content:center;">
+            <button onclick="bridgeFlipChains()" class="br-flip-btn">
+              <i class="fas fa-arrow-down-arrow-up"></i>
+            </button>
+          </div>
+
+          <!-- TO chain -->
+          <div>
+            <label style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#4a6490;display:block;margin-bottom:6px;">To</label>
+            <div id="bridge-to-wrap" style="position:relative;">
+              <button id="bridge-to-chain" onclick="bridgeToggleDropdown('to')" class="br-chain-btn"></button>
+              <div id="bridge-to-dropdown" class="hidden" style="position:absolute;z-index:50;top:100%;left:0;right:0;margin-top:4px;background:rgba(10,15,28,0.98);border:1px solid rgba(6,182,212,0.25);border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);"></div>
+            </div>
+          </div>
+
+          <!-- Amount input -->
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <label style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#4a6490;">Amount (USDC)</label>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span id="bridge-balance" style="font-size:10px;color:#4a6490;">Balance: —</span>
+                <button onclick="bridgeSetMax()" style="font-size:10px;font-weight:700;color:#22d3ee;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);border-radius:8px;padding:2px 8px;cursor:pointer;transition:all 0.15s;"
+                  onmouseover="this.style.background='rgba(6,182,212,0.16)';this.style.borderColor='rgba(6,182,212,0.4)'"
+                  onmouseout="this.style.background='rgba(6,182,212,0.08)';this.style.borderColor='rgba(6,182,212,0.2)'">MAX</button>
+              </div>
+            </div>
+            <div class="br-amount-wrap">
+              <div class="usdc-icon">$</div>
+              <input id="bridge-amount-input" type="number" min="0" step="any" placeholder="0.00" />
+            </div>
+          </div>
+
+          <!-- Transaction Summary -->
+          <div class="br-summary-row">
+            <div class="br-summary-item">
+              <div class="br-sum-label">You will receive</div>
+              <div class="br-sum-value" id="bridge-sum-receive">—</div>
+              <div class="br-sum-sub">USDC</div>
+            </div>
+            <div class="br-summary-item">
+              <div class="br-sum-label">Est. Time</div>
+              <div class="br-sum-value" id="bridge-sum-time">—</div>
+              <div class="br-sum-sub" id="bridge-sum-time-sub"></div>
+            </div>
+            <div class="br-summary-item">
+              <div class="br-sum-label">Est. Fee</div>
+              <div class="br-sum-value" id="bridge-sum-fee">—</div>
+              <div class="br-sum-sub">USDC</div>
+            </div>
+          </div>
+
+          <!-- Recipient -->
+          <div style="text-align:center;">
+            <span style="font-size:10px;color:#3a4870;">Recipient: </span>
+            <span id="bridge-recipient-addr" style="font-family:monospace;font-size:10px;color:#6a85aa;">—</span>
+          </div>
+
+          <!-- ETA display -->
+          <div id="bridge-eta" style="font-size:10px;color:#4a6490;text-align:center;"></div>
+
+          <!-- Submit -->
+          <button id="bridge-submit-btn" onclick="bridgeExecute()" disabled class="br-submit-btn">
+            <i class="fas fa-right-left" style="margin-right:6px;"></i>Bridge USDC
           </button>
-          <div id="bridge-to-dropdown" class="hidden absolute z-50 top-full mt-1 w-full bg-gray-900 border border-gray-700/60 rounded-xl shadow-xl overflow-hidden"></div>
-        </div>
-      </div>
 
-      <div>
-        <div class="flex justify-between items-center mb-1">
-          <label class="text-xs text-gray-500">Amount (USDC)</label>
-          <div class="flex items-center gap-2">
-            <span id="bridge-balance" class="text-xs text-gray-500">Balance: —</span>
-            <button onclick="bridgeSetMax()" class="text-xs text-cyan-400 hover:text-cyan-300 transition-colors">MAX</button>
+        </div><!-- end br-card-body -->
+      </div><!-- end br-card -->
+    </div><!-- end left col -->
+
+    <!-- RIGHT: Info Cards -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+
+      <!-- About this bridge -->
+      <div class="br-info-card">
+        <h4><i class="fas fa-circle-info"></i>About this bridge</h4>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
+            <i class="fas fa-shield-check" style="color:#22d3ee;font-size:12px;"></i>Powered by Circle CCTP V2
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
+            <i class="fas fa-bolt" style="color:#22d3ee;font-size:12px;"></i>Fast, secure and reliable
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
+            <i class="fas fa-coins" style="color:#22d3ee;font-size:12px;"></i>No wrapped tokens
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
+            <i class="fas fa-flask" style="color:#facc15;font-size:12px;"></i>Testnet environment
           </div>
         </div>
-        <input id="bridge-amount-input" type="number" min="0" step="any" placeholder="0.00"
-          class="w-full bg-gray-800/80 border border-gray-700/40 rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/60 transition-colors" />
       </div>
 
-      <div class="flex gap-2">
-        <button id="bridge-mode-fast" onclick="bridgeSetMode('fast')"
-          class="flex-1 py-2 rounded-xl text-xs font-medium border transition-colors">
-          <i class="fas fa-bolt mr-1"></i> Fast
-        </button>
-        <button id="bridge-mode-standard" onclick="bridgeSetMode('standard')"
-          class="flex-1 py-2 rounded-xl text-xs font-medium border transition-colors">
-          <i class="fas fa-clock mr-1"></i> Standard
-        </button>
+      <!-- Bridge Summary -->
+      <div class="br-info-card">
+        <h4><i class="fas fa-file-lines"></i>Bridge Summary</h4>
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <div class="br-info-row">
+            <span class="br-info-label">From</span>
+            <span class="br-info-value" id="bridge-info-from">—</span>
+          </div>
+          <div class="br-info-row">
+            <span class="br-info-label">To</span>
+            <span class="br-info-value" id="bridge-info-to">—</span>
+          </div>
+          <div class="br-info-row">
+            <span class="br-info-label">Asset</span>
+            <span class="br-info-value" style="color:#22d3ee;">USDC</span>
+          </div>
+          <div class="br-info-row">
+            <span class="br-info-label">Est. Time</span>
+            <span class="br-info-value" id="bridge-info-time">—</span>
+          </div>
+          <div class="br-info-row">
+            <span class="br-info-label">Est. Fee</span>
+            <span class="br-info-value" id="bridge-info-fee">—</span>
+          </div>
+          <div style="margin-top:6px;text-align:center;">
+            <span style="font-size:9px;font-weight:700;background:rgba(234,179,8,0.1);color:#facc15;border:1px solid rgba(234,179,8,0.2);border-radius:999px;padding:2px 10px;">Testnet</span>
+          </div>
+        </div>
       </div>
 
-      <div id="bridge-eta" class="text-xs text-gray-500 text-center"></div>
+    </div><!-- end right col -->
 
-      <div class="text-xs text-gray-600 text-center">
-        Recipient: <span id="bridge-recipient-addr" class="text-gray-400 font-mono">—</span>
+  </div><!-- end bridge-page -->
+
+  <!-- Transaction progress (full width below cards) -->
+  <div class="bridge-history-section" style="margin-top:8px;">
+
+    <!-- Status bar -->
+    <div id="bridge-status-bar" class="hidden"></div>
+
+    <!-- Attestation bar -->
+    <div id="bridge-attest-bar" class="hidden" style="font-size:11px;color:#facc15;text-align:center;padding:10px 0;"></div>
+
+    <!-- Steps: Burn → Attest → Mint → Done -->
+    <div id="bridge-steps-wrap" class="hidden" style="margin-bottom:20px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:0 8px;">
+        <div id="bridge-step-burn" class="br-step br-step-pending">
+          <div class="br-step-circle">1</div>
+          <span class="br-step-label">Burn</span>
+        </div>
+        <div class="br-step-line" id="bridge-step-line1"></div>
+        <div id="bridge-step-attest" class="br-step br-step-pending">
+          <div class="br-step-circle">2</div>
+          <span class="br-step-label">Attest</span>
+        </div>
+        <div class="br-step-line" id="bridge-step-line2"></div>
+        <div id="bridge-step-mint" class="br-step br-step-pending">
+          <div class="br-step-circle">3</div>
+          <span class="br-step-label">Mint</span>
+        </div>
+        <div class="br-step-line" id="bridge-step-line3"></div>
+        <div id="bridge-step-done" class="br-step br-step-pending">
+          <div class="br-step-circle">4</div>
+          <span class="br-step-label">Done</span>
+        </div>
       </div>
-
-      <button id="bridge-submit-btn" onclick="bridgeExecute()" disabled
-        class="w-full py-3 rounded-xl text-sm font-semibold bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white transition-colors">
-        Bridge USDC
-      </button>
     </div>
 
-    <div id="bridge-status-bar" class="hidden rounded-xl px-4 py-3 text-sm flex items-center gap-2 border bg-gray-800/60 border-gray-700/40 text-gray-400"></div>
-    <div id="bridge-attest-bar" class="hidden text-xs text-yellow-400 text-center py-2"></div>
-
-    <div id="bridge-steps-wrap" class="hidden">
-      <div class="flex items-center justify-between text-xs">
-        <div id="bridge-step-burn" class="flex flex-col items-center gap-1 bridge-step-pending">
-          <div class="w-7 h-7 rounded-full border flex items-center justify-center">1</div>
-          <span>Burn</span>
+    <!-- Bridge History -->
+    <div class="br-card" style="border-radius:18px;">
+      <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(6,182,212,0.08);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:32px;height:32px;border-radius:10px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);display:flex;align-items:center;justify-content:center;">
+            <i class="fas fa-clock-rotate-left" style="color:#22d3ee;font-size:13px;"></i>
+          </div>
+          <div>
+            <h3 style="color:#dde2f0;font-size:13px;font-weight:800;margin:0;">Bridge History</h3>
+          </div>
         </div>
-        <div class="flex-1 h-px bg-gray-700 mx-2"></div>
-        <div id="bridge-step-attest" class="flex flex-col items-center gap-1 bridge-step-pending">
-          <div class="w-7 h-7 rounded-full border flex items-center justify-center">2</div>
-          <span>Attest</span>
-        </div>
-        <div class="flex-1 h-px bg-gray-700 mx-2"></div>
-        <div id="bridge-step-mint" class="flex flex-col items-center gap-1 bridge-step-pending">
-          <div class="w-7 h-7 rounded-full border flex items-center justify-center">3</div>
-          <span>Mint</span>
-        </div>
-        <div class="flex-1 h-px bg-gray-700 mx-2"></div>
-        <div id="bridge-step-done" class="flex flex-col items-center gap-1 bridge-step-pending">
-          <div class="w-7 h-7 rounded-full border flex items-center justify-center">4</div>
-          <span>Done</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button onclick="if(window.bridgeRenderHistory)bridgeRenderHistory()"
+            style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#22d3ee;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.25);padding:5px 11px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
+            onmouseover="this.style.background='rgba(6,182,212,0.16)';this.style.borderColor='rgba(6,182,212,0.45)'"
+            onmouseout="this.style.background='rgba(6,182,212,0.08)';this.style.borderColor='rgba(6,182,212,0.25)'">
+            <i class="fas fa-arrows-rotate" style="font-size:9px;"></i>Refresh
+          </button>
         </div>
       </div>
+      <div id="bridge-history-list" style="overflow-x:auto;"></div>
     </div>
 
-    <div class="bg-gray-900/40 border border-gray-700/30 rounded-2xl p-4">
-      <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Bridge History</h3>
-      <div id="bridge-history-list"></div>
-    </div>
+  </div><!-- end bridge-history-section -->
 
-  </div>
 </div>
+<!-- end tab-content-bridge -->
 <!-- end tab-content-bridge -->
 
     <!-- ════════════════════════════════════════════════════════════════ -->
@@ -5200,7 +5066,7 @@ const buildSPAHtml = (c: any) => {
   <!-- ══════════════════════════════════════════════════════════════════════
        SITE FOOTER — Institutional, Legal & Transparency
   ═══════════════════════════════════════════════════════════════════════ -->
-  <footer class="site-footer mt-16 border-t border-gray-800/60 bg-gray-950/90">
+  <footer class="mt-16 border-t border-gray-800/60 bg-gray-950/90">
 
     <!-- Main footer content -->
     <div class="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -5257,8 +5123,8 @@ const buildSPAHtml = (c: any) => {
         <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Resources</h3>
         <ul class="space-y-2 text-xs text-gray-500">
           <li>
-            <a href="https://github.com/julenosinger/Agentes-de-IA" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 hover:text-white transition-colors">
-              <i class="fab fa-github text-[10px]"></i>Source Code (GitHub)
+            <a href="/about" class="flex items-center gap-1.5 hover:text-white transition-colors">
+              <i class="fas fa-info-circle text-[10px]"></i>About this App
             </a>
           </li>
           <li>
@@ -5332,7 +5198,7 @@ const buildSPAHtml = (c: any) => {
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250325b"></script>
-  <script src="/static/bridge.js"></script>
+  <script src="/static/bridge.js?v=20260626b"></script>
   <script src="/static/multisend.js?v=20260327b"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
@@ -5682,26 +5548,43 @@ const buildSPAHtml = (c: any) => {
 
       // (wallet-create-btn removed)
     });
+
+    // ── Custom Confirm Modal ───────────────────────────────────────────────
+    window._showConfirm = function(message, title = 'Confirm') {
+      return new Promise(function(resolve) {
+        var overlay = document.createElement('div');
+        overlay.id = '_confirm-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity 0.2s;';
+        overlay.innerHTML = '<div style="background:linear-gradient(160deg,rgba(10,15,28,0.98) 0%,rgba(6,11,22,1) 100%);border:1px solid rgba(55,138,221,0.2);border-radius:18px;max-width:440px;width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.6);">'
+          + '<div style="padding:20px 22px 0;display:flex;align-items:center;gap:10px;">'
+          + '<div style="width:36px;height:36px;border-radius:10px;background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fas fa-circle-question" style="color:#60b4ff;font-size:16px;"></i></div>'
+          + '<div><div style="color:#dde2f0;font-size:14px;font-weight:800;">' + title + '</div></div>'
+          + '</div>'
+          + '<div style="padding:14px 22px;color:#8aaac8;font-size:12px;line-height:1.6;white-space:pre-wrap;">' + message + '</div>'
+          + '<div style="padding:0 22px 18px;display:flex;gap:8px;justify-content:flex-end;">'
+          + '<button id="_cf-cancel-btn" style="padding:8px 18px;border-radius:10px;font-size:12px;font-weight:600;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#8aaac8;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background=\'rgba(255,255,255,0.08)\'" onmouseout="this.style.background=\'rgba(255,255,255,0.04)\'">Cancel</button>'
+          + '<button id="_cf-ok-btn" style="padding:8px 18px;border-radius:10px;font-size:12px;font-weight:600;background:linear-gradient(135deg,#378ADD,#1D9E75);border:none;color:#fff;cursor:pointer;transition:all 0.15s;box-shadow:0 2px 12px rgba(55,138,221,0.25);" onmouseover="this.style.boxShadow=\'0 4px 20px rgba(55,138,221,0.4)\'" onmouseout="this.style.boxShadow=\'0 2px 12px rgba(55,138,221,0.25)\'">Confirm</button>'
+          + '</div></div>';
+        document.body.appendChild(overlay);
+        requestAnimationFrame(function() { overlay.style.opacity = '1'; });
+
+        var cleanup = function() { if (overlay.parentNode) overlay.remove(); };
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) { cleanup(); resolve(false); } });
+        overlay.querySelector('#_cf-cancel-btn').onclick = function() { cleanup(); resolve(false); };
+        overlay.querySelector('#_cf-ok-btn').onclick = function() { cleanup(); resolve(true); };
+
+        document.addEventListener('keydown', function escHandler(e) {
+          if (e.key === 'Escape') { document.removeEventListener('keydown', escHandler); cleanup(); resolve(false); }
+        });
+      });
+    };
   </script>
+
+<!-- Custom Confirm Modal placeholder (created dynamically) -->
+
 </body>
 </html>`)
-}
-
-// GET / - SPA principal
-app.get('/', (c) => buildSPAHtml(c))
-
-// ─── SPA Clean URL Routes ───────────────────────────────────────────────────
-// O Worker intercepta /* antes do _redirects do Cloudflare Pages.
-// Então cada rota SPA precisa ser registrada aqui para servir o HTML diretamente.
-// O JS router.js lê window.location.pathname e ativa a aba correta sem reload.
-const SPA_PATHS = [
-  '/home', '/dashboard', '/payments', '/contracts', '/autonoma',
-  '/settings', '/otc', '/swap', '/bridge', '/multisend', '/history',
-]
-
-for (const routePath of SPA_PATHS) {
-  app.get(routePath, (c) => buildSPAHtml(c))
-}
+})
 
 export default app
 

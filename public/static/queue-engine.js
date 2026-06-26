@@ -155,10 +155,10 @@ function _qeRenderRow(id) {
 
 function _qeStatusBadge(status) {
   const map = {
-    pending:    '<span class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gray-700/60 text-gray-400"><i class="fas fa-clock"></i>pending</span>',
-    processing: '<span class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-yellow-900/40 text-yellow-300 animate-pulse"><i class="fas fa-spinner fa-spin"></i>processing</span>',
-    success:    '<span class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-900/40 text-green-400"><i class="fas fa-check-circle"></i>success</span>',
-    failed:     '<span class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-900/40 text-red-400"><i class="fas fa-times-circle"></i>failed</span>',
+    pending:    '<span class="inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-gray-800/40 border border-gray-700/40 text-gray-400"><i class="fas fa-clock text-[9px]"></i>Pending</span>',
+    processing: '<span class="inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-yellow-950/40 border border-yellow-700/30 text-yellow-300 animate-pulse"><i class="fas fa-spinner fa-spin text-[9px]"></i>Processing</span>',
+    success:    '<span class="inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-green-950/40 border border-green-700/30 text-green-400"><i class="fas fa-circle-check text-[9px]"></i>Success</span>',
+    failed:     '<span class="inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-red-950/40 border border-red-700/30 text-red-400"><i class="fas fa-circle-xmark text-[9px]"></i>Failed</span>',
   };
   return map[status] || map.pending;
 }
@@ -229,12 +229,16 @@ function qeRenderPanel() {
 
   if (!_qeQueue.length) {
     container.innerHTML = `
-      <div class="flex flex-col items-center gap-3 py-10 text-center text-gray-600">
-        <i class="fas fa-inbox text-3xl"></i>
-        <p class="text-sm text-gray-500">Queue is empty.</p>
-        <p class="text-xs text-gray-600">Upload a CSV in the chat or add recipients in Step 1 above.</p>
+      <div class="flex flex-col items-center gap-4 py-12 text-center">
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-gray-800/60 to-gray-800/30 border border-gray-700/40 flex items-center justify-center">
+          <i class="fas fa-inbox text-gray-500 text-xl"></i>
+        </div>
+        <div>
+          <p class="text-white font-semibold text-sm">No payments in queue</p>
+          <p class="text-gray-500 text-xs mt-1">Your automated payments will appear here</p>
+        </div>
         <button onclick="qeSyncFromChatCSV(); qeRenderPanel();"
-          class="mt-2 flex items-center gap-2 text-xs px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-cyan-400 rounded-xl transition">
+          class="mt-1 flex items-center gap-2 text-xs px-4 py-2.5 bg-gradient-to-r from-rose-900/30 to-rose-800/20 hover:from-rose-800/40 hover:to-rose-700/30 border border-rose-700/30 text-rose-300 hover:text-rose-200 rounded-xl transition-all duration-200">
           <i class="fas fa-sync text-[10px]"></i>Import from Chat CSV
         </button>
       </div>`;
@@ -243,46 +247,46 @@ function qeRenderPanel() {
   }
 
   container.innerHTML = _qeQueue.map(row => `
-    <div class="flex items-center gap-3 p-3 bg-gray-800/40 border border-gray-700/30 rounded-xl hover:border-gray-600/50 transition-all group"
+    <div class="flex items-center gap-3 p-3.5 bg-gradient-to-r from-gray-900/50 to-gray-800/30 border border-gray-700/30 rounded-xl hover:border-gray-600/60 hover:shadow-lg hover:shadow-black/10 transition-all duration-200 group"
          id="qe-row-${row.id}">
       <!-- Status icon -->
-      <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
-        row.status === 'success' ? 'bg-green-900/40 text-green-400' :
-        row.status === 'failed'  ? 'bg-red-900/40 text-red-400' :
-        row.status === 'processing' ? 'bg-yellow-900/40 text-yellow-300' :
-        'bg-gray-700/60 text-gray-500'
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+        row.status === 'success' ? 'bg-green-950/40 border border-green-700/30 text-green-400' :
+        row.status === 'failed'  ? 'bg-red-950/40 border border-red-700/30 text-red-400' :
+        row.status === 'processing' ? 'bg-yellow-950/40 border border-yellow-700/30 text-yellow-300' :
+        'bg-gray-800/40 border border-gray-700/30 text-gray-500'
       }">
         <i class="fas ${
-          row.status === 'success'    ? 'fa-check-circle' :
-          row.status === 'failed'     ? 'fa-times-circle' :
+          row.status === 'success'    ? 'fa-circle-check' :
+          row.status === 'failed'     ? 'fa-circle-xmark' :
           row.status === 'processing' ? 'fa-spinner fa-spin' :
           'fa-clock'
-        } text-xs"></i>
+        } text-sm"></i>
       </div>
       <!-- Address + note -->
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2">
-          <span class="font-mono text-xs text-gray-300">${row.address.slice(0,8)}…${row.address.slice(-6)}</span>
-          ${row.note ? `<span class="text-[10px] text-gray-600 truncate max-w-[80px]">${row.note}</span>` : ''}
+          <span class="font-mono text-xs text-gray-300 font-medium">${row.address.slice(0,8)}&hellip;${row.address.slice(-6)}</span>
+          ${row.note ? `<span class="text-[10px] text-gray-600 truncate max-w-[100px] bg-gray-800/40 px-1.5 py-0.5 rounded-full">${row.note}</span>` : ''}
         </div>
-        <div class="qe-row-status mt-0.5 flex items-center gap-1 flex-wrap">
+        <div class="qe-row-status mt-1 flex items-center gap-1.5 flex-wrap">
           ${_qeStatusBadge(row.status)}
-          ${row.txHash ? `<a href="${QE_EXPLORER}/tx/${row.txHash}" target="_blank" class="text-green-400 font-mono text-[10px] underline">${_qeShort(row.txHash)}</a>` : ''}
-          ${row.error  ? `<span class="text-red-400 text-[10px]">${row.error.slice(0,40)}</span>` : ''}
+          ${row.txHash ? `<a href="${QE_EXPLORER}/tx/${row.txHash}" target="_blank" class="text-violet-400 hover:text-violet-300 font-mono text-[10px] underline flex items-center gap-1"><i class="fas fa-external-link-alt text-[8px]"></i>${_qeShort(row.txHash)}</a>` : ''}
+          ${row.error  ? `<span class="text-red-400 text-[10px] bg-red-950/40 px-1.5 py-0.5 rounded-full">${row.error.slice(0,40)}</span>` : ''}
         </div>
       </div>
       <!-- Amount -->
       <div class="text-right flex-shrink-0">
-        <div class="text-sm font-bold text-white">${_qeFmt(row.amount)}</div>
-        <div class="text-[10px] text-gray-500">${row.token}</div>
+        <div class="text-sm font-bold text-white tracking-tight">${_qeFmt(row.amount)}</div>
+        <div class="text-[10px] text-gray-500 font-medium">${row.token}</div>
       </div>
       <!-- Remove btn (only for pending) -->
       ${row.status === 'pending' ? `
       <button onclick="qeRemoveRow('${row.id}')"
-        class="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center text-gray-600 hover:text-red-400 rounded-lg hover:bg-red-900/20 transition-all text-xs"
+        class="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center text-gray-600 hover:text-red-400 rounded-lg hover:bg-red-950/30 border border-transparent hover:border-red-800/30 transition-all duration-200 text-xs"
         title="Remove">
         <i class="fas fa-trash"></i>
-      </button>` : '<div class="w-6"></div>'}
+      </button>` : '<div class="w-7"></div>'}
     </div>
   `).join('');
 
@@ -593,12 +597,16 @@ function qeInjectPanel() {
 
       <!-- Rows list -->
       <div id="qe-rows-container" class="px-4 py-3 space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
-        <div class="flex flex-col items-center gap-3 py-8 text-center text-gray-600">
-          <i class="fas fa-inbox text-2xl"></i>
-          <p class="text-sm text-gray-500">Queue is empty.</p>
-          <p class="text-xs text-gray-600">Upload a CSV in the chat or add recipients in Step 1.</p>
+        <div class="flex flex-col items-center gap-4 py-10 text-center">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-gray-800/60 to-gray-800/30 border border-gray-700/40 flex items-center justify-center">
+            <i class="fas fa-inbox text-gray-500 text-xl"></i>
+          </div>
+          <div>
+            <p class="text-white font-semibold text-sm">No payments in queue</p>
+            <p class="text-gray-500 text-xs mt-1">Your automated payments will appear here</p>
+          </div>
           <button onclick="qeSyncFromChatCSV()"
-            class="mt-1 flex items-center gap-2 text-xs px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-cyan-400 rounded-xl transition">
+            class="mt-1 flex items-center gap-2 text-xs px-4 py-2.5 bg-gradient-to-r from-rose-900/30 to-rose-800/20 hover:from-rose-800/40 hover:to-rose-700/30 border border-rose-700/30 text-rose-300 hover:text-rose-200 rounded-xl transition-all duration-200">
             <i class="fas fa-sync text-[10px]"></i>Import from Chat CSV
           </button>
         </div>

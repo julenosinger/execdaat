@@ -3,7 +3,14 @@
 // Suporta MetaMask, Coinbase Wallet, Rabby, Brave Wallet,
 // e qualquer injetor EIP-1193 (window.ethereum)
 // Compatível com EIP-6963 (múltiplos provedores)
+// Mobile: suporta MetaMask Mobile, Trust Wallet, Coinbase Wallet
 // ============================================================
+
+// ── Mobile detection ─────────────────────────────────
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent) || 
+         (navigator.maxTouchPoints > 1 && window.innerWidth < 1024);
+}
 
 // Configuração da Arc Testnet
 const ARC_TESTNET_PARAMS = {
@@ -92,6 +99,7 @@ function detectProviders() {
     if (rdns.includes('okx')       || name.includes('okx'))      return 'okx';
     if (rdns.includes('keplr')     || name.includes('keplr'))    return 'keplr';
     if (rdns.includes('starkey')   || name.includes('starkey'))  return 'starkey';
+    if (rdns.includes('trust')    || name.includes('trust'))     return 'trust';
     // Fallback: use rdns or lowercased name
     return rdns || name.replace(/\s/g, '') || 'unknown';
   }
@@ -117,6 +125,7 @@ function detectProviders() {
         else if (p.isRabby) name = 'Rabby';
         else if (p.isBraveWallet) name = 'Brave Wallet';
         else if (p.isPhantom) name = 'Phantom';
+        else if (p.isTrust || p.isTrustWallet) name = 'Trust Wallet';
         const key = _dedupKey({ ...p, name });
         if (!seen.has(key)) {
           seen.add(key);
@@ -132,6 +141,7 @@ function detectProviders() {
       else if (window.ethereum.isCoinbaseWallet) name = 'Coinbase Wallet';
       else if (window.ethereum.isRabby)       name = 'Rabby';
       else if (window.ethereum.isPhantom)     name = 'Phantom';
+      else if (window.ethereum.isTrust || window.ethereum.isTrustWallet) name = 'Trust Wallet';
       const key = _dedupKey({ ...window.ethereum, name });
       if (!seen.has(key)) {
         seen.add(key);
@@ -473,9 +483,6 @@ async function refreshBalance() {
   if (headerBal && balance !== null) {
     headerBal.textContent = `$${balance} USDC`;
   }
-  // Sync inline app-topbar balance pill
-  const appBalPill = document.getElementById('app-balance-pill');
-  if (appBalPill && balance !== null) { appBalPill.textContent = `$${balance} USDC`; appBalPill.style.display = 'flex'; }
 }
 
 // ============================================================
@@ -535,7 +542,18 @@ function _getWalletLogoKey(p) {
   if (rdns.includes('backpack')  || name.includes('backpack'))  return 'backpack';
   if (rdns.includes('keplr')     || name.includes('keplr'))     return 'keplr';
   if (rdns.includes('starkey')   || name.includes('starkey'))   return 'starkey';
+  if (rdns.includes('trust')    || name.includes('trust'))     return 'trust';
   return 'default';
+}
+
+// Mobile wallet deep-link button
+function _mobileWalletButton(name, key, url) {
+  var icons = {
+    metamask: '<svg viewBox="0 0 318 318" style="width:28px;height:28px;display:block;border-radius:7px;background:#1a1a1a;padding:2px;flex-shrink:0;"><polygon fill="#E17726" points="274.1,35.5 174.6,109.4 193,65.8"/><polygon fill="#E27625" points="44.4,35.5 143.1,110.1 125.6,65.8"/><polygon fill="#E27625" points="238.3,206.8 211.8,247.4 268.5,263 284.8,207.7"/><polygon fill="#E27625" points="33.9,207.7 50.1,263 106.8,247.4 80.3,206.8"/><polygon fill="#E27625" points="103.6,138.2 87.8,162.1 144.1,164.6 142.1,104.1"/><polygon fill="#E27625" points="214.9,138.2 175.9,103.4 174.6,164.6 230.9,162.1"/><polygon fill="#E27625" points="106.8,247.4 140.6,230.9 111.4,208.1"/><polygon fill="#E27625" points="177.9,230.9 211.8,247.4 207.1,208.1"/><polygon fill="#D5BFB2" points="211.8,247.4 177.9,230.9 180.7,253.5 180.4,262.3"/><polygon fill="#D5BFB2" points="106.8,247.4 138.2,262.3 137.9,253.5 140.6,230.9"/><polygon fill="#233447" points="138.8,193.5 110.6,185.2 130.5,176.1"/><polygon fill="#233447" points="179.7,193.5 188,176.1 207.9,185.2"/><polygon fill="#CC6228" points="106.8,247.4 111.6,206.8 80.3,207.7"/><polygon fill="#CC6228" points="206.9,206.8 211.8,247.4 238.3,207.7"/><polygon fill="#CC6228" points="230.9,162.1 174.6,164.6 179.7,193.5 188,176.1 207.9,185.2"/><polygon fill="#CC6228" points="110.6,185.2 130.5,176.1 138.8,193.5 144.1,164.6 87.8,162.1"/><polygon fill="#E27525" points="87.8,162.1 138.8,193.5 111.4,208.1"/><polygon fill="#E27525" points="207.9,185.2 180.4,208.1 230.9,162.1"/><polygon fill="#E27525" points="144.1,164.6 138.8,193.5 146.3,232.6 148,180.4"/><polygon fill="#E27525" points="174.6,164.6 170.7,180.3 172.2,232.6 179.7,193.5"/><polygon fill="#F5841F" points="179.7,193.5 172.2,232.6 177.9,230.9 207.9,185.2"/><polygon fill="#F5841F" points="110.6,185.2 111.4,208.1 140.6,230.9 144.1,164.6"/><polygon fill="#C0AC9D" points="180.4,262.3 180.7,253.5 178.1,251.2 140.4,251.2 137.9,253.5 138.2,262.3 106.8,247.4 117.8,256.4 140.1,271.9 178.4,271.9 200.8,256.4 211.8,247.4"/><polygon fill="#161616" points="177.9,230.9 172.2,232.6 146.3,232.6 140.6,230.9 137.9,253.5 140.4,251.2 178.1,251.2 180.7,253.5"/></svg>',
+    trust: '<svg viewBox="0 0 128 128" style="width:28px;height:28px;display:block;border-radius:7px;flex-shrink:0;"><rect width="128" height="128" rx="22" fill="#3375BB"/><text x="64" y="82" text-anchor="middle" font-size="52" font-weight="bold" fill="white" font-family="Arial">T</text></svg>',
+    coinbase: '<svg viewBox="0 0 128 128" style="width:28px;height:28px;display:block;border-radius:7px;flex-shrink:0;"><rect width="128" height="128" rx="22" fill="#0052FF"/><circle cx="64" cy="64" r="44" fill="white"/><path d="M64 28C44.1 28 28 44.1 28 64s16.1 36 36 36c13.7 0 25.7-7.7 31.8-19H79.6c-3.7 5.1-9.6 8.4-15.6 8.4C50.3 89.4 38.6 78 38.6 64S50.3 38.6 64 38.6c6 0 11.9 3.3 15.6 8.4h12.2C86.7 35.7 74.7 28 64 28z" fill="#0052FF"/></svg>'
+  };
+  return '<a href="' + url + '" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:12px;color:#e2e8f0;text-decoration:none;font-size:13px;font-weight:600;transition:all .2s;" onmouseover="this.style.background=\'rgba(139,92,246,.1)\';this.style.borderColor=\'rgba(139,92,246,.3)\'" onmouseout="this.style.background=\'rgba(255,255,255,.04)\';this.style.borderColor=\'rgba(255,255,255,.1)\'">' + (icons[key] || '') + '<span>Open in ' + name + '</span><span style="margin-left:auto;color:#6b7280;font-size:11px;">↗</span></a>';
 }
 
 function _renderWalletModal() {
@@ -942,12 +960,23 @@ function _renderWalletModal() {
               </svg>
             </div>
             <p style="color:#e2e8f0;font-size:14px;font-weight:600;margin-bottom:4px;">No wallet detected</p>
-            <p style="color:#4b5563;font-size:12px;margin-bottom:20px;">Install a wallet extension to get started</p>
+            ${isMobileDevice() ? `
+              <p style="color:#6b7280;font-size:12px;margin-bottom:16px;">Open this app in a wallet browser to connect</p>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                ${_mobileWalletButton('MetaMask', 'metamask', 'https://metamask.app.link/dapp/' + window.location.host + window.location.pathname)}
+                ${_mobileWalletButton('Trust Wallet', 'trust', 'https://link.trustwallet.com/open_url?coin_id=60&url=' + encodeURIComponent(window.location.href))}
+                ${_mobileWalletButton('Coinbase Wallet', 'coinbase', 'https://go.cb-w.com/dapp?cb_url=' + encodeURIComponent(window.location.href))}
+              </div>
+            ` : `
+              <p style="color:#4b5563;font-size:12px;margin-bottom:20px;">Install a wallet extension to get started</p>
+            `}
           </div>
 
+          ${!isMobileDevice() ? `
           <div style="display:flex;flex-direction:column;gap:6px;">
             ${WALLET_INSTALL_LIST.map(w => _installCard(w)).join('')}
           </div>
+          ` : ''}
         `}
       </div>
 
@@ -1545,9 +1574,6 @@ function walletStartBalancePolling() {
         if (panelBal) panelBal.textContent = bal;
         const headerBal = document.getElementById('wallet-balance-display');
         if (headerBal) headerBal.textContent = `$${bal} USDC`;
-        // Sync inline app-topbar balance pill
-        const appBalPill2 = document.getElementById('app-balance-pill');
-        if (appBalPill2 && bal !== null) { appBalPill2.textContent = `$${bal} USDC`; appBalPill2.style.display = 'flex'; }
         // Flash visual se saldo mudou
         if (prev !== null && prev !== bal) {
           [panelBal, headerBal].forEach(el => {

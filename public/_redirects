@@ -1,19 +1,14 @@
-# ExecDaat — Cloudflare Pages SPA Redirects
-# Clean URL routing: /payments, /contracts, etc. → serve SPA (200 rewrite)
-# The JS router reads window.location.pathname and activates the correct tab.
-# These come BEFORE the wildcard fallback.
+# ExecDaat — Cloudflare Pages SPA Redirects (clean URLs)
+# All routes return / with 200 for SPA fallback
 
-/home         /    200
 /dashboard    /    200
 /payments     /    200
 /contracts    /    200
 /autonoma     /    200
+/agents       /    200
+/bridge       /    200
 /settings     /    200
 /otc          /    200
 /swap         /    200
-/bridge       /    200
 /multisend    /    200
 /history      /    200
-
-# SPA fallback — qualquer rota não reconhecida serve o index (evita 404 em F5/reload)
-/*            /    200

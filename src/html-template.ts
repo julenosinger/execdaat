@@ -110,13 +110,12 @@ export function getMainHTML(): string {
 
   <!-- ══════════════════════════════════════════════════════════════════════
        HEADER LAYOUT CONTROLLER — inline script runs immediately
-       Manages banner dismiss animation + CSS variable for tab-nav sticky offset
+       Manages banner dismiss animation + CSS variable for sticky offset
        + Hide-on-scroll-down / show-on-scroll-up behaviour
        ══════════════════════════════════════════════════════════════════════ -->
   <script>
-    // Update --topbar-h so the tab nav always sticks directly below the topbar.
-    // When the topbar is hidden (translateY(-100%)) we set the var to 0px so
-    // the tab-nav slides up to the very top of the viewport.
+    // Update --topbar-h for the sticky topbar height.
+    // When the topbar is hidden (translateY(-100%)) we set the var to 0px.
     function updateTopbarHeight() {
       var tb = document.getElementById('sticky-topbar-anchor');
       if (!tb) return;
@@ -153,19 +152,17 @@ export function getMainHTML(): string {
 
       function setTopbarVisibility(hide) {
         var tb  = document.getElementById('sticky-topbar');   // inner: gets transform
-        var nav = document.getElementById('tab-nav');
         if (!tb) return;
         if (hide === hidden) return;   // nothing changed
         hidden = hide;
         if (hide) {
           // Slide header up out of view
           tb.style.transform = 'translateY(-100%)';
-          // Move tab-nav to top:0 so it fills the space the header left
           document.documentElement.style.setProperty('--topbar-h', '0px');
         } else {
           // Bring header back
           tb.style.transform = 'translateY(0)';
-          // Restore tab-nav offset
+          // Restore topbar offset
           var realH = getComputedStyle(document.documentElement)
                         .getPropertyValue('--topbar-real-h') || '0px';
           document.documentElement.style.setProperty('--topbar-h', realH);
@@ -196,11 +193,6 @@ export function getMainHTML(): string {
           // Add the CSS transition for the slide animation
           tb.style.transition = 'transform 0.3s cubic-bezier(0.4,0,0.2,1)';
           tb.style.willChange = 'transform';
-        }
-        // tab-nav already has transition:top 0.25s ease; also add for --topbar-h
-        var nav = document.getElementById('tab-nav');
-        if (nav) {
-          nav.style.transition = 'top 0.3s cubic-bezier(0.4,0,0.2,1)';
         }
         window.addEventListener('scroll', onScroll, { passive: true });
       });
@@ -250,18 +242,8 @@ export function getMainHTML(): string {
 
   <!-- HEADER — stacks directly below banner inside sticky wrapper -->
   <header id="main-header" class="bg-gray-900/95 border-b border-purple-800/30 px-6 py-3 backdrop-blur-sm" style="position:relative;z-index:50;">
-    <div class="max-w-7xl mx-auto flex items-center justify-between">
-      <button onclick="showLanding()" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
-          <i class="fas fa-robot text-white text-base"></i>
-        </div>
-        <div class="text-left">
-          <div class="font-bold text-base leading-none" style="background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.06em;font-weight:900">ExecDaat</div>
-          <div class="text-[10px] text-purple-400 leading-none mt-0.5">Autonomous Payments &amp; Contracts</div>
-        </div>
-      </button>
-      <div class="flex items-center gap-2 sm:gap-3">
-        <!-- Language Selector -->
+    <div class="max-w-7xl mx-auto flex items-center justify-end gap-2 sm:gap-3">
+      <!-- Language Selector -->
         <div id="lang-selector" class="relative">
           <button onclick="toggleLangDropdown()"
             class="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-500 rounded-xl px-3 py-2 text-sm text-gray-300 transition-all">
@@ -295,28 +277,15 @@ export function getMainHTML(): string {
           <div id="wallet-balance-display" class="hidden text-xs text-blue-400 font-medium bg-blue-900/30 px-2 py-0.5 rounded-full"></div>
         </div>
 
-        <!-- Settings -->
-        <button onclick="openSettingsModal()" id="settings-btn"
-          class="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-500 rounded-xl text-gray-400 hover:text-white transition-all relative" title="Settings">
-          <i class="fas fa-cog text-sm"></i>
-          <span id="settings-dot" class="hidden absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full border-2 border-gray-900"></span>
-        </button>
-
-        <!-- Profile -->
-        <button onclick="openProfileModal()" id="profile-btn"
-          class="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-purple-700 to-blue-700 hover:from-purple-600 hover:to-blue-600 border border-purple-600/40 rounded-xl text-white font-bold text-xs transition-all" title="Profile">
-          <span id="profile-avatar-btn">👤</span>
-        </button>
 
         <!-- Connect Wallet Button -->
         <button id="wallet-connect-btn" onclick="openWalletModal()"
           class="wallet-connect-pulse flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 py-2 text-sm font-semibold transition-all shadow-lg shadow-purple-900/30">
           <i class="fas fa-wallet"></i>
-          <span class="hidden sm:inline" data-i18n="btn_connect">Connect</span>
+          <span class="inline" data-i18n="btn_connect">Connect</span>
         </button>
 
         <div id="wallet-badge" class="hidden sm:hidden w-2 h-2 rounded-full bg-green-400"></div>
-      </div>
     </div>
   </header>
 
@@ -589,44 +558,6 @@ export function getMainHTML(): string {
        APP SHELL — hidden until user clicks "Enter App" or connects wallet
        ══════════════════════════════════════════════════════════════════════ -->
   <div id="app-shell" class="hidden">
-
-  <!-- Tabs -->
-  <div id="tab-nav" class="bg-gray-900/60 border-b border-gray-800" style="position:sticky;top:var(--topbar-h,0px);z-index:40;transition:top 0.25s ease;">
-    <div class="max-w-7xl mx-auto tab-nav-wrapper">
-      <div class="flex gap-0 min-w-max">
-        <button onclick="switchTab('agents')" id="tab-agents" class="tab-btn active px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-purple-500 text-purple-400 transition-all">
-          <i class="fas fa-brain mr-1 sm:mr-2"></i><span data-i18n="tab_agents" class="hidden xs:inline sm:inline">AI Agents</span>
-        </button>
-        <button onclick="switchTab('payments')" id="tab-payments" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-dollar-sign mr-1 sm:mr-2"></i><span data-i18n="tab_payments" class="hidden xs:inline sm:inline">Payments</span>
-        </button>
-        <button onclick="switchTab('contracts')" id="tab-contracts" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-file-contract mr-1 sm:mr-2"></i><span data-i18n="tab_contracts" class="hidden xs:inline sm:inline">Contracts</span>
-        </button>
-        <button onclick="switchTab('otc')" id="tab-otc" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all relative">
-          <i class="fas fa-handshake mr-1 sm:mr-2"></i><span class="hidden sm:inline">OTC Contracts</span><span class="sm:hidden text-xs">OTC</span>
-          <span class="absolute top-2 right-1 text-[8px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">NEW</span>
-          <span id="otc-alert-badge" class="hidden absolute top-2 left-1 text-[8px] bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-bold leading-none"></span>
-        </button>
-        <button onclick="switchTab('multisend')" id="tab-multisend" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-cyan-400 transition-all">
-          <i class="fas fa-paper-plane mr-1 sm:mr-2"></i><span class="hidden sm:inline">MultiSend</span><span class="sm:hidden text-xs">Multi</span>
-        </button>
-        <button onclick="switchTab('dex')" id="tab-dex" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-all">
-          <i class="fas fa-exchange-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">Swap</span><span class="sm:hidden text-xs">Swap</span>
-        </button>
-        <button onclick="switchTab('history')" id="tab-history" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-blue-400 transition-all">
-          <i class="fas fa-history mr-1 sm:mr-2"></i><span class="hidden sm:inline">History</span><span class="sm:hidden text-xs">Hist</span>
-        </button>
-        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-indigo-400 transition-all">
-          <i class="fas fa-info-circle mr-1 sm:mr-2"></i><span class="hidden sm:inline">Information</span><span class="sm:hidden text-xs">Info</span>
-        </button>
-        <button onclick="switchTab('about')" id="tab-about" class="tab-btn px-4 sm:px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-emerald-400 transition-all">
-          <i class="fas fa-shield-alt mr-1 sm:mr-2"></i><span class="hidden sm:inline">About Us</span><span class="sm:hidden text-xs">About</span>
-        </button>
-
-      </div>
-    </div>
-  </div>
 
   <!-- Main Content -->
   <main class="max-w-7xl mx-auto px-6 py-8">

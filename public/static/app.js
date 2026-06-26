@@ -67,8 +67,6 @@ function switchTab(tab) {
                            'border-blue-500', 'text-blue-400', 'border-cyan-500', 'text-cyan-400');
       btn.classList.add('border-transparent', 'text-gray-400');
     });
-    // Deactivate sidebar items
-    document.querySelectorAll('.sidebar-item').forEach(btn => btn.classList.remove('active'));
 
     // Show selected content with fade-in
     const content = document.getElementById(`tab-content-${tab}`);
@@ -87,18 +85,23 @@ function switchTab(tab) {
     if (tabBtn) {
       tabBtn.classList.add('active');
       tabBtn.classList.remove('border-transparent', 'text-gray-400');
-    }
-
-    // Update mobile top-bar label
-    const mobLabel = document.getElementById('mob-tab-label');
-    if (mobLabel) {
-      const tabLabels = {
-        payments:'Payments', contracts:'Contracts', otc:'OTC Contracts',
-        multisend:'MultiSend', dex:'Swap', bridge:'Bridge',
-        autonoma:'Autonomous', history:'History', dashboard:'Information',
-        agents:'Agents', home:'Home',
+      // Per-tab accent color
+      const tabColors = {
+        home:      ['border-purple-500', 'text-purple-400'],
+        agents:    ['border-purple-500', 'text-purple-400'],
+        payments:  ['border-green-500',  'text-green-400'],
+        contracts: ['border-blue-500',   'text-blue-400'],
+        otc:       ['border-indigo-500', 'text-indigo-400'],
+        dex:       ['border-yellow-500', 'text-yellow-400'],
+        bridge:    ['border-cyan-500',   'text-cyan-400'],
+        multisend: ['border-cyan-500',   'text-cyan-400'],
+        autonoma:  ['border-purple-500', 'text-purple-400'],
+        history:   ['border-blue-500',   'text-blue-400'],
+        dashboard: ['border-indigo-500', 'text-indigo-400'],
+        about:     ['border-emerald-500','text-emerald-400'],
       };
-      mobLabel.textContent = tabLabels[tab] || tab;
+      const [bc, tc] = tabColors[tab] || ['border-purple-500', 'text-purple-400'];
+      tabBtn.classList.add(bc, tc);
     }
 
     currentTab = tab;
@@ -183,62 +186,6 @@ function switchTab(tab) {
 
   }, prevContent && !prevContent.classList.contains('hidden') ? 150 : 0);
 }
-
-// ============================================================
-// SIDEBAR — open/close (mobile drawer + tablet/desktop fixed)
-// ============================================================
-function sidebarOpen() {
-  const sb = document.getElementById('left-sidebar');
-  const ov = document.getElementById('sidebar-overlay');
-  if (!sb) return;
-  sb.classList.add('open');
-  if (ov) { ov.style.display = 'block'; requestAnimationFrame(() => ov.classList.add('active')); }
-  document.body.style.overflow = 'hidden';
-}
-
-function sidebarClose() {
-  const sb = document.getElementById('left-sidebar');
-  const ov = document.getElementById('sidebar-overlay');
-  if (!sb) return;
-  sb.classList.remove('open');
-  if (ov) {
-    ov.classList.remove('active');
-    setTimeout(() => { if (!ov.classList.contains('active')) ov.style.display = ''; }, 260);
-  }
-  document.body.style.overflow = '';
-}
-
-window.sidebarOpen  = sidebarOpen;
-window.sidebarClose = sidebarClose;
-
-// ============================================================
-// SIDEBAR COLLAPSE (desktop toggle)
-// ============================================================
-function arcToggleSidebarCollapse() {
-  const shell = document.getElementById('app-shell');
-  const btn   = document.getElementById('sidebar-collapse-btn');
-  const icon  = document.getElementById('sidebar-collapse-icon');
-  if (!shell) return;
-  const collapsed = shell.classList.toggle('sidebar-collapsed');
-  try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch(e){}
-  if (icon) {
-    icon.style.transform = collapsed ? 'rotate(180deg)' : 'rotate(0deg)';
-  }
-}
-
-// Restore sidebar collapse state on load
-(function restoreSidebarState() {
-  try {
-    if (localStorage.getItem('sidebarCollapsed') === '1') {
-      const shell = document.getElementById('app-shell');
-      const icon  = document.getElementById('sidebar-collapse-icon');
-      if (shell) shell.classList.add('sidebar-collapsed');
-      if (icon)  icon.style.transform = 'rotate(180deg)';
-    }
-  } catch(e) {}
-})();
-
-window.arcToggleSidebarCollapse = arcToggleSidebarCollapse;
 
 // ============================================================
 // TOAST NOTIFICATIONS
@@ -446,12 +393,9 @@ function renderPaymentsList(data) {
   
   if (allTasks.length === 0) {
     list.innerHTML = `
-      <div class="pay-queue-empty">
-        <div class="pay-queue-empty-visual">
-          <i class="fas fa-robot"></i>
-        </div>
-        <div class="pay-queue-empty-label">No payments in queue</div>
-        <div class="pay-queue-empty-sub">Scheduled and agent-triggered payments<br>will appear here automatically.</div>
+      <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
+        <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#5a7898;"></i>
+        ${t ? t('no_payments') : 'No payments in queue'}
       </div>
     `;
     return;
@@ -848,22 +792,11 @@ function getMilestoneColor(status) {
 function enterApp() {
   const landing  = document.getElementById('landing-page');
   const appShell = document.getElementById('app-shell');
-  const oldTopbar = document.getElementById('sticky-topbar-anchor');
-  if (landing)   landing.classList.add('hidden');
-  if (appShell)  appShell.classList.remove('hidden');
-  // Hide the landing-era header — the inline app-topbar-wrap takes over
-  if (oldTopbar) {
-    oldTopbar.style.display = 'none';
-    oldTopbar.setAttribute('aria-hidden', 'true');
-  }
-  // Restore sidebar collapse state
-  try {
-    if (localStorage.getItem('sidebarCollapsed') === '1') {
-      appShell && appShell.classList.add('sidebar-collapsed');
-      var icon = document.getElementById('sidebar-collapse-icon');
-      if (icon) icon.style.transform = 'rotate(180deg)';
-    }
-  } catch(e){}
+  if (landing)  landing.classList.add('hidden');
+  if (appShell) appShell.classList.remove('hidden');
+  // Offset header & footer for sidebar layout
+  document.body.classList.add('sidebar-active');
+  applySidebarOffsets();
   // Load payments tab by default
   switchTab('payments');
 }
@@ -872,10 +805,10 @@ function enterApp() {
 function openAboutPage() {
   const landing  = document.getElementById('landing-page');
   const appShell = document.getElementById('app-shell');
-  const oldTopbar = document.getElementById('sticky-topbar-anchor');
-  if (landing)   landing.classList.add('hidden');
-  if (appShell)  appShell.classList.remove('hidden');
-  if (oldTopbar) { oldTopbar.style.display = 'none'; oldTopbar.setAttribute('aria-hidden','true'); }
+  if (landing)  landing.classList.add('hidden');
+  if (appShell) appShell.classList.remove('hidden');
+  document.body.classList.add('sidebar-active');
+  applySidebarOffsets();
   switchTab('payments');
 }
 window.openAboutPage = openAboutPage;
@@ -883,19 +816,51 @@ window.openAboutPage = openAboutPage;
 function showLanding() {
   const landing  = document.getElementById('landing-page');
   const appShell = document.getElementById('app-shell');
-  const oldTopbar = document.getElementById('sticky-topbar-anchor');
   if (appShell) appShell.classList.add('hidden');
   if (landing)  landing.classList.remove('hidden');
-  // Restore the landing header when going back to landing
-  if (oldTopbar) {
-    oldTopbar.style.display = '';
-    oldTopbar.removeAttribute('aria-hidden');
+  // Remove sidebar offset from header & footer
+  document.body.classList.remove('sidebar-active');
+  removeSidebarOffsets();
+}
+
+// Apply margin-left to header & footer so they align beside sidebar
+function applySidebarOffsets() {
+  const w = getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w').trim() || '240px';
+  const anchor = document.getElementById('sticky-topbar-anchor');
+  const footer = document.querySelector('#app-shell > footer');
+  if (anchor) {
+    anchor.style.marginLeft = w;
+    anchor.style.width = 'calc(100% - ' + w + ')';
+    anchor.style.boxSizing = 'border-box';
   }
+  if (footer) {
+    footer.style.marginLeft = w;
+    footer.style.width = 'calc(100% - ' + w + ')';
+    footer.style.boxSizing = 'border-box';
+  }
+}
+
+// Remove inline offsets when returning to landing page
+function removeSidebarOffsets() {
+  const anchor = document.getElementById('sticky-topbar-anchor');
+  const footer = document.querySelector('#app-shell > footer');
+  if (anchor) { anchor.style.marginLeft = ''; anchor.style.width = ''; anchor.style.boxSizing = ''; }
+  if (footer)  { footer.style.marginLeft = ''; footer.style.width = ''; footer.style.boxSizing = ''; }
 }
 
 // Auto-enter app if wallet is already connected (e.g. page refresh with persisted wallet)
 function checkAutoEnter() {
   if (window.walletState?.connected) enterApp();
+}
+
+// Open account creation modal
+function openCreateAccount() {
+  if (window.openAuthModal) {
+    window.openAuthModal('signup');
+  } else {
+    // fallback: go to app
+    enterApp();
+  }
 }
 
 // ============================================================
@@ -1471,107 +1436,20 @@ window.addEventListener('agentExecutor:update', function() {
 console.log('[APP] Agent Executor panel functions loaded');
 
 // ============================================================
-// INLINE APP-TOPBAR — Wallet + Notif sync for the new header
+// SIDEBAR — Mobile & Desktop navigation
 // ============================================================
-
-function dismissAppBanner() {
-  var b = document.getElementById('app-testnet-banner');
-  if (!b) return;
-  b.style.maxHeight  = '0';
-  b.style.padding    = '0 18px';
-  b.style.opacity    = '0';
-  b.style.overflow   = 'hidden';
-  setTimeout(function() { b.style.display = 'none'; }, 260);
-  try { sessionStorage.setItem('arc-app-banner-dismissed','1'); } catch(e){}
-}
-window.dismissAppBanner = dismissAppBanner;
-
-// Restore banner state
-(function() {
-  try {
-    if (sessionStorage.getItem('arc-app-banner-dismissed') === '1') {
-      var b = document.getElementById('app-testnet-banner');
-      if (b) b.style.display = 'none';
-    }
-  } catch(e){}
-})();
-
-// Sync inline app-topbar with wallet state
-function syncAppTopbarWallet(connected, address, shortAddress, balance) {
-  var connectBtn  = document.getElementById('app-wallet-connect-btn');
-  var walletPill  = document.getElementById('app-wallet-info');
-  var avatarEl    = document.getElementById('app-wallet-avatar');
-  var addressEl   = document.getElementById('app-wallet-address');
-  var balancePill = document.getElementById('app-balance-pill');
-
-  if (connected) {
-    if (connectBtn)  connectBtn.style.display  = 'none';
-    if (walletPill) {
-      walletPill.style.display = 'flex';
-      walletPill.classList.remove('hidden');
-    }
-    if (avatarEl && address)       avatarEl.textContent   = address.slice(2,4).toUpperCase();
-    if (addressEl && shortAddress) addressEl.textContent  = shortAddress;
-    if (balancePill && balance !== null && balance !== undefined) {
-      balancePill.style.display = 'flex';
-      balancePill.textContent   = '$' + balance + ' USDC';
-    }
-  } else {
-    if (connectBtn)  connectBtn.style.display  = '';
-    if (walletPill) {
-      walletPill.style.display = 'none';
-      walletPill.classList.add('hidden');
-    }
-    if (balancePill) balancePill.style.display  = 'none';
-  }
-}
-window.syncAppTopbarWallet = syncAppTopbarWallet;
-
-// Listen to wallet events and sync app-topbar
-window.addEventListener('walletConnected', function(e) {
-  var d = e.detail || {};
-  syncAppTopbarWallet(true, d.address, d.shortAddress, d.usdcBalance);
-});
-window.addEventListener('walletDisconnected', function() {
-  syncAppTopbarWallet(false);
-});
-
-// Sync notification badge in app-topbar
-function syncAppNotifBadge(count) {
-  var badge = document.getElementById('app-notif-badge');
-  if (!badge) return;
-  if (count > 0) {
-    badge.textContent  = count > 9 ? '9+' : String(count);
-    badge.style.display = 'flex';
-  } else {
-    badge.style.display = 'none';
-  }
+function sidebarOpen() {
+  const sidebar = document.getElementById('left-sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) sidebar.classList.add('open');
+  if (overlay) overlay.classList.add('active');
+  document.body.style.overflow = 'hidden';
 }
 
-// Patch arcUpdateNotifBadge to also update the inline badge
-var _origArcUpdateNotifBadge = window.arcUpdateNotifBadge;
-window.arcUpdateNotifBadge = function(count) {
-  if (typeof _origArcUpdateNotifBadge === 'function') _origArcUpdateNotifBadge(count);
-  syncAppNotifBadge(count);
-};
-
-// Also patch hdr-notif-badge to keep in sync
-var _hdrNotifBadge   = document.getElementById('hdr-notif-badge');
-var _appNotifBadge   = document.getElementById('app-notif-badge');
-if (_hdrNotifBadge && _appNotifBadge) {
-  var _hdrObs = new MutationObserver(function() {
-    var count = parseInt(_hdrNotifBadge.textContent, 10) || 0;
-    syncAppNotifBadge(count);
-  });
-  _hdrObs.observe(_hdrNotifBadge, { childList: true, characterData: true, subtree: true });
+function sidebarClose() {
+  const sidebar = document.getElementById('left-sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) sidebar.classList.remove('open');
+  if (overlay) overlay.classList.remove('active');
+  document.body.style.overflow = '';
 }
-
-// Init sync on DOMContentLoaded (in case wallet already connected)
-document.addEventListener('DOMContentLoaded', function() {
-  var ws = window.walletState;
-  if (ws && ws.connected) {
-    syncAppTopbarWallet(true, ws.address, ws.shortAddress, ws.usdcBalance);
-  }
-});
-
-console.log('[APP] App-topbar sync module loaded');
