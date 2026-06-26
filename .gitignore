@@ -1,6 +1,11 @@
-# Vercel build output
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
 dist-vercel/
 .vercel/
+.wrangler/
 
 # IDE and Editor
 .vscode/
@@ -8,6 +13,10 @@ dist-vercel/
 *.swp
 *.swo
 *~
+
+# Environment
+.env
+.dev.vars
 
 # Dependencies lockfiles (optional - uncomment if needed)
 # package-lock.json
