@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // ExecDaat — Excel Batch Payment Module
 // Depende de SheetJS (XLSX) carregado antes deste script

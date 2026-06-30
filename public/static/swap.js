@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ===================================================================
 // SWAP MODULE — Arc Testnet  (USDC ↔ EURC)
 // Real EVM wallet integration: saldo on-chain, approve + transfer,

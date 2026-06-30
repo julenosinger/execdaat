@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // =====================================================================
 // PAYMENTS EVM MODULE — Arc Testnet
 // Gateway de pagamento real: wallet signature, on-chain transfer,

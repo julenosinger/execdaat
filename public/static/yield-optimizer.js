@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ===== YIELD OPTIMIZER MODULE =====
 // UI para o Yield Optimizer Agent — pools, posições, rebalanceamento
 

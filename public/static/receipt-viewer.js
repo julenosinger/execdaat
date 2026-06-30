@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // ARC Receipt Viewer v1
 // Persistent receipt storage (IndexedDB/localStorage)

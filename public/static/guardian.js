@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ===== GUARDIAN AGENT MODULE =====
 // Compliance & KYC UI — integrado com assinatura EVM
 

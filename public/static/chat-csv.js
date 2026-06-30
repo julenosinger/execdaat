@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // CHAT-CSV.JS — CSV Upload + Auto Multisend Engine
 // ExecDaat · Arc Testnet · Permit2-enabled batch payments

@@ -560,7 +560,7 @@ chatRouter.post('/message', async (c) => {
 
     // ── Try LLM first ──────────────────────────────────────────────────────
     const apiKey = c.env?.OPENAI_API_KEY;
-    const baseUrl = c.env?.OPENAI_BASE_URL || 'https://www.genspark.ai/api/llm_proxy/v1';
+    const baseUrl = c.env?.OPENAI_BASE_URL || (console.warn('[chat] OPENAI_BASE_URL not set — using default. Set env var to avoid third-party proxy.'), 'https://api.openai.com/v1');
 
     let responseContent = '';
     let action: BlockchainAction | null = null;

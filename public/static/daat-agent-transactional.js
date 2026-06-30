@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // DAAT Agent Transactional v2.0 — Full AI Agent
 // Unified transactional execution layer for ExecDaat platform

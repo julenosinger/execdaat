@@ -329,8 +329,13 @@ function ammComputeSwapQuote() {
     if (outputEl) outputEl.value = '';
     setText('amm-price-impact', '—');
     setText('amm-min-received', '—');
+    setText('amm-swap-fee', '—');
     ammState.quote = null;
     ammUpdateSwapBtn();
+    // Don't auto-hide during execution or after completion — let the timer handle it
+    if (ammInfoMode !== 'execution' && ammInfoMode !== 'completed') {
+      ammHideSwapInfo();
+    }
     return;
   }
 
@@ -342,8 +347,10 @@ function ammComputeSwapQuote() {
   if (rIn === 0n || rOut === 0n) {
     if (outputEl) outputEl.value = '0.000000';
     setText('amm-price-impact', 'Pool empty');
+    setText('amm-swap-fee', '—');
     ammState.quote = null;
     ammUpdateSwapBtn();
+    ammHideSwapInfo();
     return;
   }
 
@@ -375,6 +382,11 @@ function ammComputeSwapQuote() {
 
   ammState.quote = { amountIn, amountOut, minOut, aToB, impact, rawInput };
   ammUpdateSwapBtn();
+
+  // Auto-show info panel with trade preview when user fills data
+  if (!ammState.pending) {
+    ammShowSwapInfoPre();
+  }
 }
 
 function ammUpdateSwapBtn() {
@@ -443,6 +455,8 @@ window.ammSwitchTab = function(tab) {
   const poolCol    = $('dex-pool-col');
   const swapCenter = $('dex-swap-center');
   const swapInner  = $('dex-swap-inner');
+
+  ammHideSwapInfo();
 
   if (isLiq) {
     // Switch wrapper to a 2-col grid layout
@@ -553,6 +567,7 @@ window.ammFlipSwap = function() {
   ammState.quote = null;
   ammUpdateBalanceUI();
   ammUpdateSwapBtn();
+  ammHideSwapInfo();
 };
 
 // ─── MAX buttons ──────────────────────────────────────────────────────────────
@@ -683,11 +698,14 @@ window.ammExecuteSwap = async function() {
 
   ammState.pending = true;
   ammUpdateSwapBtn();
-  hide('amm-swap-result');
-  hide('amm-swap-error');
+
+  // Transition info panel from preview to execution mode
+  ammShowSwapInfo();
 
   try {
     await ammEnsureNetwork();
+
+    ammSetSwapInfoStep('approval');
 
     // 1. Check balance
     const bal = aToB ? ammState.balances.EURC : ammState.balances.USDC;
@@ -702,6 +720,7 @@ window.ammExecuteSwap = async function() {
       showToast(`📝 Approve ${tokenSymbol} — check wallet…`, 'info');
       const approveTx = await tokenCtrl.approve(ammState.ammAddress, amountIn * 2n);
       showToast(`⏳ Approving… ${approveTx.hash.slice(0,14)}`, 'info');
+      ammSetSwapInfoStep('confirming');
       const approveReceipt = await approveTx.wait();
       if (!approveReceipt || approveReceipt.status !== 1)
         throw new Error('Approve failed on-chain');
@@ -720,6 +739,7 @@ window.ammExecuteSwap = async function() {
     }
     const txHash = tx.hash;
     showToast(`⏳ Swap submitted: ${txHash.slice(0,14)}…`, 'info');
+    ammSetSwapInfoStep('processing');
 
     // 4. Wait for confirmation
     const receipt = await tx.wait();
@@ -728,13 +748,7 @@ window.ammExecuteSwap = async function() {
     const amountOutActual = ammState.quote.amountOut;
     const outHuman = parseFloat(ammFormatUnits(amountOutActual)).toFixed(6);
 
-    // 5. Show result
-    setText('amm-result-in',   rawInput + ' ' + ammState.swapFrom);
-    setText('amm-result-out',  outHuman + ' ' + ammState.swapTo);
-    setText('amm-result-hash', txHash.slice(0, 20) + '…');
-    const hashLink = $('amm-result-hash-link');
-    if (hashLink) hashLink.href = `${AMM_EXPLORER}/tx/${txHash}`;
-    show('amm-swap-result');
+    ammShowSwapInfoSuccess(txHash);
 
     showToast(`✅ Swapped! ${rawInput} ${ammState.swapFrom} → ${outHuman} ${ammState.swapTo} <a href="${AMM_EXPLORER}/tx/${txHash}" target="_blank" class="underline">ArcScan ↗</a>`, 'success');
 
@@ -756,12 +770,19 @@ window.ammExecuteSwap = async function() {
     const msg = err.message?.includes('user rejected') || err.code === 4001
       ? 'Transaction rejected by user.'
       : `Swap failed: ${err.message?.slice(0, 100)}`;
-    setText('amm-swap-error-msg', msg);
-    show('amm-swap-error');
     showToast(`❌ ${msg.slice(0, 80)}`, 'error');
+    ammShowSwapInfoError(msg);
   } finally {
     ammState.pending = false;
     ammUpdateSwapBtn();
+    // Keep info panel visible for 5s after completion so user can review result
+    setTimeout(() => {
+      // Check that input is still empty (user hasn't started a new trade)
+      const inputEl = $('amm-swap-input');
+      if (!inputEl || !inputEl.value || parseFloat(inputEl.value) <= 0) {
+        ammHideSwapInfo();
+      }
+    }, 5000);
   }
 };
 
@@ -1059,6 +1080,154 @@ document.addEventListener('DOMContentLoaded', () => {
     ammInit().catch(e => console.error('[AMM] init error:', e));
   }
 });
+
+// ─── Swap Info Panel ──────────────────────────────────────────────────────────
+
+// Track whether panel is in pre-execution (preview) or execution mode
+let ammInfoMode = 'hidden'; // 'hidden' | 'preview' | 'execution'
+
+// Show info panel in pre-execution mode (trade preview, before clicking Swap)
+function ammShowSwapInfoPre() {
+  const panel = $('amm-swap-info-panel');
+  const center = $('dex-swap-center');
+  if (!panel) return;
+
+  const quote = ammState.quote;
+  if (!quote) return;
+
+  ammInfoMode = 'preview';
+
+  setText('amm-info-from-symbol', ammState.swapFrom);
+  setText('amm-info-to-symbol', ammState.swapTo);
+  setText('amm-info-amount-in', quote.rawInput);
+
+  const outHuman = parseFloat(ammFormatUnits(quote.amountOut)).toFixed(6);
+  setText('amm-info-amount-out', outHuman + ' (est.)');
+
+  const feeEl = $('amm-info-fee');
+  if (feeEl) { const feeSrc = $('amm-swap-fee'); feeEl.textContent = feeSrc ? feeSrc.textContent : '—'; }
+
+  setText('amm-info-slippage', ammState.slippage + '%');
+
+  const impactEl = $('amm-info-impact');
+  if (impactEl) { const src = $('amm-price-impact'); impactEl.textContent = src ? src.textContent : '—'; }
+
+  const stepsEl = $('amm-info-steps');
+  if (stepsEl) stepsEl.classList.add('hidden');
+
+  hide('amm-info-error');
+  hide('amm-info-hash-row');
+
+  const icon = $('amm-info-icon');
+  if (icon) { icon.className = 'fas fa-info-circle text-cyan-400 text-xs'; }
+  setText('amm-info-title', 'Ready to Swap');
+
+  panel.classList.remove('amm-info-hidden');
+  panel.classList.add('amm-info-visible');
+  if (center) center.classList.add('amm-info-mode');
+}
+
+// Show info panel in execution mode (when user clicks Swap)
+function ammShowSwapInfo() {
+  const panel = $('amm-swap-info-panel');
+  const center = $('dex-swap-center');
+  if (!panel) return;
+
+  ammInfoMode = 'execution';
+
+  const quote = ammState.quote;
+  if (quote) {
+    setText('amm-info-from-symbol', ammState.swapFrom);
+    setText('amm-info-to-symbol', ammState.swapTo);
+    setText('amm-info-amount-in', quote.rawInput);
+    const outEst = parseFloat(ammFormatUnits(quote.amountOut)).toFixed(6) + ' (est.)';
+    setText('amm-info-amount-out', outEst);
+
+    const feeEl = $('amm-info-fee');
+    if (feeEl) { const feeSrc = $('amm-swap-fee'); feeEl.textContent = feeSrc ? feeSrc.textContent : '—'; }
+
+    setText('amm-info-slippage', ammState.slippage + '%');
+
+    const impactEl = $('amm-info-impact');
+    if (impactEl) { const src = $('amm-price-impact'); impactEl.textContent = src ? src.textContent : '—'; }
+  }
+
+  const stepsEl = $('amm-info-steps');
+  if (stepsEl) stepsEl.classList.remove('hidden');
+
+  const steps = panel.querySelectorAll('.amm-info-step');
+  steps.forEach(s => s.classList.remove('amm-info-step-active', 'amm-info-step-done', 'amm-info-step-error'));
+
+  hide('amm-info-error');
+  hide('amm-info-hash-row');
+
+  const icon = $('amm-info-icon');
+  if (icon) { icon.className = 'fas fa-circle-notch fa-spin text-cyan-400 text-xs'; }
+  setText('amm-info-title', 'Swap in Progress');
+
+  panel.classList.remove('amm-info-hidden');
+  panel.classList.add('amm-info-visible');
+  if (center) center.classList.add('amm-info-mode');
+
+  ammSetSwapInfoStep('approval');
+}
+
+function ammSetSwapInfoStep(step) {
+  const steps = document.querySelectorAll('#amm-swap-info-panel .amm-info-step');
+  const order = ['approval', 'confirming', 'processing', 'completed'];
+  const idx = order.indexOf(step);
+  if (idx < 0) return;
+
+  steps.forEach((s, i) => {
+    s.classList.remove('amm-info-step-active', 'amm-info-step-done', 'amm-info-step-error');
+    if (i < idx) s.classList.add('amm-info-step-done');
+    else if (i === idx) s.classList.add('amm-info-step-active');
+  });
+}
+
+function ammShowSwapInfoError(msg) {
+  ammInfoMode = 'completed';
+  setText('amm-info-error-msg', msg);
+  show('amm-info-error');
+
+  const activeStep = document.querySelector('#amm-swap-info-panel .amm-info-step-active');
+  if (activeStep) {
+    activeStep.classList.remove('amm-info-step-active');
+    activeStep.classList.add('amm-info-step-error');
+  }
+
+  const icon = $('amm-info-icon');
+  if (icon) { icon.className = 'fas fa-times-circle text-red-400 text-xs'; }
+  setText('amm-info-title', 'Swap Failed');
+}
+
+function ammShowSwapInfoSuccess(txHash) {
+  ammInfoMode = 'completed';
+  ammSetSwapInfoStep('completed');
+
+  const icon = $('amm-info-icon');
+  if (icon) { icon.className = 'fas fa-check-circle text-green-400 text-xs'; }
+  setText('amm-info-title', 'Swap Complete');
+
+  if (txHash) {
+    setText('amm-info-hash', txHash.slice(0, 20) + '\u2026');
+    const link = $('amm-info-hash-link');
+    if (link) link.href = AMM_EXPLORER + '/tx/' + txHash;
+    show('amm-info-hash-row');
+  }
+}
+
+function ammHideSwapInfo() {
+  const panel = $('amm-swap-info-panel');
+  const center = $('dex-swap-center');
+  if (!panel) return;
+
+  ammInfoMode = 'hidden';
+
+  panel.classList.remove('amm-info-visible');
+  panel.classList.add('amm-info-hidden');
+  if (center) center.classList.remove('amm-info-mode');
+}
 
 // ─── Expose globals ───────────────────────────────────────────────────────────
 window.ammInit             = ammInit;

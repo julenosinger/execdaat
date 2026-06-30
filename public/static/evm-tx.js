@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // ARC EVM Transaction Engine
 // Todas as operações (swap, vault, payment, contract) passam

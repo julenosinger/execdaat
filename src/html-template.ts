@@ -3194,6 +3194,53 @@ export function getMainHTML(): string {
           width: 100%;
           max-width: 480px;
           flex-shrink: 0;
+          transition: transform 0.35s ease, margin 0.35s ease;
+        }
+
+        /* Swap info panel (status card) — slide in/out */
+        #amm-swap-info-panel {
+          width: 100%;
+          max-width: 480px;
+          flex-shrink: 0;
+          transition: opacity 0.35s ease, transform 0.35s ease, width 0.35s ease;
+        }
+        #amm-swap-info-panel.amm-info-hidden {
+          opacity: 0;
+          transform: translateX(30px);
+          pointer-events: none;
+          visibility: hidden;
+          position: absolute;
+          width: 0;
+          overflow: hidden;
+        }
+        #amm-swap-info-panel.amm-info-visible {
+          opacity: 1;
+          transform: translateX(0);
+          pointer-events: auto;
+          visibility: visible;
+          position: static;
+          overflow: visible;
+        }
+
+        /* Flex gap appears when info panel is visible */
+        #dex-swap-center {
+          gap: 0;
+          transition: gap 0.35s ease;
+        }
+        #dex-swap-center.amm-info-mode {
+          gap: 22px;
+        }
+
+        /* Mobile: stack cards vertically */
+        @media (max-width: 700px) {
+          #dex-swap-center.amm-info-mode {
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+          }
+          #amm-swap-info-panel.amm-info-visible {
+            max-width: 480px;
+          }
         }
       </style>
 
@@ -3555,6 +3602,75 @@ export function getMainHTML(): string {
 
           </div><!-- end space-y-4 tabs/panels -->
         </div><!-- end dex-swap-inner -->
+
+        <!-- Swap Info Panel — slides in during trade preparation and execution -->
+        <div id="amm-swap-info-panel" class="amm-info-hidden">
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-4 shadow-xl">
+            <div class="flex items-center gap-2.5 pb-3 border-b border-gray-700/40">
+              <div class="w-7 h-7 rounded-full bg-cyan-600/20 flex items-center justify-center flex-shrink-0">
+                <i id="amm-info-icon" class="fas fa-info-circle text-cyan-400 text-xs"></i>
+              </div>
+              <span id="amm-info-title" class="text-sm font-semibold text-cyan-300">Ready to Swap</span>
+            </div>
+            <div class="space-y-2.5 text-xs">
+              <div class="bg-gray-800/50 rounded-xl p-3 space-y-2">
+                <div class="flex justify-between">
+                  <span class="text-gray-500">You Send</span>
+                  <span class="text-white font-mono text-xs"><span id="amm-info-from-symbol">—</span> <span id="amm-info-amount-in">—</span></span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-500">You Receive</span>
+                  <span class="text-green-400 font-mono text-xs"><span id="amm-info-to-symbol">—</span> <span id="amm-info-amount-out">—</span></span>
+                </div>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="bg-gray-800/40 rounded-lg p-2">
+                  <div class="text-gray-600 text-[10px]">Fee</div>
+                  <div id="amm-info-fee" class="text-gray-300 font-mono font-bold text-[11px]">—</div>
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-2">
+                  <div class="text-gray-600 text-[10px]">Slippage</div>
+                  <div id="amm-info-slippage" class="text-cyan-400 font-mono font-bold text-[11px]">—</div>
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-2">
+                  <div class="text-gray-600 text-[10px]">Price Impact</div>
+                  <div id="amm-info-impact" class="text-green-400 font-mono font-bold text-[11px]">—</div>
+                </div>
+              </div>
+              <div id="amm-info-steps" class="bg-gray-800/40 rounded-xl p-3 space-y-2 hidden">
+                <div class="amm-info-step" data-step="approval">
+                  <span class="amm-info-step-dot"></span>
+                  <span>Waiting approval</span>
+                </div>
+                <div class="amm-info-step" data-step="confirming">
+                  <span class="amm-info-step-dot"></span>
+                  <span>Confirming transaction</span>
+                </div>
+                <div class="amm-info-step" data-step="processing">
+                  <span class="amm-info-step-dot"></span>
+                  <span>Processing swap</span>
+                </div>
+                <div class="amm-info-step" data-step="completed">
+                  <span class="amm-info-step-dot"></span>
+                  <span>Completed</span>
+                </div>
+              </div>
+              <div id="amm-info-error" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-xs text-red-300">
+                <div class="flex items-start gap-1.5">
+                  <i class="fas fa-exclamation-triangle mt-0.5 flex-shrink-0"></i>
+                  <span id="amm-info-error-msg">—</span>
+                </div>
+              </div>
+              <div id="amm-info-hash-row" class="hidden bg-gray-800/40 rounded-xl p-2.5 text-center">
+                <a id="amm-info-hash-link" href="#" target="_blank" rel="noopener noreferrer"
+                  class="text-cyan-400 hover:text-cyan-300 text-xs font-mono underline flex items-center justify-center gap-1">
+                  <span id="amm-info-hash">—</span>
+                  <i class="fas fa-external-link-alt text-[9px]"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- RIGHT — Pool Status sidebar (hidden in swap mode, revealed in liq mode) -->
         <div id="dex-pool-col" class="space-y-4 amm-pool-hidden">

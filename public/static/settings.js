@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // ExecDaat — Settings & Profile Module
 // Manages: PIN gate, Settings modal, Profile modal

@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // ARC Receipt Viewer v1 — Centralised receipt open/print/export
 // No auto-downloads. User controls: view → print → optional save.

@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // ExecDaat — Decentralized Wallet Creation (Feature 1)
 // Client-side only: private key / seed phrase NEVER sent to server

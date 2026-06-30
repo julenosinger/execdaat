@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // PAYMENTS TAB → DAAT AGENT CORE INTEGRATION
 // Build: 20260408c — ExecDaat Platform

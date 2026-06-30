@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // PERMIT2-CHAT.JS — Chatbot-Based Permit2 Authorization
 // ExecDaat · Arc Testnet · ChainId 5042002

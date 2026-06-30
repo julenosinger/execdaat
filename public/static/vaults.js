@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ===== VAULTS MODULE — Depósito Real EVM na Arc Testnet =====
 //
 // USDC na Arc = token NATIVO (como ETH em outras chains)

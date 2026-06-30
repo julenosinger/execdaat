@@ -102,16 +102,13 @@ guardianRouter.post('/kyc/submit', async (c) => {
     const a = getAgent();
     const record = a.submitKYC(address, { tier, country: safeCountry, documentType: safeDocType, name: safeName });
 
-    // Simulate fast auto-approval for tier 1 (< 2 min in testnet)
-    setTimeout(() => {
-      const updated = a.approveKYC(address, tier);
-    if (updated) console.log(`[Guardian] Auto-approved KYC for ${address.slice(0,10)}… tier ${tier}`);
-    }, 5000 + Math.random() * 10000); // 5-15 sec for demo
+    // KYC requires manual verification via POST /api/guardian/kyc/verify
+    // Auto-approval removed — audit 2026-06-28
 
     return c.json({
       success: true,
       record,
-      message: `KYC submitted for ${address}. Status: pending. Auto-verification in progress.`,
+      message: `KYC submitted for ${address}. Status: pending. Use /api/guardian/kyc/verify to approve.`,
     });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);

@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // CCTP Bridge — ExecDaat dApp  |  build: 20260626-fix-empty-data
 // Circle Cross-Chain Transfer Protocol (CCTP V2)
@@ -64,6 +65,20 @@ const BRIDGE_CHAINS = {
     messageTransmitterV2:   '0xe737e5cebeeba77efe34d4aa090756590b1ce275',
     tokenMinterV2:          '0xe997d7d2f6e065a9a93fa2175e878fb9081f1f0a',
   },
+  polygonamoy: {
+    name:       'Polygon Amoy',
+    shortName:  'Polygon',
+    icon:       '🟣',
+    chainId:    80002,
+    chainHex:   '0x13882',
+    domain:     7,
+    rpcUrl:     'https://rpc-amoy.polygon.technology',
+    explorer:   'https://amoy.polygonscan.com',
+    usdcAddress:            '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582',
+    tokenMessengerV2:       '0x8fe6b999dc680ccfdd5bf7c5f412b27e4e99e6d7',
+    messageTransmitterV2:   '0xe737e5cebeeba77efe34d4aa090756590b1ce275',
+    tokenMinterV2:          '0xe997d7d2f6e065a9a93fa2175e878fb9081f1f0a',
+  },
   arc: {
     name:       'Arc Testnet',
     shortName:  'Arc',
@@ -101,6 +116,9 @@ const BRIDGE_MESSAGE_TRANSMITTER_ABI = [
   'function receiveMessage(bytes message, bytes attestation) returns (bool success)',
   'function usedNonces(bytes32) view returns (uint256)',
 ];
+
+// ─── Turbo Bridge constants ───────────────────────────────────────────────────
+const TURBO_FEE_BPS = window.TURBO_FEE_BPS || 100; // 1.00% (overridden by turbo-bridge-core)
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const bridgeState = {
@@ -212,6 +230,7 @@ function bridgeUpdateBtn() {
     ? '<i class="fas fa-spinner fa-spin mr-2"></i>Bridging…'
     : `<i class="fas fa-right-left mr-2"></i>Bridge ${bridgeFmt(bridgeState.amount)} USDC`;
   bridgeUpdateSummary();
+  bridgeUpdateFee();
 }
 
 function bridgeUpdateSummary() {
@@ -239,30 +258,71 @@ function bridgeUpdateSummary() {
 }
 
 async function bridgeRefreshBalance() {
-  const wallet = window.walletState?.address;
-  const chain  = BRIDGE_CHAINS[bridgeState.fromChain];
-  const el     = bridgeEl('bridge-balance');
-  const eth    = window.ethereum;
+  var wallet = window.walletState?.address;
+  var chain  = BRIDGE_CHAINS[bridgeState.fromChain];
+  var el     = bridgeEl('bridge-balance');
   if (!el) return;
-  if (!wallet || !eth) { el.textContent = 'Balance: —'; return; }
-  try {
-    const usdcIface = new window.ethers.Interface(BRIDGE_ERC20_ABI);
-    const balanceData = usdcIface.encodeFunctionData('balanceOf', [wallet]);
-    const decimalsData = usdcIface.encodeFunctionData('decimals', []);
-    const [balanceHex, decimalsHex] = await Promise.all([
-      eth.request({ method: 'eth_call', params: [{ to: chain.usdcAddress, data: balanceData }, 'latest'] }),
-      eth.request({ method: 'eth_call', params: [{ to: chain.usdcAddress, data: decimalsData }, 'latest'] }),
-    ]);
-    const dec = parseInt(decimalsHex, 16) || 6;
-    const fmt = window.ethers?.formatUnits
-      ? window.ethers.formatUnits(BigInt(balanceHex), dec)
-      : (Number(BigInt(balanceHex)) / Math.pow(10, dec)).toFixed(6);
-    bridgeState.usdcBalance = parseFloat(fmt);
-    el.textContent = `Balance: ${bridgeFmt(fmt)} USDC`;
-  } catch (e) {
-    el.textContent = 'Balance: —';
-    bridgeLog('Balance error: ' + e.message, 'warn');
+  if (!wallet) { el.textContent = 'Balance: —'; bridgeRefreshToBalance(); return; }
+  if (!chain || !chain.usdcAddress) { el.textContent = 'Balance: —'; bridgeRefreshToBalance(); return; }
+
+  var balHex = null;
+  if (window.walletState?.provider && window.walletState.chainId === chain.chainId) {
+    try {
+      if (window.ethers) {
+        var iface = new window.ethers.Interface(['function balanceOf(address) view returns (uint256)']);
+        var data = iface.encodeFunctionData('balanceOf', [wallet]);
+        balHex = await window.walletState.provider.request({
+          method: 'eth_call', params: [{ to: chain.usdcAddress, data: data }, 'latest']
+        });
+      }
+    } catch (_) { balHex = null; }
   }
+  if (!balHex || balHex === '0x') {
+    try {
+      var balSel = '0x70a08231';
+      var padded = wallet.replace('0x','').toLowerCase().padStart(64,'0');
+      var res = await fetch(chain.rpcUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc:'2.0', id:1, method:'eth_call', params:[{ to:chain.usdcAddress, data:balSel+padded }, 'latest'] }),
+      });
+      var json = await res.json();
+      if (!json.error && json.result) balHex = json.result;
+    } catch (_) {}
+  }
+  if (balHex && balHex !== '0x') {
+    var raw = BigInt(balHex);
+    var fmt = Number(raw) / 1e6;
+    bridgeState.usdcBalance = fmt;
+    el.textContent = 'Balance: ' + fmt.toFixed(4) + ' USDC';
+  } else {
+    bridgeState.usdcBalance = 0;
+    el.textContent = 'Balance: 0.0000 USDC';
+  }
+  bridgeRefreshToBalance();
+}
+
+async function bridgeRefreshToBalance() {
+  var el2 = bridgeEl('bridge-balance-to');
+  if (!el2) return;
+  var wallet = window.walletState?.address;
+  var chain  = BRIDGE_CHAINS[bridgeState.toChain];
+  if (!wallet || !chain || !chain.usdcAddress) { el2.textContent = 'Balance: —'; return; }
+
+  try {
+    var balSel = '0x70a08231';
+    var padded = wallet.replace('0x','').toLowerCase().padStart(64,'0');
+    var res = await fetch(chain.rpcUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc:'2.0', id:1, method:'eth_call', params:[{ to:chain.usdcAddress, data:balSel+padded }, 'latest'] }),
+    });
+    var json = await res.json();
+    if (!json.error && json.result && json.result !== '0x') {
+      var raw = BigInt(json.result);
+      el2.textContent = 'Balance: ' + (Number(raw)/1e6).toFixed(4) + ' USDC';
+    } else {
+      el2.textContent = 'Balance: 0.0000 USDC';
+    }
+  } catch (_) { el2.textContent = 'Balance: —'; }
 }
 
 function bridgeSetMax() {
@@ -271,8 +331,45 @@ function bridgeSetMax() {
     const inp = bridgeEl('bridge-amount-input');
     if (inp) inp.value = bridgeState.usdcBalance;
     bridgeUpdateBtn();
+    bridgeUpdateFee();
   }
 }
+
+function bridgeUpdateFee() {
+  const amt = parseFloat(bridgeState.amount) || 0;
+  const toKey = bridgeState.toChain;
+  const isTurbo = bridgeState.mode === 'turbo' ||
+    (BRIDGE_CHAINS[toKey]?.chainId === 5042002);
+  const feeRate = isTurbo ? (TURBO_FEE_BPS / 10000) : 0.0005;
+  const fee = Math.max(0.000001, amt * feeRate);
+  const receive = Math.max(0, amt - fee);
+
+  const feeEl = bridgeEl('bridge-sum-fee');
+  const recvEl = bridgeEl('bridge-sum-receive');
+  if (feeEl) feeEl.textContent = fee.toFixed(4) + ' USDC';
+  if (recvEl) recvEl.textContent = receive.toFixed(4) + ' USDC';
+
+  const feeSubEl = bridgeEl('bridge-sum-fee-sub');
+  if (feeSubEl) {
+    feeSubEl.textContent = isTurbo ? 'Turbo 1.00%' : 'CCTP 0.05%';
+    feeSubEl.style.color = isTurbo ? '#facc15' : '#6a85aa';
+  }
+}
+
+// ─── Auto-routing: Turbo (external→Arc) vs CCTP (Arc→external) ─────────────
+window.executeBridgeOrTurbo = function() {
+  const toKey = bridgeState.toChain;
+  const isArc = BRIDGE_CHAINS[toKey]?.chainId === 5042002;
+  const fromKey = bridgeState.fromChain;
+  const isFromArc = BRIDGE_CHAINS[fromKey]?.chainId === 5042002;
+
+  if (isArc && !isFromArc) {
+    bridgeSetMode('turbo');
+    bridgeExecuteTurbo();
+  } else {
+    bridgeExecute();
+  }
+};
 
 // ─── Chain selectors ─────────────────────────────────────────────────────────
 function bridgeSelectFrom(key) {
@@ -285,6 +382,8 @@ function bridgeSelectFrom(key) {
   bridgeRenderSelectors();
   bridgeRefreshBalance();
   bridgeUpdateBtn();
+  bridgeUpdateFee();
+  bridgeAutoDetectTurbo();
 }
 
 function bridgeSelectTo(key) {
@@ -296,6 +395,26 @@ function bridgeSelectTo(key) {
   bridgeRenderSelectors();
   bridgeRefreshBalance();
   bridgeUpdateBtn();
+  bridgeUpdateFee();
+  bridgeAutoDetectTurbo();
+}
+
+function bridgeAutoDetectTurbo() {
+  var toKey = bridgeState.toChain;
+  var fromKey = bridgeState.fromChain;
+  var isArc = BRIDGE_CHAINS[toKey]?.chainId === 5042002;
+  var isFromArc = BRIDGE_CHAINS[fromKey]?.chainId === 5042002;
+  var turboBtn = bridgeEl('bridge-mode-turbo');
+
+  if (isArc && !isFromArc) {
+    // External → Arc: Turbo available
+    bridgeSetMode('turbo');
+    if (turboBtn) { turboBtn.disabled = false; turboBtn.style.opacity = '1'; }
+  } else {
+    // Arc → External or Arc → Arc: Turbo NOT available
+    if (bridgeState.mode === 'turbo') bridgeSetMode('fast');
+    if (turboBtn) { turboBtn.disabled = true; turboBtn.style.opacity = '0.4'; }
+  }
 }
 
 function bridgeFlipChains() {
@@ -303,6 +422,8 @@ function bridgeFlipChains() {
   bridgeRenderSelectors();
   bridgeRefreshBalance();
   bridgeUpdateBtn();
+  bridgeUpdateFee();
+  bridgeAutoDetectTurbo();
 }
 
 function bridgeRenderSelectors() {
@@ -354,57 +475,67 @@ function bridgeSetMode(mode) {
   const fast = bridgeEl('bridge-mode-fast');
   const std  = bridgeEl('bridge-mode-standard');
   const slow = bridgeEl('bridge-mode-slow');
+  const turbo = bridgeEl('bridge-mode-turbo');
   if (!fast || !std) return;
 
   // Reset all
-  [fast, std, slow].forEach(el => { if (el) { el.classList.remove('active'); } });
+  [fast, std, slow, turbo].forEach(el => { if (el) { el.classList.remove('active'); } });
 
   if (mode === 'fast') {
     if (fast) fast.classList.add('active');
   } else if (mode === 'slow') {
     if (slow) slow.classList.add('active');
+  } else if (mode === 'turbo') {
+    if (turbo) turbo.classList.add('active');
   } else {
     if (std) std.classList.add('active');
   }
 
   // Update ETA display
-  const etaEl = bridgeEl('bridge-eta');
+  const etaEl    = bridgeEl('bridge-eta');
+  const sumTime  = bridgeEl('bridge-sum-time');
+  const sumSub   = bridgeEl('bridge-sum-time-sub');
+  const submitBtn = bridgeEl('bridge-submit-btn');
   if (etaEl) {
-    if (mode === 'fast') etaEl.textContent = '~5–15 seconds';
-    else if (mode === 'slow') etaEl.textContent = '~3–5 minutes';
-    else etaEl.textContent = '~15 minutes';
+    if (mode === 'fast')      { etaEl.textContent = '~5–15 seconds'; }
+    else if (mode === 'slow') { etaEl.textContent = '~3–5 minutes'; }
+    else if (mode === 'turbo') { etaEl.textContent = '~10–30 seconds (Turbo)'; }
+    else                      { etaEl.textContent = '~15 minutes'; }
   }
+  if (sumTime) {
+    if (mode === 'fast')      { sumTime.textContent = '~10s'; }
+    else if (mode === 'slow') { sumTime.textContent = '~4m'; }
+    else if (mode === 'turbo') { sumTime.textContent = '~20s'; }
+    else                      { sumTime.textContent = '~15m'; }
+  }
+  if (sumSub) {
+    if (mode === 'fast')      { sumSub.textContent = 'Fast'; }
+    else if (mode === 'slow') { sumSub.textContent = 'Slow'; }
+    else if (mode === 'turbo') { sumSub.textContent = 'Turbo'; }
+    else                      { sumSub.textContent = 'Standard'; }
+  }
+  if (submitBtn) {
+    if (mode === 'turbo') {
+      submitBtn.innerHTML = '<i class="fas fa-bolt" style="margin-right:6px;"></i>Turbo Bridge';
+    } else {
+      submitBtn.innerHTML = '<i class="fas fa-right-left" style="margin-right:6px;"></i>Bridge USDC';
+    }
+  }
+  bridgeUpdateFee();
 }
 
 // ─── Core CCTP Flow ───────────────────────────────────────────────────────────
 async function bridgeSwitchWalletChain(chainKey) {
-  const chain = BRIDGE_CHAINS[chainKey];
-  const raw   = window.walletState?.provider;
+  var chain = BRIDGE_CHAINS[chainKey];
+  var raw   = window.walletState?.provider;
   if (!raw) throw new Error('No wallet provider');
-  try {
-    await raw.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chain.chainHex }] });
-  } catch (switchErr) {
-    const isUnknown = switchErr.code === 4902
-      || (switchErr.message && switchErr.message.toLowerCase().includes('unrecognized chain'));
-    if (isUnknown) {
-      try {
-        await raw.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId:          chain.chainHex,
-            chainName:        chain.name,
-            rpcUrls:          [chain.rpcUrl],
-            nativeCurrency:   chainKey === 'arc'
-              ? { name: 'USDC', symbol: 'USDC', decimals: 18 }
-              : { name: 'ETH', symbol: 'ETH', decimals: 18 },
-            blockExplorerUrls:[chain.explorer],
-          }],
-        });
-      } catch (addErr) {
-        throw new Error('Failed to add ' + chain.name + ': ' + (addErr.message || addErr));
-      }
-    } else throw switchErr;
-  }
+
+  // Already on the target chain — no switch needed
+  if (window.walletState.chainId === chain.chainId) return;
+
+  // Just try to switch — do NOT call wallet_addEthereumChain (triggers popup)
+  // If the chain isn't added, user can add it via the header network selector
+  await raw.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chain.chainHex }] });
 }
 
 async function bridgeBurn(fromChainKey, toChainKey, amount, recipient) {
@@ -430,28 +561,23 @@ async function bridgeBurn(fromChainKey, toChainKey, amount, recipient) {
   const balance = BigInt(balanceHex);
   if (balance < amountBN) throw new Error('Insufficient USDC balance');
 
-  // Arc: CCTP manual not supported for native USDC source. Bridge TO Arc works (destination).
-  if (fromChainKey === 'arc') {
-    throw new Error('Bridging FROM Arc Testnet is not supported via direct CCTP. Bridge TO Arc works — select Arc as the destination chain.');
-  }
-
-  // Standard CCTP flow (non-Arc chains) — approve USDC
+  // Approve TokenMessenger to spend USDC
   bridgeLog('Approving USDC…');
   bridgeSetStatus('<i class="fas fa-lock mr-2"></i>Approving USDC spend…', 'burn');
-  const allowanceData = usdcIface.encodeFunctionData('allowance', [senderAddr, fromChain.tokenMessengerV2]);
-  const allowanceHex = await eth.request({ method: 'eth_call', params: [{ to: fromChain.usdcAddress, data: allowanceData }, 'latest'] });
-  const currentAllowance = BigInt(allowanceHex);
+  var allowanceData = usdcIface.encodeFunctionData('allowance', [senderAddr, fromChain.tokenMessengerV2]);
+  var allowanceHex = await eth.request({ method: 'eth_call', params: [{ to: fromChain.usdcAddress, data: allowanceData }, 'latest'] });
+  var currentAllowance = BigInt(allowanceHex);
 
   if (currentAllowance < amountBN) {
-    const approveCalldata = usdcIface.encodeFunctionData('approve', [fromChain.tokenMessengerV2, amountBN]);
-    const approveHash = await eth.request({
+    var approveCalldata = usdcIface.encodeFunctionData('approve', [fromChain.tokenMessengerV2, amountBN]);
+    var approveHash = await eth.request({
       method: 'eth_sendTransaction',
       params: [{ from: senderAddr, to: fromChain.usdcAddress, data: approveCalldata, gas: '0x' + (100000).toString(16) }],
     });
     bridgeLog('Approve tx: ' + approveHash);
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      const receipt = await eth.request({ method: 'eth_getTransactionReceipt', params: [approveHash] });
+    for (var i = 0; i < 30; i++) {
+      await new Promise(function(r){ setTimeout(r, 2000); });
+      var receipt = await eth.request({ method: 'eth_getTransactionReceipt', params: [approveHash] });
       if (receipt && receipt.blockNumber) break;
     }
     bridgeLog('Approval confirmed');
@@ -459,14 +585,19 @@ async function bridgeBurn(fromChainKey, toChainKey, amount, recipient) {
     bridgeLog('Allowance sufficient, skipping approve');
   }
 
-  // depositForBurn
+  // depositForBurn — use 7-param CCTP v2 signature for Arc compatibility
   bridgeLog(`Burning ${amount} USDC on ${fromChain.name} → domain ${toChain.domain}…`);
   bridgeSetStatus('<i class="fas fa-fire mr-2 animate-pulse"></i>Burning USDC on source chain…', 'burn');
-  const mintRecipientBytes32 = bridgeToBytes32(recipient);
+  var mintRecipientBytes32 = bridgeToBytes32(recipient);
 
-  const messengerIface = new window.ethers.Interface(BRIDGE_TOKEN_MESSENGER_ABI);
-  const burnCalldata = messengerIface.encodeFunctionData('depositForBurn', [
-    amountBN, toChain.domain, mintRecipientBytes32, fromChain.usdcAddress
+  var messengerIface2 = new window.ethers.Interface([
+    'function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32) external returns (uint64)',
+  ]);
+  var zero32 = window.ethers.zeroPadValue('0x0000000000000000000000000000000000000000', 32);
+  var maxFee = window.ethers.parseUnits('0.5', 6);
+
+  var burnCalldata = messengerIface2.encodeFunctionData('depositForBurn', [
+    amountBN, toChain.domain, mintRecipientBytes32, fromChain.usdcAddress, zero32, maxFee, 2000,
   ]);
 
   if (!burnCalldata || burnCalldata === '0x') {
@@ -594,6 +725,142 @@ async function bridgeMint(toChainKey, messageBytes, attestation) {
   return { txHash: mintTxHash, receipt: mintReceipt };
 }
 
+// ─── Turbo Bridge execute (External → ARC) ──────────────────────────────────
+async function bridgeExecuteTurbo() {
+  if (bridgeState.pending) return;
+  if (!window.walletState?.address) {
+    bridgeSetStatus('<i class="fas fa-wallet mr-2"></i>Please connect your wallet first.', 'error');
+    return;
+  }
+  if (bridgeState.fromChain === bridgeState.toChain) {
+    bridgeSetStatus('<i class="fas fa-exclamation-triangle mr-2"></i>Source and destination must differ.', 'error');
+    return;
+  }
+
+  const amount = parseFloat(bridgeState.amount);
+  if (!amount || amount <= 0) {
+    bridgeSetStatus('<i class="fas fa-exclamation-triangle mr-2"></i>Enter a valid amount.', 'error');
+    return;
+  }
+
+  const fromKey = bridgeState.fromChain;
+  const fromChain = BRIDGE_CHAINS[fromKey];
+  const recipient = window.walletState.address;
+
+  const fee = amount * (window.TURBO_FEE_BPS || 100) / 10000;
+  const net = amount - fee;
+  const confirmed = await (window._showConfirm || window.confirm)(
+    `Turbo Bridge: ${bridgeFmt(amount)} USDC\nFrom: ${fromChain.name}\nTo: Arc Testnet\nFee: ${bridgeFmt(fee)} USDC (1.00%)\nYou receive: ${bridgeFmt(net)} USDC\n\nInstant fulfillment via Treasury liquidity.`,
+    'Confirm Turbo Bridge'
+  );
+  if (!confirmed) return;
+
+  // Pre-check: if Turbo Treasury has no liquidity, skip directly to standard CCTP
+  var turboAvail = 0;
+  if (window.VaultAccounting) {
+    try {
+      await window.VaultAccounting.ensureAvailable('usdc');
+      turboAvail = window.VaultAccounting.getTotalAvailable('usdc') || 0;
+    } catch (_) { turboAvail = 0; }
+  }
+  if (turboAvail < amount) {
+    bridgeSetStatus('<i class="fas fa-info-circle text-yellow-400 mr-2"></i>Treasury liquidity low — using standard CCTP bridge...', 'burn');
+    bridgeSetMode('fast');
+    bridgeState.pending = false;
+    bridgeUpdateBtn();
+    bridgeExecute();
+    return;
+  }
+
+  bridgeState.pending = true;
+  bridgeUpdateBtn();
+  bridgeSetStep('burn');
+
+  const turboSteps = bridgeEl('turbo-steps-wrap');
+  const stdSteps = bridgeEl('bridge-steps-wrap');
+  if (turboSteps) turboSteps.classList.remove('hidden');
+  if (stdSteps) stdSteps.classList.add('hidden');
+  bridgeEl('bridge-status-bar')?.classList.remove('hidden');
+
+  const stepEls = [0,1,2,3,4].map(i => bridgeEl('turbo-step-' + i));
+  function activateTurboStep(idx, label) {
+    stepEls.forEach((el, i) => {
+      if (!el) return;
+      el.classList.remove('turbo-step-active', 'turbo-step-done');
+      if (i < idx)  el.classList.add('turbo-step-done');
+      if (i === idx) el.classList.add('turbo-step-active');
+      if (label && i === idx) {
+        const s = el.querySelector('.turbo-step-label strong');
+        if (s) s.textContent = label;
+      }
+    });
+  }
+
+  try {
+    bridgeSetStatus('<i class="fas fa-bolt text-yellow-400 mr-2"></i>Turbo Bridge — Initializing...', 'burn');
+
+    const Executor = window.TurboExecutor;
+    if (!Executor) throw new Error('Turbo Bridge engine not loaded.');
+
+    const srcChainId = fromChain.chainId;
+    const result = await Executor.execute(
+      srcChainId, 'Arc_Testnet', 'usdc', amount, recipient,
+      (step, msg) => {
+        activateTurboStep(step, msg);
+        if (step === 0) bridgeSetStatus('<i class="fas fa-bolt text-yellow-400 mr-2"></i>' + msg, 'burn');
+        else if (step === 2) bridgeSetStatus('<i class="fas fa-fire text-orange-400 mr-2"></i>' + msg, 'burn');
+        else if (step === 3) bridgeSetStatus('<i class="fas fa-lock text-cyan-400 mr-2"></i>' + msg, 'attest');
+        else if (step === 4) bridgeSetStatus('<i class="fas fa-check-circle text-green-400 mr-2"></i>' + msg, 'mint');
+        else bridgeSetStatus('<i class="fas fa-circle-notch fa-spin text-cyan-400 mr-2"></i>' + msg, 'attest');
+      }
+    );
+
+    activateTurboStep(4, 'Complete!');
+    bridgeSetStep('done');
+    bridgeSetStatus(
+      `<i class="fas fa-check-circle text-green-400 mr-2"></i>Turbo Complete! ✅ — <a href="${fromChain.explorer}/tx/${result?.txHash || ''}" target="_blank" class="underline text-green-300">View burn tx ↗</a>`,
+      'done'
+    );
+
+    setTimeout(() => {
+      if (turboSteps) turboSteps.classList.add('hidden');
+      if (stdSteps) stdSteps.classList.remove('hidden');
+    }, 5000);
+
+    bridgeState.amount = '';
+    const inp = bridgeEl('bridge-amount-input');
+    if (inp) inp.value = '';
+    bridgeRefreshBalance();
+
+  } catch (err) {
+    bridgeLog('Turbo Bridge error: ' + err.message, 'error');
+    const isLiquidity = err.message?.includes('Insufficient Treasury liquidity') || err.message?.includes('Treasury');
+
+    if (isLiquidity) {
+      // Treasury liquidity insufficient — fall back to standard CCTP bridge
+      bridgeSetStatus('<i class="fas fa-circle-notch fa-spin text-cyan-400 mr-2"></i>Treasury low — falling back to standard CCTP bridge...', 'burn');
+      bridgeState.pending = false;
+      bridgeUpdateBtn();
+      if (turboSteps) turboSteps.classList.add('hidden');
+      if (stdSteps) stdSteps.classList.remove('hidden');
+      bridgeSetMode('fast');
+      bridgeExecute();
+      return;
+    }
+
+    var msg = err.message?.includes('user rejected') || err.code === 4001
+      ? 'Transaction rejected by user.'
+      : 'Turbo failed: ' + (err.message?.slice(0, 100) || 'Unknown error');
+    bridgeSetStatus('<i class="fas fa-exclamation-circle text-red-400 mr-2"></i>' + msg, 'error');
+    if (turboSteps) turboSteps.classList.add('hidden');
+    if (stdSteps) stdSteps.classList.remove('hidden');
+  } finally {
+    bridgeState.pending = false;
+    if (bridgeState.pollTimer) { clearTimeout(bridgeState.pollTimer); bridgeState.pollTimer = null; }
+    bridgeUpdateBtn();
+  }
+}
+
 // ─── Main bridge execute ──────────────────────────────────────────────────────
 async function bridgeExecute() {
   if (bridgeState.pending) return;
@@ -628,6 +895,10 @@ async function bridgeExecute() {
 
   bridgeState.pending = true;
   bridgeUpdateBtn();
+  const barWrap = bridgeEl('bridge-attest-bar-wrap');
+  if (barWrap) { barWrap.classList.add('hidden'); }
+  const bar = bridgeEl('bridge-attest-bar');
+  if (bar) bar.style.width = '0%';
   bridgeSetStep('burn');
 
   // Create history entry
@@ -661,15 +932,22 @@ async function bridgeExecute() {
     // Step 2 — Attestation
     bridgeSetStatus('<i class="fas fa-hourglass-half mr-2 text-yellow-400 animate-spin"></i>Step 2/3 — Waiting for Circle attestation…', 'attest');
 
+    const barWrap = bridgeEl('bridge-attest-bar-wrap');
+    if (barWrap) barWrap.classList.remove('hidden');
+
     const { message, attestation } = await bridgePollAttestation(burnHash, bridgeState.mode, (att, max) => {
       const pct = Math.min(100, Math.round((att / max) * 100));
       const bar = bridgeEl('bridge-attest-bar');
+      const pctEl = bridgeEl('bridge-attest-pct');
       if (bar) bar.style.width = pct + '%';
+      if (pctEl) pctEl.textContent = pct + '%';
       bridgeSetStatus(
         `<i class="fas fa-hourglass-half mr-2 text-yellow-400 animate-pulse"></i>Step 2/3 — Awaiting attestation… (${att}/${max})`,
         'attest'
       );
     });
+
+    if (barWrap) barWrap.classList.add('hidden');
 
     entry.status      = 'minting';
     entry.messageHex  = message;
@@ -706,6 +984,8 @@ async function bridgeExecute() {
     bridgeRenderHistory();
     bridgeSetStep('error');
     bridgeSetStatus(`<i class="fas fa-exclamation-circle text-red-400 mr-2"></i>${err.message}`, 'error');
+    const barWrap = bridgeEl('bridge-attest-bar-wrap');
+    if (barWrap) barWrap.classList.add('hidden');
   } finally {
     bridgeState.pending = false;
     if (bridgeState.pollTimer) { clearTimeout(bridgeState.pollTimer); bridgeState.pollTimer = null; }
@@ -809,12 +1089,23 @@ function bridgeInit() {
   bridgeRefreshBalance();
   bridgeUpdateBtn();
 
+  // Fetch TreasuryVault reserves for Turbo availability badge
+  setTimeout(async () => {
+    if (window.VaultAccounting?.ensureAvailable) {
+      await window.VaultAccounting.ensureAvailable('usdc');
+    }
+    if (window.TurboExecutor?.checkLiquidity) {
+      window.TurboExecutor.checkLiquidity();
+    }
+  }, 500);
+
   // Amount input listener
   const inp = bridgeEl('bridge-amount-input');
   if (inp) {
     inp.addEventListener('input', () => {
       bridgeState.amount = inp.value;
       bridgeUpdateBtn();
+      bridgeUpdateFee();
     });
   }
 
@@ -836,5 +1127,6 @@ window.bridgeSetMode    = bridgeSetMode;
 window.bridgeSetMax     = bridgeSetMax;
 window.bridgeRetryMint  = bridgeRetryMint;
 window.bridgeRenderHistory = bridgeRenderHistory;
+window.BRIDGE_CHAINS    = BRIDGE_CHAINS;
 
 console.log('[BRIDGE] CCTP module loaded — Testnet only');

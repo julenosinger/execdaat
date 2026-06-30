@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // DAAT AGENT CORE ENGINE v2.0 — UNIFIED EXECUTION ARCHITECTURE
 // Build: 20260408c — ExecDaat Platform

@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ===== DASHBOARD v3 — Real On-Chain Data + Live Metrics =====
 // Replaces all static/placeholder data with live blockchain reads
 // Features: block explorer data, network latency, contract metrics,

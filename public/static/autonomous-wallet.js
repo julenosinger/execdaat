@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // ARC Autonomous Wallet — Frontend Module v1.0
 // Arc Testnet · ChainId 5042002 · Real On-Chain Only

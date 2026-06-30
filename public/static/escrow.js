@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ─── EscrowWallet Frontend Module v2.0 ────────────────────────────────────────
 // Milestone-based USDC Escrow on ARC Testnet (Chain ID 5042002)
 // Mirrors EscrowWallet.sol + EscrowRegistry.sol logic

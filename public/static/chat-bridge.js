@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // CHAT-BRIDGE.JS — Unified message handler v20260404l
 // Shared logic between Main Chat and Autonoma Tab chatbots.

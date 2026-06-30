@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // ExecDaat — SPA Router
 // Clean URL routing: /payments, /contracts, etc.

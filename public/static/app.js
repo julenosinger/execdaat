@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ExecDaat - Frontend Application
 // Pagamentos e Contratos Autônomos na Arc Testnet
 
@@ -99,6 +100,7 @@ function switchTab(tab) {
         history:   ['border-blue-500',   'text-blue-400'],
         dashboard: ['border-indigo-500', 'text-indigo-400'],
         about:     ['border-emerald-500','text-emerald-400'],
+        unifiedbalance: ['border-green-500','text-green-400'],
       };
       const [bc, tc] = tabColors[tab] || ['border-purple-500', 'text-purple-400'];
       tabBtn.classList.add(bc, tc);
@@ -174,6 +176,9 @@ function switchTab(tab) {
     }
     if (tab === 'history') {
       if (window.historyInit) window.historyInit();
+    }
+    if (tab === 'unifiedbalance') {
+      if (window.ubInit) window.ubInit();
     }
     if (tab === 'otc') {
       // Auto-fill wallet and re-render

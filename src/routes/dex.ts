@@ -540,7 +540,7 @@ dexRouter.get('/factory/pools', async (c) => {
       const resB = decUint256('0x' + (resHex || '').slice(66, 130));
       pools.push({
         address: AMM_ADDRESS,
-        token0: TOKEN_A, token1: TOKEN_B,
+        token0: TOKEN_REGISTRY.EURC.address, token1: TOKEN_REGISTRY.USDC.address,
         token0Symbol: 'EURC', token1Symbol: 'USDC',
         feeBps: 30, feePct: '0.30',
         reserve0: resA.toString(), reserve1: resB.toString(),

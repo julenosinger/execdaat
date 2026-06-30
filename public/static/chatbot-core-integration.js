@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // AUTONOMA CHATBOT → DAAT AGENT CORE INTEGRATION
 // Build: 20260408f — ExecDaat Platform

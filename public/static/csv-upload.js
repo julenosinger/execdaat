@@ -1,3 +1,4 @@
+// build:v2-20260627-151358
 // ============================================================
 // CSV BATCH UPLOAD + MULTI-SEND MODULE
 // ExecDaat — parser RFC-4180 puro (sem dependências)

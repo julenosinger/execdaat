@@ -520,6 +520,7 @@ const SPA_ROUTES: Record<string, string> = {
   '/bridge':    'bridge',
   '/multisend': 'multisend',
   '/history':   'history',
+  '/unified-balance': 'unifiedbalance',
 }
 
 for (const [routePath, tab] of Object.entries(SPA_ROUTES)) {
@@ -589,8 +590,8 @@ app.get('/', (c) => {
   <link rel="manifest" href="/manifest.json">
 
   <!-- Favicon ──────────────────────────────────────────────────────────── -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%237c3aed'/><text y='72' x='50' text-anchor='middle' font-size='58' font-family='sans-serif'>⚡</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%237c3aed'/><text y='72' x='50' text-anchor='middle' font-size='58'>⚡</text></svg>">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="apple-touch-icon" href="/static/favicon.svg">
 
   <!-- ── Canonical ────────────────────────────────────────────────────── -->
   <link rel="canonical" href="https://execdaatplataform.pages.dev/">
@@ -733,11 +734,57 @@ app.get('/', (c) => {
   <header id="main-header" class="bg-gray-900/95 border-b border-purple-800/30 px-6 py-3 backdrop-blur-sm" style="position:relative;z-index:50;">
     <div class="max-w-7xl mx-auto flex items-center justify-end gap-2 sm:gap-3">
 
-        <!-- Arc Network badge -->
-        <div class="hidden sm:flex items-center gap-1.5 bg-green-900/30 border border-green-700/40 rounded-full px-3 py-1.5">
-          <div class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
-          <span class="text-xs text-green-400 font-medium">Arc Testnet</span>
+        <!-- Network selector dropdown -->
+        <div class="relative" id="network-selector-wrap">
+          <button id="network-selector-btn" onclick="document.getElementById('network-dropdown').classList.toggle('hidden')"
+            class="flex items-center gap-1.5 bg-gray-800/80 border border-gray-700/50 rounded-xl px-3 py-2 cursor-pointer hover:border-gray-600 transition-all text-xs">
+            <span id="network-selector-icon" class="text-sm">🟣</span>
+            <span id="network-selector-name" class="text-gray-300 font-medium">Arc Testnet</span>
+            <i class="fas fa-chevron-down text-gray-600 text-[9px]"></i>
+          </button>
+          <div id="network-dropdown" class="hidden absolute right-0 top-full mt-2 bg-gray-900/98 border border-gray-700/50 rounded-xl overflow-hidden shadow-2xl z-[60] min-w-[210px]">
+            <div class="p-1.5 space-y-0.5">
+              <button onclick="switchToNetwork('arc');document.getElementById('network-dropdown').classList.add('hidden')"
+                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-gray-800 transition-colors text-left">
+                <span>🟣</span><span class="text-white font-medium">Arc Testnet</span>
+                <span class="ml-auto text-[9px] text-green-400 font-bold" id="net-check-arc">✓</span>
+              </button>
+              <button onclick="switchToNetwork('sepolia');document.getElementById('network-dropdown').classList.add('hidden')"
+                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-gray-800 transition-colors text-left">
+                <span>🔷</span><span class="text-gray-300">Ethereum Sepolia</span>
+                <span class="ml-auto text-[9px] text-gray-600 hidden" id="net-check-sepolia">✓</span>
+              </button>
+              <button onclick="switchToNetwork('arbsepolia');document.getElementById('network-dropdown').classList.add('hidden')"
+                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-gray-800 transition-colors text-left">
+                <span>🔵</span><span class="text-gray-300">Arbitrum Sepolia</span>
+                <span class="ml-auto text-[9px] text-gray-600 hidden" id="net-check-arbsepolia">✓</span>
+              </button>
+              <button onclick="switchToNetwork('basesepolia');document.getElementById('network-dropdown').classList.add('hidden')"
+                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-gray-800 transition-colors text-left">
+                <span>🔵</span><span class="text-gray-300">Base Sepolia</span>
+                <span class="ml-auto text-[9px] text-gray-600 hidden" id="net-check-basesepolia">✓</span>
+              </button>
+              <button onclick="switchToNetwork('optsepolia');document.getElementById('network-dropdown').classList.add('hidden')"
+                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-gray-800 transition-colors text-left">
+                <span>🔴</span><span class="text-gray-300">OP Sepolia</span>
+                <span class="ml-auto text-[9px] text-gray-600 hidden" id="net-check-optsepolia">✓</span>
+              </button>
+              <button onclick="switchToNetwork('polygonamoy');document.getElementById('network-dropdown').classList.add('hidden')"
+                class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs hover:bg-gray-800 transition-colors text-left">
+                <span>🟣</span><span class="text-gray-300">Polygon Amoy</span>
+                <span class="ml-auto text-[9px] text-gray-600 hidden" id="net-check-polygonamoy">✓</span>
+              </button>
+            </div>
+          </div>
         </div>
+        <!-- Close dropdown on outside click -->
+        <script>
+          document.addEventListener('click',function(e){
+            var d=document.getElementById('network-dropdown');
+            var b=document.getElementById('network-selector-btn');
+            if(d&&b&&!b.contains(e.target)&&!d.contains(e.target))d.classList.add('hidden');
+          });
+        </script>
 
 
 
@@ -1125,6 +1172,12 @@ app.get('/', (c) => {
       <button onclick="switchTab('dashboard');sidebarClose();" id="tab-dashboard" class="tab-btn sidebar-item" data-label="Information">
         <span class="sidebar-item-icon"><i class="fas fa-info-circle"></i></span>
         <span class="sidebar-item-label">Information</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('unifiedbalance');sidebarClose();" id="tab-unifiedbalance" class="tab-btn sidebar-item" data-label="Unified Balance">
+        <span class="sidebar-item-icon"><i class="fas fa-coins"></i></span>
+        <span class="sidebar-item-label">Unified Balance</span>
         <span class="sidebar-item-active-bar"></span>
       </button>
 
@@ -2468,7 +2521,7 @@ app.get('/', (c) => {
                       <div>
                         <div class="text-white text-xs font-semibold">${title}</div>
                         <div class="text-gray-600 text-[10px]">${desc}</div>
-                      </div>
+      </div>
                     </div>
                   `).join('')}
                 </div>
@@ -3608,6 +3661,491 @@ app.get('/', (c) => {
       </div>
     </div>
 
+    <!-- ══════════════════════ UNIFIED BALANCE TAB ═══════════════════════ -->
+    <div id="tab-content-unifiedbalance" class="tab-content hidden">
+      <div class="max-w-6xl mx-auto">
+
+        <!-- ── FinOS HERO ── -->
+        <div class="bg-gradient-to-br from-violet-950/60 via-gray-900/80 to-indigo-950/40 border border-violet-700/30 rounded-2xl p-6 mb-6 shadow-xl relative overflow-hidden">
+          <div class="absolute top-0 right-0 w-64 h-64 bg-violet-500/3 rounded-full blur-3xl pointer-events-none"></div>
+          <div class="relative z-10">
+            <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
+              <div>
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-900/40">
+                    <i class="fas fa-layer-group text-white"></i>
+                  </span>
+                  <div>
+                    <h2 class="text-xl font-bold text-white">FinOS</h2>
+                    <p class="text-gray-500 text-xs">Financial Operating System · Circle CCTP v2</p>
+                  </div>
+                </div>
+                <div class="text-4xl font-bold text-white ml-13" id="ub-account-total">—</div>
+                <div class="flex items-center gap-3 ml-13 mt-1">
+                  <span class="text-xs text-violet-400">Unified Balance</span>
+                  <span class="text-gray-600 text-xs">·</span>
+                  <span class="text-xs text-gray-500">Score: <span id="ub-profile-score" class="text-violet-400 font-bold">—</span></span>
+                  <span class="text-gray-600 text-xs">·</span>
+                  <span class="text-xs text-gray-500">Activity: <span id="ub-profile-level" class="text-blue-400">—</span></span>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] font-bold bg-violet-500/10 border border-violet-500/30 text-violet-400 rounded-full px-2.5 py-1">FinOS v1</span>
+                <span class="text-[10px] font-bold bg-green-500/10 border border-green-500/30 text-green-400 rounded-full px-2.5 py-1">CCTP v2</span>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-4 text-xs">
+              <div class="flex items-center gap-2 bg-gray-800/60 border border-gray-600/40 rounded-xl px-3 py-2">
+                <i class="fas fa-wallet text-green-400"></i>
+                <span class="text-gray-300 font-mono" id="ub-account-addr">—</span>
+                <button onclick="navigator.clipboard.writeText(document.getElementById('ub-account-addr-full')?.textContent||'')" class="text-gray-500 hover:text-gray-300" title="Copy address">
+                  <i class="fas fa-copy text-[10px]"></i>
+                </button>
+              </div>
+              <span id="ub-account-addr-full" class="hidden"></span>
+              <div id="ub-network-chips" class="flex flex-wrap gap-1.5">
+                <span class="text-[10px] text-gray-600">Loading...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-4 mb-6 shadow-xl">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-violet-900/30">
+              <i class="fas fa-robot text-white text-sm"></i>
+            </div>
+            <div class="flex-1 flex items-center gap-2">
+              <div class="flex-1 relative">
+                <input id="ub-intent-input" type="text" placeholder="send 50 USDC to 0x..." onkeydown="if(event.key==='Enter')ubExecuteIntent()"
+                  class="w-full bg-gray-800/60 border border-gray-600/40 rounded-xl px-4 py-3 text-white text-sm focus:border-violet-500/50 focus:outline-none placeholder-gray-600" />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-600">Try: "pay 100 to 0xAbc..."</span>
+              </div>
+              <button onclick="ubExecuteIntent()" class="bg-violet-600 hover:bg-violet-500 text-white rounded-xl px-4 py-3 text-sm font-bold transition-all flex items-center gap-1.5 flex-shrink-0">
+                <i class="fas fa-magic text-xs"></i>Execute
+              </button>
+              <button onclick="ubActionCreateRule()" class="bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-xl px-3 py-3 text-sm transition-all flex-shrink-0" title="Create automated rule">
+                <i class="fas fa-clock text-xs"></i>
+              </button>
+            </div>
+          </div>
+          <div id="ub-intent-result" class="mt-2 ml-12"></div>
+        </div>
+
+        <!-- ── AGENT ECONOMY ── -->
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-robot text-violet-400 text-sm"></i>
+              <h3 class="text-white font-bold text-sm">Agent Economy</h3>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="ubAnalyzeWallet();var r=ub$('ub-agent-suggestion');if(r)r.innerHTML=ubAnalyzeWallet()" class="text-[10px] text-violet-400 hover:text-violet-300 bg-violet-900/20 border border-violet-700/30 rounded-lg px-2.5 py-1 transition">📊 Analyze Wallet</button>
+            </div>
+          </div>
+          <div id="ub-agent-suggestion" class="mb-3 bg-gray-800/30 border border-gray-700/30 rounded-lg p-3 text-xs text-gray-500">
+            <i class="fas fa-info-circle mr-1.5"></i>Click any agent card for suggestions, or click the gear icon to configure permissions.
+          </div>
+          <div id="ub-agent-cards" class="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div class="col-span-full text-center py-8 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-2 block"></i>Loading agents...</div>
+          </div>
+        </div>
+
+        <!-- ── QUICK ACTIONS ── -->
+        <div class="grid grid-cols-5 gap-3 mb-6">
+          <button onclick="ubActionDeposit()" class="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-gray-900/80 border border-gray-700/50 hover:border-green-500/40 hover:bg-gray-800/80 transition-all group">
+            <div class="w-10 h-10 rounded-xl bg-green-500/20 border border-green-500/30 flex items-center justify-center group-hover:bg-green-500/30 transition-colors">
+              <i class="fas fa-arrow-down text-green-400"></i>
+            </div>
+            <span class="text-[11px] text-gray-300 font-semibold">Deposit</span>
+          </button>
+          <button onclick="ubActionSend()" class="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-gray-900/80 border border-gray-700/50 hover:border-blue-500/40 hover:bg-gray-800/80 transition-all group">
+            <div class="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center group-hover:bg-blue-500/30 transition-colors">
+              <i class="fas fa-arrow-up text-blue-400"></i>
+            </div>
+            <span class="text-[11px] text-gray-300 font-semibold">Send</span>
+          </button>
+          <button onclick="ubActionBridge('','USDC')" class="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-gray-900/80 border border-gray-700/50 hover:border-cyan-500/40 hover:bg-gray-800/80 transition-all group">
+            <div class="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center group-hover:bg-cyan-500/30 transition-colors">
+              <i class="fas fa-right-left text-cyan-400"></i>
+            </div>
+            <span class="text-[11px] text-gray-300 font-semibold">Bridge</span>
+          </button>
+          <button onclick="ubActionSwap('USDC')" class="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-gray-900/80 border border-gray-700/50 hover:border-yellow-500/40 hover:bg-gray-800/80 transition-all group">
+            <div class="w-10 h-10 rounded-xl bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center group-hover:bg-yellow-500/30 transition-colors">
+              <i class="fas fa-exchange-alt text-yellow-400"></i>
+            </div>
+            <span class="text-[11px] text-gray-300 font-semibold">Swap</span>
+          </button>
+          <button onclick="ubActionPay('USDC')" class="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-gray-900/80 border border-gray-700/50 hover:border-purple-500/40 hover:bg-gray-800/80 transition-all group">
+            <div class="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center group-hover:bg-purple-500/30 transition-colors">
+              <i class="fas fa-paper-plane text-purple-400"></i>
+            </div>
+            <span class="text-[11px] text-gray-300 font-semibold">Pay</span>
+          </button>
+        </div>
+
+        <!-- ── TOKEN BALANCES + ACTIVITY ── -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <!-- Token Balances -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-5 py-4 flex items-center justify-between border-b border-gray-700/40">
+              <div class="flex items-center gap-3">
+                <span class="w-8 h-8 rounded-lg bg-gray-800 border border-gray-600/40 flex items-center justify-center">
+                  <i class="fas fa-coins text-green-400 text-sm"></i>
+                </span>
+                <h3 class="text-white font-bold text-sm">Assets</h3>
+              </div>
+              <button onclick="ubRefresh()" class="text-xs text-green-400 hover:text-green-300 bg-gray-800/60 border border-gray-600/40 rounded-lg px-3 py-1.5 transition flex items-center gap-1.5">
+                <i class="fas fa-sync-alt text-[10px]"></i>Refresh
+              </button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead><tr class="border-b border-gray-700/40">
+                  <th class="text-left py-2.5 px-4 text-[10px] uppercase tracking-wider text-gray-600 font-bold">Token</th>
+                  <th class="text-left py-2.5 px-4 text-[10px] uppercase tracking-wider text-gray-600 font-bold">Network</th>
+                  <th class="text-right py-2.5 px-4 text-[10px] uppercase tracking-wider text-gray-600 font-bold">Balance</th>
+                  <th class="text-right py-2.5 px-4 text-[10px] uppercase tracking-wider text-gray-600 font-bold">USD</th>
+                  <th class="text-right py-2.5 px-4 text-[10px] uppercase tracking-wider text-gray-600 font-bold"></th>
+                </tr></thead>
+                <tbody id="ub-token-table-body">
+                  <tr><td colspan="5" class="py-10 text-center"><i class="fas fa-spinner fa-spin text-green-400 text-xl mb-2 block"></i><span class="text-gray-500 text-sm">Fetching cross-chain balances...</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Unified Activity -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-5 py-4 flex items-center justify-between border-b border-gray-700/40">
+              <div class="flex items-center gap-3">
+                <span class="w-8 h-8 rounded-lg bg-gray-800 border border-gray-600/40 flex items-center justify-center">
+                  <i class="fas fa-clock-rotate-left text-cyan-400 text-sm"></i>
+                </span>
+                <h3 class="text-white font-bold text-sm">Recent Activity</h3>
+              </div>
+            </div>
+            <div id="ub-activity-list" class="overflow-y-auto" style="max-height:400px;">
+              <div class="text-center py-8 text-gray-600 text-sm"><i class="fas fa-spinner fa-spin text-cyan-400 text-xl mb-2 block"></i>Loading...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── PAYMENT REQUESTS + RULES + ANALYTICS ── -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <!-- Payment Requests -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center justify-between border-b border-gray-700/40">
+              <div class="flex items-center gap-2"><i class="fas fa-file-invoice text-yellow-400 text-xs"></i><h3 class="text-white font-bold text-xs">Requests</h3></div>
+              <button onclick="ubActionInvoice()" class="text-[10px] text-yellow-400 hover:text-yellow-300 bg-gray-800/60 border border-gray-600/40 rounded-lg px-2 py-1 transition"><i class="fas fa-plus text-[9px]"></i> New</button>
+            </div>
+            <div id="ub-invoice-list" class="max-h-56 overflow-y-auto"><div class="text-center py-4 text-gray-600 text-xs">Loading...</div></div>
+          </div>
+          <!-- Agent Activity Log -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center justify-between border-b border-gray-700/40">
+              <div class="flex items-center gap-2"><i class="fas fa-robot text-violet-400 text-xs"></i><h3 class="text-white font-bold text-xs">Agent Activity</h3></div>
+              <span class="text-[9px] text-gray-600">Last 15 events</span>
+            </div>
+            <div id="ub-agent-log-list" class="max-h-56 overflow-y-auto"><div class="text-center py-4 text-gray-600 text-xs">Loading...</div></div>
+          </div>
+          <!-- Payment Analytics -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-700/40"><div class="flex items-center gap-2"><i class="fas fa-chart-bar text-blue-400 text-xs"></i><h3 class="text-white font-bold text-xs">Analytics</h3></div></div>
+            <div class="p-3">
+              <div class="flex justify-between mb-2"><div><div class="text-gray-500 text-[10px]">Total Sent</div><div class="text-white font-bold text-lg" id="ub-analytics-total">—</div></div><div class="text-right"><div class="text-gray-500 text-[10px]">Tx Count</div><div class="text-white font-bold text-lg" id="ub-analytics-count">—</div></div></div>
+              <div class="flex items-end justify-center gap-1 h-16 px-2" id="ub-analytics-bars"><div class="text-center py-4 text-gray-600 text-[10px]">No data yet</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── LIQUIDITY NETWORK ── -->
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-water text-cyan-400 text-sm"></i>
+              <h3 class="text-white font-bold text-sm">Global Liquidity Network</h3>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span id="ub-liquidity-agent-suggestion" class="text-[10px] text-gray-500">Loading pool data...</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- Pool Dashboard -->
+            <div class="lg:col-span-2 bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+              <div class="px-4 py-3 flex items-center justify-between border-b border-gray-700/40">
+                <div class="flex items-center gap-2"><i class="fas fa-chart-pie text-cyan-400 text-xs"></i><h3 class="text-white font-bold text-xs">AMM Pool: EURC / USDC</h3></div>
+                <span class="text-[9px] text-gray-600">x·y=k · 0.3% fee</span>
+              </div>
+              <div id="ub-liquidity-dash" class="p-4"><div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Reading on-chain pool reserves...</div></div>
+            </div>
+            <!-- LP Position -->
+            <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+              <div class="px-4 py-3 flex items-center justify-between border-b border-gray-700/40">
+                <div class="flex items-center gap-2"><i class="fas fa-tint text-green-400 text-xs"></i><h3 class="text-white font-bold text-xs">Your LP Position</h3></div>
+                <button onclick="switchTab('dex')" class="text-[9px] text-cyan-400 hover:text-cyan-300 bg-cyan-900/20 rounded px-2 py-0.5 transition">Manage →</button>
+              </div>
+              <div id="ub-lp-position" class="p-4"><div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Checking LP balance...</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          <!-- Treasury Allocation -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center gap-2 border-b border-gray-700/40">
+              <i class="fas fa-chart-pie text-purple-400 text-xs"></i>
+              <h3 class="text-white font-bold text-xs">Treasury Allocation</h3>
+            </div>
+            <div id="ub-treasury-view" class="p-4"><div class="text-center py-6 text-gray-600 text-xs">Loading...</div></div>
+          </div>
+          <!-- Unified Ledger -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center justify-between border-b border-gray-700/40">
+              <div class="flex items-center gap-2"><i class="fas fa-book text-cyan-400 text-xs"></i><h3 class="text-white font-bold text-xs">Unified Ledger</h3></div>
+              <div class="flex items-center gap-1">
+                <button onclick="ubExportCSV()" class="text-[10px] text-cyan-400 hover:text-cyan-300 bg-gray-800/60 border border-gray-600/40 rounded-lg px-2 py-1 transition" title="Export CSV"><i class="fas fa-download text-[9px]"></i> CSV</button>
+                <button onclick="ubExportAudit()" class="text-[10px] text-violet-400 hover:text-violet-300 bg-gray-800/60 border border-gray-600/40 rounded-lg px-2 py-1 transition" title="Audit Report"><i class="fas fa-shield-check text-[9px]"></i> Audit</button>
+              </div>
+            </div>
+            <div id="ub-ledger-list" class="max-h-72 overflow-y-auto"><div class="text-center py-8 text-gray-600 text-sm">Loading ledger...</div></div>
+          </div>
+        </div>
+
+        <!-- ── CONTACTS + COMPLIANCE ── -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          <!-- P2P Contacts -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center justify-between border-b border-gray-700/40">
+              <div class="flex items-center gap-2"><i class="fas fa-address-book text-blue-400 text-xs"></i><h3 class="text-white font-bold text-xs">Contacts</h3></div>
+            </div>
+            <div class="p-3">
+              <div class="flex gap-2 mb-3">
+                <input id="ub-contact-addr" type="text" placeholder="0x..." class="flex-1 bg-gray-800/60 border border-gray-600/40 rounded-lg px-3 py-2 text-white text-xs font-mono focus:border-blue-500/50 focus:outline-none placeholder-gray-700" />
+                <input id="ub-contact-label" type="text" placeholder="Name" class="w-24 bg-gray-800/60 border border-gray-600/40 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500/50 focus:outline-none placeholder-gray-700" />
+                <button onclick="ubAddContact()" class="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3 py-2 text-xs font-bold transition"><i class="fas fa-plus"></i></button>
+              </div>
+              <div id="ub-contact-list" class="max-h-40 overflow-y-auto"><div class="text-center py-4 text-gray-600 text-xs">Loading...</div></div>
+            </div>
+          </div>
+          <!-- Compliance / Audit -->
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center gap-2 border-b border-gray-700/40">
+              <i class="fas fa-shield-check text-green-400 text-xs"></i>
+              <h3 class="text-white font-bold text-xs">Compliance &amp; Export</h3>
+            </div>
+            <div class="p-4 space-y-3 text-xs">
+              <div class="flex justify-between"><span class="text-gray-500">Ledger entries</span><span class="text-white font-bold" id="ub-compliance-ledger">—</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Active agents</span><span class="text-white font-bold" id="ub-compliance-agents">—</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Pending invoices</span><span class="text-yellow-400 font-bold" id="ub-compliance-invoices">—</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Total sent (USD)</span><span class="text-green-400 font-bold" id="ub-compliance-sent">—</span></div>
+              <div class="pt-2 border-t border-gray-700/40">
+                <p class="text-gray-600 text-[10px] mb-2">All data is sourced from on-chain transactions, localStorage history, and real RPC calls. No mock data.</p>
+                <div class="flex gap-2">
+                  <button onclick="ubExportCSV()" class="flex-1 py-2 rounded-lg bg-cyan-900/20 border border-cyan-700/30 text-cyan-400 text-xs font-bold hover:bg-cyan-900/30 transition">📥 Export CSV</button>
+                  <button onclick="ubExportAudit()" class="flex-1 py-2 rounded-lg bg-violet-900/20 border border-violet-700/30 text-violet-400 text-xs font-bold hover:bg-violet-900/30 transition">🔍 Audit Report</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 shadow-xl text-center">
+            <div class="w-10 h-10 rounded-xl bg-green-500/20 border border-green-500/30 flex items-center justify-center mx-auto mb-3">
+              <i class="fas fa-arrow-down text-green-400"></i>
+            </div>
+            <h4 class="text-white font-semibold text-sm mb-1">Deposit Anywhere</h4>
+            <p class="text-gray-500 text-xs">Fund any supported chain. Your assets are tracked automatically via on-chain data.</p>
+          </div>
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 shadow-xl text-center">
+            <div class="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center mx-auto mb-3">
+              <i class="fas fa-layer-group text-cyan-400"></i>
+            </div>
+            <h4 class="text-white font-semibold text-sm mb-1">Unified View</h4>
+            <p class="text-gray-500 text-xs">All balances aggregated in one place. USDC + EURC + USYC across Arc, Ethereum, and L2s.</p>
+          </div>
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 shadow-xl text-center">
+            <div class="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center mx-auto mb-3">
+              <i class="fas fa-bolt text-purple-400"></i>
+            </div>
+            <h4 class="text-white font-semibold text-sm mb-1">Use Anywhere</h4>
+            <p class="text-gray-500 text-xs">Send, swap, bridge, or pay — all from one account. Circle CCTP v2 ready.</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ══ DEPOSIT MODAL ══ -->
+      <div id="ub-deposit-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center" style="background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);" onclick="if(event.target===this)ubCloseDeposit()">
+        <div class="bg-gray-900/95 border border-gray-700/50 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-white font-bold text-lg flex items-center gap-2"><i class="fas fa-arrow-down text-green-400"></i>Deposit</h3>
+            <button onclick="ubCloseDeposit()" class="text-gray-600 hover:text-gray-400"><i class="fas fa-times text-lg"></i></button>
+          </div>
+          <p class="text-gray-400 text-xs mb-4">Send USDC or EURC to your wallet address on Arc Testnet to see it here.</p>
+          <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-4 mb-4">
+            <div class="text-gray-500 text-xs mb-2">Your Wallet Address</div>
+            <div class="flex items-center gap-3">
+              <code class="text-green-400 font-mono text-sm break-all flex-1" id="ub-deposit-addr">—</code>
+              <button onclick="navigator.clipboard.writeText(document.getElementById('ub-deposit-addr')?.textContent||'');ubShowToast('Address copied!','success')" class="bg-green-600 hover:bg-green-500 text-white rounded-lg px-3 py-2 text-xs font-bold transition-colors flex-shrink-0">
+                <i class="fas fa-copy mr-1"></i>Copy
+              </button>
+            </div>
+          </div>
+          <div class="text-center">
+            <a href="https://faucet.circle.com" target="_blank" class="text-xs text-cyan-400 hover:text-cyan-300 underline">Get testnet USDC from Circle Faucet ↗</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SEND MODAL ══ -->
+      <div id="ub-send-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center" style="background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);" onclick="if(event.target===this)ubCloseSend()">
+        <div class="bg-gray-900/95 border border-gray-700/50 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-white font-bold text-lg flex items-center gap-2"><i class="fas fa-arrow-up text-blue-400"></i>Send</h3>
+            <button onclick="ubCloseSend()" class="text-gray-600 hover:text-gray-400"><i class="fas fa-times text-lg"></i></button>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">Token</label>
+              <select id="ub-send-token" class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-sm focus:border-blue-500/50 focus:outline-none">
+                <option value="USDC">💵 USDC</option>
+                <option value="EURC">💶 EURC</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">Recipient Address</label>
+              <input id="ub-send-recipient" type="text" placeholder="0x..." class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-sm font-mono focus:border-blue-500/50 focus:outline-none placeholder-gray-700" />
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">Amount</label>
+              <input id="ub-send-amount" type="number" min="0" step="any" placeholder="0.00" oninput="if(typeof ubOnSendAmountChange==='function')ubOnSendAmountChange()" class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-lg font-bold focus:border-blue-500/50 focus:outline-none placeholder-gray-700" />
+            </div>
+            <div id="ub-send-route-detail" class="hidden bg-gray-800/40 border border-gray-600/30 rounded-lg p-3">
+              <div class="flex items-center justify-between text-xs mb-2">
+                <span class="text-gray-400">Best Route:</span>
+                <span id="ub-send-route-info" class="text-green-400 font-semibold">—</span>
+              </div>
+              <div id="ub-send-comparison" class="space-y-0.5 text-[10px]"></div>
+            </div>
+            <input type="hidden" id="ub-send-auto-token" value="USDC">
+            <input type="hidden" id="ub-send-auto-net" value="arc">
+            <div id="ub-send-status" class="text-xs text-center"></div>
+            <button id="ub-send-execute-btn" onclick="ubExecuteSend()" class="w-full py-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white font-bold transition-all shadow-lg">
+              <i class="fas fa-paper-plane mr-2"></i>Send
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ AGENT PERMISSION MODAL ══ -->
+      <div id="ub-agent-perm-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center" style="background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);" onclick="if(event.target===this)ubCloseAgentPerms()">
+        <div class="bg-gray-900/95 border border-gray-700/50 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-white font-bold text-lg flex items-center gap-2">
+              <span id="ub-perm-agent-icon"></span>
+              <span id="ub-perm-agent-name">Agent</span>
+            </h3>
+            <button onclick="ubCloseAgentPerms()" class="text-gray-600 hover:text-gray-400"><i class="fas fa-times text-lg"></i></button>
+          </div>
+          <p class="text-gray-400 text-xs mb-4">Configure what this agent can do. Changes take effect immediately.</p>
+          <input type="hidden" id="ub-perm-agent-id" value="">
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-white text-sm">Enabled</span>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="ub-perm-enabled" checked class="sr-only peer">
+                <div class="w-10 h-5 bg-gray-700 rounded-full peer-checked:bg-green-600 peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+              </label>
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">Auto-approval Limit (USD)</label>
+              <input id="ub-perm-max-auto" type="number" min="0" step="1" class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-sm focus:border-violet-500/50 focus:outline-none" />
+              <p class="text-gray-600 text-[10px] mt-1">Payments below this amount execute without confirmation.</p>
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">Daily Limit (USD)</label>
+              <input id="ub-perm-daily-limit" type="number" min="0" step="1" class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-sm focus:border-violet-500/50 focus:outline-none" />
+              <p class="text-gray-600 text-[10px] mt-1">Maximum the agent can spend per day. Resets at midnight.</p>
+            </div>
+            <button onclick="ubSaveAgentPerm()" class="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500 text-white font-bold transition-all shadow-lg">
+              <i class="fas fa-save mr-2"></i>Save Permissions
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ INVOICE MODAL ══ -->
+      <div id="ub-invoice-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center" style="background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);" onclick="if(event.target===this)ubCloseInvoice()">
+        <div class="bg-gray-900/95 border border-gray-700/50 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-white font-bold text-lg flex items-center gap-2"><i class="fas fa-file-invoice text-yellow-400"></i>Payment Request</h3>
+            <button onclick="ubCloseInvoice()" class="text-gray-600 hover:text-gray-400"><i class="fas fa-times text-lg"></i></button>
+          </div>
+          <p class="text-gray-400 text-xs mb-4">Create a payment request that others can fulfill. Share the link.</p>
+          <div class="space-y-4">
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">Token</label>
+              <select id="ub-invoice-token" class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-sm focus:border-yellow-500/50 focus:outline-none">
+                <option value="USDC">💵 USDC</option>
+                <option value="EURC">💶 EURC</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">Amount</label>
+              <input id="ub-invoice-amount" type="number" min="0" step="any" placeholder="0.00" class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-lg font-bold focus:border-yellow-500/50 focus:outline-none placeholder-gray-700" />
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">Note (optional)</label>
+              <input id="ub-invoice-note" type="text" placeholder="Coffee, Split bill, etc." class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-sm focus:border-yellow-500/50 focus:outline-none placeholder-gray-700" />
+            </div>
+            <div id="ub-invoice-created" class="text-xs text-center text-green-400"></div>
+            <button onclick="ubCreateInvoiceFromModal()" class="w-full py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-white font-bold transition-all shadow-lg">
+              <i class="fas fa-file-invoice mr-2"></i>Create Payment Request
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ TOKEN DETAIL MODAL ══ -->
+      <div id="ub-detail-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center" style="background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);" onclick="if(event.target===this)ubCloseDetail()">
+        <div class="bg-gray-900/95 border border-gray-700/50 rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onclick="event.stopPropagation()">
+          <div class="px-6 pt-6 pb-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl" id="ub-detail-icon">💵</span>
+              <div><h3 class="text-white font-bold text-lg" id="ub-detail-symbol">USDC</h3><p class="text-gray-500 text-xs" id="ub-detail-name">USD Coin</p></div>
+            </div>
+            <button onclick="ubCloseDetail()" class="text-gray-600 hover:text-gray-400"><i class="fas fa-times text-lg"></i></button>
+          </div>
+          <div class="px-6 pb-6 space-y-4">
+            <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl p-4 text-center">
+              <div class="text-gray-500 text-xs uppercase tracking-wider mb-1">Balance</div>
+              <div class="text-3xl font-bold text-white" id="ub-detail-balance">—</div>
+              <div class="text-green-400 text-sm font-semibold mt-1" id="ub-detail-usd">—</div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div class="bg-gray-800/40 rounded-lg p-3"><div class="text-gray-600 mb-0.5">Network</div><div class="text-white font-semibold" id="ub-detail-network">—</div></div>
+              <div class="bg-gray-800/40 rounded-lg p-3"><div class="text-gray-600 mb-0.5">Price</div><div class="text-green-400 font-semibold" id="ub-detail-price">—</div></div>
+              <div class="bg-gray-800/40 rounded-lg p-3 col-span-2"><div class="text-gray-600 mb-0.5">Contract</div>
+                <div class="flex items-center justify-between gap-2">
+                  <code class="text-white font-mono text-[10px] truncate" id="ub-detail-contract">—</code>
+                  <button onclick="navigator.clipboard.writeText(document.getElementById('ub-detail-contract-full')?.textContent||'')" class="text-gray-500 hover:text-gray-300"><i class="fas fa-copy text-[10px]"></i></button>
+                </div>
+              </div>
+            </div>
+            <span id="ub-detail-contract-full" class="hidden"></span>
+            <a id="ub-detail-explorer-link" href="#" target="_blank" class="block text-center text-xs text-cyan-400 hover:text-cyan-300 underline">View on Explorer ↗</a>
+            <div class="grid grid-cols-3 gap-2">
+              <button id="ub-detail-bridge" onclick="ubDetailBridge()" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-cyan-900/20 border border-cyan-700/30 hover:bg-cyan-900/30 transition-colors"><i class="fas fa-right-left text-cyan-400"></i><span class="text-[10px] text-cyan-300 font-semibold">Bridge</span></button>
+              <button id="ub-detail-swap" onclick="ubDetailSwap()" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-yellow-900/20 border border-yellow-700/30 hover:bg-yellow-900/30 transition-colors"><i class="fas fa-exchange-alt text-yellow-400"></i><span class="text-[10px] text-yellow-300 font-semibold">Swap</span></button>
+              <button id="ub-detail-pay" onclick="ubDetailPay()" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-purple-900/20 border border-purple-700/30 hover:bg-purple-900/30 transition-colors"><i class="fas fa-paper-plane text-purple-400"></i><span class="text-[10px] text-purple-300 font-semibold">Pay</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
     <!-- ══════════════════════════ AI AGENTS TAB ══════════════════════════ -->
     <div id="tab-content-agents" class="tab-content hidden">
 
@@ -3684,6 +4222,53 @@ app.get('/', (c) => {
           width: 100%;
           max-width: 480px;
           flex-shrink: 0;
+          transition: transform 0.35s ease, margin 0.35s ease;
+        }
+
+        /* Swap info panel (status card) — slide in/out */
+        #amm-swap-info-panel {
+          width: 100%;
+          max-width: 480px;
+          flex-shrink: 0;
+          transition: opacity 0.35s ease, transform 0.35s ease, width 0.35s ease;
+        }
+        #amm-swap-info-panel.amm-info-hidden {
+          opacity: 0;
+          transform: translateX(30px);
+          pointer-events: none;
+          visibility: hidden;
+          position: absolute;
+          width: 0;
+          overflow: hidden;
+        }
+        #amm-swap-info-panel.amm-info-visible {
+          opacity: 1;
+          transform: translateX(0);
+          pointer-events: auto;
+          visibility: visible;
+          position: static;
+          overflow: visible;
+        }
+
+        /* Flex gap appears when info panel is visible */
+        #dex-swap-center {
+          gap: 0;
+          transition: gap 0.35s ease;
+        }
+        #dex-swap-center.amm-info-mode {
+          gap: 22px;
+        }
+
+        /* Mobile: stack cards vertically */
+        @media (max-width: 700px) {
+          #dex-swap-center.amm-info-mode {
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+          }
+          #amm-swap-info-panel.amm-info-visible {
+            max-width: 480px;
+          }
         }
       </style>
 
@@ -4011,6 +4596,75 @@ app.get('/', (c) => {
           </div><!-- end space-y-4 tabs/panels -->
         </div><!-- end dex-swap-inner -->
 
+        <!-- Swap Info Panel — slides in during swap execution -->
+        <div id="amm-swap-info-panel" class="amm-info-hidden">
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-4 shadow-xl">
+            <div class="flex items-center gap-2.5 pb-3 border-b border-gray-700/40">
+              <div class="w-7 h-7 rounded-full bg-cyan-600/20 flex items-center justify-center flex-shrink-0">
+                <i id="amm-info-icon" class="fas fa-circle-notch fa-spin text-cyan-400 text-xs"></i>
+              </div>
+              <span id="amm-info-title" class="text-sm font-semibold text-cyan-300">Swap in Progress</span>
+            </div>
+            <div class="space-y-2.5 text-xs">
+              <div class="bg-gray-800/50 rounded-xl p-3 space-y-2">
+                <div class="flex justify-between">
+                  <span class="text-gray-500">Sending</span>
+                  <span class="text-white font-mono text-xs"><span id="amm-info-from-symbol">—</span> <span id="amm-info-amount-in">—</span></span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-500">Receiving</span>
+                  <span class="text-green-400 font-mono text-xs"><span id="amm-info-to-symbol">—</span> <span id="amm-info-amount-out">—</span></span>
+                </div>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="bg-gray-800/40 rounded-lg p-2">
+                  <div class="text-gray-600 text-[10px]">Fee</div>
+                  <div id="amm-info-fee" class="text-gray-300 font-mono font-bold text-[11px]">—</div>
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-2">
+                  <div class="text-gray-600 text-[10px]">Slippage</div>
+                  <div id="amm-info-slippage" class="text-cyan-400 font-mono font-bold text-[11px]">—</div>
+                </div>
+                <div class="bg-gray-800/40 rounded-lg p-2">
+                  <div class="text-gray-600 text-[10px]">Price Impact</div>
+                  <div id="amm-info-impact" class="text-green-400 font-mono font-bold text-[11px]">—</div>
+                </div>
+              </div>
+              <div id="amm-info-steps" class="bg-gray-800/40 rounded-xl p-3 space-y-2">
+                <div class="amm-info-step" data-step="approval">
+                  <span class="amm-info-step-dot"></span>
+                  <span>Waiting approval</span>
+                </div>
+                <div class="amm-info-step" data-step="confirming">
+                  <span class="amm-info-step-dot"></span>
+                  <span>Confirming transaction</span>
+                </div>
+                <div class="amm-info-step" data-step="processing">
+                  <span class="amm-info-step-dot"></span>
+                  <span>Processing swap</span>
+                </div>
+                <div class="amm-info-step" data-step="completed">
+                  <span class="amm-info-step-dot"></span>
+                  <span>Completed</span>
+                </div>
+              </div>
+              <div id="amm-info-error" class="hidden bg-red-900/20 border border-red-700/40 rounded-xl p-3 text-xs text-red-300">
+                <div class="flex items-start gap-1.5">
+                  <i class="fas fa-exclamation-triangle mt-0.5 flex-shrink-0"></i>
+                  <span id="amm-info-error-msg">—</span>
+                </div>
+              </div>
+              <div id="amm-info-hash-row" class="hidden bg-gray-800/40 rounded-xl p-2.5 text-center">
+                <a id="amm-info-hash-link" href="#" target="_blank" rel="noopener noreferrer"
+                  class="text-cyan-400 hover:text-cyan-300 text-xs font-mono underline flex items-center justify-center gap-1">
+                  <span id="amm-info-hash">—</span>
+                  <i class="fas fa-external-link-alt text-[9px]"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- RIGHT — Pool Status sidebar (hidden in swap mode, revealed in liq mode) -->
         <div id="dex-pool-col" class="space-y-4 amm-pool-hidden">
 
@@ -4198,394 +4852,421 @@ app.get('/', (c) => {
     <!-- ════════════════════════════════════════════════════════════════ -->
 
     <!-- ══ BRIDGE TAB — CCTP Cross-Chain ══════════════════════════════ -->
-    <!-- ══ BRIDGE TAB — CCTP Cross-Chain ═════════════════════════════ -->
 <div id="tab-content-bridge" class="tab-content hidden">
 
-  <!-- ══ BRIDGE INLINE STYLES ══ -->
+  <!-- ══ BRIDGE STYLES ══ -->
   <style>
-    /* Layout */
-    .bridge-page { display:grid; grid-template-columns:1fr; gap:20px; padding:20px 24px 0; }
-    @media(min-width:1024px){ .bridge-page { grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); } }
-    .bridge-history-section { padding:0 24px 20px; }
-
-    /* Glass card */
-    .br-card {
-      background:linear-gradient(160deg,rgba(10,15,28,0.95) 0%,rgba(6,11,22,0.98) 100%);
-      border:1px solid rgba(6,182,212,0.15);
-      border-radius:18px;
-      overflow:hidden;
-      backdrop-filter:blur(10px);
-      position:relative;
+    .bridge-page {
+      width: 100%;
+      display: flex;
+      justify-content: flex-start;
+      align-items: flex-start;
+      gap: 22px;
+      padding: 24px 0 0 12px;
+      transition: gap 0.35s ease;
     }
-    .br-card::before {
-      content:''; position:absolute; top:0; left:0; right:0; height:1px;
-      background:linear-gradient(90deg,transparent,rgba(6,182,212,0.5) 20%,rgba(34,211,238,0.4) 80%,transparent);
-      pointer-events:none; z-index:1;
+    .bridge-page > div:first-child {
+      width: 100%;
+      max-width: 480px;
+      flex-shrink: 0;
     }
-    .br-card-header {
-      padding:18px 20px 0;
-      display:flex; align-items:flex-start; gap:12px;
+    .bridge-page > div:last-child {
+      width: 100%;
+      max-width: 480px;
+      flex-shrink: 0;
     }
-    .br-card-body { padding:18px 20px 20px; display:flex; flex-direction:column; gap:14px; }
-
-    /* Info card (right) */
-    .br-info-card {
-      background:linear-gradient(160deg,rgba(10,15,28,0.92) 0%,rgba(6,11,22,0.96) 100%);
-      border:1px solid rgba(6,182,212,0.12);
-      border-radius:16px;
-      padding:16px;
-      backdrop-filter:blur(8px);
+    @media (max-width: 700px) {
+      .bridge-page {
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 16px 12px 0;
+      }
     }
-    .br-info-card h4 {
-      color:#dde2f0; font-size:13px; font-weight:700; margin:0 0 10px;
-      display:flex; align-items:center; gap:8px;
-    }
-    .br-info-card h4 i { color:#22d3ee; font-size:13px; }
-
-    /* Chain selector */
+    /* Chain button matching swap token selector */
     .br-chain-btn {
-      width:100%; display:flex; align-items:center; gap:10px;
-      background:rgba(255,255,255,0.04); border:1px solid rgba(6,182,212,0.2);
-      border-radius:14px; padding:14px 16px; color:#fff; font-size:13px; font-weight:600;
-      cursor:pointer; transition:all 0.22s;
+      width:100%; display:flex; align-items:center; gap:8px;
+      background:rgba(55,65,81,0.5); border:1px solid rgba(75,85,99,0.3);
+      border-radius:12px; padding:12px 14px; color:#fff; font-size:14px; font-weight:600;
+      cursor:pointer; transition:all 0.2s;
     }
-    .br-chain-btn:hover { border-color:rgba(6,182,212,0.5); background:rgba(6,182,212,0.06); }
-    .br-chain-btn i.chain-icon { font-size:18px; flex-shrink:0; }
-    .br-chain-btn i.chevron { color:#4a6490; margin-left:auto; font-size:10px; transition:transform 0.2s; }
-
-    /* Flip button */
+    .br-chain-btn:hover { border-color:rgba(6,182,212,0.4); background:rgba(55,65,81,0.7); }
+    .br-chain-btn .chain-chevron { color:#6b7280; margin-left:auto; font-size:10px; }
+    .br-chain-drop {
+      position:absolute; z-index:50; top:100%; left:0; right:0; margin-top:4px;
+      background:rgb(17,24,39); border:1px solid rgba(75,85,99,0.5);
+      border-radius:14px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,0.6);
+    }
+    /* Flip button matching swap flip */
     .br-flip-btn {
-      width:38px; height:38px; border-radius:50%;
-      background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.25);
+      width:36px; height:36px; border-radius:12px;
+      background:rgb(31,41,55); border:1px solid rgba(75,85,99,0.5);
       display:flex; align-items:center; justify-content:center; cursor:pointer;
-      transition:all 0.25s; color:#22d3ee; font-size:13px; margin:0 auto;
+      transition:all 0.25s; color:#9ca3af; font-size:13px;
     }
-    .br-flip-btn:hover { background:rgba(6,182,212,0.18); border-color:rgba(6,182,212,0.5); transform:rotate(180deg); }
-
-    /* Amount input */
-    .br-amount-wrap {
-      background:rgba(255,255,255,0.03); border:1px solid rgba(6,182,212,0.18);
-      border-radius:14px; padding:3px; display:flex; align-items:center; gap:8px;
-      transition:border-color 0.2s;
+    .br-flip-btn:hover { border-color:rgba(6,182,212,0.5); color:#22d3ee; background:rgba(55,65,81,0.8); }
+    /* Speed buttons matching swap slippage buttons */
+    .br-mode-btn {
+      flex:1; padding:8px 4px; border-radius:10px; font-size:10px; font-weight:700;
+      background:rgb(55,65,81); border:1px solid transparent;
+      color:#9ca3af; cursor:pointer; transition:all 0.2s; text-align:center;
     }
-    .br-amount-wrap:focus-within { border-color:rgba(6,182,212,0.5); box-shadow:0 0 0 3px rgba(6,182,212,0.08); }
-    .br-amount-wrap .usdc-icon {
-      width:34px; height:34px; border-radius:10px;
-      background:rgba(6,182,212,0.12); display:flex; align-items:center; justify-content:center;
-      flex-shrink:0; color:#22d3ee; font-size:14px; font-weight:800;
+    .br-mode-btn:hover { background:rgb(75,85,99); color:#d1d5db; }
+    .br-mode-btn.active {
+      background:rgba(8,145,178,0.6); color:#fff;
+      box-shadow:0 0 0 1px rgba(6,182,212,0.5);
     }
-    #bridge-amount-input {
-      flex:1; background:transparent; border:none; color:#e8edf8; font-size:18px; font-weight:700;
-      padding:6px 0; outline:none; min-width:0;
+    .br-mode-btn.br-mode-turbo.active {
+      background:rgba(245,158,11,0.6); color:#fff;
+      box-shadow:0 0 0 1px rgba(245,158,11,0.5);
     }
-    #bridge-amount-input::placeholder { color:#3a4870; }
-
-    /* Summary row */
-    .br-summary-row {
-      display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
-      background:rgba(255,255,255,0.02); border:1px solid rgba(6,182,212,0.1);
-      border-radius:12px; padding:14px;
-    }
-    .br-summary-item { text-align:center; }
-    .br-summary-item .br-sum-label { font-size:9px; text-transform:uppercase; letter-spacing:0.06em; color:#4a6490; font-weight:700; margin-bottom:4px; }
-    .br-summary-item .br-sum-value { font-size:14px; font-weight:800; color:#e8edf8; }
-    .br-summary-item .br-sum-sub  { font-size:9px; color:#6a85aa; margin-top:1px; }
-
-    /* Submit button */
-    .br-submit-btn {
-      width:100%; padding:14px; border-radius:14px; font-size:14px; font-weight:700;
-      background:linear-gradient(135deg,#06b6d4,#0891b2); color:#fff; border:none; cursor:pointer;
-      transition:all 0.22s; letter-spacing:0.02em;
-      box-shadow:0 4px 20px rgba(6,182,212,0.2);
-    }
-    .br-submit-btn:hover:not(:disabled) {
-      box-shadow:0 6px 30px rgba(6,182,212,0.35); transform:translateY(-1px);
-    }
-    .br-submit-btn:disabled {
-      background:rgba(75,85,99,0.4); color:#6b7280; cursor:not-allowed; box-shadow:none;
-    }
-
-    /* Info row */
-    .br-info-row { display:flex; justify-content:space-between; align-items:center; padding:5px 0; }
-    .br-info-row .br-info-label { font-size:11px; color:#4a6490; }
-    .br-info-row .br-info-value { font-size:11px; color:#8aaac8; font-weight:600; }
-
     /* Status bar */
-    #bridge-status-bar { border-radius:14px; padding:14px 18px; font-size:13px; display:flex; align-items:center; gap:10px; }
+    #bridge-status-bar { border-radius:12px; padding:12px 16px; font-size:13px; display:flex; align-items:center; gap:10px; font-weight:600; }
     .br-status-idle   { background:rgba(55,65,81,0.3); border:1px solid rgba(75,85,99,0.3); color:#9ca3af; }
-    .br-status-burn   { background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.3); color:#22d3ee; }
-    .br-status-attest { background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.3); color:#facc15; }
-    .br-status-mint   { background:rgba(34,197,94,0.06); border:1px solid rgba(34,197,94,0.25); color:#4ade80; }
-    .br-status-done   { background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.35); color:#22c55e; }
-    .br-status-error  { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); color:#f87171; }
-
+    .br-status-burn   { background:rgba(6,182,212,0.1); border:1px solid rgba(6,182,212,0.3); color:#22d3ee; }
+    .br-status-attest { background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); color:#facc15; }
+    .br-status-mint   { background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.25); color:#4ade80; }
+    .br-status-done   { background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.35); color:#22c55e; }
+    .br-status-error  { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#f87171; }
     /* Steps */
-    .br-step { display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .br-step { display:flex; flex-direction:column; align-items:center; gap:5px; }
     .br-step .br-step-circle {
-      width:32px; height:32px; border-radius:50%; border:2px solid rgba(75,85,99,0.4);
+      width:34px; height:34px; border-radius:50%; border:2px solid rgba(75,85,99,0.35);
       display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
-      color:#6b7280; background:rgba(20,24,38,0.6); transition:all 0.3s;
+      color:#6b7280; background:rgba(31,41,55,0.5); transition:all 0.3s;
     }
     .br-step .br-step-label { font-size:10px; color:#6b7280; font-weight:600; transition:color 0.3s; }
-    .br-step-active .br-step-circle {
-      border-color:#22d3ee; color:#22d3ee; background:rgba(6,182,212,0.15);
-      box-shadow:0 0 14px rgba(6,182,212,0.25);
-    }
+    .br-step-active .br-step-circle { border-color:#22d3ee; color:#22d3ee; background:rgba(6,182,212,0.15); box-shadow:0 0 16px rgba(6,182,212,0.3); }
     .br-step-active .br-step-label { color:#22d3ee; }
-    .br-step-done .br-step-circle {
-      border-color:#22c55e; background:rgba(34,197,94,0.15); color:#22c55e;
-      font-size:0; /* hide number, show check */
-    }
-    .br-step-done .br-step-circle::after { content:'✓'; font-size:12px; }
+    .br-step-done .br-step-circle { border-color:#22c55e; background:rgba(34,197,94,0.15); color:#22c55e; font-size:0; }
+    .br-step-done .br-step-circle::after { content:'✓'; font-size:13px; }
     .br-step-done .br-step-label { color:#22c55e; }
-    .br-step-error .br-step-circle {
-      border-color:#f87171; background:rgba(239,68,68,0.12); color:#f87171;
-    }
+    .br-step-error .br-step-circle { border-color:#f87171; background:rgba(239,68,68,0.12); color:#f87171; }
     .br-step-error .br-step-label { color:#f87171; }
-    .br-step-line {
-      flex:1; height:2px; background:rgba(75,85,99,0.3); margin:0 4px; margin-bottom:18px; transition:background 0.3s;
-      border-radius:1px;
-    }
+    .br-step-line { flex:1; height:2px; background:rgba(75,85,99,0.25); margin:0 6px 20px; transition:background 0.3s; border-radius:1px; }
     .br-step-line-active { background:linear-gradient(90deg,#22d3ee,#4ade80); }
     .br-step-line-done   { background:#22c55e; }
-
+    /* Attestation bar */
+    #bridge-attest-bar-wrap { background:rgba(75,85,99,0.2); border-radius:2px; overflow:hidden; height:4px; }
+    #bridge-attest-bar { height:100%; width:0%; border-radius:2px; background:linear-gradient(90deg,#22d3ee,#06b6d4); box-shadow:0 0 8px rgba(6,182,212,0.4); transition:width 0.5s ease; }
+    /* Turbo badge */
+    .turbo-avail-badge { display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:700; padding:4px 12px; border-radius:20px; }
+    .turbo-avail-badge.available { background:rgba(34,197,94,.08); color:#4ade80; border:1px solid rgba(34,197,94,.25); }
+    .turbo-avail-badge.unavailable { background:rgba(239,68,68,.08); color:#f87171; border:1px solid rgba(239,68,68,.25); }
+    /* Turbo steps */
+    .turbo-step { display:flex; align-items:flex-start; gap:10px; padding:9px 12px; border-radius:10px; background:rgba(31,41,55,0.4); border:1px solid rgba(75,85,99,0.2); font-size:9px; color:#6b7280; transition:all 0.3s; }
+    .turbo-step-dot { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:rgba(55,65,81,0.4); border:1.5px solid rgba(75,85,99,0.3); font-size:10px; font-weight:700; color:#6b7280; }
+    .turbo-step-label { flex:1; }
+    .turbo-step-label strong { display:block; color:#d1d5db; font-weight:600; }
+    .turbo-step-label small { color:#6b7280; font-size:8.5px; }
+    .turbo-step-active { background:rgba(245,158,11,0.06); border-color:rgba(245,158,11,0.2); color:#facc15; }
+    .turbo-step-active .turbo-step-dot { background:rgba(245,158,11,0.15); border-color:rgba(245,158,11,0.35); color:#facc15; box-shadow:0 0 10px rgba(245,158,11,0.18); }
+    .turbo-step-done { background:rgba(34,197,94,0.04); border-color:rgba(34,197,94,0.15); color:#4ade80; }
+    .turbo-step-done .turbo-step-dot { background:rgba(34,197,94,0.12); border-color:rgba(34,197,94,0.3); color:#4ade80; font-size:0; }
+    .turbo-step-done .turbo-step-dot::after { content:'✓'; font-size:11px; }
     /* History table */
     .br-history-table { width:100%; border-collapse:collapse; font-size:11px; }
-    .br-history-table th {
-      text-align:left; padding:10px 12px; font-size:9px; text-transform:uppercase;
-      letter-spacing:0.06em; color:#4a6490; font-weight:700; border-bottom:1px solid rgba(6,182,212,0.1);
-    }
-    .br-history-table td {
-      padding:10px 12px; border-bottom:1px solid rgba(6,182,212,0.06); color:#8aaac8;
-    }
-    .br-history-table tr:hover td { background:rgba(6,182,212,0.03); }
-
+    .br-history-table th { text-align:left; padding:10px 12px; font-size:9px; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; font-weight:700; border-bottom:1px solid rgba(75,85,99,0.2); }
+    .br-history-table td { padding:10px 12px; border-bottom:1px solid rgba(75,85,99,0.1); color:#9ca3af; }
+    .br-history-table tr:hover td { background:rgba(55,65,81,0.2); }
     /* Responsive */
-    @media(max-width:1023px){
-      .br-summary-row { grid-template-columns:1fr; gap:10px; }
+    @media(max-width:700px){
       .br-history-table { font-size:10px; }
       .br-history-table th, .br-history-table td { padding:8px 6px; }
+      .br-mode-btn { font-size:9px; padding:6px 3px; }
     }
   </style>
 
-  <!-- ══ MAIN LAYOUT ══ -->
   <div class="bridge-page">
-
-    <!-- LEFT: Main Bridge Card -->
     <div>
-      <div class="br-card">
+
+      <!-- ══ MAIN BRIDGE CARD — same style as swap panel ══ -->
+      <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 space-y-3 shadow-xl">
 
         <!-- Header -->
-        <div class="br-card-header">
-          <div style="width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,rgba(6,182,212,0.2),rgba(34,211,238,0.12));border:1px solid rgba(6,182,212,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 20px rgba(6,182,212,0.1);">
-            <i class="fas fa-bridge-water" style="color:#22d3ee;font-size:18px;"></i>
+        <div class="flex items-center justify-between pb-1">
+          <div class="flex items-center gap-3">
+            <span class="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-cyan-900/40">
+              <i class="fas fa-bridge-water"></i>
+            </span>
+            <div>
+              <h2 class="text-lg font-bold text-white">Bridge</h2>
+              <p class="text-gray-500 text-xs">Cross-chain USDC via CCTP V2</p>
+            </div>
           </div>
-          <div style="flex:1;">
-            <h2 style="color:#dde2f0;font-size:16px;font-weight:800;margin:0;letter-spacing:0.01em;">Bridge</h2>
-            <p style="color:#4a6490;font-size:10px;margin:2px 0 0;">Cross-chain USDC via CCTP V2</p>
-          </div>
-          <span style="font-size:10px;font-weight:700;background:rgba(6,182,212,0.12);color:#22d3ee;border:1px solid rgba(6,182,212,0.3);border-radius:999px;padding:3px 10px;letter-spacing:0.04em;flex-shrink:0;">CCTP</span>
+          <span class="text-xs font-bold bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 px-2.5 py-1 rounded-full">CCTP</span>
         </div>
 
-        <!-- Body -->
-        <div class="br-card-body">
+        <!-- Treasury badge -->
+        <span id="turbo-avail-badge" class="turbo-avail-badge unavailable">
+          <i class="fas fa-bolt"></i> Check Treasury Liquidity
+        </span>
 
-          <!-- FROM chain -->
-          <div>
-            <label style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#4a6490;display:block;margin-bottom:6px;">From</label>
-            <div id="bridge-from-wrap" style="position:relative;">
-              <button id="bridge-from-chain" onclick="bridgeToggleDropdown('from')" class="br-chain-btn"></button>
-              <div id="bridge-from-dropdown" class="hidden" style="position:absolute;z-index:50;top:100%;left:0;right:0;margin-top:4px;background:rgba(10,15,28,0.98);border:1px solid rgba(6,182,212,0.25);border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);"></div>
-            </div>
+        <!-- FROM -->
+        <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3 space-y-2">
+          <div class="text-xs text-gray-500 font-semibold">FROM</div>
+          <div id="bridge-from-wrap" style="position:relative;">
+            <button id="bridge-from-chain" onclick="bridgeToggleDropdown('from')" class="br-chain-btn"></button>
+            <div id="bridge-from-dropdown" class="hidden br-chain-drop"></div>
           </div>
+        </div>
 
-          <!-- Flip direction -->
-          <div style="display:flex;justify-content:center;">
-            <button onclick="bridgeFlipChains()" class="br-flip-btn">
-              <i class="fas fa-arrow-down-arrow-up"></i>
-            </button>
-          </div>
-
-          <!-- TO chain -->
-          <div>
-            <label style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#4a6490;display:block;margin-bottom:6px;">To</label>
-            <div id="bridge-to-wrap" style="position:relative;">
-              <button id="bridge-to-chain" onclick="bridgeToggleDropdown('to')" class="br-chain-btn"></button>
-              <div id="bridge-to-dropdown" class="hidden" style="position:absolute;z-index:50;top:100%;left:0;right:0;margin-top:4px;background:rgba(10,15,28,0.98);border:1px solid rgba(6,182,212,0.25);border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);"></div>
-            </div>
-          </div>
-
-          <!-- Amount input -->
-          <div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <label style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#4a6490;">Amount (USDC)</label>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span id="bridge-balance" style="font-size:10px;color:#4a6490;">Balance: —</span>
-                <button onclick="bridgeSetMax()" style="font-size:10px;font-weight:700;color:#22d3ee;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);border-radius:8px;padding:2px 8px;cursor:pointer;transition:all 0.15s;"
-                  onmouseover="this.style.background='rgba(6,182,212,0.16)';this.style.borderColor='rgba(6,182,212,0.4)'"
-                  onmouseout="this.style.background='rgba(6,182,212,0.08)';this.style.borderColor='rgba(6,182,212,0.2)'">MAX</button>
-              </div>
-            </div>
-            <div class="br-amount-wrap">
-              <div class="usdc-icon">$</div>
-              <input id="bridge-amount-input" type="number" min="0" step="any" placeholder="0.00" />
-            </div>
-          </div>
-
-          <!-- Transaction Summary -->
-          <div class="br-summary-row">
-            <div class="br-summary-item">
-              <div class="br-sum-label">You will receive</div>
-              <div class="br-sum-value" id="bridge-sum-receive">—</div>
-              <div class="br-sum-sub">USDC</div>
-            </div>
-            <div class="br-summary-item">
-              <div class="br-sum-label">Est. Time</div>
-              <div class="br-sum-value" id="bridge-sum-time">—</div>
-              <div class="br-sum-sub" id="bridge-sum-time-sub"></div>
-            </div>
-            <div class="br-summary-item">
-              <div class="br-sum-label">Est. Fee</div>
-              <div class="br-sum-value" id="bridge-sum-fee">—</div>
-              <div class="br-sum-sub">USDC</div>
-            </div>
-          </div>
-
-          <!-- Recipient -->
-          <div style="text-align:center;">
-            <span style="font-size:10px;color:#3a4870;">Recipient: </span>
-            <span id="bridge-recipient-addr" style="font-family:monospace;font-size:10px;color:#6a85aa;">—</span>
-          </div>
-
-          <!-- ETA display -->
-          <div id="bridge-eta" style="font-size:10px;color:#4a6490;text-align:center;"></div>
-
-          <!-- Submit -->
-          <button id="bridge-submit-btn" onclick="bridgeExecute()" disabled class="br-submit-btn">
-            <i class="fas fa-right-left" style="margin-right:6px;"></i>Bridge USDC
+        <!-- Flip -->
+        <div class="flex justify-center -my-1 relative z-10">
+          <button onclick="bridgeFlipChains()" class="br-flip-btn">
+            <i class="fas fa-arrow-down text-sm"></i>
           </button>
+        </div>
 
-        </div><!-- end br-card-body -->
-      </div><!-- end br-card -->
-    </div><!-- end left col -->
+        <!-- TO -->
+        <div class="bg-gray-800/40 border border-gray-700/30 rounded-xl px-4 py-3 space-y-2">
+          <div class="text-xs text-gray-500 font-semibold flex items-center justify-between">
+            <span>TO</span>
+            <span id="bridge-balance-to" class="text-gray-500">Balance: —</span>
+          </div>
+          <div id="bridge-to-wrap" style="position:relative;">
+            <button id="bridge-to-chain" onclick="bridgeToggleDropdown('to')" class="br-chain-btn"></button>
+            <div id="bridge-to-dropdown" class="hidden br-chain-drop"></div>
+          </div>
+        </div>
+
+        <!-- Amount -->
+        <div class="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3.5 space-y-2">
+          <div class="flex items-center justify-between text-xs text-gray-500">
+            <span class="font-semibold">AMOUNT (USDC)</span>
+            <div class="flex items-center gap-2">
+              <span id="bridge-balance">Balance: —</span>
+              <button onclick="bridgeSetMax()"
+                class="px-2 py-0.5 bg-cyan-900/50 hover:bg-cyan-700/60 border border-cyan-700/50 text-cyan-400 rounded-md font-bold transition-all">
+                MAX
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 border border-gray-600/30">
+              <span class="text-cyan-400 font-bold text-sm">USDC</span>
+            </div>
+            <input id="bridge-amount-input" type="number" min="0" step="any" placeholder="0.00"
+              class="flex-1 bg-transparent text-white text-2xl font-bold text-right outline-none placeholder-gray-700 w-0" />
+          </div>
+        </div>
+
+        <!-- Speed -->
+        <div class="bg-gray-800/30 rounded-xl px-3 py-2.5 flex items-center gap-2">
+          <span class="text-xs text-gray-500 flex-shrink-0">Speed:</span>
+          <div class="flex gap-1 flex-1">
+            <button id="bridge-mode-fast" onclick="bridgeSetMode('fast')" class="br-mode-btn active">Fast</button>
+            <button id="bridge-mode-standard" onclick="bridgeSetMode('standard')" class="br-mode-btn">Standard</button>
+            <button id="bridge-mode-slow" onclick="bridgeSetMode('slow')" class="br-mode-btn">Slow</button>
+            <button id="bridge-mode-turbo" onclick="bridgeSetMode('turbo')" class="br-mode-btn br-mode-turbo">Turbo</button>
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <button id="bridge-submit-btn" onclick="executeBridgeOrTurbo()" disabled
+          class="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-base transition-all shadow-lg shadow-cyan-900/40 mt-1 relative overflow-hidden group">
+          <span class="relative z-10 flex items-center justify-center gap-2">
+            <i class="fas fa-right-left"></i>
+            Bridge USDC
+          </span>
+          <div class="absolute inset-0 bg-gradient-to-r from-cyan-400/20 to-blue-400/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+        </button>
+
+      </div><!-- end main card -->
+    </div>
 
     <!-- RIGHT: Info Cards -->
-    <div style="display:flex;flex-direction:column;gap:16px;">
+    <div class="flex flex-col gap-4">
 
-      <!-- About this bridge -->
-      <div class="br-info-card">
-        <h4><i class="fas fa-circle-info"></i>About this bridge</h4>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
-            <i class="fas fa-shield-check" style="color:#22d3ee;font-size:12px;"></i>Powered by Circle CCTP V2
+      <!-- Bridge Information -->
+      <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center gap-2.5 pb-3 border-b border-gray-700/40 mb-3">
+          <i class="fas fa-circle-info text-cyan-400 text-sm"></i>
+          <span class="text-sm font-semibold text-white">Bridge Information</span>
+        </div>
+        <div class="space-y-2.5 text-xs">
+          <div class="flex items-center gap-2.5 text-gray-400">
+            <i class="fas fa-shield-check text-cyan-400 w-4 text-center"></i>
+            Powered by Circle CCTP V2
           </div>
-          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
-            <i class="fas fa-bolt" style="color:#22d3ee;font-size:12px;"></i>Fast, secure and reliable
+          <div class="flex items-center gap-2.5 text-gray-400">
+            <i class="fas fa-bolt text-cyan-400 w-4 text-center"></i>
+            Fast, secure and reliable
           </div>
-          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
-            <i class="fas fa-coins" style="color:#22d3ee;font-size:12px;"></i>No wrapped tokens
+          <div class="flex items-center gap-2.5 text-gray-400">
+            <i class="fas fa-coins text-cyan-400 w-4 text-center"></i>
+            No wrapped tokens
           </div>
-          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aaac8;">
-            <i class="fas fa-flask" style="color:#facc15;font-size:12px;"></i>Testnet environment
+          <div class="flex items-center gap-2.5 text-yellow-400">
+            <i class="fas fa-flask w-4 text-center"></i>
+            Testnet environment
           </div>
         </div>
       </div>
 
       <!-- Bridge Summary -->
-      <div class="br-info-card">
-        <h4><i class="fas fa-file-lines"></i>Bridge Summary</h4>
-        <div style="display:flex;flex-direction:column;gap:2px;">
-          <div class="br-info-row">
-            <span class="br-info-label">From</span>
-            <span class="br-info-value" id="bridge-info-from">—</span>
+      <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center gap-2.5 pb-3 border-b border-gray-700/40 mb-3">
+          <i class="fas fa-file-lines text-cyan-400 text-sm"></i>
+          <span class="text-sm font-semibold text-white">Bridge Summary</span>
+        </div>
+
+        <!-- Timeline -->
+        <div class="flex flex-col items-center gap-0 mb-3">
+          <div class="flex items-center gap-2.5 w-full py-1">
+            <div class="w-2.5 h-2.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)] flex-shrink-0"></div>
+            <div>
+              <div class="text-[10px] text-gray-600 uppercase font-bold tracking-wider">FROM</div>
+              <div class="text-sm text-white font-semibold" id="bridge-info-from">—</div>
+            </div>
           </div>
-          <div class="br-info-row">
-            <span class="br-info-label">To</span>
-            <span class="br-info-value" id="bridge-info-to">—</span>
+          <div class="w-0.5 h-6 bg-gray-700/50"></div>
+          <div class="flex items-center gap-2.5 w-full py-1">
+            <div class="w-2.5 h-2.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)] flex-shrink-0"></div>
+            <div>
+              <div class="text-[10px] text-gray-600 uppercase font-bold tracking-wider">TO</div>
+              <div class="text-sm text-white font-semibold" id="bridge-info-to">—</div>
+            </div>
           </div>
-          <div class="br-info-row">
-            <span class="br-info-label">Asset</span>
-            <span class="br-info-value" style="color:#22d3ee;">USDC</span>
+        </div>
+
+        <!-- Trade details -->
+        <div class="bg-gray-800/50 rounded-xl p-3 space-y-2 mb-3">
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">You Receive</span>
+            <span id="bridge-sum-receive" class="text-green-400 font-mono font-bold">—</span>
           </div>
-          <div class="br-info-row">
-            <span class="br-info-label">Est. Time</span>
-            <span class="br-info-value" id="bridge-info-time">—</span>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">Est. Time</span>
+            <span class="flex items-center gap-1">
+              <span id="bridge-sum-time" class="text-gray-300 font-mono font-bold">—</span>
+              <span id="bridge-sum-time-sub" class="text-gray-500 text-[10px]"></span>
+            </span>
           </div>
-          <div class="br-info-row">
-            <span class="br-info-label">Est. Fee</span>
-            <span class="br-info-value" id="bridge-info-fee">—</span>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">Est. Fee</span>
+            <span class="flex items-center gap-1">
+              <span id="bridge-sum-fee" class="text-gray-300 font-mono font-bold">—</span>
+              <span id="bridge-sum-fee-sub" class="text-gray-500 text-[10px]">USDC</span>
+            </span>
           </div>
-          <div style="margin-top:6px;text-align:center;">
-            <span style="font-size:9px;font-weight:700;background:rgba(234,179,8,0.1);color:#facc15;border:1px solid rgba(234,179,8,0.2);border-radius:999px;padding:2px 10px;">Testnet</span>
+        </div>
+
+        <div class="border-t border-gray-700/40 pt-3 space-y-1.5">
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">Asset</span>
+            <span class="text-cyan-400 font-semibold">USDC</span>
           </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">Info Time</span>
+            <span class="text-gray-300 font-semibold" id="bridge-info-time">—</span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">Info Fee</span>
+            <span class="text-gray-300 font-semibold" id="bridge-info-fee">—</span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">Recipient</span>
+            <span id="bridge-recipient-addr" class="font-mono text-gray-400 truncate max-w-[160px]">—</span>
+          </div>
+          <div id="bridge-eta" class="text-xs text-gray-500 text-right"></div>
+        </div>
+
+        <div class="mt-3 text-center">
+          <span class="text-[10px] font-bold bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 rounded-full px-2.5 py-0.5">Testnet</span>
         </div>
       </div>
 
-    </div><!-- end right col -->
-
-  </div><!-- end bridge-page -->
-
-  <!-- Transaction progress (full width below cards) -->
-  <div class="bridge-history-section" style="margin-top:8px;">
-
-    <!-- Status bar -->
-    <div id="bridge-status-bar" class="hidden"></div>
-
-    <!-- Attestation bar -->
-    <div id="bridge-attest-bar" class="hidden" style="font-size:11px;color:#facc15;text-align:center;padding:10px 0;"></div>
-
-    <!-- Steps: Burn → Attest → Mint → Done -->
-    <div id="bridge-steps-wrap" class="hidden" style="margin-bottom:20px;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:0 8px;">
-        <div id="bridge-step-burn" class="br-step br-step-pending">
-          <div class="br-step-circle">1</div>
-          <span class="br-step-label">Burn</span>
-        </div>
-        <div class="br-step-line" id="bridge-step-line1"></div>
-        <div id="bridge-step-attest" class="br-step br-step-pending">
-          <div class="br-step-circle">2</div>
-          <span class="br-step-label">Attest</span>
-        </div>
-        <div class="br-step-line" id="bridge-step-line2"></div>
-        <div id="bridge-step-mint" class="br-step br-step-pending">
-          <div class="br-step-circle">3</div>
-          <span class="br-step-label">Mint</span>
-        </div>
-        <div class="br-step-line" id="bridge-step-line3"></div>
-        <div id="bridge-step-done" class="br-step br-step-pending">
-          <div class="br-step-circle">4</div>
-          <span class="br-step-label">Done</span>
-        </div>
-      </div>
     </div>
+  </div>
 
-    <!-- Bridge History -->
-    <div class="br-card" style="border-radius:18px;">
-      <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(6,182,212,0.08);">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="width:32px;height:32px;border-radius:10px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);display:flex;align-items:center;justify-content:center;">
-            <i class="fas fa-clock-rotate-left" style="color:#22d3ee;font-size:13px;"></i>
+  <!-- Transaction progress (full width) -->
+  <div style="padding:0 28px 24px;">
+    <div class="bridge-history-section" style="margin-top:8px;">
+
+      <div id="bridge-status-bar" class="hidden"></div>
+
+      <div id="bridge-attest-bar-wrap" class="hidden" style="margin-top:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:10px;color:#facc15;font-weight:600;">Attestation progress</span>
+          <span id="bridge-attest-pct" style="font-size:10px;color:#facc15;font-weight:700;">0%</span>
+        </div>
+        <div id="bridge-attest-bar"></div>
+      </div>
+
+      <div id="turbo-steps-wrap" class="hidden" style="margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:#facc15;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+          <i class="fas fa-bolt"></i> Turbo Bridge Progress
+        </div>
+        <div class="turbo-step-list" style="display:flex;flex-direction:column;gap:8px;">
+          <div class="turbo-step" id="turbo-step-0">
+            <div class="turbo-step-dot">1</div>
+            <div class="turbo-step-label"><strong>Check Vault Liquidity</strong><small>Verify available reserves</small></div>
           </div>
-          <div>
-            <h3 style="color:#dde2f0;font-size:13px;font-weight:800;margin:0;">Bridge History</h3>
+          <div class="turbo-step" id="turbo-step-1">
+            <div class="turbo-step-dot">2</div>
+            <div class="turbo-step-label"><strong>Lock Liquidity</strong><small>Reserve funds in Vault</small></div>
+          </div>
+          <div class="turbo-step" id="turbo-step-2">
+            <div class="turbo-step-dot">3</div>
+            <div class="turbo-step-label"><strong>Instant Fulfillment</strong><small>Send to destination immediately</small></div>
+          </div>
+          <div class="turbo-step" id="turbo-step-3">
+            <div class="turbo-step-dot">4</div>
+            <div class="turbo-step-label"><strong>CCTP Settlement</strong><small>Reimburse via CCTP attestation</small></div>
+          </div>
+          <div class="turbo-step" id="turbo-step-4">
+            <div class="turbo-step-dot">✓</div>
+            <div class="turbo-step-label"><strong>Complete</strong><small>Vault reimbursed via attestation</small></div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;">
+      </div>
+
+      <div id="bridge-steps-wrap" class="hidden" style="margin-bottom:24px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:0 10px;">
+          <div id="bridge-step-burn" class="br-step br-step-pending">
+            <div class="br-step-circle">1</div>
+            <span class="br-step-label">Burn</span>
+          </div>
+          <div class="br-step-line" id="bridge-step-line1"></div>
+          <div id="bridge-step-attest" class="br-step br-step-pending">
+            <div class="br-step-circle">2</div>
+            <span class="br-step-label">Attest</span>
+          </div>
+          <div class="br-step-line" id="bridge-step-line2"></div>
+          <div id="bridge-step-mint" class="br-step br-step-pending">
+            <div class="br-step-circle">3</div>
+            <span class="br-step-label">Mint</span>
+          </div>
+          <div class="br-step-line" id="bridge-step-line3"></div>
+          <div id="bridge-step-done" class="br-step br-step-pending">
+            <div class="br-step-circle">4</div>
+            <span class="br-step-label">Done</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bridge History -->
+      <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+        <div class="px-5 py-4 flex items-center justify-between border-b border-gray-700/40">
+          <div class="flex items-center gap-3">
+            <span class="w-8 h-8 rounded-lg bg-gray-800 border border-gray-600/40 flex items-center justify-center">
+              <i class="fas fa-clock-rotate-left text-cyan-400 text-sm"></i>
+            </span>
+            <h3 class="text-white font-bold text-sm">Bridge History</h3>
+          </div>
           <button onclick="if(window.bridgeRenderHistory)bridgeRenderHistory()"
-            style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#22d3ee;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.25);padding:5px 11px;border-radius:8px;cursor:pointer;transition:all 0.2s;"
-            onmouseover="this.style.background='rgba(6,182,212,0.16)';this.style.borderColor='rgba(6,182,212,0.45)'"
-            onmouseout="this.style.background='rgba(6,182,212,0.08)';this.style.borderColor='rgba(6,182,212,0.25)'">
-            <i class="fas fa-arrows-rotate" style="font-size:9px;"></i>Refresh
+            class="text-xs text-cyan-400 hover:text-cyan-300 bg-gray-800/60 border border-gray-600/40 rounded-lg px-3 py-1.5 transition flex items-center gap-1.5">
+            <i class="fas fa-arrows-rotate text-[10px]"></i>Refresh
           </button>
         </div>
+        <div id="bridge-history-list" class="overflow-x-auto"></div>
       </div>
-      <div id="bridge-history-list" style="overflow-x:auto;"></div>
-    </div>
 
-  </div><!-- end bridge-history-section -->
+    </div>
+  </div>
 
 </div>
-<!-- end tab-content-bridge -->
 <!-- end tab-content-bridge -->
 
     <!-- ════════════════════════════════════════════════════════════════ -->
@@ -5199,11 +5880,13 @@ app.get('/', (c) => {
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250325b"></script>
   <script src="/static/bridge.js?v=20260626b"></script>
+  <script src="/static/turbo-bridge-core.js?v=20260629"></script>
   <script src="/static/multisend.js?v=20260327b"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>
   <script src="/static/dashboard.js?v=20250322"></script>
+  <script src="/static/unifiedbalance.js?v=20260630"></script>
   <script src="/static/hide-history.js?v=20250326a"></script>
   <script src="/static/user-profile.js?v=20250326d"></script>
   <script src="/static/smart-autofill.js?v=20260327a"></script>
