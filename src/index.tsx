@@ -994,9 +994,71 @@ app.get('/', (c) => {
             </div>
             <h3 class="text-white font-semibold mb-1.5 text-sm">AI Agents</h3>
             <p class="text-gray-500 text-xs leading-relaxed">AI-driven agents analyze transactions, assess risk, and assist with contract operations. Ask the chatbot anything about the platform.</p>
-          </div>
-
         </div>
+
+        <!-- ═══ ECOSYSTEM: Global Search ═══ -->
+        <div class="mb-4">
+          <div class="relative">
+            <input id="ub-global-search" type="text" placeholder="Search ExecDaat... (send, pay, bridge, swap, deposit, agents)"
+              onkeydown="if(event.key==='Enter')ubSearchGlobal()"
+              class="w-full bg-gray-900/80 border border-gray-700/50 rounded-xl px-4 py-2.5 text-white text-sm focus:border-violet-500/50 focus:outline-none placeholder-gray-600" />
+            <button onclick="ubSearchGlobal()" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-violet-400">
+              <i class="fas fa-search"></i>
+            </button>
+          </div>
+          <div id="ub-search-results" class="hidden mt-1 bg-gray-900/98 border border-gray-700/50 rounded-xl overflow-hidden shadow-2xl" style="position:relative;z-index:60;"></div>
+          <script>(function(){var inp=document.getElementById('ub-global-search');if(inp)inp.addEventListener('input',function(){var r=document.getElementById('ub-search-results');if(this.value.trim()){r.style.display='block';ubSearchGlobal();}else{r.style.display='none';}});})();</script>
+        </div>
+
+        <!-- ═══ ECOSYSTEM: Notifications + SDK ═══ -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center justify-between border-b border-gray-700/40">
+              <div class="flex items-center gap-2"><i class="fas fa-bell text-amber-400 text-xs"></i><h3 class="text-white font-bold text-xs">Notifications</h3></div>
+              <span class="text-[9px] text-gray-600">Real-time</span>
+            </div>
+            <div id="ub-notif-list" class="max-h-48 overflow-y-auto"><div class="text-center py-4 text-gray-600 text-xs">Loading...</div></div>
+          </div>
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center gap-2 border-b border-gray-700/40">
+              <i class="fas fa-code text-green-400 text-xs"></i>
+              <h3 class="text-white font-bold text-xs">Developer Platform</h3>
+            </div>
+            <div class="p-4" id="ub-sdk-content"><div class="text-center py-4 text-gray-600 text-xs">Loading...</div></div>
+          </div>
+        </div>
+
+        <!-- ═══ ECOSYSTEM: ID + Marketplace ═══ -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center gap-2 border-b border-gray-700/40">
+              <i class="fas fa-id-card text-purple-400 text-xs"></i>
+              <h3 class="text-white font-bold text-xs">ExecDaat ID</h3>
+            </div>
+            <div class="p-4 text-xs space-y-2">
+              <div class="flex justify-between"><span class="text-gray-500">Wallet</span><span class="text-white font-mono" id="ub-ecosystem-addr">—</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Network</span><span class="text-green-400" id="ub-ecosystem-net">Arc Testnet</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Score</span><span class="text-violet-400 font-bold" id="ub-ecosystem-score">—</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Activity</span><span class="text-blue-400" id="ub-ecosystem-level">—</span></div>
+              <div class="pt-2 border-t border-gray-700/40 text-[10px] text-gray-600">Universal identity across ExecDaat ecosystem.</div>
+            </div>
+          </div>
+          <div class="bg-gray-900/80 border border-gray-700/50 rounded-2xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 flex items-center justify-between border-b border-gray-700/40">
+              <div class="flex items-center gap-2"><i class="fas fa-store text-amber-400 text-xs"></i><h3 class="text-white font-bold text-xs">Agent Marketplace</h3></div>
+            </div>
+            <div class="p-3 grid grid-cols-3 gap-2 text-[10px]">
+              <div class="bg-gray-800/40 rounded-lg p-2.5 hover:bg-gray-800/60 cursor-pointer text-center" onclick="ubRunAgentSuggestion('payment')"><i class="fas fa-dollar-sign text-blue-400 block mb-1"></i><span class="text-white font-semibold">Payment</span></div>
+              <div class="bg-gray-800/40 rounded-lg p-2.5 hover:bg-gray-800/60 cursor-pointer text-center" onclick="ubRunAgentSuggestion('liquidity')"><i class="fas fa-water text-cyan-400 block mb-1"></i><span class="text-white font-semibold">Liquidity</span></div>
+              <div class="bg-gray-800/40 rounded-lg p-2.5 hover:bg-gray-800/60 cursor-pointer text-center" onclick="ubRunAgentSuggestion('bridge')"><i class="fas fa-right-left text-cyan-400 block mb-1"></i><span class="text-white font-semibold">Bridge</span></div>
+              <div class="bg-gray-800/40 rounded-lg p-2.5 hover:bg-gray-800/60 cursor-pointer text-center" onclick="ubRunAgentSuggestion('treasury')"><i class="fas fa-vault text-purple-400 block mb-1"></i><span class="text-white font-semibold">Treasury</span></div>
+              <div class="bg-gray-800/40 rounded-lg p-2.5 hover:bg-gray-800/60 cursor-pointer text-center" onclick="ubRunAgentSuggestion('swap')"><i class="fas fa-exchange-alt text-yellow-400 block mb-1"></i><span class="text-white font-semibold">Dex</span></div>
+              <div class="bg-gray-800/40 rounded-lg p-2.5 hover:bg-gray-800/60 cursor-pointer text-center" onclick="ubRunAgentSuggestion('analyst')"><i class="fas fa-chart-line text-orange-400 block mb-1"></i><span class="text-white font-semibold">Analyst</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
       </div>
     </section>
 
@@ -3506,11 +3568,11 @@ app.get('/', (c) => {
               <i class="fas fa-robot text-purple-400 text-2xl"></i>
             </div>
             <h3 class="text-white font-semibold text-lg mb-2">How can I help?</h3>
-            <p class="text-gray-500 text-sm mb-6 max-w-md">Ask me to send payments, swap tokens, check balances, or manage your autonomous operations.</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
+            <p class="text-gray-500 text-sm mb-6 max-w-md">Ask me to send payments, swap tokens, bridge across chains, check balances, or manage your autonomous operations.</p>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full max-w-lg">
               <button onclick="autonomaSendChat('check my balance')" class="text-left bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 hover:border-purple-500/40 transition-all">
                 <div class="text-purple-400 text-sm mb-0.5"><i class="fas fa-coins mr-1.5"></i>Check Balance</div>
-                <div class="text-[11px] text-gray-500">View your USDC and EURC</div>
+                <div class="text-[11px] text-gray-500">View all your assets</div>
               </button>
               <button onclick="autonomaSendChat('send 10 USDC to 0x1234567890123456789012345678901234567890')" class="text-left bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 hover:border-purple-500/40 transition-all">
                 <div class="text-purple-400 text-sm mb-0.5"><i class="fas fa-paper-plane mr-1.5"></i>Send Payment</div>
@@ -3520,9 +3582,17 @@ app.get('/', (c) => {
                 <div class="text-purple-400 text-sm mb-0.5"><i class="fas fa-exchange-alt mr-1.5"></i>Swap Tokens</div>
                 <div class="text-[11px] text-gray-500">Exchange USDC ↔ EURC</div>
               </button>
+              <button onclick="autonomaSendChat('bridge 10 USDC from Arc to Sepolia')" class="text-left bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 hover:border-cyan-500/40 transition-all">
+                <div class="text-cyan-400 text-sm mb-0.5"><i class="fas fa-truck-fast mr-1.5"></i>Bridge Cross-chain</div>
+                <div class="text-[11px] text-gray-500">Move USDC via CCTP v2</div>
+              </button>
               <button onclick="autonomaSendChat('show my transactions')" class="text-left bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 hover:border-purple-500/40 transition-all">
                 <div class="text-purple-400 text-sm mb-0.5"><i class="fas fa-history mr-1.5"></i>Transaction History</div>
                 <div class="text-[11px] text-gray-500">View recent activity</div>
+              </button>
+              <button onclick="autonomaSendChat('send 5 USDC to multiple addresses')" class="text-left bg-gray-800/50 border border-gray-700/40 rounded-xl p-3 hover:border-violet-500/40 transition-all">
+                <div class="text-violet-400 text-sm mb-0.5"><i class="fas fa-layer-group mr-1.5"></i>Multisend</div>
+                <div class="text-[11px] text-gray-500">Batch payments to many wallets</div>
               </button>
             </div>
           </div>
@@ -3752,7 +3822,7 @@ app.get('/', (c) => {
         </div>
 
         <!-- ── QUICK ACTIONS ── -->
-        <div class="grid grid-cols-5 gap-3 mb-6">
+        <div class="grid grid-cols-6 gap-3 mb-6">
           <button onclick="ubActionDeposit()" class="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-gray-900/80 border border-gray-700/50 hover:border-green-500/40 hover:bg-gray-800/80 transition-all group">
             <div class="w-10 h-10 rounded-xl bg-green-500/20 border border-green-500/30 flex items-center justify-center group-hover:bg-green-500/30 transition-colors">
               <i class="fas fa-arrow-down text-green-400"></i>
@@ -3782,6 +3852,12 @@ app.get('/', (c) => {
               <i class="fas fa-paper-plane text-purple-400"></i>
             </div>
             <span class="text-[11px] text-gray-300 font-semibold">Pay</span>
+          </button>
+          <button onclick="ubActionCCTPMove('arc','USDC')" class="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-gray-900/80 border border-gray-700/50 hover:border-violet-500/40 hover:bg-gray-800/80 transition-all group">
+            <div class="w-10 h-10 rounded-xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center group-hover:bg-violet-500/30 transition-colors">
+              <i class="fas fa-truck-fast text-violet-400"></i>
+            </div>
+            <span class="text-[11px] text-gray-300 font-semibold">Move</span>
           </button>
         </div>
 
@@ -3973,6 +4049,57 @@ app.get('/', (c) => {
           </div>
         </div>
 
+      </div>
+
+      <!-- ══ CCTP MOVE BALANCE MODAL ══ -->
+      <div id="ub-cctp-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center" style="background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);" onclick="if(event.target===this)ubCloseCCTPMove()">
+        <div class="bg-gray-900/95 border border-gray-700/50 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-white font-bold text-lg flex items-center gap-2"><i class="fas fa-truck-fast text-violet-400"></i>Move Balance (CCTP)</h3>
+            <button onclick="ubCloseCCTPMove()" class="text-gray-600 hover:text-gray-400"><i class="fas fa-times text-lg"></i></button>
+          </div>
+          <p class="text-gray-400 text-xs mb-4">Cross-chain transfer via Circle CCTP v2. Approve → Burn → Attest → Mint.</p>
+          <input type="hidden" id="ub-cctp-from-net" value="arc">
+          <input type="hidden" id="ub-cctp-from-sym" value="USDC">
+          <div class="space-y-4">
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">From Network</label>
+              <select id="ub-cctp-from-net-select" onchange="document.getElementById('ub-cctp-from-net').value=this.value" class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-sm focus:border-violet-500/50 focus:outline-none">
+                <option value="arc">🟣 Arc Testnet</option>
+                <option value="sepolia">🔷 Ethereum Sepolia</option>
+                <option value="basesepolia">🔵 Base Sepolia</option>
+                <option value="arbsepolia">🔵 Arbitrum Sepolia</option>
+                <option value="optsepolia">🔴 OP Sepolia</option>
+                <option value="polygonamoy">🟣 Polygon Amoy</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">To Network</label>
+              <select id="ub-cctp-to-net" class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-sm focus:border-violet-500/50 focus:outline-none">
+                <option value="arc">🟣 Arc Testnet</option>
+                <option value="sepolia">🔷 Ethereum Sepolia</option>
+                <option value="basesepolia">🔵 Base Sepolia</option>
+                <option value="arbsepolia">🔵 Arbitrum Sepolia</option>
+                <option value="optsepolia">🔴 OP Sepolia</option>
+                <option value="polygonamoy">🟣 Polygon Amoy</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wider text-gray-500 font-bold block mb-1.5">Amount</label>
+              <input id="ub-cctp-amount" type="number" min="0" step="any" placeholder="0.00" class="w-full bg-gray-800/80 border border-gray-600/40 rounded-xl px-4 py-2.5 text-white text-lg font-bold focus:border-violet-500/50 focus:outline-none placeholder-gray-700" />
+            </div>
+            <div id="ub-cctp-progress" class="hidden bg-gray-800/40 border border-gray-600/30 rounded-lg p-3">
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-gray-400">Status:</span>
+                <span id="ub-cctp-step" class="text-violet-400 font-bold">—</span>
+              </div>
+              <div id="ub-cctp-status-line" class="text-gray-300 text-xs"></div>
+            </div>
+            <button onclick="ubExecuteCCTPMove()" class="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500 text-white font-bold transition-all shadow-lg">
+              <i class="fas fa-truck-fast mr-2"></i>Move via CCTP v2
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- ══ DEPOSIT MODAL ══ -->

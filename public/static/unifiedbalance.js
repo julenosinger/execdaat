@@ -7,7 +7,7 @@
 
 const UB_NETWORKS={arc:{name:'Arc Testnet',icon:'🟣',chainId:5042002,rpc:'https://rpc.testnet.arc.network',explorer:'https://testnet.arcscan.app',usdc:'0x3600000000000000000000000000000000000000',eurc:'0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',usyc:'0xe9185F0c5F296Ed1797AaE4238D26CCaBEadb86C',gasToken:'USDC',avgGas:0.001},sepolia:{name:'Ethereum Sepolia',icon:'🔷',chainId:11155111,rpc:'https://rpc.sepolia.org',explorer:'https://sepolia.etherscan.io',usdc:'0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',gasToken:'ETH',avgGas:0.0001},arbsepolia:{name:'Arbitrum Sepolia',icon:'🔵',chainId:421614,rpc:'https://sepolia-rollup.arbitrum.io/rpc',explorer:'https://sepolia.arbiscan.io',usdc:'0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',gasToken:'ETH',avgGas:0.00005},basesepolia:{name:'Base Sepolia',icon:'🔵',chainId:84532,rpc:'https://sepolia.base.org',explorer:'https://sepolia.basescan.org',usdc:'0x036CbD53842c5426634e7929541eC2318f3dCF7e',gasToken:'ETH',avgGas:0.00002},optsepolia:{name:'OP Sepolia',icon:'🔴',chainId:11155420,rpc:'https://sepolia.optimism.io',explorer:'https://sepolia-optimism.etherscan.io',usdc:'0x5fd84259d66Cd46123540766Be93DFE6D43130D7',gasToken:'ETH',avgGas:0.00003},polygonamoy:{name:'Polygon Amoy',icon:'🟣',chainId:80002,rpc:'https://rpc-amoy.polygon.technology',explorer:'https://amoy.polygonscan.com',usdc:'0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582',gasToken:'POL',avgGas:0.00001}};
 const UB_TOKENS={USDC:{symbol:'USDC',name:'USD Coin',logo:'💵',decimals:6,priceUSD:1.00,networks:['arc','sepolia','arbsepolia','basesepolia','optsepolia','polygonamoy'],cctp:true,feeBps:5},EURC:{symbol:'EURC',name:'Euro Coin',logo:'💶',decimals:6,priceUSD:1.09,networks:['arc'],cctp:true,feeBps:5},USYC:{symbol:'USYC',name:'US Yield Coin',logo:'📈',decimals:6,priceUSD:1.00,networks:['arc'],cctp:false,feeBps:10}};
-const UB_ERC20_ABI=['function transfer(address,uint256) returns (bool)','function balanceOf(address) view returns (uint256)'];
+const UB_ERC20_ABI=['function transfer(address,uint256) returns (bool)','function balanceOf(address) view returns (uint256)','function allowance(address,address) view returns (uint256)','function approve(address,uint256) returns (bool)','function decimals() view returns (uint8)','function symbol() view returns (string)'];
 
 const AGENT_REGISTRY={payment:{id:'payment',name:'Daat Agent',icon:'fa-dollar-sign',color:'text-blue-400',bg:'bg-blue-500/10',desc:'Autonomous payments',capabilities:['send','pay','invoice'],maxAutoUSD:100,dailyLimitUSD:1000,risk:'low'},swap:{id:'swap',name:'Dex Agent',icon:'fa-exchange-alt',color:'text-yellow-400',bg:'bg-yellow-500/10',desc:'Automated swaps via AMM',capabilities:['swap','quote'],maxAutoUSD:50,dailyLimitUSD:500,risk:'medium'},bridge:{id:'bridge',name:'Bridge Agent',icon:'fa-right-left',color:'text-cyan-400',bg:'bg-cyan-500/10',desc:'Cross-chain via CCTP',capabilities:['bridge','route'],maxAutoUSD:100,dailyLimitUSD:1000,risk:'medium'},yield:{id:'yield',name:'Yield Agent',icon:'fa-seedling',color:'text-green-400',bg:'bg-green-500/10',desc:'Liquidity optimization',capabilities:['deposit','withdraw'],maxAutoUSD:50,dailyLimitUSD:500,risk:'low'},treasury:{id:'treasury',name:'Treasury Agent',icon:'fa-vault',color:'text-purple-400',bg:'bg-purple-500/10',desc:'Treasury management',capabilities:['send','bridge','swap'],maxAutoUSD:200,dailyLimitUSD:2000,risk:'high'},analyst:{id:'analyst',name:'Analyst Agent',icon:'fa-chart-line',color:'text-orange-400',bg:'bg-orange-500/10',desc:'Market analysis',capabilities:['analyze','suggest'],maxAutoUSD:0,dailyLimitUSD:0,risk:'low'}};
 
@@ -29,6 +29,7 @@ function ubTimeAgo(ts){if(!ts)return'';var d=(Date.now()-new Date(ts).getTime())
 function ubFetchUnifiedLedger(){var events=[];try{var bh=JSON.parse(localStorage.getItem('bridge_history_v1')||'[]');for(var h of bh.slice(0,20))events.push({type:'bridge',icon:'fa-right-left',color:'text-cyan-400',bg:'bg-cyan-900/20 border-cyan-700/30',label:'Bridge',amount:h.amount||'',token:h.token||'USDC',detail:(h.fromNetwork||h.fromChain||'')+' → '+(h.toNetwork||h.toChain||''),txHash:h.txHash||'',time:h.timestamp||'',status:'completed',source:'bridge'});}catch(_){}try{var ph=JSON.parse(localStorage.getItem('arc_pay_history')||'[]');for(var p of ph.slice(0,20))events.push({type:'payment',icon:'fa-paper-plane',color:'text-purple-400',bg:'bg-purple-900/20 border-purple-700/30',label:'Payment',amount:p.amount||'',token:p.token||'USDC',detail:'To: '+((p.to||p.recipient||'').slice(0,10)+'...'),txHash:p.txHash||'',time:p.timestamp||p.date||'',status:p.status||'completed',source:'payments'});}catch(_){} ubLoadInvoices();for(var inv of ubState.invoices.slice(0,20))events.push({type:inv.status==='paid'?'payment':'invoice',icon:inv.status==='paid'?'fa-check':'fa-file-invoice',color:inv.status==='paid'?'text-green-400':'text-yellow-400',bg:inv.status==='paid'?'bg-green-900/20 border-green-700/30':'bg-yellow-900/20 border-yellow-700/30',label:inv.status==='paid'?'Settled':inv.status.charAt(0).toUpperCase()+inv.status.slice(1),amount:inv.amount+'',token:inv.token,detail:inv.note||'',txHash:inv.paidTx||'',time:inv.settledAt||inv.created||'',status:inv.status,source:'invoice'}); try{var al=JSON.parse(localStorage.getItem('ub_agent_log_v1')||'[]');for(var a of al.slice(0,20)){var ag=AGENT_REGISTRY[a.agentId];events.push({type:'agent',icon:ag?ag.icon:'fa-robot',color:ag?ag.color:'text-violet-400',bg:'bg-violet-900/20 border-violet-700/30',label:ag?ag.name:'Agent',amount:a.summary||'',token:'',detail:a.action||'',txHash:'',time:a.timestamp||'',status:a.action==='completed'?'completed':a.action==='failed'?'failed':'pending',source:'agent'});}}catch(_){} events.sort((a,b)=>(b.time||'').localeCompare(a.time||''));ubState.ledger=events;ubRenderLedger();}
 
 function ubRenderLedger(){var el=ub$('ub-ledger-list');if(!el)return;if(!ubState.ledger.length){el.innerHTML='<div class="text-center py-8 text-gray-600 text-sm"><i class="fas fa-book text-2xl mb-2 block"></i>Ledger empty</div>';return;}el.innerHTML=ubState.ledger.slice(0,30).map(e=>'<div class="flex items-center gap-3 px-4 py-2.5 border-b border-gray-700/30 hover:bg-gray-800/20"><div class="w-7 h-7 rounded-lg '+e.bg+' flex items-center justify-center"><i class="fas '+e.icon+' '+e.color+' text-[10px]"></i></div><div class="flex-1 min-w-0"><div class="flex items-center justify-between gap-2"><span class="text-white text-xs font-semibold">'+e.label+'</span><span class="text-gray-500 text-[10px]">'+ubTimeAgo(e.time)+'</span></div><div class="text-gray-500 text-[10px] truncate mt-0.5">'+(e.amount?e.amount+' '+e.token+' · ':'')+(e.detail||'')+'</div></div><span class="text-[9px] font-bold px-1.5 py-0.5 rounded '+((e.status==='completed'||e.status==='paid')?'bg-green-900/30 text-green-400':e.status==='failed'?'bg-red-900/30 text-red-400':'bg-yellow-900/30 text-yellow-400')+'">'+e.status+'</span>'+((e.txHash&&e.source!=='agent')?'<a href="https://testnet.arcscan.app/tx/'+e.txHash+'" target="_blank" class="text-gray-600 hover:text-cyan-400"><i class="fas fa-external-link-alt text-[10px]"></i></a>':'')+'</div>').join('');}
+function ubRenderActivity(){var el=ub$('ub-activity-list');if(!el)return;if(!ubState.ledger.length){el.innerHTML='<div class="text-center py-8 text-gray-600 text-sm"><i class="fas fa-inbox text-2xl mb-2 block"></i>No activity yet</div>';return;}el.innerHTML=ubState.ledger.slice(0,15).map(e=>'<div class="flex items-center gap-3 px-4 py-2.5 border-b border-gray-700/30 hover:bg-gray-800/20"><div class="w-7 h-7 rounded-lg '+e.bg+' flex items-center justify-center"><i class="fas '+e.icon+' '+e.color+' text-[10px]"></i></div><div class="flex-1 min-w-0"><div class="flex items-center justify-between gap-2"><span class="text-white text-xs font-semibold">'+e.label+'</span><span class="text-gray-500 text-[10px]">'+ubTimeAgo(e.time)+'</span></div><div class="text-gray-500 text-[10px] truncate mt-0.5">'+(e.amount?e.amount+' '+e.token+' · ':'')+(e.detail||'')+'</div></div>'+((e.txHash&&e.source!=='agent')?'<a href="https://testnet.arcscan.app/tx/'+e.txHash+'" target="_blank" class="text-gray-600 hover:text-cyan-400"><i class="fas fa-external-link-alt text-[10px]"></i></a>':'')+'</div>').join('');}
 
 // ═══════════════════ TREASURY MANAGEMENT ═══════════════════
 function ubRenderTreasury(){var el=ub$('ub-treasury-view');if(!el)return;var total=ubState.totals.usd;if(!total){el.innerHTML='<div class="text-center py-6 text-gray-600 text-xs">No treasury data — connect wallet</div>';return;}var bt=ubState.totals.byToken||{};var byNet=ubState.totals.byNetwork||{};var html='<div class="space-y-3"><div class="text-xs text-gray-400 mb-1">Allocation by Token</div>';for(var[t,v]of Object.entries(bt)){var pct=(v/total*100).toFixed(1);var tk=UB_TOKENS[t];html+='<div class="flex items-center gap-2"><span class="text-xs w-12 text-gray-400">'+(tk?tk.logo:'')+' '+t+'</span><div class="flex-1 h-2 bg-gray-700/50 rounded-full"><div class="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-500" style="width:'+pct+'%"></div></div><span class="text-[10px] text-gray-300 w-16 text-right">'+pct+'%</span></div>';}html+='<div class="text-xs text-gray-400 mt-4 mb-1">Allocation by Network</div>';for(var[nk,vv]of Object.entries(byNet)){var p2=(vv/total*100).toFixed(1);var net=UB_NETWORKS[nk];html+='<div class="flex items-center gap-2"><span class="text-xs w-20 text-gray-400">'+(net?net.icon:'')+' '+(net?net.name:nk)+'</span><div class="flex-1 h-2 bg-gray-700/50 rounded-full"><div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-500" style="width:'+p2+'%"></div></div><span class="text-[10px] text-gray-300 w-16 text-right">'+p2+'%</span></div>';}html+='</div>';el.innerHTML=html;}
@@ -89,11 +90,11 @@ function ubComputeAnalytics(){var ts=0,tc=0,bt={},bd={};try{var bh=JSON.parse(lo
 function ubRenderAnalytics(){var a=ubState.analytics;ubText('ub-analytics-total',ubFormatUSD(a.totalSent));ubText('ub-analytics-count',String(a.txCount));var days=Object.keys(a.byDay).sort().slice(-7);var mc=Math.max(1,...Object.values(a.byDay));var el=ub$('ub-analytics-bars');if(!el)return;if(!days.length){el.innerHTML='<div class="text-center py-4 text-gray-600 text-[10px]">No data</div>';return;}el.innerHTML=days.map(d=>{var c=a.byDay[d]||0;var h=Math.max(8,(c/mc)*60);return'<div class="flex flex-col items-center gap-1"><div class="w-6 rounded-t bg-green-500/60" style="height:'+h+'px" title="'+d+': '+c+' tx"></div><span class="text-[9px] text-gray-600">'+(d.slice(5)||d)+'</span></div>';}).join('');}
 
 // ═══════════════════ MAIN REFRESH ═══════════════════
-async function ubRefresh(){try{var w=window.walletState?.address;if(!w){ubShowEmpty('Connect wallet');return;}ubState.loading=true;ubState.error=null;ubRenderLoading();var bal={};var ws=window.walletState;if(ws.usdcBalance){var v=parseFloat(ws.usdcBalance);bal['arc:USDC']={network:'arc',symbol:'USDC',raw:BigInt(Math.floor(v*1e6)),human:v,usd:v*1.00};}if(ws.eurcBalance){var ve=parseFloat(ws.eurcBalance);bal['arc:EURC']={network:'arc',symbol:'EURC',raw:BigInt(Math.floor(ve*1e6)),human:ve,usd:ve*1.09};}var tu=0;for(var b of Object.values(bal))tu+=b.usd;ubState.balances=bal;ubState.totals.usd=tu;ubState.loaded=true;ubState.loading=false;ubLoadInvoices();ubLoadRules();ubLoadAgentPerms();ubLoadAgentLog();ubLoadContacts();ubRender();ubComputeProfile();ubFetchUnifiedLedger();ubComputeAnalytics();try{var eurcR=await ubFetchTokenBalance('arc','EURC',w);if(eurcR>0n){var eh=Number(eurcR)/1e6;bal['arc:EURC']={network:'arc',symbol:'EURC',raw:eurcR,human:eh,usd:eh*1.09};}var usycR=await ubFetchTokenBalance('arc','USYC',w);if(usycR>0n){var uh=Number(usycR)/1e6;bal['arc:USYC']={network:'arc',symbol:'USYC',raw:usycR,human:uh,usd:uh*1.00};}tu=0;for(var b of Object.values(bal))tu+=b.usd;ubState.balances=bal;ubState.totals.usd=tu;ubRenderBalancesOnly();}catch(_){}var xtasks=[];for(var nk of['sepolia','arbsepolia','basesepolia','optsepolia','polygonamoy'])xtasks.push((async()=>{var r=await ubFetchTokenBalance(nk,'USDC',w);if(r>0n){var h=Number(r)/1e6;bal[nk+':USDC']={network:nk,symbol:'USDC',raw:r,human:h,usd:h*1.00};}})());Promise.allSettled(xtasks).then(()=>{var t2=0;for(var b of Object.values(bal))t2+=b.usd;ubState.balances=bal;ubState.totals.usd=t2;ubRenderBalancesOnly();});ubFetchPoolState().then(()=>{ubFetchLPPosition().then(()=>{ubRenderLiquidityDashboard();ubRenderLPPosition();});});if(!ubState._interval)ubState._interval=setInterval(()=>{var t=document.getElementById('tab-content-unifiedbalance');if(t&&!t.classList.contains('hidden'))ubRefreshSilent();},30000);}catch(e){console.error('[FinOS]',e);ubState.error=e.message;ubState.loading=false;ubRenderError();}}
+async function ubRefresh(){try{var w=window.walletState?.address;if(!w){ubShowEmpty('Connect wallet');return;}ubState.loading=true;ubState.error=null;ubRenderLoading();var bal={};var ws=window.walletState;if(ws.usdcBalance){var v=parseFloat(ws.usdcBalance);bal['arc:USDC']={network:'arc',symbol:'USDC',raw:BigInt(Math.floor(v*1e6)),human:v,usd:v*1.00};}if(ws.eurcBalance){var ve=parseFloat(ws.eurcBalance);bal['arc:EURC']={network:'arc',symbol:'EURC',raw:BigInt(Math.floor(ve*1e6)),human:ve,usd:ve*1.09};}var tu=0;for(var b of Object.values(bal))tu+=b.usd;ubState.balances=bal;ubState.totals.usd=tu;ubState.loaded=true;ubState.loading=false;ubLoadInvoices();ubLoadRules();ubLoadAgentPerms();ubLoadAgentLog();ubLoadContacts();ubFetchUnifiedLedger();ubComputeAnalytics();ubRender();ubComputeProfile();try{var eurcR=await ubFetchTokenBalance('arc','EURC',w);if(eurcR>0n){var eh=Number(eurcR)/1e6;bal['arc:EURC']={network:'arc',symbol:'EURC',raw:eurcR,human:eh,usd:eh*1.09};}var usycR=await ubFetchTokenBalance('arc','USYC',w);if(usycR>0n){var uh=Number(usycR)/1e6;bal['arc:USYC']={network:'arc',symbol:'USYC',raw:usycR,human:uh,usd:uh*1.00};}tu=0;for(var b of Object.values(bal))tu+=b.usd;ubState.balances=bal;ubState.totals.usd=tu;ubRenderBalancesOnly();}catch(_){}var xtasks=[];for(var nk of['sepolia','arbsepolia','basesepolia','optsepolia','polygonamoy'])xtasks.push((async()=>{var r=await ubFetchTokenBalance(nk,'USDC',w);if(r>0n){var h=Number(r)/1e6;bal[nk+':USDC']={network:nk,symbol:'USDC',raw:r,human:h,usd:h*1.00};}})());Promise.allSettled(xtasks).then(()=>{var t2=0;for(var b of Object.values(bal))t2+=b.usd;ubState.balances=bal;ubState.totals.usd=t2;ubRenderBalancesOnly();});ubFetchPoolState().then(()=>{ubFetchLPPosition().then(()=>{ubRenderLiquidityDashboard();ubRenderLPPosition();});});if(!ubState._interval)ubState._interval=setInterval(()=>{var t=document.getElementById('tab-content-unifiedbalance');if(t&&!t.classList.contains('hidden'))ubRefreshSilent();},30000);}catch(e){console.error('[FinOS]',e);ubState.error=e.message;ubState.loading=false;ubRenderError();}}
 async function ubRefreshSilent(){var w=window.walletState?.address;if(!w)return;try{var bal={};for(var[sm,tk]of Object.entries(UB_TOKENS))for(var nk of tk.networks){var r=await ubFetchTokenBalance(nk,sm,w);if(r>0n||nk==='arc'){var h=Number(r)/10**tk.decimals;bal[nk+':'+sm]={network:nk,symbol:sm,raw:r,human:h,usd:h*tk.priceUSD};}}var tu=0;for(var b of Object.values(bal))tu+=b.usd;ubState.balances=bal;ubState.totals.usd=tu;ubRenderBalancesOnly();}catch(_){}}
 
-function ubRender(){ubRenderAccountCard();ubRenderBalances();ubRenderNetworkChips();ubRenderAgentCards();ubRenderTreasury();ubRenderLedgerSection();ubRenderInvoices();ubRenderRules();ubRenderAgentLog();ubComputeAnalytics();}
-function ubRenderLoading(){ubText('ub-account-total','—');ubHTML('ub-token-table-body',ubSpinner('Fetching...'));ubHTML('ub-ledger-list','<div class="text-center py-8 text-gray-600 text-sm"><i class="fas fa-spinner fa-spin text-2xl mb-2 block"></i>Loading ledger...</div>');ubHTML('ub-agent-log-list','<div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Loading...</div>');ubHTML('ub-agent-cards','<div class="col-span-full text-center py-8 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-2 block"></i>Loading agents...</div>');ubHTML('ub-treasury-view','<div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Loading...</div>');ubHTML('ub-invoice-list','<div class="text-center py-4 text-gray-600 text-xs">Loading...</div>');ubHTML('ub-rules-list','<div class="text-center py-4 text-gray-600 text-xs">Loading...</div>');ubHTML('ub-network-chips','<span class="text-[10px] text-gray-600 animate-pulse">Loading...</span>');ubHTML('ub-liquidity-dash','<div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Loading...</div>');ubHTML('ub-lp-position','<div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Loading...</div>');}
+function ubRender(){ubRenderAccountCard();ubRenderBalances();ubRenderNetworkChips();ubRenderAgentCards();ubRenderTreasury();ubRenderLedgerSection();ubRenderActivity();ubRenderInvoices();ubRenderRules();ubRenderAgentLog();ubComputeAnalytics();ubRenderNotifications();ubRenderSDKRef();}
+function ubRenderLoading(){ubText('ub-account-total','—');ubHTML('ub-token-table-body',ubSpinner('Fetching...'));ubHTML('ub-ledger-list','<div class="text-center py-8 text-gray-600 text-sm"><i class="fas fa-spinner fa-spin text-2xl mb-2 block"></i>Loading ledger...</div>');ubHTML('ub-agent-log-list','<div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Loading...</div>');ubHTML('ub-agent-cards','<div class="col-span-full text-center py-8 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-2 block"></i>Loading agents...</div>');ubHTML('ub-treasury-view','<div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Loading...</div>');ubHTML('ub-invoice-list','<div class="text-center py-4 text-gray-600 text-xs">Loading...</div>');ubHTML('ub-rules-list','<div class="text-center py-4 text-gray-600 text-xs">Loading...</div>');ubHTML('ub-network-chips','<span class="text-[10px] text-gray-600 animate-pulse">Loading...</span>');ubHTML('ub-liquidity-dash','<div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Loading...</div>');ubHTML('ub-lp-position','<div class="text-center py-4 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-1 block"></i>Loading...</div>');ubHTML('ub-notif-list','<div class="text-center py-4 text-gray-600 text-xs">Loading...</div>');ubHTML('ub-sdk-content','<div class="text-center py-4 text-gray-600 text-xs">Loading...</div>');}
 function ubSpinner(m){return'<tr><td colspan="5" class="py-8 text-center"><i class="fas fa-spinner fa-spin text-green-400 text-xl mb-2 block"></i><span class="text-gray-500 text-sm">'+m+'</span></td></tr>';}
 function ubRenderError(){ubHTML('ub-token-table-body','<tr><td colspan="5" class="py-8 text-center"><i class="fas fa-exclamation-triangle text-red-400 text-xl mb-2 block"></i><span class="text-red-400 text-sm">'+ubState.error+'</span></td></tr>');ubText('ub-account-total','Error');}
 function ubShowEmpty(msg){ubText('ub-account-total','$0.00');ubText('ub-account-addr',window.walletState?.address?(window.walletState.address.slice(0,6)+'...'+window.walletState.address.slice(-4)):'—');ubHTML('ub-token-table-body','<tr><td colspan="5" class="py-10 text-center"><i class="fas fa-wallet text-gray-700 text-3xl mb-3 block"></i><span class="text-gray-500 text-sm">'+(msg||'No assets')+'</span></td></tr>');ubHTML('ub-ledger-list','<div class="text-center py-8 text-gray-600 text-sm"><i class="fas fa-book text-2xl mb-2 block"></i>Ledger empty</div>');}
@@ -161,6 +162,182 @@ const LiquidityRouter={analyze(amountIn,fromToken,toToken){var routes=[];var p=u
 // ─── Liquidity Agent suggestion ──────────────────────────────────────────
 function ubLiquidityAgentSuggestion(){var l=ubState.liquidity;var p=l.pool;var t=ubState.totals.usd;var s='';if(!p.loaded){s='Pool data not yet loaded. Connect wallet and refresh.';}else if(l.lpBalance>0n&&l.poolShare>0.1){s='You hold '+l.poolShare.toFixed(2)+'% of the EURC/USDC pool. Consider rebalancing or compounding rewards.';}else if(t>10&&l.lpBalance===0n){s='Your wallet has '+ubFormatUSD(t)+'. Add liquidity to the EURC/USDC pool to earn 0.3% swap fees.';}else{s='EURC/USDC AMM pool: '+(Number(p.reserveA)/1e6).toLocaleString(void 0,{maximumFractionDigits:0})+' EURC + '+(Number(p.reserveB)/1e6).toLocaleString(void 0,{maximumFractionDigits:0})+' USDC. TVL: '+ubFormatUSD(p.tvl)+'.';}return s;}
 
+// ═══════════════════ CIRCLE CCTP MOVE BALANCE ═══════════════════
+const CCTP_CHAIN_CONFIG = {
+  arc:{ domain:26, tokenMessenger:'0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA', messageTransmitter:'0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275' },
+  sepolia:{ domain:0, tokenMessenger:'0x8fe6b999dc680ccfdd5bf7c5f412b27e4e99e6d7', messageTransmitter:'0xe737e5cebeeba77efe34d4aa090756590b1ce275' },
+  arbsepolia:{ domain:3, tokenMessenger:'0x8fe6b999dc680ccfdd5bf7c5f412b27e4e99e6d7', messageTransmitter:'0xe737e5cebeeba77efe34d4aa090756590b1ce275' },
+  basesepolia:{ domain:6, tokenMessenger:'0x8fe6b999dc680ccfdd5bf7c5f412b27e4e99e6d7', messageTransmitter:'0xe737e5cebeeba77efe34d4aa090756590b1ce275' },
+  optsepolia:{ domain:2, tokenMessenger:'0x8fe6b999dc680ccfdd5bf7c5f412b27e4e99e6d7', messageTransmitter:'0xe737e5cebeeba77efe34d4aa090756590b1ce275' },
+  polygonamoy:{ domain:7, tokenMessenger:'0x8fe6b999dc680ccfdd5bf7c5f412b27e4e99e6d7', messageTransmitter:'0xe737e5cebeeba77efe34d4aa090756590b1ce275' },
+};
+const CCTP_IRIS_API = 'https://iris-api-sandbox.circle.com/v2/messages';
+const CCTP_MESSENGER_ABI = ['function depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32) external returns (uint64)'];
+const CCTP_TRANSMITTER_ABI = ['function receiveMessage(bytes,bytes) external returns (bool)'];
+ubState.cctpTransfer = null;
+
+function ubActionCCTPMove(netKey, sym) {
+  if (!window.walletState?.address) { ubShowToast('Connect wallet first', 'warning'); return; }
+  ubSetVal('ub-cctp-from-net', netKey);
+  ubSetVal('ub-cctp-from-sym', sym);
+  ubSetVal('ub-cctp-amount', '');
+  ubText('ub-cctp-status-line', '');
+  ubText('ub-cctp-step', '');
+  ubHide('ub-cctp-progress');
+  ubState.cctpTransfer = null;
+  ubShow('ub-cctp-modal');
+}
+function ubCloseCCTPMove() { ubHide('ub-cctp-modal'); }
+
+async function ubExecuteCCTPMove() {
+  var w = window.walletState?.address, p = window.walletState?.provider;
+  if (!w || !p) { ubShowToast('Connect wallet first', 'warning'); return; }
+  var fromKey = ub$('ub-cctp-from-net').value;
+  var toKey   = ub$('ub-cctp-to-net').value;
+  var amt     = ub$('ub-cctp-amount').value.trim();
+  var sym     = ub$('ub-cctp-from-sym').value;
+  if (fromKey === toKey) { ubText('ub-cctp-status-line', 'Same chain — use Send instead'); return; }
+  if (!amt || parseFloat(amt) <= 0) { ubText('ub-cctp-status-line', 'Enter amount'); return; }
+
+  var srcNet = UB_NETWORKS[fromKey], dstNet = UB_NETWORKS[toKey];
+  var srcCfg = CCTP_CHAIN_CONFIG[fromKey], dstCfg = CCTP_CHAIN_CONFIG[toKey];
+  if (!srcNet || !dstNet || !srcCfg || !dstCfg) { ubText('ub-cctp-status-line', 'Chain not supported for CCTP'); return; }
+
+  ubState.cctpTransfer = { id:'cctp_'+Date.now().toString(36), fromKey, toKey, amount:parseFloat(amt), token:sym, status:'created', steps:[], txHash:null, burnTxHash:null, attestation:null, mintTxHash:null };
+  ubShow('ub-cctp-progress');
+  ubText('ub-cctp-step', 'CREATED');
+  ubText('ub-cctp-status-line', 'Starting CCTP transfer ' + amt + ' ' + sym + ' via Circle v2...');
+
+  try {
+    if (!window.ethers) throw new Error('ethers.js not loaded');
+    var ep = new window.ethers.BrowserProvider(p), s = await ep.getSigner();
+    var usdcAddr = srcNet.usdc;
+    var tokenAddr = sym === 'EURC' ? srcNet.eurc : usdcAddr;
+    if (!tokenAddr) throw new Error('Token not available on source chain');
+
+    // Step 1: Switch to source chain
+    ubCCTPSetStatus('approving');
+    ubText('ub-cctp-status-line', 'Switching to ' + srcNet.name + '...');
+    try {
+      await p.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x' + srcNet.chainId.toString(16) }] });
+    } catch (e) {
+      throw new Error('Please switch your wallet to ' + srcNet.name + ' (chain ' + srcNet.chainId + ')');
+    }
+
+    // Step 2: Check allowance
+    var rawAmt = window.ethers.parseUnits(amt, 6);
+    var usdcIface = new window.ethers.Interface(UB_ERC20_ABI);
+    var allowanceData = usdcIface.encodeFunctionData('allowance', [w, srcCfg.tokenMessenger]);
+    var allowanceHex;
+    try {
+      allowanceHex = await p.request({ method: 'eth_call', params: [{ to: tokenAddr, data: allowanceData }, 'latest'] });
+    } catch (e) {
+      throw new Error('Failed to check allowance on ' + srcNet.name + '. Verify USDC contract at ' + tokenAddr.slice(0,10) + '...');
+    }
+
+    // Step 3: Approve if needed
+    if (BigInt(allowanceHex || '0x0') < rawAmt) {
+      ubText('ub-cctp-status-line', 'Approve USDC spend — check wallet...');
+      var approveData = usdcIface.encodeFunctionData('approve', [srcCfg.tokenMessenger, rawAmt]);
+      try {
+        var approveTx = await p.request({ method: 'eth_sendTransaction', params: [{ from: w, to: tokenAddr, data: approveData }] });
+        ubText('ub-cctp-status-line', 'Approving... ' + approveTx.slice(0,14) + '...');
+        for (var i = 0; i < 30; i++) { await new Promise(function(r){ setTimeout(r, 2000); }); var ar = await p.request({ method: 'eth_getTransactionReceipt', params: [approveTx] }); if (ar && ar.blockNumber) break; }
+        if (!ar || !ar.blockNumber) throw new Error('Approve not confirmed');
+        if (parseInt(ar.status, 16) !== 1) throw new Error('Approve reverted on-chain');
+      } catch (e) {
+        if (e.code === 4001 || (e.message||'').includes('rejected')) throw new Error('User rejected approval');
+        throw e;
+      }
+    }
+
+    // Step 4: depositForBurn
+    ubCCTPSetStatus('burning');
+    ubText('ub-cctp-status-line', 'Burning USDC via CCTP on ' + srcNet.name + '...');
+    var destAddr32 = window.ethers.zeroPadValue(w, 32);
+    var zero32 = window.ethers.zeroPadValue('0x0000000000000000000000000000000000000000', 32);
+    var maxFee = window.ethers.parseUnits('0.5', 6);
+    var messengerIface = new window.ethers.Interface(CCTP_MESSENGER_ABI);
+    var burnData = messengerIface.encodeFunctionData('depositForBurn', [rawAmt, dstCfg.domain, destAddr32, tokenAddr, zero32, maxFee, 2000]);
+
+    var burnTxHash;
+    try {
+      burnTxHash = await p.request({ method: 'eth_sendTransaction', params: [{ from: w, to: srcCfg.tokenMessenger, data: burnData }] });
+    } catch (e) {
+      if (e.code === 4001 || (e.message||'').includes('rejected')) throw new Error('User rejected burn transaction');
+      throw new Error('Burn failed: ' + (e.message||'Unknown').slice(0,60));
+    }
+
+    ubState.cctpTransfer.burnTxHash = burnTxHash;
+    ubText('ub-cctp-status-line', 'Burn tx: ' + burnTxHash.slice(0,14) + '...');
+    var br = null;
+    for (var j = 0; j < 60; j++) { await new Promise(function(r){ setTimeout(r, 2000); }); br = await p.request({ method: 'eth_getTransactionReceipt', params: [burnTxHash] }); if (br && br.blockNumber) break; }
+    if (!br || !br.blockNumber) throw new Error('Burn not confirmed within 2 min');
+    if (parseInt(br.status, 16) !== 1) throw new Error('Burn reverted on-chain. Verify CCTP TokenMessenger at ' + srcCfg.tokenMessenger.slice(0,10) + '...');
+
+    // Step 5: Attestation from Circle IRIS
+    ubCCTPSetStatus('attesting');
+    ubText('ub-cctp-status-line', 'Waiting for Circle attestation...');
+    var attHash = null;
+    for (var k = 0; k < 120; k++) {
+      await new Promise(function(r){ setTimeout(r, 3000); });
+      try {
+        var attRes = await fetch(CCTP_IRIS_API + '/' + srcCfg.domain + '?txHash=' + burnTxHash);
+        var attJson = await attRes.json();
+        if (attJson.messages && attJson.messages.length > 0) {
+          var msg = attJson.messages[0];
+          if (msg.status === 'complete') { attHash = msg.attestation; break; }
+          ubText('ub-cctp-status-line', 'Attestation: ' + msg.status + '... (' + (k+1) + '/120)');
+        }
+      } catch (_) {}
+    }
+    if (!attHash) throw new Error('Attestation not received from Circle within 6 min');
+
+    ubState.cctpTransfer.attestation = attHash;
+
+    // Step 6: Mint on destination
+    ubCCTPSetStatus('minting');
+    ubText('ub-cctp-status-line', 'Switching to ' + dstNet.name + ' for mint...');
+    await p.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x' + dstNet.chainId.toString(16) }] }).catch(function(e){
+      throw new Error('Please switch wallet to ' + dstNet.name);
+    });
+
+    var transmitterIface = new window.ethers.Interface(CCTP_TRANSMITTER_ABI);
+    var mintData = transmitterIface.encodeFunctionData('receiveMessage', [attHash, '0x']);
+    var mintTxHash;
+    try {
+      mintTxHash = await p.request({ method: 'eth_sendTransaction', params: [{ from: w, to: dstCfg.messageTransmitter, data: mintData }] });
+    } catch (e) {
+      if (e.code === 4001 || (e.message||'').includes('rejected')) throw new Error('User rejected mint transaction');
+      throw new Error('Mint failed: ' + (e.message||'Unknown').slice(0,60));
+    }
+
+    ubState.cctpTransfer.mintTxHash = mintTxHash;
+    ubText('ub-cctp-status-line', 'Minting... ' + mintTxHash.slice(0,14) + '...');
+    var mr = null;
+    for (var l = 0; l < 30; l++) { await new Promise(function(r){ setTimeout(r, 2000); }); mr = await p.request({ method: 'eth_getTransactionReceipt', params: [mintTxHash] }); if (mr && mr.blockNumber) break; }
+    if (!mr || !mr.blockNumber) throw new Error('Mint not confirmed');
+    if (parseInt(mr.status, 16) !== 1) throw new Error('Mint reverted on-chain');
+
+    ubCCTPSetStatus('completed');
+    ubText('ub-cctp-status-line', '✅ CCTP complete! <a href="' + dstNet.explorer + '/tx/' + mintTxHash + '" target="_blank" class="underline text-cyan-400">View mint tx</a>');
+    ubDispatchEvent('cctp:completed', ubState.cctpTransfer);
+    ubAddPaymentToHistory(parseFloat(amt), sym, w, mintTxHash, 'cctp_completed');
+    setTimeout(function(){ ubRefresh(); ubCloseCCTPMove(); }, 4000);
+  } catch (e) {
+    ubCCTPSetStatus('failed');
+    var msg = e.code === 4001 || (e.message || '').includes('rejected') ? 'User rejected' : (e.message || 'Unknown error').slice(0, 80);
+    ubText('ub-cctp-status-line', '❌ ' + msg);
+    ubDispatchEvent('cctp:failed', ubState.cctpTransfer);
+  }
+}
+
+function ubCCTPSetStatus(status) {
+  if (ubState.cctpTransfer) ubState.cctpTransfer.status = status;
+  var labels = { approving:'APPROVING', burning:'BURNING', attesting:'ATTESTING', minting:'MINTING', completed:'COMPLETED', failed:'FAILED' };
+  ubText('ub-cctp-step', labels[status] || status.toUpperCase());
+}
+
 // ═══════════════════ INIT ═══════════════════
 function ubInit(){ubLoadInvoices();ubLoadRules();ubLoadAgentPerms();ubLoadAgentLog();ubLoadContacts();ubRefresh();}
 
@@ -174,4 +351,4 @@ function ubRenderEcosystem(){ubRenderNotifications();}
 // ═══════════════════ SDK / API REFERENCE ═══════════════════
 function ubRenderSDKRef(){var el=ub$('ub-sdk-content');if(!el)return;el.innerHTML='<div class="space-y-2 text-xs"><div class="text-gray-400 font-bold mb-1">JavaScript SDK</div><code class="block bg-gray-800/60 rounded-lg p-2 text-green-400 text-[10px] font-mono">// Connect wallet<br>await window.ethereum.request({method:"eth_requestAccounts"});<br>// Send USDC<br>const tx = await usdcContract.transfer(to, amount);</code><div class="text-gray-400 font-bold mt-3 mb-1">REST API (read-only)</div><code class="block bg-gray-800/60 rounded-lg p-2 text-cyan-400 text-[10px] font-mono">GET /api/dex/amm<br>GET /api/swap/history?wallet=0x...<br>GET /api/dex/amm/balances/:wallet</code><div class="text-gray-400 font-bold mt-3 mb-1">Event System</div><code class="block bg-gray-800/60 rounded-lg p-2 text-purple-400 text-[10px] font-mono">window.addEventListener("ub:payment:executed", (e) => {...})<br>window.addEventListener("ub:agent:executed", (e) => {...})<br>window.addEventListener("ub:invoice:paid", (e) => {...})</code></div>';}
 window.addEventListener('walletConnected',()=>{var t=document.getElementById('tab-content-unifiedbalance');if(t&&!t.classList.contains('hidden'))ubRefresh();});window.addEventListener('accountsChanged',()=>ubRefresh());
-window.ubInit=ubInit;window.ubRefresh=ubRefresh;window.ubOpenDetail=ubOpenDetail;window.ubCloseDetail=ubCloseDetail;window.ubActionDeposit=ubActionDeposit;window.ubActionSend=ubActionSend;window.ubCloseSend=ubCloseSend;window.ubCloseDeposit=ubCloseDeposit;window.ubActionBridge=ubActionBridge;window.ubActionSwap=ubActionSwap;window.ubActionPay=ubActionPay;window.ubExecuteSend=ubExecuteSend;window.ubOnSendAmountChange=ubOnSendAmountChange;window.ubDetailBridge=ubDetailBridge;window.ubDetailSwap=ubDetailSwap;window.ubDetailPay=ubDetailPay;window.ubActionInvoice=ubActionInvoice;window.ubCloseInvoice=ubCloseInvoice;window.ubCreateInvoiceFromModal=ubCreateInvoiceFromModal;window.ubActionCreateRule=ubActionCreateRule;window.ubExecuteIntent=ubExecuteIntent;window.ubExecuteParsedIntent=ubExecuteParsedIntent;window.ubCreateRule=ubCreateRule;window.ubToggleRule=ubToggleRule;window.ubDeleteRule=ubDeleteRule;window.ubUpdateInvoiceStatus=ubUpdateInvoiceStatus;window.ubMarkInvoicePaid=ubMarkInvoicePaid;window.ubDispatchEvent=ubDispatchEvent;window.ubAddPaymentToHistory=ubAddPaymentToHistory;window.ubRunAgentSuggestion=ubRunAgentSuggestion;window.ubAnalyzeWallet=ubAnalyzeWallet;window.ubOpenAgentPerms=ubOpenAgentPerms;window.ubCloseAgentPerms=ubCloseAgentPerms;window.ubSaveAgentPerm=ubSaveAgentPerm;window.ubCreateAgentIntent=ubCreateAgentIntent;window.ubExecuteAgentIntent=ubExecuteAgentIntent;window.ubExportCSV=ubExportCSV;window.ubExportAudit=ubExportAudit;window.ubAddContact=ubAddContact;window.ubRemoveContact=ubRemoveContact;window.ubSendToContact=ubSendToContact;window.ubFetchUnifiedLedger=ubFetchUnifiedLedger;window.ubFetchPoolState=ubFetchPoolState;window.ubFetchLPPosition=ubFetchLPPosition;window.ubRenderLiquidityDashboard=ubRenderLiquidityDashboard;window.ubRenderLPPosition=ubRenderLPPosition;window.ubLiquidityAgentSuggestion=ubLiquidityAgentSuggestion;window.LiquidityRouter=LiquidityRouter;window.ubSearchGlobal=ubSearchGlobal;window.ubRenderNotifications=ubRenderNotifications;window.ubRenderSDKRef=ubRenderSDKRef;window.SmartRouter=SmartRouter;window.IntentEngine=IntentEngine;
+window.ubInit=ubInit;window.ubRefresh=ubRefresh;window.ubOpenDetail=ubOpenDetail;window.ubCloseDetail=ubCloseDetail;window.ubActionDeposit=ubActionDeposit;window.ubActionSend=ubActionSend;window.ubCloseSend=ubCloseSend;window.ubCloseDeposit=ubCloseDeposit;window.ubActionBridge=ubActionBridge;window.ubActionSwap=ubActionSwap;window.ubActionPay=ubActionPay;window.ubExecuteSend=ubExecuteSend;window.ubOnSendAmountChange=ubOnSendAmountChange;window.ubDetailBridge=ubDetailBridge;window.ubDetailSwap=ubDetailSwap;window.ubDetailPay=ubDetailPay;window.ubActionInvoice=ubActionInvoice;window.ubCloseInvoice=ubCloseInvoice;window.ubCreateInvoiceFromModal=ubCreateInvoiceFromModal;window.ubActionCreateRule=ubActionCreateRule;window.ubExecuteIntent=ubExecuteIntent;window.ubExecuteParsedIntent=ubExecuteParsedIntent;window.ubCreateRule=ubCreateRule;window.ubToggleRule=ubToggleRule;window.ubDeleteRule=ubDeleteRule;window.ubUpdateInvoiceStatus=ubUpdateInvoiceStatus;window.ubMarkInvoicePaid=ubMarkInvoicePaid;window.ubDispatchEvent=ubDispatchEvent;window.ubAddPaymentToHistory=ubAddPaymentToHistory;window.ubRunAgentSuggestion=ubRunAgentSuggestion;window.ubAnalyzeWallet=ubAnalyzeWallet;window.ubOpenAgentPerms=ubOpenAgentPerms;window.ubCloseAgentPerms=ubCloseAgentPerms;window.ubSaveAgentPerm=ubSaveAgentPerm;window.ubCreateAgentIntent=ubCreateAgentIntent;window.ubExecuteAgentIntent=ubExecuteAgentIntent;window.ubExportCSV=ubExportCSV;window.ubExportAudit=ubExportAudit;window.ubAddContact=ubAddContact;window.ubRemoveContact=ubRemoveContact;window.ubSendToContact=ubSendToContact;window.ubFetchUnifiedLedger=ubFetchUnifiedLedger;window.ubFetchPoolState=ubFetchPoolState;window.ubFetchLPPosition=ubFetchLPPosition;window.ubRenderLiquidityDashboard=ubRenderLiquidityDashboard;window.ubRenderLPPosition=ubRenderLPPosition;window.ubLiquidityAgentSuggestion=ubLiquidityAgentSuggestion;window.ubActionCCTPMove=ubActionCCTPMove;window.ubCloseCCTPMove=ubCloseCCTPMove;window.ubExecuteCCTPMove=ubExecuteCCTPMove;window.LiquidityRouter=LiquidityRouter;window.ubSearchGlobal=ubSearchGlobal;window.ubRenderNotifications=ubRenderNotifications;window.ubRenderSDKRef=ubRenderSDKRef;window.SmartRouter=SmartRouter;window.IntentEngine=IntentEngine;

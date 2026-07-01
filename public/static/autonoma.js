@@ -227,6 +227,11 @@
         return; // done
       }
 
+      // ── Unified Intent Router: handle bridge/swap/send/balance from natural language ──
+      if (!localHandled) {
+        localHandled = await _autonomaRouteUnifiedIntent(msg);
+      }
+
       // ── Remote AI fallback (identical to main chat, context='autonoma') ────
       const CHAT_SESSION_KEY = 'arc-chat-session';
       const sessionId = 'arc-session-' + (localStorage.getItem(CHAT_SESSION_KEY) || (() => {
@@ -293,6 +298,92 @@
       }, 600);
     }
   };
+
+  // ── Unified Intent Router: bridge/swap/send/balance from natural language ──────
+  async function _autonomaRouteUnifiedIntent(msg) {
+    var lower = msg.toLowerCase().trim();
+
+    // Bridge: "bridge X USDC from Arc to Sepolia" or "move X USDC to Base"
+    if (/\b(bridge|move|cross.chain|transfer.*(?:to|para).*(?:chain|rede|network)|enviar.*(?:para|to).*(?:rede|chain))\b/i.test(lower)) {
+      var intent = window.IntentEngine ? window.IntentEngine.parse(msg) : null;
+      var amt = intent && intent.valid ? intent.amount : (parseFloat((msg.match(/(\d+(?:\.\d+)?)/) || [])[1]) || null);
+      var fromChain = 'arc';
+      var toChain = 'sepolia';
+      var nets = { arc:1, sepolia:1, base:1, basesepolia:1, arbitrum:1, arbsepolia:1, optimism:1, optsepolia:1, polygon:1, polygonamoy:1, amoy:1 };
+      for (var nk in nets) { if (lower.includes(nk)) { if (toChain === 'sepolia') toChain = nk; } }
+      if (amt) {
+        autonomaHideTyping();
+        autonomaAppendMessage('assistant', '🔀 Starting bridge: ' + amt + ' USDC cross-chain via CCTP v2...', 'bridge');
+        if (typeof window.ubActionCCTPMove === 'function') {
+          window.ubActionCCTPMove('arc', 'USDC');
+          var amtEl = document.getElementById('ub-cctp-amount');
+          if (amtEl) amtEl.value = String(amt);
+          return true;
+        }
+        if (typeof switchTab === 'function') { switchTab('bridge'); return true; }
+        autonomaAppendMessage('assistant', '⚠ Bridge module not available. Open the Bridge tab manually.', 'warning');
+        return true;
+      }
+    }
+
+    // Balance query: "what's my balance", "how much do I have", "quanto tenho"
+    if (/\b(balance|saldo|how much|quanto|what.*(?:have|possui|tenho)|show.*(?:balance|assets|funds|tokens|wallet))\b/i.test(lower)) {
+      autonomaHideTyping();
+      var total = (window.ubState && window.ubState.totals) ? window.ubState.totals.usd : 0;
+      var w = window.walletState?.address;
+      if (!w) { autonomaAppendMessage('assistant', 'Connect your wallet to see your balance.', 'warning'); return true; }
+      if (typeof window.ubFormatUSD === 'function') {
+        var balStr = '💰 **Unified Balance**: ' + window.ubFormatUSD(total) + '\n';
+        var entries = window.ubState && window.ubState.balances ? Object.entries(window.ubState.balances).filter(function(e){ return e[1].raw > 0n; }) : [];
+        if (entries.length) {
+          entries.forEach(function(e) {
+            var b = e[1], net = window.UB_NETWORKS ? window.UB_NETWORKS[b.network] : null;
+            balStr += '• ' + (net ? net.icon : '') + ' ' + b.symbol + ': ' + b.human.toFixed(4) + ' (' + (window.ubFormatUSD ? window.ubFormatUSD(b.usd) : '$' + b.usd.toFixed(2)) + ')\n';
+          });
+        } else {
+          balStr += 'No tokens found on any network.';
+        }
+        autonomaAppendMessage('assistant', balStr, 'balance');
+        return true;
+      }
+      autonomaAppendMessage('assistant', '📊 Balance: $' + total.toFixed(2) + ' USD across all networks.\nWallet: ' + w.slice(0,6) + '...' + w.slice(-4), 'balance');
+      return true;
+    }
+
+    // Swap: "swap X USDC to EURC" or "trocar X USDC por EURC"
+    if (/\b(swap|trocar|exchange)\b/i.test(lower)) {
+      autonomaHideTyping();
+      autonomaAppendMessage('assistant', '🔄 Opening Swap (DEX) for you...', 'swap');
+      if (typeof switchTab === 'function') { switchTab('dex'); return true; }
+      return true;
+    }
+
+    // Multisend: "send X USDC to these addresses" or "pay multiple"
+    if (/\b(multisend|batch|multiple.*(?:send|pay|address|wallets?)|v.rios|varias|m.ltipl)\b/i.test(lower)) {
+      autonomaHideTyping();
+      autonomaAppendMessage('assistant', '📋 Opening Multisend for batch payments...', 'multisend');
+      if (typeof switchTab === 'function') { switchTab('multisend'); return true; }
+      return true;
+    }
+
+    // History/Activity: "show my transactions", "recent activity"
+    if (/\b(history|transactions?|activity|recent|hist.rico|.ltimas?|movimenta)/i.test(lower)) {
+      autonomaHideTyping();
+      var txCount = (window.ubState && window.ubState.ledger) ? window.ubState.ledger.length : 0;
+      if (txCount > 0) {
+        var histStr = '📜 **Recent Activity** (' + txCount + ' events):\n';
+        (window.ubState.ledger || []).slice(0, 5).forEach(function(e) {
+          histStr += '• ' + e.label + ': ' + (e.amount || '') + ' ' + (e.token || '') + ' — ' + (e.detail || '') + '\n';
+        });
+        autonomaAppendMessage('assistant', histStr, 'history');
+      } else {
+        autonomaAppendMessage('assistant', 'No transaction history yet. Perform a bridge, swap, or payment to build your activity.', 'history');
+      }
+      return true;
+    }
+
+    return false;
+  }
 
   // ── Handle intent-specific commands (fallback only — bridge handles these now) ──
   async function _handleAutonomaIntentCommand(msg) {
