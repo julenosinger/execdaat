@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // Chatbot Transactional Integration v1.0
 // DISABLED TO PRESERVE ORIGINAL CHAT INTELLIGENCE

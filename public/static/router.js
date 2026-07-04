@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // ExecDaat — SPA Router
 // Clean URL routing: /payments, /contracts, etc.
@@ -16,9 +15,10 @@ const DAAT_ROUTES = [
   { path: '/settings',   tab: 'settings',   label: 'Settings',   icon: 'fas fa-cog',           color: '#f59e0b' },
   { path: '/otc',        tab: 'otc',        label: 'OTC',        icon: 'fas fa-handshake',     color: '#6366f1' },
   { path: '/swap',       tab: 'dex',        label: 'Swap',       icon: 'fas fa-exchange-alt',  color: '#eab308' },
-  { path: '/bridge',     tab: 'bridge',     label: 'Bridge',     icon: 'fas fa-right-left',    color: '#06b6d4' },
   { path: '/multisend',  tab: 'multisend',  label: 'MultiSend',  icon: 'fas fa-paper-plane',   color: '#06b6d4' },
   { path: '/history',    tab: 'history',    label: 'History',    icon: 'fas fa-history',       color: '#60a5fa' },
+  { path: '/unified-balance', tab: 'unifiedbalance',  label: 'Unified Balance', icon: 'fas fa-coins', color: '#a78bfa' },
+  { path: '/advanced-crosschain', tab: 'advanced-crosschain', label: 'Advanced Cross-Chain', icon: 'fas fa-satellite-dish', color: '#a78bfa' },
 ];
 
 const TAB_TO_PATH = {};
@@ -35,13 +35,17 @@ function _getPath() {
   return path || '/payments';
 }
 
+// Legacy/alias hash paths → canonical tab (covers cached #/unified links)
+const ROUTE_ALIASES = { '/unified': 'unifiedbalance', '/unifiedbalance': 'unifiedbalance' };
+
 function _routeForPath(path) {
   return DAAT_ROUTES.find(function(r) { return r.path === path || r.path === '/' + path.replace(/^\//,''); });
 }
 
 function _tabForPath(path) {
   var r = _routeForPath(path);
-  return r ? r.tab : null;
+  if (r) return r.tab;
+  return ROUTE_ALIASES[path] || null;
 }
 
 function daatNavigate(tab, replace) {

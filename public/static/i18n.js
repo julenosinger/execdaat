@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // ExecDaat — Internationalization (i18n)
 // Supported: en (default), pt, es, zh, ko

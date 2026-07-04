@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // ARC Payments Module v4 — Fee Transparency · Gas Oracle · Multi-Token
 // Multi-Network · Gov Tax · ENS · KYC · TX Pipeline · Receipts++

@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // HIDE-HISTORY.JS — Persistent "Hide from View" System
 // ExecDaat · Payments · Contracts · Multisend

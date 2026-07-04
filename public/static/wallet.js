@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // ExecDaat - EVM Wallet Connection
 // Suporta MetaMask, Coinbase Wallet, Rabby, Brave Wallet,
@@ -32,46 +31,6 @@ const ARC_TESTNET_PARAMS = {
     'https://rpc.quicknode.testnet.arc.network',
   ],
   blockExplorerUrls: ['https://testnet.arcscan.app'],
-};
-
-// Additional testnet networks supported by ExecDaat
-window.UB_NETWORK_PARAMS = {
-  arc: ARC_TESTNET_PARAMS,
-  sepolia: {
-    chainId: '0xaa36a7',
-    chainName: 'Ethereum Sepolia',
-    nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
-    rpcUrls: ['https://rpc.sepolia.org', 'https://ethereum-sepolia-rpc.publicnode.com'],
-    blockExplorerUrls: ['https://sepolia.etherscan.io'],
-  },
-  arbsepolia: {
-    chainId: '0x66eee',
-    chainName: 'Arbitrum Sepolia',
-    nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
-    rpcUrls: ['https://sepolia-rollup.arbitrum.io/rpc'],
-    blockExplorerUrls: ['https://sepolia.arbiscan.io'],
-  },
-  basesepolia: {
-    chainId: '0x14a34',
-    chainName: 'Base Sepolia',
-    nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
-    rpcUrls: ['https://sepolia.base.org'],
-    blockExplorerUrls: ['https://sepolia.basescan.org'],
-  },
-  optsepolia: {
-    chainId: '0xaa37dc',
-    chainName: 'OP Sepolia',
-    nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
-    rpcUrls: ['https://sepolia.optimism.io'],
-    blockExplorerUrls: ['https://sepolia-optimism.etherscan.io'],
-  },
-  polygonamoy: {
-    chainId: '0x13882',
-    chainName: 'Polygon Amoy',
-    nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
-    rpcUrls: ['https://rpc-amoy.polygon.technology'],
-    blockExplorerUrls: ['https://amoy.polygonscan.com'],
-  },
 };
 
 // Endereços dos contratos — definidos no window para compartilhar entre módulos
@@ -231,29 +190,6 @@ async function fetchUSDCBalance(address, provider) {
     return '0.0000';
   } catch (err) {
     console.warn('[WALLET] Erro ao buscar saldo USDC:', err);
-    return null;
-  }
-}
-
-async function fetchEURCBalance(address, provider) {
-  try {
-    const balanceOfSelector = '0x70a08231';
-    const paddedAddress = address.slice(2).padStart(64, '0');
-    const data = balanceOfSelector + paddedAddress;
-
-    const result = await provider.request({
-      method: 'eth_call',
-      params: [{ to: window.EURC_ADDRESS, data }, 'latest'],
-    });
-
-    if (result && result !== '0x') {
-      const balance = BigInt(result);
-      const formatted = Number(balance) / 1e6;
-      return formatted.toFixed(4);
-    }
-    return '0.0000';
-  } catch (err) {
-    console.warn('[WALLET] Erro ao buscar saldo EURC:', err);
     return null;
   }
 }
@@ -569,82 +505,6 @@ async function switchNetworkFromUI() {
     updateWalletUI();
   }
 }
-
-// ─── Switch to any supported network ──────────────────────────────────────
-async function switchToNetwork(networkKey) {
-  var state = window.walletState;
-  var provider = state.provider;
-  if (!provider) {
-    showWalletToast('Connect wallet first', 'warning');
-    return false;
-  }
-  var params = window.UB_NETWORK_PARAMS[networkKey];
-  if (!params) return false;
-  var netName = params.chainName;
-
-  try {
-    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: params.chainId }] });
-  } catch (switchError) {
-    if (switchError.code === 4902 || switchError.code === -32603 || (switchError.message && switchError.message.toLowerCase().indexOf('unrecognized') >= 0)) {
-      try {
-        await provider.request({ method: 'wallet_addEthereumChain', params: [params] });
-        await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: params.chainId }] });
-      } catch (addError) {
-        console.error('Failed to add network:', addError);
-        showWalletToast('Failed to add ' + netName, 'error');
-        return false;
-      }
-    } else {
-      console.error('Failed to switch network:', switchError);
-      return false;
-    }
-  }
-
-  state.chainId = parseInt(params.chainId, 16);
-  state.onArcNetwork = (networkKey === 'arc');
-  showWalletToast('Connected to ' + netName, 'success');
-  updateWalletUI();
-  updateNetworkSelectorUI();
-  return true;
-}
-window.switchToNetwork = switchToNetwork;
-
-// ─── Update network selector UI to reflect current chain ─────────────────
-var NETWORK_DISPLAY = {
-  arc:         { icon:'🟣', name:'Arc Testnet' },
-  sepolia:     { icon:'🔷', name:'Ethereum Sepolia' },
-  arbsepolia:  { icon:'🔵', name:'Arbitrum Sepolia' },
-  basesepolia: { icon:'🔵', name:'Base Sepolia' },
-  optsepolia:  { icon:'🔴', name:'OP Sepolia' },
-  polygonamoy: { icon:'🟣', name:'Polygon Amoy' },
-};
-var NETWORK_KEY_BY_CHAINID = {
-  5042002:  'arc',
-  11155111: 'sepolia',
-  421614:   'arbsepolia',
-  84532:    'basesepolia',
-  11155420: 'optsepolia',
-  80002:    'polygonamoy',
-};
-function updateNetworkSelectorUI() {
-  var chainId = window.walletState?.chainId;
-  var key = NETWORK_KEY_BY_CHAINID[chainId] || 'arc';
-  var info = NETWORK_DISPLAY[key];
-  var iconEl = document.getElementById('network-selector-icon');
-  var nameEl = document.getElementById('network-selector-name');
-  if (iconEl) iconEl.textContent = info.icon;
-  if (nameEl) nameEl.textContent = info.name;
-  // Update checkmarks
-  Object.keys(NETWORK_KEY_BY_CHAINID).forEach(function(k) {
-    var nk = NETWORK_KEY_BY_CHAINID[k];
-    var check = document.getElementById('net-check-' + nk);
-    if (check) {
-      if (nk === key) { check.classList.remove('hidden'); check.classList.add('text-green-400'); }
-      else { check.classList.add('hidden'); }
-    }
-  });
-}
-window.updateNetworkSelectorUI = updateNetworkSelectorUI;
 
 // ============================================================
 // MODAL DE SELEÇÃO DE WALLET
@@ -1501,8 +1361,6 @@ async function connectWithProvider(index) {
     if (window.walletState.onArcNetwork) {
       const balance = await fetchUSDCBalance(address, provider);
       window.walletState.usdcBalance = balance;
-      const eurcBalance = await fetchEURCBalance(address, provider);
-      window.walletState.eurcBalance = eurcBalance;
     }
 
     // Atualizar UI
@@ -1564,7 +1422,6 @@ function handleChainChanged(chainIdHex) {
   window.walletState.onArcNetwork = chainId === 5042002;
 
   updateWalletUI();
-  updateNetworkSelectorUI();
 
   if (window.walletState.onArcNetwork) {
     showWalletToast(t('wallet_connected_arc'), 'success');
@@ -1686,8 +1543,6 @@ async function tryAutoReconnect() {
         if (window.walletState.onArcNetwork) {
           const balance = await fetchUSDCBalance(accounts[0], window.ethereum);
           window.walletState.usdcBalance = balance;
-          const eurcB = await fetchEURCBalance(accounts[0], window.ethereum);
-          window.walletState.eurcBalance = eurcB;
           updateWalletUI();
         }
       }
@@ -1714,10 +1569,12 @@ function walletStartBalancePolling() {
       const bal  = await fetchUSDCBalance(state.address, state.provider);
       if (bal !== null) {
         state.usdcBalance = bal;
+        // Atualizar indicadores de saldo sem rebuildar toda a UI
         const panelBal = document.getElementById('panel-balance');
         if (panelBal) panelBal.textContent = bal;
         const headerBal = document.getElementById('wallet-balance-display');
         if (headerBal) headerBal.textContent = `$${bal} USDC`;
+        // Flash visual se saldo mudou
         if (prev !== null && prev !== bal) {
           [panelBal, headerBal].forEach(el => {
             if (!el) return;

@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // ARC Persistence Layer v1 — Hybrid IndexedDB + localStorage
 // Scoped per wallet · Cross-session · Background sync

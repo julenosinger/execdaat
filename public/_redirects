@@ -1,14 +1,6 @@
-# ExecDaat — Cloudflare Pages SPA Redirects (clean URLs)
-# All routes return / with 200 for SPA fallback
-
-/dashboard    /    200
-/payments     /    200
-/contracts    /    200
-/autonoma     /    200
-/agents       /    200
-/bridge       /    200
-/settings     /    200
-/otc          /    200
-/swap         /    200
-/multisend    /    200
-/history      /    200
+# ExecDaat — Cloudflare Pages
+# SPA clean-URL routing is handled entirely by the Hono worker (_worker.js),
+# which 302-redirects clean paths (e.g. /payments) to the hash router
+# (/#/payments). No static _redirects rules are needed here; keeping them
+# empty avoids conflicts with the worker for routes whose tab name differs
+# from the path (e.g. /swap → dex, /unified-balance → unified).

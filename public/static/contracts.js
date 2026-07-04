@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // ARC Contracts Module v5 — On-chain Escrow + Full Sync
 // ContractFactory: 0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A

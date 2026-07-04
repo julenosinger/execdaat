@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // HISTORY MODULE — ExecDaat  v2 (Real On-Chain)
 // Fetches real transaction history from Arc Testnet via RPC

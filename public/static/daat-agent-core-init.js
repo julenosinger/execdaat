@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // DAAT AGENT CORE — GLOBAL INITIALIZER & SAFE LOADER
 // Build: 20260408i

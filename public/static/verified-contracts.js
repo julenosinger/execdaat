@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 /**
  * verified-contracts.js — ExecDaat Platform
  * Central registry of all smart contracts deployed on Arc Testnet.

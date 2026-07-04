@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // PERMIT2-ENGINE.JS — Full Permit2 Execution Layer
 // ExecDaat · Arc Testnet · ChainId 5042002

@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // AXIOS-SHIM.JS — Drop-in axios replacement using fetch()
 // ExecDaat · Arc Testnet · Build: 20260328a

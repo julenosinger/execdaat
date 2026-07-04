@@ -1,4 +1,3 @@
-// build:v2-20260627-151358
 // ============================================================
 // ARC USER PROFILE v3 — STATELESS (Privacy-First)
 // NO data persistence. All functions return empty/default values.
