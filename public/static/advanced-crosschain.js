@@ -113,6 +113,10 @@ const _accState = {
   quoteExpiry: null,
   quoteTimer: null,
 
+  // bridge mode: 'standard' (Arc App Kit / CCTP) or 'turbo' (Treasury/Vault)
+  bridgeMode: 'standard',
+  turboInfo: null,
+
   // execution state
   executing: false,
   execSteps: [],           // [{id,label,status,txHash,time}]
@@ -367,9 +371,40 @@ async function accGetQuote() {
   _accState.quoteError = null;
   _accState.quote = null;
   _accState.selectedProvider = null;
+  _accState.bridgeMode = 'standard';
+  _accState.turboInfo = null;
   _accRenderQuoteLoading();
   _accRenderComparisonLoading();
   _accRenderPreview();
+
+  // ── Turbo Bridge priority (Other Chains → Arc only) ──────────────────────
+  // When the destination is Arc and Treasury/Vault liquidity is available,
+  // prioritise the Turbo Bridge. Any unavailability silently continues to the
+  // Standard Bridge quote below (no error, no interruption).
+  try {
+    if (window.TurboBridge && window.TurboBridge.isTurboRoute(_accState.fromChain, _accState.toChain)) {
+      const avail = await window.TurboBridge.isAvailable(_accState.fromChain, amount);
+      if (avail.available) {
+        const tq = window.TurboBridge.getQuote({ from: _accState.fromChain, to: _accState.toChain, amount: amount, reserves: avail.reserves });
+        _accState.bridgeMode = 'turbo';
+        _accState.turboInfo = avail.info || (tq && tq._turbo) || null;
+        _accState.quote = tq;
+        _accState.selectedProvider = tq.provider.id;
+        _accState.quoting = false;
+        _accRenderBestRoute(tq);
+        _accRenderComparison([tq]);
+        _accRenderPreview();
+        _accStartQuoteTimer(tq.expiry);
+        _accSetLayoutMode('exec');
+        return;
+      }
+      console.log('[ACC] Turbo unavailable (' + (avail.reason || 'n/a') + ') — using Standard Bridge');
+    }
+  } catch (turboQErr) {
+    console.warn('[ACC] Turbo quote check failed, using Standard Bridge:', turboQErr && turboQErr.message);
+    _accState.bridgeMode = 'standard';
+    _accState.turboInfo = null;
+  }
 
   try {
     // Official Arc/Circle CCTP quote (single native route)
@@ -451,6 +486,18 @@ async function accExecuteBridge() {
   const addr      = ws.address;
   const mode      = _accState.fastRoute ? 'fast' : 'standard';
 
+  // ── Turbo Bridge execution path (Other Chains → Arc) ─────────────────────
+  // If the current quote resolved to Turbo, run the Treasury/Vault flow. On
+  // any turbo failure we fall through to the Standard Bridge below so the user
+  // never loses the operation.
+  if (_accState.bridgeMode === 'turbo' && window.TurboBridge) {
+    const ok = await _accRunTurbo(amount, fromKey, toKey, addr);
+    if (ok) return;
+    _accState.bridgeMode = 'standard';
+    _accShowToast('Turbo Bridge unavailable — switching to Standard Bridge', 'warning');
+    _accRenderPreview();
+  }
+
   _accState.executing    = true;
   _accState.execError    = null;
   _accState.activeTxHash = null;
@@ -527,6 +574,7 @@ async function accExecuteBridge() {
       txHash:     result.burnTxHash,      // source tx → matches "from" explorer
       mintTxHash: result.mintTxHash,
       ts:         Date.now(),
+      bridgeType: 'Standard',
     });
     _accSaveHistory();
     _accRenderHistory();
@@ -548,6 +596,120 @@ async function accExecuteBridge() {
     _accRenderPreview();
     _accShowToast('Bridge failed: ' + _accState.execError, 'error');
     _accSetLayoutMode('plan');   // visual-only: bridge failed → back to original layout
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TURBO BRIDGE EXECUTION (Treasury/Vault — Other Chains → Arc)
+   Runs the Elligentt Turbo flow via window.TurboBridge. Returns true on
+   success, false to signal the caller should fall back to the Standard
+   Bridge. Never throws.
+   ═══════════════════════════════════════════════════════════ */
+async function _accRunTurbo(amount, fromKey, toKey, addr) {
+  const fromChain = ACC_CHAINS[fromKey];
+  const toChain   = ACC_CHAINS[toKey];
+  const tInfo     = _accState.turboInfo || {};
+
+  _accState.executing    = true;
+  _accState.execError    = null;
+  _accState.activeTxHash = null;
+  _accClearQuoteTimer();
+  _accSetLayoutMode('exec', true);
+  _accRenderPreview();
+
+  // Turbo timeline (real states, driven by TurboExecutor progress below)
+  _accState.execSteps = [
+    { id: 'prepare',    label: 'Preparing',              status: 'active',  time: _accNow(), txHash: null },
+    { id: 'treasury',   label: 'Treasury Validation',    status: 'pending', time: null,      txHash: null },
+    { id: 'vault',      label: 'Vault Allocation',       status: 'pending', time: null,      txHash: null },
+    { id: 'sign',       label: 'Signing',                status: 'pending', time: null,      txHash: null },
+    { id: 'sent',       label: 'Sending',                status: 'pending', time: null,      txHash: null },
+    { id: 'treasproc',  label: 'Treasury Processing',    status: 'pending', time: null,      txHash: null },
+    { id: 'vaultproc',  label: 'Vault Processing',       status: 'pending', time: null,      txHash: null },
+    { id: 'settle',     label: 'Destination Settlement', status: 'pending', time: null,      txHash: null },
+    { id: 'completed',  label: 'Completed',              status: 'pending', time: null,      txHash: null },
+  ];
+  _accRenderTimeline();
+
+  // Map turbo-core onProgress(stepNum, message) → visual timeline
+  function onStep(stepNum, message) {
+    switch (stepNum) {
+      case 0: // switching to source
+        _accStepDone('prepare'); _accStepDone('treasury'); _accStepActive('sign');
+        break;
+      case 1: // approving USDC
+        _accStepActive('sign');
+        break;
+      case 2: // burning via CCTP on source
+        _accStepDone('sign'); _accStepDone('vault'); _accStepActive('sent');
+        break;
+      case 3: // switching to Arc + locking Treasury liquidity
+        _accStepDone('sent'); _accStepActive('treasproc');
+        break;
+      case 4: // turbo complete / queued — settlement continues async
+        _accStepDone('treasproc'); _accStepDone('vaultproc'); _accStepActive('settle');
+        break;
+      default:
+        break;
+    }
+    _accRenderTimeline();
+  }
+
+  try {
+    const result = await window.TurboBridge.execute({
+      from: fromKey, to: toKey, amount: amount, recipient: addr, onStep: onStep,
+    });
+
+    // Burn confirmed + Treasury intent created → mark settlement/complete
+    _accState.activeTxHash = result.txHash || null;
+    _accStepDone('treasproc'); _accStepDone('vaultproc'); _accStepDone('settle'); _accStepDone('completed');
+    if (result.txHash) {
+      const s = _accState.execSteps.find(x => x.id === 'sent');
+      if (s) s.txHash = result.txHash;
+    }
+    _accRenderTimeline();
+    _accState.executing = false;
+
+    // History entry — Turbo metadata (bridge type, treasury, vault, contract)
+    _accState.history.unshift({
+      id:         result.txHash || ('turbo_' + Date.now()),
+      token:      'USDC',
+      from:       fromChain.label,
+      to:         toChain.label,
+      amount:     amount,
+      received:   _accState.quote?.output ?? amount,
+      status:     'completed',
+      provider:   'Turbo Bridge',
+      txHash:     result.txHash || null,
+      mintTxHash: null,
+      ts:         Date.now(),
+      bridgeType: 'Turbo',
+      treasury:   result.treasury || tInfo.treasury || null,
+      vault:      result.vault    || tInfo.vault    || null,
+      contract:   result.contract || tInfo.contract || null,
+      intentId:   result.intentId || null,
+    });
+    _accSaveHistory();
+    _accRenderHistory();
+
+    setTimeout(accLoadBalances, 2500);
+    setTimeout(() => { if (window.ubRefresh) window.ubRefresh(); }, 3000);
+
+    _accRenderPreview();
+    _accShowToast('Turbo Bridge submitted — settling to Arc ⚡', 'success');
+    _accSetLayoutMode('plan');
+    return true;
+
+  } catch (err) {
+    console.warn('[ACC] Turbo execution failed — will fall back:', err && err.message);
+    _accState.executing = false;
+    _accMarkCurrentFailed();
+    _accRenderTimeline();
+    // Reset timeline so the Standard path can rebuild cleanly
+    _accState.execSteps = [];
+    _accRenderTimeline();
+    _accSetLayoutMode('plan');
+    return false;
   }
 }
 
@@ -725,6 +887,10 @@ function _accRenderBestRoute(q) {
   const toChain   = ACC_CHAINS[_accState.toChain];
   const scoreColor = q.score >= 9 ? '#22c55e' : q.score >= 8 ? '#eab308' : '#f87171';
   const relColor   = q.reliability === 'Very High' ? '#22c55e' : q.reliability === 'High' ? '#3b82f6' : '#eab308';
+  const isTurbo    = _accState.bridgeMode === 'turbo';
+  const modeBadge  = isTurbo
+    ? '<span class="acc-tag" style="background:rgba(245,158,11,0.14);color:#f59e0b;border-color:rgba(245,158,11,0.35);"><i class="fas fa-bolt"></i> Turbo Bridge</span>'
+    : '<span class="acc-tag" style="background:rgba(96,165,250,0.12);color:#60a5fa;border-color:rgba(96,165,250,0.28);"><i class="fas fa-shield-alt"></i> Standard Bridge</span>';
 
   el.innerHTML = `
     <div class="acc-best-route-inner">
@@ -763,6 +929,7 @@ function _accRenderBestRoute(q) {
       </div>
 
       <div class="acc-route-tags">
+        ${modeBadge}
         <span class="acc-tag" style="background:${relColor}22;color:${relColor};border-color:${relColor}44;">
           <i class="fas fa-shield-alt"></i> ${q.reliability}
         </span>
@@ -811,6 +978,9 @@ function _accRenderComparison(quotes) {
 }
 
 function accSelectProvider(providerId) {
+  // Turbo Bridge is a single fixed route (Treasury/Vault) — no provider
+  // switching. Ignore selection clicks while in Turbo mode.
+  if (_accState.bridgeMode === 'turbo') return;
   _accState.selectedProvider = providerId;
   // Re-rank and rebuild quote with selected provider
   const amount = parseFloat(_accState.amount) || 0;
@@ -830,6 +1000,7 @@ function accSelectProvider(providerId) {
 
 /* ─── Execution Preview ─── */
 function _accRenderPreview() {
+  try { _accRenderRouteStrip(); } catch (e) {}
   const el = document.getElementById('acc-preview-body');
   if (!el) return;
 
@@ -847,8 +1018,35 @@ function _accRenderPreview() {
   const fromChain = ACC_CHAINS[_accState.fromChain];
   const toChain   = ACC_CHAINS[_accState.toChain];
   const connected = window.walletState?.connected;
+  const isTurbo   = _accState.bridgeMode === 'turbo';
+  const tInfo     = _accState.turboInfo || (q && q._turbo) || null;
+
+  const modeRow = `
+    <div class="acc-preview-row">
+      <span class="acc-preview-lbl">Bridge Mode</span>
+      <span class="acc-preview-val" style="color:${isTurbo ? '#f59e0b' : '#60a5fa'};font-weight:700;">
+        <i class="fas ${isTurbo ? 'fa-bolt' : 'fa-shield-alt'}"></i> ${isTurbo ? 'Turbo Bridge' : 'Standard Bridge'}
+      </span>
+    </div>
+    <div class="acc-preview-row">
+      <span class="acc-preview-lbl">Provider</span>
+      <span class="acc-preview-val">${q.provider.name}</span>
+    </div>`;
+
+  const turboRows = (isTurbo && tInfo) ? `
+    <div class="acc-preview-row">
+      <span class="acc-preview-lbl">Treasury</span>
+      <span class="acc-preview-val" title="${tInfo.treasury}">${_accShortAddr(tInfo.treasury)}</span>
+    </div>
+    <div class="acc-preview-row">
+      <span class="acc-preview-lbl">Vault</span>
+      <span class="acc-preview-val" title="${tInfo.vault}">${_accShortAddr(tInfo.vault)}</span>
+    </div>` : '';
 
   el.innerHTML = `
+    ${modeRow}
+    ${turboRows}
+    <div class="acc-preview-divider"></div>
     <div class="acc-preview-row">
       <span class="acc-preview-lbl">You Send</span>
       <span class="acc-preview-val">${_accFmt(q.input, 6)} USDC</span>
@@ -950,7 +1148,119 @@ function _accRenderTimeline() {
     explorerBtn.href    = ACC_CHAINS[_accState.fromChain].explorer + '/tx/' + _accState.activeTxHash;
     explorerBtn.style.display = 'inline-flex';
   }
+
+  _accRenderExecBar();
 }
+
+/* ─── Official chain/token logos (inline SVG — CSP-safe, no emojis/circles) ─── */
+const ACC_LOGOS = {
+  eth: '<svg viewBox="0 0 32 32" class="acc-logo-svg"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#fff"><path fill-opacity=".6" d="M16.5 4v8.87l7.49 3.35z"/><path d="M16.5 4 9 16.22l7.5-3.35z"/><path fill-opacity=".6" d="M16.5 21.97V28l7.5-10.37z"/><path d="M16.5 28v-6.03L9 17.63z"/><path fill-opacity=".2" d="m16.5 20.57 7.49-4.35-7.49-3.34z"/><path fill-opacity=".6" d="m9 16.22 7.5 4.35v-7.69z"/></g></svg>',
+  base: '<svg viewBox="0 0 32 32" class="acc-logo-svg"><circle cx="16" cy="16" r="16" fill="#0052FF"/><path fill="#fff" d="M15.9 26c5.55 0 10.05-4.48 10.05-10S21.45 6 15.9 6C10.63 6 6.3 9.96 6 15.02h13.2v1.96H6C6.3 22.04 10.63 26 15.9 26z"/></svg>',
+  arb: '<svg viewBox="0 0 32 32" class="acc-logo-svg"><circle cx="16" cy="16" r="16" fill="#213147"/><path fill="#12AAFF" d="M9 22l3.4-9 3.4 9h-2.1l-1.3-3.7L11.1 22z"/><path fill="#9DCCED" d="M16.9 9.5 22 22h-2.2l-3.9-10.2z"/><path fill="#fff" d="M16.6 12.6 20 22h-2.1l-2.4-6.4z"/></svg>',
+  op: '<svg viewBox="0 0 32 32" class="acc-logo-svg"><circle cx="16" cy="16" r="16" fill="#FF0420"/><path fill="#fff" d="M11.7 20.6c-1.9 0-3.1-1-3.1-2.7 0-.3 0-.6.1-.9.4-1.9.9-3 3.2-3 1.9 0 3.1 1 3.1 2.7 0 .3 0 .6-.1.9-.4 1.9-1 3-3.2 3zm.2-4.9c-.7 0-1.1.4-1.3 1.2-.1.3-.1.5-.1.7 0 .6.3.9 1 .9.7 0 1.1-.4 1.3-1.2.1-.3.1-.5.1-.7 0-.6-.4-.9-1-.9zm4.2 4.8 1.3-6.3h2.5c1.4 0 2.2.6 2.2 1.7 0 .2 0 .4-.1.6-.3 1.3-1.2 1.9-2.7 1.9h-1.1l-.4 2.1zm2-3.6h.9c.6 0 1-.2 1.1-.8v-.3c0-.4-.3-.5-.8-.5h-.9z"/></svg>',
+  polygon: '<svg viewBox="0 0 32 32" class="acc-logo-svg"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path fill="#fff" d="M20.7 13.4c-.3-.2-.7-.2-1 0l-2.3 1.3-1.6.9-2.3 1.3c-.3.2-.7.2-1 0l-1.8-1c-.3-.2-.5-.5-.5-.9v-2c0-.4.2-.7.5-.9l1.8-1c.3-.2.7-.2 1 0l1.8 1c.3.2.5.5.5.9v1.3l1.6-.9v-1.4c0-.4-.2-.7-.5-.9l-3.3-1.9c-.3-.2-.7-.2-1 0l-3.4 1.9c-.3.2-.5.5-.5.9v3.8c0 .4.2.7.5.9l3.4 1.9c.3.2.7.2 1 0l2.3-1.3 1.6-.9 2.3-1.3c.3-.2.7-.2 1 0l1.8 1c.3.2.5.5.5.9v2c0 .4-.2.7-.5.9l-1.8 1.1c-.3.2-.7.2-1 0l-1.8-1c-.3-.2-.5-.5-.5-.9v-1.3l-1.6.9v1.4c0 .4.2.7.5.9l3.4 1.9c.3.2.7.2 1 0l3.4-1.9c.3-.2.5-.5.5-.9v-3.9c0-.4-.2-.7-.5-.9z"/></svg>',
+  arc: '<svg viewBox="0 0 32 32" class="acc-logo-svg"><defs><linearGradient id="acgA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#6C4CFF"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#acgA)"/><path fill="#fff" d="M10 22 15 9h2l5 13h-2.3l-1.15-3.1h-4.1L12.3 22zm3.85-5h2.5L15.1 12.6z"/></svg>',
+  usdc: '<svg viewBox="0 0 32 32" class="acc-logo-svg"><circle cx="16" cy="16" r="16" fill="#2775CA"/><path fill="#fff" d="M16 6.5a9.5 9.5 0 100 19 9.5 9.5 0 000-19zm2.4 12.9c0 1.3-1 2.1-2.6 2.3v1.3h-1.1v-1.3c-1.1-.1-2.1-.4-2.7-.8l.4-1.3c.6.4 1.5.7 2.5.7 1 0 1.7-.4 1.7-1s-.5-.9-1.6-1.3c-1.5-.5-2.6-1.1-2.6-2.5 0-1.2.9-2.1 2.4-2.3V12h1.1v1.3c.9.1 1.6.3 2.1.6l-.4 1.3c-.4-.2-1.1-.5-2-.5-1.1 0-1.5.5-1.5.9 0 .5.5.8 1.8 1.3 1.6.5 2.5 1.2 2.5 2.5z"/></svg>',
+};
+const ACC_CHAIN_LOGO_KEY = { arc: 'arc', sepolia: 'eth', basesepolia: 'base', arbsepolia: 'arb', optsepolia: 'op', polygonAmoy: 'polygon' };
+function _accChainLogo(chainKey) {
+  const k = ACC_CHAIN_LOGO_KEY[chainKey];
+  if (k && ACC_LOGOS[k]) return ACC_LOGOS[k];
+  const c = ACC_CHAINS[chainKey] || {};
+  const color = c.color || '#4F8CFF';
+  const letter = (c.short ? c.short[0] : '?').toUpperCase();
+  return '<svg viewBox="0 0 32 32" class="acc-logo-svg"><rect width="32" height="32" rx="9" fill="' + color + '"/><text x="16" y="21" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="Inter,Arial,sans-serif">' + letter + '</text></svg>';
+}
+
+/* ─── Payment Route strip (official logos: From → Arc → To) ─── */
+function _accEnsureRouteStrip() {
+  if (document.getElementById('acc-route-strip')) return;
+  const grid = document.querySelector('#tab-content-advanced-crosschain .acc-grid');
+  if (!grid || !grid.parentNode) return;
+  const strip = document.createElement('div');
+  strip.id = 'acc-route-strip';
+  strip.style.cssText = 'margin-bottom:16px;background:#0E1422;border:1px solid rgba(110,120,255,.18);border-radius:18px;padding:16px 20px;box-shadow:0 6px 30px rgba(0,0,0,.30);';
+  grid.parentNode.insertBefore(strip, grid);
+}
+function _accNode(chainKey) {
+  const c = ACC_CHAINS[chainKey] || {};
+  return '<div class="acc-rs-node"><div class="acc-rs-logo">' + _accChainLogo(chainKey) + '</div><div class="acc-rs-name">' + (c.short || chainKey) + '</div></div>';
+}
+function _accRenderRouteStrip() {
+  _accEnsureRouteStrip();
+  const el = document.getElementById('acc-route-strip');
+  if (!el) return;
+  const from = _accState.fromChain, to = _accState.toChain, ARC = 'arc';
+  const line = '<div class="acc-rs-line" style="background-size:26px 2px;animation:acc-rs-dash 1s linear infinite;background-image:repeating-linear-gradient(90deg,#6C4CFF 0,#6C4CFF 8px,transparent 8px,transparent 14px);"></div>';
+  const nodes = [_accNode(from)];
+  if (from !== ARC && to !== ARC) { nodes.push(line, _accNode(ARC)); }
+  nodes.push(line, _accNode(to));
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+      '<span style="font-size:13px;font-weight:600;color:#fff;"><i class="fas fa-route" style="color:#4F8CFF;margin-right:7px;"></i>Payment Route</span>' +
+      '<span style="font-size:11px;color:#7180A6;">Powered by Arc CCTP</span>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:6px;">' + nodes.join('') + '</div>';
+}
+
+function _accEnsureExecBar() {
+  if (document.getElementById('acc-exec-bar')) return;
+  const grid = document.querySelector('#tab-content-advanced-crosschain .acc-grid');
+  if (!grid || !grid.parentNode) return;
+  const bar = document.createElement('div');
+  bar.id = 'acc-exec-bar';
+  bar.style.display = 'none';
+  grid.parentNode.insertBefore(bar, grid);
+}
+
+function _accRenderExecBar() {
+  _accEnsureExecBar();
+  const bar = document.getElementById('acc-exec-bar');
+  if (!bar) return;
+  const steps = _accState.execSteps || [];
+  const total = steps.length;
+  if (!_accState.executing || total === 0) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+
+  const done   = steps.filter(s => s.status === 'done').length;
+  const active  = steps.find(s => s.status === 'active');
+  const failed  = steps.find(s => s.status === 'failed');
+  const pct     = Math.max(0, Math.min(100, Math.round((done / total) * 100)));
+  const label   = failed ? 'Failed' : (active ? active.label : (done === total ? 'Completed' : 'Preparing…'));
+  const barColor = failed ? '#f87171' : (pct >= 100 ? '#22c55e' : '#a78bfa');
+  const icon    = failed ? '<i class="fas fa-times-circle" style="color:#f87171;"></i> '
+                : (pct >= 100 ? '<i class="fas fa-check-circle" style="color:#22c55e;"></i> '
+                : '<i class="fas fa-circle-notch fa-spin" style="color:#a78bfa;"></i> ');
+  const turbo   = _accState.bridgeMode === 'turbo';
+  const badge   = turbo
+    ? '<span style="margin-left:8px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(245,158,11,0.16);color:#f59e0b;">⚡ Turbo Bridge</span>'
+    : '<span style="margin-left:8px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(96,165,250,0.14);color:#60a5fa;">🌉 Standard</span>';
+
+  const from = ACC_CHAINS[_accState.fromChain] || {};
+  const to   = ACC_CHAINS[_accState.toChain] || {};
+  const hash = _accState.activeTxHash || '';
+  const actBtn = 'display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:6px 12px;border-radius:9px;text-decoration:none;cursor:pointer;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#c7d2e5;transition:all .15s;';
+  let actions = '';
+  if (hash && from.explorer) actions += '<a style="' + actBtn + '" href="' + from.explorer + '/tx/' + hash + '" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i> View Explorer</a>';
+  if (hash) actions += '<button style="' + actBtn + '" onclick="accCopyHash()"><i class="fas fa-copy"></i> Copy TX</button>';
+  if (to.explorer) actions += '<a style="' + actBtn + '" href="' + to.explorer + '" target="_blank" rel="noopener"><i class="fas fa-bullseye"></i> Destination Explorer</a>';
+  actions += '<button style="' + actBtn + '" onclick="if(window.accRefreshBalances)accRefreshBalances()"><i class="fas fa-sync"></i> Refresh Status</button>';
+
+  bar.style.display = '';
+  bar.style.marginBottom = '16px';
+  bar.innerHTML =
+    '<div style="background:linear-gradient(135deg,rgba(167,139,250,0.08),rgba(6,182,212,0.06));border:1px solid rgba(167,139,250,0.22);border-radius:14px;padding:14px 16px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">' +
+        '<div style="display:flex;align-items:center;font-size:13px;font-weight:700;color:#e2e8f0;">' + icon + label + badge + '</div>' +
+        '<div style="font-size:16px;font-weight:800;color:' + barColor + ';">' + pct + '%</div>' +
+      '</div>' +
+      '<div style="height:8px;border-radius:999px;background:rgba(255,255,255,0.06);overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:999px;transition:width .5s ease;"></div></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">' + actions + '</div>' +
+    '</div>';
+}
+
+window.accCopyHash = function () {
+  try { navigator.clipboard.writeText(_accState.activeTxHash || ''); _accShowToast('Transaction hash copied', 'success'); } catch (e) {}
+};
 
 /* ─── Live Activity ─── */
 function _accRenderLiveActivity() {
@@ -993,6 +1303,10 @@ function _accRenderHistory() {
     const fromShort   = Object.values(ACC_CHAINS).find(c => c.label === h.from)?.short || h.from;
     const toShort     = Object.values(ACC_CHAINS).find(c => c.label === h.to)?.short   || h.to;
     const explorerUrl = (Object.values(ACC_CHAINS).find(c => c.label === h.from)?.explorer || 'https://testnet.arcscan.app') + '/tx/' + (h.txHash || '');
+    const isTurboH    = (h.bridgeType === 'Turbo') || (h.provider === 'Turbo Bridge');
+    const typeBadge   = isTurboH
+      ? '<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;background:rgba(245,158,11,0.14);color:#f59e0b;border:1px solid rgba(245,158,11,0.35);"><i class="fas fa-bolt"></i> Turbo</span>'
+      : '<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;background:rgba(96,165,250,0.12);color:#60a5fa;border:1px solid rgba(96,165,250,0.28);">Standard</span>';
     return `
       <div class="acc-history-row">
         <div class="acc-hist-token">
@@ -1006,7 +1320,7 @@ function _accRenderHistory() {
           <i class="fas fa-circle" style="font-size:6px;vertical-align:middle;margin-right:4px;"></i>
           ${h.status.charAt(0).toUpperCase() + h.status.slice(1)}
         </div>
-        <div class="acc-hist-provider">${h.provider}</div>
+        <div class="acc-hist-provider">${h.provider}${typeBadge}</div>
         <div class="acc-hist-hash">
           ${h.txHash
             ? `<a href="${explorerUrl}" target="_blank" rel="noopener" style="color:#a78bfa;">${_accShortAddr(h.txHash)}</a>`
@@ -1166,6 +1480,9 @@ function _accSetLayoutMode(mode, immediate) {
   var target = (mode === 'exec') ? 'exec' : 'plan';
   // Any explicit mode change cancels a pending scheduled reflow.
   if (_accLayoutTimer) { clearTimeout(_accLayoutTimer); _accLayoutTimer = null; }
+
+  // Keep the execution command bar in sync with the layout mode.
+  try { if (typeof _accRenderExecBar === 'function') _accRenderExecBar(); } catch (e) {}
 
   // Return to plan (or forced) → apply right away.
   if (target === 'plan' || immediate) { _accApplyLayout(target); return; }

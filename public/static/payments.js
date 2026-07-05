@@ -1807,18 +1807,47 @@ function _payHistoryTableHtml(items) {
         const recipientFull = r.recipient || r.to || '';
         const recipientShort = recipientFull ? shortAddr(recipientFull) : '—';
 
+        // ── Cross-chain enrichment (additive — local rows are unaffected) ──
+        const isXChain  = !!r.crossChain;
+        const xcBurn    = r.bridgeTxHash || r.burnTxHash || r.txHash || '';
+        const xcMint    = r.destinationTxHash || r.mintTxHash || r.finalTxHash || '';
+        const xcSrcExp  = r.srcExplorer || 'https://testnet.arcscan.app';
+        const xcDestExp = r.destExplorer || '';
+        const xcToChain = r.toNetwork || '';
+        const xcBridge  = r.bridgeUsed || (r.bridgeType ? (r.bridgeType + ' Bridge') : '');
+        const _sh = (h) => h ? (h.slice(0, 8) + '…' + h.slice(-4)) : '';
+
         const dismissBtn = uid
           ? `<button onclick="event.stopPropagation();arcAnimatedDismiss('pay-tx-${safeid}',function(){if(typeof arcHidePay==='function')arcHidePay('${uid}');renderPaymentHistory();})" style="color:#4a6490;background:none;border:none;cursor:pointer;font-size:11px;padding:0;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='#4a6490'" title="Hide">✕</button>`
           : '';
 
+        // Recipient cell (+ destination chain & bridge badges for cross-chain)
+        const recvCell = isXChain
+          ? `<span style="font-family:monospace;font-size:11px;color:#8aaac8;" title="${recipientFull}">${recipientShort}</span>${xcToChain ? ` <span style="display:inline-block;margin-left:4px;font-size:8px;font-weight:700;padding:1px 5px;border-radius:5px;background:rgba(96,165,250,0.12);color:#60a5fa;border:1px solid rgba(96,165,250,0.25);"><i class="fas fa-arrow-right" style="font-size:7px;"></i> ${xcToChain}</span>` : ''}${xcBridge ? ` <span style="display:inline-block;font-size:8px;font-weight:700;padding:1px 5px;border-radius:5px;background:${r.bridgeType === 'Turbo' ? 'rgba(245,158,11,0.14)' : 'rgba(52,211,153,0.12)'};color:${r.bridgeType === 'Turbo' ? '#f59e0b' : '#34d399'};">${r.bridgeType === 'Turbo' ? '⚡ ' : ''}${xcBridge}</span>` : ''}`
+          : `<span style="font-family:monospace;font-size:11px;color:#8aaac8;" title="${recipientFull}">${recipientShort}</span>`;
+
+        // Transaction cell (Bridge tx on origin + Final delivery tx on destination)
+        const txCell = isXChain
+          ? `<div style="display:flex;flex-direction:column;gap:3px;">
+               ${xcBurn ? `<a href="${xcSrcExp}/tx/${xcBurn}" target="_blank" title="Bridge transaction (origin: ${xcSrcExp})" style="color:#60a5fa;font-size:10px;text-decoration:none;font-family:monospace;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'"><i class="fas fa-water" style="font-size:9px;"></i> Bridge: ${_sh(xcBurn)}</a>` : ''}
+               ${xcMint ? `<a href="${xcDestExp}/tx/${xcMint}" target="_blank" title="Final delivery transaction (destination: ${xcDestExp})" style="color:#34d399;font-size:10px;text-decoration:none;font-family:monospace;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'"><i class="fas fa-bullseye" style="font-size:9px;"></i> Final: ${_sh(xcMint)}</a>` : `<span style="color:#c99a3b;font-size:10px;"><i class="fas fa-clock" style="font-size:9px;"></i> Final: pending</span>`}
+             </div>`
+          : (txHashFull ? `<a href="${explorerBase}/tx/${txHashFull}" target="_blank" style="color:#60b4ff;font-size:10px;text-decoration:none;font-family:monospace;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${txHashFull}">${txHashShort}</a>` : '—');
+
+        // Explorer icon (destination for cross-chain, origin otherwise)
+        const lastLink = isXChain
+          ? ((xcMint && xcDestExp) ? `<a href="${xcDestExp}/tx/${xcMint}" target="_blank" title="Open destination explorer" style="color:#4a6490;margin-left:4px;" onmouseover="this.style.color='#34d399'" onmouseout="this.style.color='#4a6490'"><i class="fas fa-external-link-alt" style="font-size:10px;"></i></a>`
+              : (xcBurn ? `<a href="${xcSrcExp}/tx/${xcBurn}" target="_blank" style="color:#4a6490;margin-left:4px;" onmouseover="this.style.color='#22d3ee'" onmouseout="this.style.color='#4a6490'"><i class="fas fa-external-link-alt" style="font-size:10px;"></i></a>` : ''))
+          : (txHashFull ? `<a href="${explorerBase}/tx/${txHashFull}" target="_blank" style="color:#4a6490;margin-left:4px;" onmouseover="this.style.color='#22d3ee'" onmouseout="this.style.color='#4a6490'"><i class="fas fa-external-link-alt" style="font-size:10px;"></i></a>` : '');
+
         return `
         <tr>
           <td><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;background:${stTheme.bg};border:1px solid ${stTheme.border};color:${stTheme.color};"><i class="fas ${stInfo.icon}" style="font-size:9px;"></i>${stInfo.label}</span></td>
-          <td><span style="font-family:monospace;font-size:11px;color:#8aaac8;" title="${recipientFull}">${recipientShort}</span></td>
+          <td>${recvCell}</td>
           <td><span style="font-weight:700;color:#e8edf8;">${amtStr}</span> <span style="color:#60b4ff;font-size:10px;">${tokenStr}</span></td>
-          <td>${txHashFull ? `<a href="${explorerBase}/tx/${txHashFull}" target="_blank" style="color:#60b4ff;font-size:10px;text-decoration:none;font-family:monospace;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${txHashFull}">${txHashShort}</a>` : '—'}</td>
+          <td>${txCell}</td>
           <td style="color:#6a85aa;font-size:11px;">${date}</td>
-          <td style="text-align:center;">${dismissBtn}${txHashFull ? `<a href="${explorerBase}/tx/${txHashFull}" target="_blank" style="color:#4a6490;margin-left:4px;" onmouseover="this.style.color='#22d3ee'" onmouseout="this.style.color='#4a6490'"><i class="fas fa-external-link-alt" style="font-size:10px;"></i></a>` : ''}</td>
+          <td style="text-align:center;">${dismissBtn}${lastLink}</td>
         </tr>`;
       }).join('')}
     </tbody>

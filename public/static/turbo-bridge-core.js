@@ -41,7 +41,7 @@ const TREASURY_VAULT_ABI = [
   "function turboFeeBps() view returns (uint256)",
   "function setTurboFeeBps(uint256) external",
   "function fulfillAndPayWithFee(address asset, uint256 grossAmount, uint256 feeAmount, bytes32 intentId, address receiver) external",
-  "function getReserves(address asset) view returns (uint256 available, uint256 locked, uint256 pendingSettlement, uint256 pendingRepayment)",
+  "function getAvailableLiquidity(address asset) view returns (uint256 available)",
   "event TurboFeeCollected(bytes32 indexed intentId, address indexed asset, uint256 feeAmount)",
   "event TurboFeeUpdated(uint256 oldBps, uint256 newBps)",
   "event IntentCreated(bytes32 indexed intentId, address indexed creator, address asset, uint256 grossAmount, uint256 feeAmount, address indexed receiver)",
@@ -159,19 +159,19 @@ const VaultAccounting = (() => {
       const rpc = 'https://rpc.testnet.arc.network';
       const p = new window.ethers.JsonRpcProvider(rpc);
       const vc = new window.ethers.Contract(TREASURY_VAULT_ADDRESS, TREASURY_VAULT_ABI, p);
-      const [availableRaw, lockedRaw] = await vc.getReserves(TREASURY_ASSETS.usdc);
+      const availableRaw = await vc.getAvailableLiquidity(TREASURY_ASSETS.usdc);
       const available = parseFloat(window.ethers.formatUnits(availableRaw, 6));
-      const locked = parseFloat(window.ethers.formatUnits(lockedRaw, 6));
+      const locked = 0;
       VaultStore.mutate(s => {
         s.chainBalances['usdc'] = { available, locked };
         s.lastChainFetch = Date.now();
       });
       _cachedAvailable = available;
       _lastFetch = Date.now();
-      _log('[VAULT] On-chain reserves: available=' + available + ' locked=' + locked);
+      _log('[VAULT] On-chain liquidity: available=' + available);
       return available;
     } catch(e) {
-      _warn('[VAULT] Failed to fetch on-chain reserves:', e.message || e);
+      _warn('[VAULT] Failed to fetch on-chain liquidity:', e.message || e);
       return null;
     }
   }

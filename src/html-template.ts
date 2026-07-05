@@ -60,8 +60,10 @@ export function getMainHTML(): string {
   <link rel="manifest" href="/manifest.json">
 
   <!-- Favicon ──────────────────────────────────────────────────────────── -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%237c3aed'/><text y='72' x='50' text-anchor='middle' font-size='58' font-family='sans-serif'>⚡</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%237c3aed'/><text y='72' x='50' text-anchor='middle' font-size='58'>⚡</text></svg>">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20260705b">
+  <link rel="apple-touch-icon" href="/static/favicon.svg?v=20260705b">
+  <link rel="mask-icon" href="/static/favicon.svg?v=20260705b" color="#6C4CFF">
+  <link rel="shortcut icon" href="/static/favicon.svg?v=20260705b">
 
   <!-- ── Canonical ────────────────────────────────────────────────────── -->
   <link rel="canonical" href="https://execdaatplataform.pages.dev/">
