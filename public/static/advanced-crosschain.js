@@ -27,7 +27,7 @@ const ACC_CHAINS = {
     key: 'sepolia', label: 'Ethereum Sepolia', short: 'Sepolia',
     chainId: 11155111, chainHex: '0xaa36a7',
     domain: 0, icon: '🔷', color: '#627EEA',
-    rpc: 'https://rpc.sepolia.org',
+    rpc: 'https://ethereum-sepolia-rpc.publicnode.com',
     explorer: 'https://sepolia.etherscan.io',
     usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
     tokenMessenger: '0x8fe6b999dc680ccfdd5bf7c5f412b27e4e99e6d7',

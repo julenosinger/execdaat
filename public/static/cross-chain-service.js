@@ -47,7 +47,7 @@
     sepolia: {
       key: 'sepolia', name: 'Ethereum Sepolia', short: 'Sepolia', icon: '🔷',
       chainId: 11155111, chainHex: '0xaa36a7', domain: 0,
-      rpc: 'https://rpc.sepolia.org', explorer: 'https://sepolia.etherscan.io',
+      rpc: 'https://ethereum-sepolia-rpc.publicnode.com', explorer: 'https://sepolia.etherscan.io',
       usdc: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
       tokenMessenger: TOKEN_MESSENGER_V2, messageTransmitter: MSG_TRANSMITTER_V2,
       nativeSymbol: 'ETH', nativeDecimals: 18,

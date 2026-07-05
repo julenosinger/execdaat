@@ -15,7 +15,7 @@ const BRIDGE_CHAINS = {
     chainId:    11155111,
     chainHex:   '0xaa36a7',
     domain:     0,
-    rpcUrl:     'https://rpc.sepolia.org',
+    rpcUrl:     'https://ethereum-sepolia-rpc.publicnode.com',
     explorer:   'https://sepolia.etherscan.io',
     usdcAddress:            '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
     tokenMessengerV2:       '0x8fe6b999dc680ccfdd5bf7c5f412b27e4e99e6d7',

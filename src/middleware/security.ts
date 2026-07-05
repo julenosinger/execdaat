@@ -266,7 +266,7 @@ function applySecureHeaders(c: Context): void {
     // Images: self + data URIs + blob (for receipt viewer)
     "img-src 'self' data: blob: https://*.arcscan.app",
     // Connections: self + Arc Testnet RPCs + ArcScan explorer
-    "connect-src 'self' https://rpc.testnet.arc.network https://rpc.blockdaemon.testnet.arc.network https://rpc.drpc.testnet.arc.network https://rpc.quicknode.testnet.arc.network wss://rpc.testnet.arc.network https://testnet.arcscan.app https://api.coingecko.com https://rpc.sepolia.org https://sepolia-rollup.arbitrum.io https://sepolia.base.org https://sepolia.optimism.io https://rpc-amoy.polygon.technology https://cdn.jsdelivr.net https://iris-api-sandbox.circle.com https://amoy.polygonscan.com",
+    "connect-src 'self' https://rpc.testnet.arc.network https://rpc.blockdaemon.testnet.arc.network https://rpc.drpc.testnet.arc.network https://rpc.quicknode.testnet.arc.network wss://rpc.testnet.arc.network https://testnet.arcscan.app https://api.coingecko.com https://ethereum-sepolia-rpc.publicnode.com https://sepolia-rollup.arbitrum.io https://sepolia.base.org https://sepolia.optimism.io https://rpc-amoy.polygon.technology https://cdn.jsdelivr.net https://iris-api-sandbox.circle.com https://amoy.polygonscan.com",
     // Media
     "media-src 'none'",
     // Objects (Flash etc)

@@ -511,6 +511,49 @@
        ══════════════════════════════════════════════════════════════════════ -->
   <div id="app-shell" class="hidden">
 
+  <!-- ══ Collapsible sidebar + mobile hardening (UI-only, additive) ══ -->
+  <style id="sidebar-enhance">
+    /* Collapse toggle button (desktop only) */
+    .sidebar-collapse-btn{
+      display:none; margin-left:auto; width:30px; height:30px; flex-shrink:0;
+      align-items:center; justify-content:center; border-radius:8px; cursor:pointer;
+      background:rgba(139,92,246,.10); border:1px solid rgba(139,92,246,.22); color:#a78bfa;
+      transition:all .18s;
+    }
+    .sidebar-collapse-btn:hover{ background:rgba(139,92,246,.20); color:#c4b5fd; }
+    @media (min-width:1024px){ .sidebar-collapse-btn{ display:flex; } }
+
+    /* ── Collapsed (icon-only) sidebar — desktop only ── */
+    @media (min-width:1024px){
+      body.sidebar-collapsed{ --sidebar-w:76px; }
+      body.sidebar-collapsed #left-sidebar{ width:76px; }
+      body.sidebar-collapsed #app-content-wrap{ margin-left:76px; }
+      body.sidebar-collapsed #left-sidebar .sidebar-item-label,
+      body.sidebar-collapsed #left-sidebar .sidebar-brand-text,
+      body.sidebar-collapsed #left-sidebar .sidebar-badge,
+      body.sidebar-collapsed #left-sidebar .sidebar-item-active-bar,
+      body.sidebar-collapsed #left-sidebar .sidebar-section-label,
+      body.sidebar-collapsed #left-sidebar .sidebar-footer-btn span{ display:none !important; }
+      body.sidebar-collapsed #left-sidebar .sidebar-item{ justify-content:center; padding-left:10px; padding-right:10px; }
+      body.sidebar-collapsed #left-sidebar .sidebar-brand-btn{ justify-content:center; }
+      body.sidebar-collapsed #left-sidebar .sidebar-footer-btn{ justify-content:center; }
+      body.sidebar-collapsed .sidebar-collapse-btn i{ transform:rotate(180deg); }
+      body.sidebar-collapsed #left-sidebar:hover{ width:var(--sidebar-w); }
+      body.sidebar-active.sidebar-collapsed #sticky-topbar-anchor{ margin-left:76px !important; width:calc(100% - 76px) !important; }
+    }
+
+    /* ── Mobile drawer hardening (prevents off-canvas horizontal scroll / misrender) ── */
+    @media (max-width:1023px){
+      html, body{ overflow-x:hidden; max-width:100%; }
+      .sidebar-collapse-btn{ display:none !important; }
+      body.sidebar-collapsed{ --sidebar-w:0px; }            /* collapse never applies on mobile */
+      body.sidebar-collapsed #left-sidebar{ width:280px; }  /* keep full drawer width on mobile */
+      body.sidebar-collapsed #app-content-wrap{ margin-left:0 !important; }
+      #app-content-wrap{ margin-left:0 !important; width:100%; max-width:100%; }
+      #left-sidebar{ height:100dvh; }
+    }
+  </style>
+
   <!-- ═══ MOBILE TOP BAR (hamburger + current tab label) ═══ -->
   <div id="mob-topbar" class="sidebar-mob-topbar">
     <button id="sidebar-toggle" onclick="sidebarOpen()" aria-label="Open menu">
@@ -535,6 +578,10 @@
           <span class="sidebar-brand-name">ExecDaat</span>
           <span class="sidebar-brand-sub">Secure Payments</span>
         </div>
+      </button>
+      <!-- Desktop collapse toggle -->
+      <button id="sidebar-collapse-btn" onclick="sidebarToggleCollapse()" class="sidebar-collapse-btn" aria-label="Collapse menu" title="Collapse / expand menu">
+        <i class="fas fa-angles-left"></i>
       </button>
       <!-- Mobile close -->
       <button id="sidebar-close-btn" onclick="sidebarClose()" class="sidebar-close-btn" aria-label="Close menu">
@@ -4007,28 +4054,6 @@
           </button>
         </div>
 
-        <!-- ── AGENT ECONOMY ── -->
-        <div class="mb-6">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-              <i class="fas fa-robot text-violet-400 text-sm"></i>
-              <h3 class="text-white font-bold text-sm">Agent Economy</h3>
-            </div>
-            <div class="flex items-center gap-2">
-              <button onclick="ubAnalyzeWallet();var r=ub$('ub-agent-suggestion');if(r)r.innerHTML=ubAnalyzeWallet()" class="text-[10px] text-violet-400 hover:text-violet-300 bg-violet-900/20 border border-violet-700/30 rounded-lg px-2.5 py-1 transition">📊 Analyze Wallet</button>
-            </div>
-          </div>
-          <div id="ub-agent-suggestion" class="mb-3 bg-gray-800/30 border border-gray-700/30 rounded-lg p-3 text-xs text-gray-500">
-            <i class="fas fa-info-circle mr-1.5"></i>Click any agent card for suggestions, or click the gear icon to configure permissions.
-          </div>
-          <div id="ub-agent-cards" class="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <div class="col-span-full text-center py-8 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-2 block"></i>Loading agents...</div>
-          </div>
-        </div>
-
-        <!-- ── QUICK ACTIONS ── -->
-        <!-- ── QUICK ACTIONS moved above Agent Economy ── -->
-
         <!-- ── TOKEN BALANCES + ACTIVITY ── -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <!-- Token Balances -->
@@ -4075,6 +4100,27 @@
             </div>
           </div>
         </div>
+
+        <!-- ── AGENT ECONOMY ── -->
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-robot text-violet-400 text-sm"></i>
+              <h3 class="text-white font-bold text-sm">Agent Economy</h3>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="ubAnalyzeWallet();var r=ub$('ub-agent-suggestion');if(r)r.innerHTML=ubAnalyzeWallet()" class="text-[10px] text-violet-400 hover:text-violet-300 bg-violet-900/20 border border-violet-700/30 rounded-lg px-2.5 py-1 transition">📊 Analyze Wallet</button>
+            </div>
+          </div>
+          <div id="ub-agent-suggestion" class="mb-3 bg-gray-800/30 border border-gray-700/30 rounded-lg p-3 text-xs text-gray-500">
+            <i class="fas fa-info-circle mr-1.5"></i>Click any agent card for suggestions, or click the gear icon to configure permissions.
+          </div>
+          <div id="ub-agent-cards" class="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div class="col-span-full text-center py-8 text-gray-600 text-xs"><i class="fas fa-spinner fa-spin mb-2 block"></i>Loading agents...</div>
+          </div>
+        </div>
+
+        <!-- ── QUICK ACTIONS moved above Agent Economy ── -->
 
         <!-- ── PAYMENT REQUESTS + RULES + ANALYTICS ── -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
@@ -5388,11 +5434,11 @@
   <script src="/static/wallet.js?v=20260327a"></script>
   <script src="/static/wallet-create.js?v=20260407a"></script>
   <script src="/static/router.js?v=20260407a"></script>
-  <script src="/static/unifiedbalance.js?v=20260630"></script>
-  <script src="/static/cross-chain-service.js?v=20260703d"></script>
+  <script src="/static/unifiedbalance.js?v=20260705c"></script>
+  <script src="/static/cross-chain-service.js?v=20260705c"></script>
   <script src="/static/turbo-bridge-core.js?v=20260704b"></script>
   <script src="/static/turbo-bridge-integration.js?v=20260704b"></script>
-  <script src="/static/advanced-crosschain.js?v=20260705b"></script>
+  <script src="/static/advanced-crosschain.js?v=20260705c"></script>
   <script src="/static/ub-bridge.js?v=20260704b"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
@@ -5405,7 +5451,7 @@
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20260703c"></script>
-  <script src="/static/bridge.js?v=20260626b"></script>
+  <script src="/static/bridge.js?v=20260705c"></script>
   <script src="/static/multisend.js?v=20260327b"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
@@ -5807,6 +5853,24 @@
     if (document.readyState !== 'loading') portalUbModals();
     else document.addEventListener('DOMContentLoaded', portalUbModals);
     window.addEventListener('load', portalUbModals);
+  })();
+</script>
+
+<script>
+  // Collapsible sidebar (desktop). Additive — does not touch sidebarOpen/Close.
+  (function () {
+    function apply(collapsed) {
+      document.body.classList.toggle('sidebar-collapsed', collapsed);
+      var b = document.getElementById('sidebar-collapse-btn');
+      if (b) { b.title = collapsed ? 'Expand menu' : 'Collapse menu'; b.setAttribute('aria-label', collapsed ? 'Expand menu' : 'Collapse menu'); }
+    }
+    window.sidebarToggleCollapse = function () {
+      var collapsed = !document.body.classList.contains('sidebar-collapsed');
+      apply(collapsed);
+      try { localStorage.setItem('execdaat_sidebar_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+    };
+    // Restore persisted state on load.
+    try { if (localStorage.getItem('execdaat_sidebar_collapsed') === '1') apply(true); } catch (e) {}
   })();
 </script>
 
