@@ -3710,6 +3710,54 @@
           color:#99aecf !important; letter-spacing:.02em !important;
         }
 
+        /* ── AMOUNT FIELD FOCUS — ROOT-CAUSE FIX ──────────────────────────────
+           styles.css declares a GLOBAL `input:focus-visible { outline:2px solid
+           rgba(139,92,246,.7); outline-offset:2px }` (and a light-mode variant with
+           !important). Because text/number inputs match :focus-visible on click too,
+           that rule paints a hard purple rectangle over the swap value field,
+           overriding its own `outline-none`. We neutralise ONLY the outline for the
+           swap amount fields — the 2-id selector out-specifies the global rule — and
+           express focus through the ExecDaat design system instead: a soft blue border
+           + discreet glow on the surrounding You-Pay / You-Receive card. Accessibility
+           outlines everywhere else stay intact (zero regression, no visual patch). */
+        #amm-panel-swap #amm-swap-input,
+        #amm-panel-swap #amm-swap-output{
+          outline: none !important;
+          outline-offset: 0 !important;
+          box-shadow: none;
+          -webkit-appearance: none;
+          appearance: none;
+          -moz-appearance: textfield;
+        }
+        #amm-panel-swap #amm-swap-input:focus,
+        #amm-panel-swap #amm-swap-input:focus-visible,
+        #amm-panel-swap #amm-swap-input:focus-within,
+        #amm-panel-swap #amm-swap-input:active,
+        #amm-panel-swap #amm-swap-output:focus,
+        #amm-panel-swap #amm-swap-output:focus-visible{
+          outline: none !important;
+          outline-offset: 0 !important;
+        }
+        /* No native number spinners → no square artefacts (WebKit / Gecko) */
+        #amm-panel-swap #amm-swap-input::-webkit-outer-spin-button,
+        #amm-panel-swap #amm-swap-input::-webkit-inner-spin-button{
+          -webkit-appearance: none; margin: 0;
+        }
+        /* Elegant focus lives on the card, never on the raw input
+           (no rectangle, no double borders). Discreet blue glow + soft border. */
+        body:not(.light-mode) #amm-panel-swap [class*="px-4"][class*="py-3"]{
+          transition: border-color .2s ease, box-shadow .25s ease, background .2s ease;
+        }
+        body:not(.light-mode) #amm-panel-swap [class*="px-4"][class*="py-3"]:focus-within{
+          border-color: rgba(59,130,246,0.55) !important;
+          box-shadow: 0 0 0 1px rgba(59,130,246,0.22),
+                      0 0 18px rgba(59,130,246,0.18),
+                      inset 0 1px 0 rgba(255,255,255,0.04) !important;
+        }
+        @media (prefers-reduced-motion: reduce){
+          body:not(.light-mode) #amm-panel-swap [class*="px-4"][class*="py-3"]{ transition:none !important; }
+        }
+
         /* Token selector chips (bg-gray-700/50 inside the swap panel) */
         body:not(.light-mode) #amm-panel-swap [class*="bg-gray-700/50"]{
           background:rgba(255,255,255,0.045) !important;
@@ -6111,6 +6159,7 @@
   <script src="/static/payments.js?v=20260704b"></script>
   <script src="/static/smart-payments.js?v=20260704b"></script>
   <script src="/static/contracts.js?v=20260706d"></script>
+  <script src="/static/dispute-center.js?v=20260706b"></script>
   <script src="/static/verified-contracts.js?v=20260411a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
@@ -6221,6 +6270,7 @@
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
   <script src="/static/otc.f5e54315.js"></script>
   <script src="/static/otc-agreements.js?v=20260704b"></script>
+  <script src="/static/da-dispute-center.js?v=20260706a"></script>
   <script src="/static/autonoma.js?v=20260404l"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
