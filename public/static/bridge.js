@@ -615,6 +615,10 @@ async function bridgeExecute() {
     bridgeSetStatus('<i class="fas fa-exclamation-triangle mr-2"></i>Source and destination must differ.', 'error');
     return;
   }
+  if (fromKey !== 'arc' && toKey === 'arc') {
+    bridgeSetStatus('<i class="fas fa-exclamation-triangle mr-2"></i>Bridging from other chains into Arc is temporarily unavailable — inbound liquidity is depleted. Please don\u2019t use this route right now; try again later.', 'error');
+    return;
+  }
 
   // Confirmation modal
   const fromName = BRIDGE_CHAINS[fromKey].name;

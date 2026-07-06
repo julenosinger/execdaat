@@ -365,6 +365,16 @@ async function accGetQuote() {
     return;
   }
 
+  // ── Inbound-to-Arc liquidity notice (Other Chains → Arc temporarily disabled) ──
+  if (_accState.fromChain !== 'arc' && _accState.toChain === 'arc') {
+    _accState.quote = null;
+    _accState.quoteError = 'Bridging from other chains into Arc is temporarily unavailable — inbound liquidity is depleted. Please don\u2019t use this route right now; try again later.';
+    _accRenderQuoteError();
+    _accSetLayoutMode('plan');
+    _accShowError('quote', _accState.quoteError);
+    return;
+  }
+
   // Clear previous quote
   _accClearQuoteTimer();
   _accState.quoting = true;

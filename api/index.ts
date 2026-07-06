@@ -24,6 +24,7 @@ import chatRouter      from '../src/routes/chat'
 import guardianRouter  from '../src/routes/guardian'
 import yieldRouter     from '../src/routes/yield-optimizer'
 import dexRouter       from '../src/routes/dex'
+import treasuryCoreRouter, { metaRouter as treasuryMetaRouter } from '../src/routes/treasury'
 
 // HTML template (no Cloudflare deps)
 import { getMainHTML } from '../src/html-template'
@@ -110,6 +111,13 @@ app.route('/api/chat',      chatRouter)
 app.route('/api/guardian',  guardianRouter)
 app.route('/api/yield',     yieldRouter)
 app.route('/api/dex',       dexRouter)
+
+// ─── Treasury Core API (Elligent) — Phase 3 integration boundary ─────────────
+// Same-origin proxy: injects Application Secret + standardized headers
+// server-side (read from process.env on Vercel) and forwards to the Elligent
+// Treasury Core API. ExecDaat holds NO private keys.
+app.route('/api/core/v1', treasuryCoreRouter)
+app.route('/api/treasury', treasuryMetaRouter)
 
 // ─── Main dApp HTML ───────────────────────────────────────────────────────────
 // Serve the main app HTML for all non-API routes (SPA fallback)

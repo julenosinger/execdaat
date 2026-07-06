@@ -9,6 +9,7 @@ import chatRouter from './routes/chat'
 import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
+import treasuryCoreRouter, { metaRouter as treasuryMetaRouter } from './routes/treasury'
 import { ARC_TESTNET } from './types/arc'
 import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 // @ts-ignore - Vite raw import: full SPA HTML shell served at "/"
@@ -21,6 +22,16 @@ const app = new Hono<{
     CIRCLE_API_KEY?: string;
     CIRCLE_ENVIRONMENT?: string;
     CIRCLE_WEBHOOK_SECRET?: string;
+    // ─── Treasury Core API (Elligent) — Phase 3 ──────────────────────────────
+    // Public identity (non-sensitive)
+    TREASURY_CORE_URL?: string;
+    APPLICATION_ID?: string;
+    CLIENT_ID?: string;
+    API_VERSION?: string;
+    APPLICATION_MODE?: string;
+    TREASURY_MODE?: string;
+    // Server-side ONLY secret (never exposed to the browser)
+    TREASURY_APPLICATION_SECRET?: string;
   }
 }>()
 
@@ -159,6 +170,13 @@ app.route('/api/chat', chatRouter)
 app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
+
+// ─── Treasury Core API (Elligent) — Phase 3 integration boundary ─────────────
+// Same-origin proxy: injects Application Secret + standardized headers
+// server-side and forwards to the Elligent Treasury Core API. ExecDaat holds
+// NO private keys; all financial execution stays on Elligent.
+app.route('/api/core/v1', treasuryCoreRouter)
+app.route('/api/treasury', treasuryMetaRouter)
 
 // ── CSV Validation API ────────────────────────────────────────────────────────
 // POST /api/csv/validate — validates a parsed CSV payload server-side

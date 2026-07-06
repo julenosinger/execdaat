@@ -193,6 +193,35 @@ function cfGetDisputeStatus(contractId) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function cfEl(id)       { return document.getElementById(id); }
 function cfShort(addr)  { if (!addr || addr.length < 12) return addr || '—'; return addr.slice(0, 8) + '…' + addr.slice(-6); }
+// Escape untrusted text before it is interpolated into innerHTML (prevents
+// stored XSS from on-chain titles, dispute reasons, file names, emails, etc.).
+// Safe for both element content and quoted attribute values.
+function cfEsc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+// Newest-first ordering + "NEW" tag. Uses the on-chain `createdAt` (shared by
+// both client and contractor), so a freshly created contract appears at the top
+// with a NEW badge for BOTH parties. Within each view tab all contracts share the
+// same unit (on-chain: seconds, off-chain: ms), so comparisons are consistent.
+var CF_NEW_WINDOW_MS = 24 * 60 * 60 * 1000; // show "NEW" for 24h after creation
+function cfCreatedTs(c) {
+  var raw = Number(c && c.createdAt) || 0;
+  if (raw > 0) return raw;
+  var id = Number(c && c.id) || 0;
+  return id < 0 ? Math.abs(id) : id;
+}
+function cfIsNew(c) {
+  var raw = Number(c && c.createdAt) || 0;
+  if (raw <= 0) return false;
+  var ms = raw > 1e12 ? raw : raw * 1000; // normalize seconds → ms
+  return (Date.now() - ms) < CF_NEW_WINDOW_MS && ms <= Date.now() + 60000;
+}
 function cfTs(ts)       { if (!ts || ts === 0) return '—'; return new Date(Number(ts) * 1000).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }); }
 function cfLog(...a)    { if (cfState.debugMode) console.log('%c[CF v5]', 'color:#60b4ff;font-weight:bold', ...a); }
 function cfWarn(...a)   { console.warn('[CF v5]', ...a); }
@@ -857,7 +886,7 @@ function cfRenderContractsByMode(contracts, wallet, viewMode) {
   if (!el) return;
 
   const order = { Active: 0, Funded: 1, Pending: 2, Completed: 3, Cancelled: 4 };
-  const sorted = [...contracts].sort((a, b) => (order[cfUiStatus(a)] ?? 9) - (order[cfUiStatus(b)] ?? 9));
+  const sorted = [...contracts].sort((a, b) => (cfCreatedTs(b) - cfCreatedTs(a)) || (Number(b.id) - Number(a.id)));
 
   // Apply local dismiss filter — only hides from view, contract still on-chain
   const visible = sorted.filter(c => _cfDismiss.isVisible(String(c.id)));
@@ -902,7 +931,7 @@ function cfRenderContracts(contracts, wallet) {
   const filtered = contracts.filter(c => cfContractViewMode(c) === viewMode);
 
   const order = { Active: 0, Funded: 1, Pending: 2, Completed: 3, Cancelled: 4 };
-  const sorted = [...filtered].sort((a, b) => (order[cfUiStatus(a)] ?? 9) - (order[cfUiStatus(b)] ?? 9));
+  const sorted = [...filtered].sort((a, b) => (cfCreatedTs(b) - cfCreatedTs(a)) || (Number(b.id) - Number(a.id)));
 
   // Apply local dismiss filter — only hides from view, contract still on-chain
   const visible = sorted.filter(c => _cfDismiss.isVisible(String(c.id)));
@@ -1125,7 +1154,7 @@ function cfContractCard(c, wallet) {
       ${proofs.length ? proofs.map((p, pi) => `
         <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,${p.committed?'0.3':'0.1'});border-radius:8px;margin-bottom:4px;">
           <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:${p.committed?'#34d399':'#a78bfa'};font-size:12px;flex-shrink:0;"></i>
-          <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.name}">${p.name}</span>
+          <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${cfEsc(p.name)}">${cfEsc(p.name)}</span>
           ${p.committed ? `<span style="font-size:9px;color:#34d399;flex-shrink:0;"><i class="fas fa-lock mr-1"></i>Committed</span>` : `<span style="font-size:9px;color:#fbbf24;flex-shrink:0;"><i class="fas fa-clock mr-1"></i>Pending</span>`}
           <button onclick="cfViewProof(${c.id},${pi})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:6px;cursor:pointer;flex-shrink:0;"><i class="fas fa-eye mr-1"></i>Ver</button>
           ${p.hash ? `<span style="font-size:9px;color:#3a4870;font-family:monospace;" title="SHA-256: ${p.hash}">${p.hash.slice(0,8)}…</span>` : ''}
@@ -1157,7 +1186,7 @@ function cfContractCard(c, wallet) {
         <div style="font-size:10px;font-weight:700;color:#34d399;margin-bottom:4px;"><i class="fas fa-check-circle mr-1"></i>${t("cf_resolution_label")}</div>
         <div style="font-size:11px;color:#8899bb;">${dispute.resolution.outcome === 'contractor' ? t('cf_resolution_contractor') : dispute.resolution.outcome === 'client' ? t('cf_resolution_client') : t('cf_resolution_mutual')}</div>
         <div style="font-size:10px;color:#3a4870;margin-top:3px;">${new Date(dispute.resolution.resolvedAt).toLocaleString('en-US')}</div>
-        ${dispute.resolution.note ? `<div style="font-size:11px;color:#6b7280;margin-top:3px;font-style:italic;">"${dispute.resolution.note}"</div>` : ''}
+        ${dispute.resolution.note ? `<div style="font-size:11px;color:#6b7280;margin-top:3px;font-style:italic;">"${cfEsc(dispute.resolution.note)}"</div>` : ''}
       </div>` : '';
     const approvalHtml = dispute.status === 'open' && dispute.mutualApproval ? (() => {
       const approvals = dispute.mutualApproval || {};
@@ -1177,7 +1206,7 @@ function cfContractCard(c, wallet) {
         <span style="font-size:11px;font-weight:800;color:${ds.color};text-transform:uppercase;letter-spacing:0.05em;">${ds.label}</span>
         <span style="font-size:10px;color:#3a4870;margin-left:auto;">${new Date(dispute.openedAt).toLocaleString('en-US')}</span>
       </div>
-      <div style="font-size:12px;color:#dde2f0;margin-bottom:6px;font-weight:600;">"${dispute.reason}"</div>
+      <div style="font-size:12px;color:#dde2f0;margin-bottom:6px;font-weight:600;">"${cfEsc(dispute.reason)}"</div>
       <div style="font-size:10px;color:#4a6490;margin-bottom:6px;">
         <i class="fas fa-user mr-1"></i>Opened by: <span style="font-family:monospace;">${cfShort(dispute.openedBy)}</span>
         ${dispute.openedBy?.toLowerCase() === c.client?.toLowerCase() ? ' (Cliente)' : ' (Contratado)'}
@@ -1187,7 +1216,7 @@ function cfContractCard(c, wallet) {
         ${evidences.map((ev, ei) => `
           <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:rgba(239,68,68,0.04);border:1px solid rgba(239,68,68,0.12);border-radius:6px;margin-bottom:3px;">
             <i class="fas ${ev.type==='image'?'fa-image':ev.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:#f87171;font-size:11px;"></i>
-            <span style="flex:1;font-size:10px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ev.name}</span>
+            <span style="flex:1;font-size:10px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cfEsc(ev.name)}</span>
             <button onclick="cfViewDisputeEvidence(${c.id},${ei})" style="font-size:9px;color:#f87171;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.18);padding:2px 6px;border-radius:4px;cursor:pointer;">Ver</button>
           </div>`).join('')}` : ''}
       ${approvalHtml}
@@ -1221,8 +1250,8 @@ function cfContractCard(c, wallet) {
   // ── Meta info ──────────────────────────────────────────────────────────────
   const metaHtml = (meta.clientEmail || meta.contractorEmail || meta.custodianAddr) ? `
     <div style="margin-top:8px;padding:8px;background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.1);border-radius:10px;">
-      ${meta.clientEmail ? `<div style="font-size:11px;color:#4a6490;"><i class="fas fa-envelope mr-1" style="color:#60b4ff;"></i>Client: ${meta.clientEmail}</div>` : ''}
-      ${meta.contractorEmail ? `<div style="font-size:11px;color:#4a6490;"><i class="fas fa-envelope mr-1" style="color:#34d399;"></i>Contractor: ${meta.contractorEmail}</div>` : ''}
+      ${meta.clientEmail ? `<div style="font-size:11px;color:#4a6490;"><i class="fas fa-envelope mr-1" style="color:#60b4ff;"></i>Client: ${cfEsc(meta.clientEmail)}</div>` : ''}
+      ${meta.contractorEmail ? `<div style="font-size:11px;color:#4a6490;"><i class="fas fa-envelope mr-1" style="color:#34d399;"></i>Contractor: ${cfEsc(meta.contractorEmail)}</div>` : ''}
       ${meta.custodianAddr ? `<div style="font-size:11px;color:#c4b5fd;margin-top:4px;"><i class="fas fa-shield-alt mr-1" style="color:#a78bfa;"></i>Custodian: <span style="font-family:monospace;">${meta.custodianAddr.slice(0,10)}…${meta.custodianAddr.slice(-6)}</span></div>` : ''}
     </div>` : '';
 
@@ -1233,9 +1262,10 @@ function cfContractCard(c, wallet) {
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:13px;font-weight:800;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;" title="${c.title||''}">${c.title || 'Untitled'}</span>
+            <span style="font-size:13px;font-weight:800;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;" title="${cfEsc(c.title||'')}">${cfEsc(c.title || 'Untitled')}</span>
             <span style="font-size:10px;color:#3a4870;font-family:monospace;">#${c.id}</span>
             ${cfStatusBadge(uiStatus)}
+            ${cfIsNew(c) && uiStatus !== 'Completed' && uiStatus !== 'Cancelled' && !isClosed ? `<span title="Recently created" style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:800;letter-spacing:.06em;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;padding:2px 7px;border-radius:999px;box-shadow:0 0 10px rgba(34,197,94,.55);animation:cfNewPulse 2s ease-in-out infinite;"><i class="fas fa-star" style="font-size:7px;"></i>NEW</span>` : ''}
             ${isInDispute ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#f87171;padding:1px 8px;border-radius:999px;"><i class="fas fa-gavel" style="font-size:8px;"></i>In Dispute</span>` : ''}
             ${isClosed ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(74,85,104,0.15);border:1px solid rgba(74,85,104,0.3);color:#9ca3af;padding:1px 8px;border-radius:999px;"><i class="fas fa-lock" style="font-size:8px;"></i>Closed</span>` : ''}
           </div>
@@ -1419,7 +1449,7 @@ function cfRenderProofPreview() {
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:6px;">
       <i class="fas ${icon}" style="color:#a78bfa;font-size:14px;flex-shrink:0;"></i>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:12px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.name}</div>
+          <div style="font-size:12px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cfEsc(f.name)}</div>
         <div style="font-size:10px;color:#4a3a7a;">${(f.size/1024).toFixed(0)} KB · ${f.type || 'unknown'}</div>
       </div>
       <button onclick="window._cfProofFiles.splice(${i},1);cfRenderProofPreview()"
@@ -1538,7 +1568,7 @@ function cfViewProof(contractId, proofIndex) {
 
     if (isImg) {
       return `<div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:16px;">
-        <img src="${p.url}" alt="${p.name}"
+          <img src="${p.url}" alt="${cfEsc(p.name)}"
           style="max-width:100%;max-height:calc(100vh - 140px);object-fit:contain;border-radius:10px;box-shadow:0 0 40px rgba(0,0,0,0.6);"
           onerror="this.outerHTML='<div style=\\'color:#f87171;text-align:center;padding:40px;\\'><i class=\\"fas fa-image-slash\\" style=\\"font-size:40px;display:block;margin-bottom:12px;\\"></i>Could not render image.</div>'" />
       </div>`;
@@ -1547,7 +1577,8 @@ function cfViewProof(contractId, proofIndex) {
     if (isPdf) {
       return `<div style="flex:1;width:100%;padding:8px 16px 0;">
         <iframe src="${p.url}" style="width:100%;height:calc(100vh - 140px);border:none;border-radius:10px;background:#fff;"
-          title="${p.name}" onerror="">
+               title="${cfEsc(p.name)}" onerror="">
+
         </iframe>
         <div style="text-align:center;padding:8px;font-size:11px;color:#4a6490;">
           ${t("cf_pdf_download_hint").replace("{0}", `<button onclick="cfDownloadProof('${btoa(JSON.stringify({url:p.url,name:p.name}))}')" style="background:none;border:none;color:#a78bfa;cursor:pointer;font-size:11px;text-decoration:underline;">${t("contracts_download_here")}</button>`)}
@@ -1558,7 +1589,7 @@ function cfViewProof(contractId, proofIndex) {
     // Generic / Word / unknown — offer download
     return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">
       <i class="fas fa-file-alt" style="font-size:56px;color:#a78bfa;margin-bottom:16px;"></i>
-      <p style="color:#dde2f0;font-size:15px;font-weight:700;margin-bottom:6px;">${p.name}</p>
+        <p style="color:#dde2f0;font-size:15px;font-weight:700;margin-bottom:6px;">${cfEsc(p.name)}</p>
       <p style="color:#4a6490;font-size:12px;margin-bottom:20px;">${p.mimeType || 'Tipo desconhecido'} · ${p.size ? (p.size/1024).toFixed(0)+' KB' : ''}</p>
       <button onclick="cfDownloadProofByUrl('${contractId}',${proofs.indexOf(p)})"
         style="padding:11px 24px;background:linear-gradient(135deg,#6d28d9,#5b21b6);color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">
@@ -2067,7 +2098,7 @@ window.cfViewOnChainProofs = async function(contractId) {
             ${lp.map((p, pi) => `
               <div style="display:flex;align-items:center;gap:8px;padding:8px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:4px;">
                 <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:${p.committed?'#34d399':'#a78bfa'};"></i>
-                <span style="flex:1;font-size:11px;color:#8899bb;">${p.name}</span>
+                <span style="flex:1;font-size:11px;color:#8899bb;">${cfEsc(p.name)}</span>
                 <span style="font-size:9px;color:${p.committed?'#34d399':'#fbbf24'};">${p.committed?'Committed':'Pending'}</span>
                 <button onclick="cfViewProof(${contractId},${pi})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:5px;cursor:pointer;">View</button>
               </div>`).join('')}
@@ -2122,7 +2153,7 @@ function cfDeleteProof(contractId, proofIndex) {
     <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);border-radius:10px;padding:10px 14px;margin-bottom:18px;">
       <div style="display:flex;align-items:center;gap:8px;">
         <i class="fas fa-file" style="color:#f87171;font-size:13px;flex-shrink:0;"></i>
-        <span style="font-size:12px;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${proof.name}</span>
+          <span style="font-size:12px;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cfEsc(proof.name)}</span>
       </div>
       <div style="font-size:10px;color:#6b7280;margin-top:4px;font-family:monospace;">SHA-256: ${proof.hash ? proof.hash.slice(0,16) + '…' : 'n/a'}</div>
     </div>
@@ -2199,7 +2230,7 @@ async function cfCommitProof(contractId) {
       ${uncommitted.map(p => `
         <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(52,211,153,0.1);">
           <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:#34d399;font-size:12px;"></i>
-          <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}</span>
+          <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cfEsc(p.name)}</span>
           <span style="font-size:9px;font-family:monospace;color:#3a4870;">${p.hash?.slice(0,12)}…</span>
         </div>`).join('')}
     </div>
@@ -2691,7 +2722,7 @@ ${meta.custodianAddr ? `<div class="section">
 
 <div class="section">
   <h2>Proof of Work (${proofs.length} file${proofs.length !== 1 ? 's' : ''})</h2>
-  ${proofs.length ? proofs.map((p, i) => `<div class="proof-item">${i+1}. ${p.name} ${p.cid ? `— IPFS: ${p.cid}` : '(stored locally)'} — ${new Date(p.uploadedAt).toLocaleString('en-US')}</div>`).join('') : '<p style="color:#999;font-size:12px;">No proof files.</p>'}
+  ${proofs.length ? proofs.map((p, i) => `<div class="proof-item">${i+1}. ${cfEsc(p.name)} ${p.cid ? `— IPFS: ${p.cid}` : '(stored locally)'} — ${new Date(p.uploadedAt).toLocaleString('en-US')}</div>`).join('') : '<p style="color:#999;font-size:12px;">No proof files.</p>'}
 </div>
 
 <div class="footer">
@@ -3516,7 +3547,7 @@ function cfShowOpenDispute(contractId) {
     <h3 style="color:#f87171;font-size:15px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:8px;">
       <i class="fas fa-gavel"></i>Open Dispute — #${contractId}
     </h3>
-    <p style="font-size:11px;color:#4a6490;margin-bottom:16px;">Contract: <strong style="color:#8899bb;">${c.title || 'Untitled'}</strong> · Valor: <strong style="color:#60b4ff;">$${cfFmtUsdc(BigInt(c.totalValue))} USDC</strong></p>
+          <p style="font-size:11px;color:#4a6490;margin-bottom:16px;">Contract: <strong style="color:#8899bb;">${cfEsc(c.title || 'Untitled')}</strong> · Valor: <strong style="color:#60b4ff;">$${cfFmtUsdc(BigInt(c.totalValue))} USDC</strong></p>
 
     <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px;margin-bottom:14px;font-size:11px;color:#f87171;">
       <i class="fas fa-exclamation-triangle mr-1"></i>
@@ -3595,7 +3626,7 @@ function cfRenderDisputeFileList() {
     const icon = f.type.startsWith('image') ? 'fa-image' : f.type === 'application/pdf' ? 'fa-file-pdf' : 'fa-file';
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(239,68,68,0.04);border:1px solid rgba(239,68,68,0.12);border-radius:8px;margin-bottom:4px;">
       <i class="fas ${icon}" style="color:#f87171;font-size:12px;flex-shrink:0;"></i>
-      <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.name}</span>
+            <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cfEsc(f.name)}</span>
       <span style="font-size:10px;color:#4a3a7a;">${(f.size/1024).toFixed(0)} KB</span>
       <button onclick="window._cfDisputeFiles.splice(${i},1);cfRenderDisputeFileList()"
         style="width:20px;height:20px;border-radius:4px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#f87171;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -3681,12 +3712,12 @@ function cfShowDisputeResolution(contractId) {
     <h3 style="color:#f87171;font-size:15px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:8px;">
       <i class="fas fa-balance-scale"></i>Resolver Disputa — #${contractId}
     </h3>
-    <p style="font-size:11px;color:#4a6490;margin-bottom:14px;">${c.title || 'Untitled'} · <strong style="color:#8899bb;">$${cfFmtUsdc(BigInt(c.totalValue))} USDC</strong></p>
+    <p style="font-size:11px;color:#4a6490;margin-bottom:14px;">${cfEsc(c.title || 'Untitled')} · <strong style="color:#8899bb;">$${cfFmtUsdc(BigInt(c.totalValue))} USDC</strong></p>
 
     <!-- Dispute details -->
     <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px;margin-bottom:16px;">
       <div style="font-size:10px;color:#f87171;font-weight:700;text-transform:uppercase;margin-bottom:6px;"><i class="fas fa-gavel mr-1"></i>Dispute Details</div>
-      <div style="font-size:12px;color:#dde2f0;margin-bottom:4px;">"${dispute.reason}"</div>
+      <div style="font-size:12px;color:#dde2f0;margin-bottom:4px;">"${cfEsc(dispute.reason)}"</div>
       <div style="font-size:10px;color:#4a6490;">Opened by: ${cfShort(dispute.openedBy)} · ${new Date(dispute.openedAt).toLocaleString('en-US')}</div>
       ${dispute.evidence?.length ? `<div style="font-size:10px;color:#4a6490;margin-top:4px;">${dispute.evidence.length} file(s) submitted</div>` : ''}
     </div>
@@ -3838,16 +3869,16 @@ function cfViewDisputeEvidence(contractId, evidenceIndex) {
   let content;
   if (isImg) {
     content = `<div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:16px;">
-      <img src="${ev.url}" alt="${ev.name}" style="max-width:100%;max-height:calc(100vh - 100px);object-fit:contain;border-radius:10px;">
+        <img src="${ev.url}" alt="${cfEsc(ev.name)}" style="max-width:100%;max-height:calc(100vh - 100px);object-fit:contain;border-radius:10px;">
     </div>`;
   } else if (isPdf) {
     content = `<div style="flex:1;width:100%;padding:8px 16px;">
-      <iframe src="${ev.url}" style="width:100%;height:calc(100vh - 100px);border:none;border-radius:10px;background:#fff;" title="${ev.name}"></iframe>
+        <iframe src="${ev.url}" style="width:100%;height:calc(100vh - 100px);border:none;border-radius:10px;background:#fff;" title="${cfEsc(ev.name)}"></iframe>
     </div>`;
   } else {
     content = `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">
       <i class="fas fa-file-alt" style="font-size:56px;color:#f87171;margin-bottom:16px;"></i>
-      <p style="color:#dde2f0;font-size:15px;font-weight:700;margin-bottom:20px;">${ev.name}</p>
+        <p style="color:#dde2f0;font-size:15px;font-weight:700;margin-bottom:20px;">${cfEsc(ev.name)}</p>
       <button onclick="(()=>{const a=document.createElement('a');a.href='${ev.url}';a.download='${ev.name}';a.click()})()"
         style="padding:11px 24px;background:linear-gradient(135deg,#991b1b,#7f1d1d);color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;">
         <i class="fas fa-download mr-2"></i>${t("cf_download_file")}
@@ -3861,7 +3892,7 @@ function cfViewDisputeEvidence(contractId, evidenceIndex) {
         style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#f87171;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;">
         <i class="fas fa-times"></i></button>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:700;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ev.name}</div>
+          <div style="font-size:13px;font-weight:700;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cfEsc(ev.name)}</div>
         <div style="font-size:10px;color:#f87171;">Dispute Evidence #${contractId} — ${ev.mimeType || 'Arquivo'}</div>
       </div>
       <button onclick="(()=>{const a=document.createElement('a');a.href='${ev.url}';a.download='${ev.name}';a.click()})()"
@@ -3910,7 +3941,7 @@ function cfCloseContract(contractId) {
     <h3 style="color:#9ca3af;font-size:15px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:8px;">
       <i class="fas fa-lock"></i>Close Contract — #${contractId}
     </h3>
-    <p style="font-size:11px;color:#4a6490;margin-bottom:16px;">${c.title || 'Untitled'} · $${cfFmtUsdc(BigInt(c.totalValue))} USDC</p>
+    <p style="font-size:11px;color:#4a6490;margin-bottom:16px;">${cfEsc(c.title || 'Untitled')} · $${cfFmtUsdc(BigInt(c.totalValue))} USDC</p>
 
     <div style="background:rgba(74,85,104,0.1);border:1px solid rgba(74,85,104,0.25);border-radius:10px;padding:12px;margin-bottom:16px;font-size:11px;color:#9ca3af;">
       <i class="fas fa-exclamation-triangle mr-1" style="color:#fbbf24;"></i>

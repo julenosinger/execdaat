@@ -55,15 +55,57 @@
   <!-- PWA Manifest — scanners use this to verify site identity and legitimacy -->
   <link rel="manifest" href="/manifest.json">
 
-  <!-- Favicon ──────────────────────────────────────────────────────────── -->
-  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20260705b">
-  <link rel="apple-touch-icon" href="/static/favicon.svg?v=20260705b">
-  <link rel="mask-icon" href="/static/favicon.svg?v=20260705b" color="#6C4CFF">
+  <!-- Favicon — official ExecDaat AI symbol ─────────────────────────────── -->
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=20260706a">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png?v=20260706a">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png?v=20260706a">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png?v=20260706a">
+  <link rel="mask-icon" href="/static/favicon.svg?v=20260706a" color="#6C4CFF">
   <meta name="theme-color" content="#070B14">
   <meta name="msapplication-TileColor" content="#6C4CFF">
-  <link rel="icon" type="image/svg+xml" sizes="any" href="/static/favicon.svg?v=20260705b">
-  <link rel="shortcut icon" href="/static/favicon.svg?v=20260705b">
-  <!-- (favicon: gradient blockchain hexagon + value-flow arrow) -->
+  <meta name="msapplication-TileImage" content="/static/mstile-150x150.png?v=20260706a">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/android-chrome-192x192.png?v=20260706a">
+  <link rel="shortcut icon" href="/static/favicon-32x32.png?v=20260706a">
+  <!-- (favicon: official ExecDaat AI agent symbol) -->
+
+  <!-- ── ExecDaat AI symbol: replace legacy robot glyph app-wide (UI only) ── -->
+  <style id="ai-agent-brand">
+    /* Swap the legacy Font Awesome robot glyph for the official AI symbol everywhere */
+    i.fa-robot::before, .fa-robot::before{ content:"" !important; }
+    i.fa-robot, .fa-robot{
+      display:inline-block !important; width:1em; height:1em; line-height:1;
+      background:url('/static/ai-agent-64.png?v=20260706a') center/contain no-repeat;
+      border-radius:22%; vertical-align:-0.15em;
+      transition: transform .18s ease, filter .2s ease;
+    }
+    /* Larger/illustrative instances use a crisper source */
+    .fa-robot.text-2xl, .fa-robot.text-3xl, .fa-robot.text-4xl, .fa-robot.fa-2x, .fa-robot.fa-3x{
+      background-image:url('/static/ai-agent-128.png?v=20260706a') !important;
+    }
+    /* Sidebar brand tile → full mascot app-icon */
+    .sidebar-brand-icon{
+      background:url('/static/ai-agent-128.png?v=20260706a') center/cover no-repeat !important;
+      box-shadow:0 4px 14px rgba(80,60,220,.4), inset 0 1px 0 rgba(255,255,255,.15) !important;
+    }
+    .sidebar-brand-icon .fa-robot{ display:none !important; }
+    .sidebar-brand-btn:hover .sidebar-brand-icon{ transform:scale(1.05); transition:transform .18s ease; }
+    /* Autonomous nav icon: crisp mascot + subtle hover */
+    #tab-autonoma .sidebar-item-icon .fa-robot{ width:1.15em; height:1.15em; }
+    #tab-autonoma:hover .sidebar-item-icon .fa-robot{ transform:scale(1.08); filter:drop-shadow(0 0 8px rgba(167,139,255,.5)); }
+    /* Floating "Ask me" assistant → premium mascot + soft breathing + glow */
+    #chat-fab .fa-robot{
+      width:26px !important; height:26px !important;
+      background-image:url('/static/ai-agent-128.png?v=20260706a') !important; border-radius:26% !important;
+      animation: aiBreathe 3.4s ease-in-out infinite;
+    }
+    #chat-fab{ box-shadow:0 8px 26px rgba(80,60,220,.45), 0 0 0 1px rgba(120,150,255,.25) !important; }
+    #chat-fab:hover .fa-robot{ transform:scale(1.06); }
+    @keyframes aiBreathe{
+      0%,100%{ transform:scale(1); filter:drop-shadow(0 0 4px rgba(120,150,255,.35)); }
+      50%{ transform:scale(1.05); filter:drop-shadow(0 0 12px rgba(120,150,255,.7)); }
+    }
+    @media (prefers-reduced-motion: reduce){ #chat-fab .fa-robot{ animation:none !important; } }
+  </style>
 
   <!-- ── Canonical ────────────────────────────────────────────────────── -->
   <link rel="canonical" href="https://execdaatplataform.pages.dev/">
@@ -202,17 +244,142 @@
   <!-- inner: slide target — receives translateY for hide/show animation -->
   <div id="sticky-topbar">
 
+  <!-- ═══ HEADER — PREMIUM EVOLUTION (presentation only, dark-mode scoped) ═══ -->
+  <style id="ehdr-premium">
+    /* Layered glass background + soft glow + luminous bottom line */
+    body:not(.light-mode) #main-header{
+      background:
+        radial-gradient(60% 120% at 50% 120%, rgba(80,110,255,0.10), transparent 70%),
+        linear-gradient(90deg, rgba(11,16,32,0.90), rgba(17,26,45,0.90)) !important;
+      border-bottom:1px solid transparent !important;
+      backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%);
+      box-shadow:0 6px 24px rgba(0,0,0,0.28) !important;
+    }
+    body:not(.light-mode) #main-header::after{
+      content:''; position:absolute; left:0; right:0; bottom:0; height:1px; pointer-events:none;
+      background:linear-gradient(90deg, transparent, rgba(59,130,246,0.55) 30%, rgba(139,92,246,0.55) 70%, transparent);
+      opacity:.75;
+    }
+    #main-header{ min-height:60px; }
+
+    /* 3-area layout */
+    .ehdr-inner{ display:flex; align-items:center; gap:14px; width:100%; }
+    .ehdr-left{ display:flex; align-items:center; gap:10px; flex:1 1 0; min-width:0; }
+    .ehdr-right{ display:flex; align-items:center; gap:10px; flex:0 0 auto; margin-left:auto; }
+
+    /* Page context (now on the LEFT) */
+    .ehdr-center{ display:flex; align-items:center; gap:10px; min-width:0; opacity:0; transform:translateY(3px); transition:opacity .28s ease, transform .28s ease; }
+    /* Hide the page name on the landing page (only show inside the app shell) */
+    body:not(.sidebar-active) #ehdr-context{ display:none !important; }
+    .ehdr-center.is-ready{ opacity:1; transform:none; }
+    .ehdr-ctx-icon{ width:34px; height:34px; border-radius:11px; display:flex; align-items:center; justify-content:center;
+      background:linear-gradient(135deg, rgba(59,130,246,0.22), rgba(139,92,246,0.22)); border:1px solid rgba(120,150,255,0.22);
+      color:#bcd0ff; font-size:14px; flex-shrink:0; box-shadow:inset 0 1px 0 rgba(255,255,255,0.12); }
+    .ehdr-ctx-txt{ display:flex; flex-direction:column; line-height:1.15; min-width:0; }
+    .ehdr-ctx-title{ font-size:14px; font-weight:800; color:#fff; letter-spacing:.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ehdr-ctx-desc{ font-size:11px; color:#7f92b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    /* Icon button (notifications) */
+    .ehdr-icon-btn{ position:relative; width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,0.045); border:1px solid rgba(120,150,255,0.16); color:#c2cee6; cursor:pointer;
+      transition:transform .16s ease, background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease; }
+    .ehdr-icon-btn:hover{ transform:translateY(-1px); background:rgba(120,150,255,0.12); border-color:rgba(120,150,255,0.38); color:#fff; box-shadow:0 0 14px rgba(80,120,255,0.30); }
+    .ehdr-icon-btn:active{ transform:translateY(0) scale(.96); }
+    .ehdr-noti-dot{ position:absolute; top:8px; right:9px; width:7px; height:7px; border-radius:50%; background:#ef4444; box-shadow:0 0 0 2px rgba(11,16,32,.9), 0 0 8px rgba(239,68,68,.8); }
+
+    /* Network badge (premium + dropdown-prepared) */
+    .ehdr-net-wrap{ position:relative; }
+    .ehdr-net{ display:flex; align-items:center; gap:8px; background:rgba(34,197,94,0.07); border:1px solid rgba(34,197,94,0.22);
+      border-radius:999px; padding:7px 12px; cursor:pointer; color:#7ee2a6; font-size:12px; font-weight:600;
+      transition:border-color .2s ease, background .2s ease, box-shadow .2s ease; }
+    .ehdr-net:hover{ background:rgba(34,197,94,0.12); border-color:rgba(34,197,94,0.4); box-shadow:0 0 16px rgba(34,197,94,0.18); }
+    .ehdr-net-dot{ width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 8px rgba(34,197,94,0.85); animation:ehdrNetPulse 3s ease-in-out infinite; flex-shrink:0; }
+    .ehdr-net-name{ color:#8ff0b6; letter-spacing:.02em; }
+    .ehdr-net-caret{ font-size:9px; color:#4f8f6a; margin-left:1px; }
+    @keyframes ehdrNetPulse{ 0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.6); transform:scale(1);} 50%{ box-shadow:0 0 13px rgba(34,197,94,1); transform:scale(1.15);} }
+
+    /* Popovers (CSS-only, hover/focus) */
+    .ehdr-pop{ position:absolute; top:calc(100% + 10px); right:0; min-width:200px; z-index:120;
+      background:rgba(13,19,36,0.98); border:1px solid rgba(120,150,255,0.22); border-radius:12px; padding:8px;
+      box-shadow:0 16px 40px rgba(0,0,0,0.5); opacity:0; transform:translateY(-6px) scale(.98); pointer-events:none;
+      transition:opacity .16s ease, transform .16s ease; backdrop-filter:blur(14px); }
+    .ehdr-net-wrap:hover .ehdr-pop, .ehdr-net-wrap:focus-within .ehdr-pop,
+    .ehdr-noti-wrap:hover .ehdr-pop, .ehdr-noti-wrap:focus-within .ehdr-pop{ opacity:1; transform:none; pointer-events:auto; }
+    .ehdr-pop-item{ display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; font-size:12px; color:#c9d3e7; }
+    .ehdr-pop-item.is-active{ background:rgba(34,197,94,0.08); color:#8ff0b6; }
+    .ehdr-pop-soon{ font-size:10.5px; color:#5a6b8c; padding:7px 10px 3px; text-transform:uppercase; letter-spacing:.08em; }
+    .ehdr-noti-head{ font-size:11px; font-weight:800; color:#8fa2c6; text-transform:uppercase; letter-spacing:.09em; padding:6px 10px 8px; }
+    .ehdr-noti-empty{ display:flex; flex-direction:column; align-items:center; gap:8px; padding:16px 10px 14px; color:#63769c; font-size:12px; }
+    .ehdr-noti-empty i{ font-size:18px; color:#3f4d6e; }
+
+    /* Wallet card premium (functional element #wallet-info — visuals only) */
+    body:not(.light-mode) #wallet-info{
+      background:linear-gradient(135deg, rgba(30,41,70,0.72), rgba(20,28,50,0.72)) !important;
+      border:1px solid rgba(120,150,255,0.20) !important; border-radius:14px !important;
+      transition:transform .16s ease, border-color .2s ease, box-shadow .2s ease !important;
+    }
+    body:not(.light-mode) #wallet-info:hover{ transform:translateY(-1px); border-color:rgba(120,150,255,0.42) !important; box-shadow:0 6px 20px rgba(0,0,0,0.3), 0 0 16px rgba(80,120,255,0.18) !important; }
+    body:not(.light-mode) #wallet-balance-display{ font-size:13px !important; font-weight:700 !important; color:#fff !important;
+      background:rgba(59,130,246,0.14) !important; border:1px solid rgba(59,130,246,0.28) !important; }
+    #wallet-avatar{ box-shadow:0 2px 10px rgba(80,60,220,0.4), inset 0 1px 0 rgba(255,255,255,0.2); }
+
+    /* Connect button premium */
+    body:not(.light-mode) #wallet-connect-btn{
+      background:linear-gradient(135deg, #2563eb, #7c3aed) !important;
+      box-shadow:0 6px 18px rgba(80,50,200,0.35), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+      transition:transform .16s ease, box-shadow .2s ease, filter .2s ease !important;
+    }
+    body:not(.light-mode) #wallet-connect-btn:hover{ transform:translateY(-1px); filter:brightness(1.06); box-shadow:0 8px 22px rgba(80,50,200,0.5), 0 0 18px rgba(120,90,255,0.3) !important; }
+    body:not(.light-mode) #wallet-connect-btn:active{ transform:translateY(0) scale(.97); }
+
+    /* Responsive: keep page name on the left; compact on small screens */
+    @media (max-width:640px){ #ehdr-context .ehdr-ctx-desc{ display:none; } .ehdr-net-name, .ehdr-net-caret{ display:none; } .ehdr-net{ padding:8px; } }
+    @media (max-width:460px){ #ehdr-context{ display:none; } }
+    @media (prefers-reduced-motion: reduce){ .ehdr-net-dot{ animation:none !important; } .ehdr-center{ transition:none !important; } }
+  </style>
+
   <!-- HEADER — directly inside sticky wrapper -->
   <header id="main-header" class="bg-gray-900/95 border-b border-purple-800/30 px-6 py-3 backdrop-blur-sm" style="position:relative;z-index:50;">
-    <div class="max-w-7xl mx-auto flex items-center justify-end gap-2 sm:gap-3">
+    <div class="ehdr-inner max-w-7xl mx-auto">
 
-        <!-- Arc Network badge -->
-        <div class="hidden sm:flex items-center gap-1.5 bg-green-900/30 border border-green-700/40 rounded-full px-3 py-1.5">
-          <div class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
-          <span class="text-xs text-green-400 font-medium">Arc Testnet</span>
+        <!-- ① LEFT — current page context -->
+        <div class="ehdr-left">
+          <div class="ehdr-center" id="ehdr-context" aria-live="polite">
+            <span class="ehdr-ctx-icon"><i class="fas fa-dollar-sign" id="ehdr-ctx-i" aria-hidden="true"></i></span>
+            <span class="ehdr-ctx-txt">
+              <span class="ehdr-ctx-title" id="ehdr-ctx-title">Payments</span>
+              <span class="ehdr-ctx-desc" id="ehdr-ctx-desc">Send USDC &amp; EURC on Arc</span>
+            </span>
+          </div>
         </div>
 
+        <!-- ③ RIGHT — network · notifications · wallet -->
+        <div class="ehdr-right">
 
+        <!-- Arc Network badge (premium, dropdown-prepared) -->
+        <div class="ehdr-net-wrap hidden sm:block">
+          <div class="ehdr-net" tabindex="0" role="button" aria-haspopup="true" aria-label="Network: Arc Testnet">
+            <span class="ehdr-net-dot" aria-hidden="true"></span>
+            <span class="ehdr-net-name">Arc Testnet</span>
+            <i class="fas fa-chevron-down ehdr-net-caret" aria-hidden="true"></i>
+          </div>
+          <div class="ehdr-pop" role="menu" aria-label="Networks">
+            <div class="ehdr-pop-item is-active"><span class="ehdr-net-dot" style="animation:none;"></span>Arc Testnet<i class="fas fa-check" style="margin-left:auto;font-size:10px;"></i></div>
+            <div class="ehdr-pop-soon">More networks soon</div>
+          </div>
+        </div>
+
+        <!-- Notifications (visual — prepared) -->
+        <div class="ehdr-noti-wrap hidden sm:block">
+          <button type="button" class="ehdr-icon-btn" id="ehdr-noti-btn" aria-label="Notifications" title="Notifications">
+            <i class="fas fa-bell" aria-hidden="true"></i>
+            <span class="ehdr-noti-dot" aria-hidden="true"></span>
+          </button>
+          <div class="ehdr-pop" role="menu" aria-label="Notifications">
+            <div class="ehdr-noti-head">Notifications</div>
+            <div class="ehdr-noti-empty"><i class="fas fa-bell-slash" aria-hidden="true"></i><span>You're all caught up</span></div>
+          </div>
+        </div>
 
         <!-- Wallet info (when connected) -->
         <div id="wallet-info" class="hidden items-center gap-2 bg-gray-800/80 border border-gray-700/50 rounded-xl px-3 py-2 cursor-pointer hover:border-purple-600/50 transition-all" onclick="openWalletModal()">
@@ -232,11 +399,64 @@
         </button>
 
         <div id="wallet-badge" class="hidden sm:hidden w-2 h-2 rounded-full bg-green-400"></div>
+        </div><!-- /.ehdr-right -->
     </div>
   </header>
 
   </div><!-- /#sticky-topbar (inner: slide target) -->
   </div><!-- /#sticky-topbar-anchor (outer: sticky anchor) -->
+
+  <!-- Header premium: page context (wraps switchTab, additive) + Ctrl+K search focus -->
+  <script>
+    (function(){
+      try{
+        var CTX = {
+          payments:            ['fa-dollar-sign',  'Payments',            'Send USDC & EURC on Arc'],
+          contracts:           ['fa-file-contract','Contracts',           'Milestone escrow on-chain'],
+          otc:                 ['fa-handshake',    'OTC Contracts',       'Peer-to-peer settlement'],
+          multisend:           ['fa-paper-plane',  'MultiSend',           'Batch payments in one flow'],
+          dex:                 ['fa-exchange-alt', 'Swap',                'Swap tokens via on-chain AMM'],
+          'advanced-crosschain':['fa-satellite-dish','Advanced Cross-Chain','Move value across chains'],
+          unifiedbalance:      ['fa-coins',        'Unified Balance',     'All your assets, one view'],
+          autonoma:            ['fa-robot',        'Autonomous',          'Autonomous execution'],
+          agents:              ['fa-brain',        'AI Agents',           'AI-powered on-chain agents'],
+          history:             ['fa-history',      'History',             'Your transaction activity'],
+          dashboard:           ['fa-info-circle',  'Information',         'Network & platform overview']
+        };
+        function apply(tab){
+          var d = CTX[tab]; if(!d) return;
+          var i = document.getElementById('ehdr-ctx-i');
+          var t = document.getElementById('ehdr-ctx-title');
+          var s = document.getElementById('ehdr-ctx-desc');
+          var wrap = document.getElementById('ehdr-context');
+          if(i) i.className = 'fas ' + d[0];
+          if(t) t.textContent = d[1];
+          if(s) s.textContent = d[2];
+          if(wrap) wrap.classList.add('is-ready');
+        }
+        function currentFromDom(){
+          var a = document.querySelector('#left-sidebar .sidebar-item.active');
+          if(a && a.id && a.id.indexOf('tab-')===0) return a.id.slice(4);
+          return 'payments';
+        }
+        function wrap(){
+          if(typeof window.switchTab === 'function' && !window.__ehdrWrapped){
+            var orig = window.switchTab;
+            window.switchTab = function(tab){
+              var r = orig.apply(this, arguments);
+              try{ apply(tab); }catch(e){}
+              return r;
+            };
+            window.__ehdrWrapped = true;
+          }
+        }
+        var tries = 0;
+        (function tick(){ wrap(); if(!window.__ehdrWrapped && tries++ < 60){ setTimeout(tick, 100); } })();
+        function boot(){ wrap(); apply(currentFromDom()); }
+        if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 0);
+      }catch(e){}
+    })();
+  </script>
 
   <!-- ══════════════════════════════════════════════════════════════════════
        LANDING PAGE — shown by default, hidden after "Enter App"
@@ -547,10 +767,28 @@
       html, body{ overflow-x:hidden; max-width:100%; }
       .sidebar-collapse-btn{ display:none !important; }
       body.sidebar-collapsed{ --sidebar-w:0px; }            /* collapse never applies on mobile */
-      body.sidebar-collapsed #left-sidebar{ width:280px; }  /* keep full drawer width on mobile */
+      body.sidebar-collapsed #left-sidebar{ width:280px !important; }  /* keep full drawer width on mobile */
       body.sidebar-collapsed #app-content-wrap{ margin-left:0 !important; }
       #app-content-wrap{ margin-left:0 !important; width:100%; max-width:100%; }
       #left-sidebar{ height:100dvh; }
+
+      /* ROOT-CAUSE FIX: a persisted `sidebar-collapsed` state (set on desktop and kept in
+         localStorage) must NEVER hide labels in the mobile drawer. On mobile the collapse
+         button is hidden, so the user cannot undo it — force the full drawer with visible
+         labels regardless of the collapsed state. */
+      body.sidebar-collapsed #left-sidebar .sidebar-item-label,
+      body.sidebar-collapsed #left-sidebar .sidebar-brand-text,
+      body.sidebar-collapsed #left-sidebar .sidebar-section-label,
+      body.sidebar-collapsed #left-sidebar .sidebar-footer-btn span{ display:revert !important; }
+      body.sidebar-collapsed #left-sidebar .sidebar-item,
+      body.sidebar-collapsed #left-sidebar .sidebar-brand-btn{ justify-content:flex-start !important; padding-left:14px !important; padding-right:14px !important; }
+      body.sidebar-collapsed #left-sidebar .sidebar-footer-btn{ justify-content:center !important; }
+      /* No collapse tooltips inside the drawer (touch devices) */
+      #left-sidebar .sidebar-item::after{ display:none !important; }
+      /* Belt-and-suspenders: labels always visible & legible in the mobile drawer */
+      #left-sidebar .sidebar-item-label,
+      #left-sidebar .sidebar-section-label{ display:revert !important; opacity:1 !important; visibility:visible !important; }
+      body:not(.light-mode) #left-sidebar .sidebar-item-label{ color:#E6F1FF !important; }
     }
   </style>
 
@@ -565,6 +803,138 @@
 
   <!-- ═══ SIDEBAR OVERLAY (mobile backdrop) ═══ -->
   <div id="sidebar-overlay" class="sidebar-overlay" onclick="sidebarClose()"></div>
+
+  <!-- ═══ SIDEBAR — PREMIUM EVOLUTION (presentation only, dark-mode scoped) ═══ -->
+  <style id="sidebar-premium">
+    /* Layered background: mouse-follow glow + bottom ambient + deep gradient */
+    body:not(.light-mode) #left-sidebar{
+      background:
+        radial-gradient(160px 160px at var(--sb-mx,50%) var(--sb-my,14%), rgba(96,131,255,0.055), transparent 62%),
+        radial-gradient(130% 42% at 50% 116%, rgba(109,60,255,0.14), transparent 70%),
+        linear-gradient(180deg,#060B17 0%, #0D1324 100%) !important;
+      border-right:1px solid rgba(96,131,255,0.14) !important;
+      box-shadow: inset -1px 0 0 rgba(255,255,255,0.02), 1px 0 24px rgba(0,0,0,0.40) !important;
+    }
+    /* Nav spacing */
+    body:not(.light-mode) .sidebar-nav{ gap:7px !important; padding:14px 12px !important; }
+
+    /* Premium item card */
+    body:not(.light-mode) .sidebar-item{
+      min-height:52px !important; border-radius:15px !important;
+      padding:13px 14px !important; gap:13px !important;
+      color:#C9D3E7 !important; font-weight:600 !important; letter-spacing:0.2px !important;
+      background:rgba(255,255,255,0.015) !important; border:1px solid rgba(255,255,255,0.045) !important;
+      transform:translateZ(0);
+      transition: transform .18s cubic-bezier(.4,0,.2,1), background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease !important;
+      will-change: transform;
+    }
+    body:not(.light-mode) .sidebar-item-label{ color:inherit !important; }
+    body:not(.light-mode) .sidebar-item-icon{
+      color:#E6F1FF !important; opacity:.95 !important; font-size:14px !important;
+      transition: transform .18s cubic-bezier(.4,0,.2,1), color .2s ease, filter .2s ease !important;
+    }
+    /* Hover — alive */
+    body:not(.light-mode) .sidebar-item:hover{
+      transform: translateY(-1px) scale(1.01) !important;
+      background: rgba(255,255,255,0.05) !important;
+      border-color: rgba(120,150,255,0.24) !important; color:#FFFFFF !important;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.28) !important;
+    }
+    body:not(.light-mode) .sidebar-item:hover .sidebar-item-icon{ transform: scale(1.08) !important; }
+    body:not(.light-mode) .sidebar-item:active{ transform: translateY(0) scale(.985) !important; transition: transform .1s ease !important; }
+
+    /* Per-feature hover accent (icon only) */
+    body:not(.light-mode) #tab-payments:hover .sidebar-item-icon{ color:#5B8CFF !important; filter:drop-shadow(0 0 8px rgba(91,140,255,.55)); }
+    body:not(.light-mode) #tab-contracts:hover .sidebar-item-icon,
+    body:not(.light-mode) #tab-otc:hover .sidebar-item-icon{ color:#B794FF !important; filter:drop-shadow(0 0 8px rgba(160,120,255,.55)); }
+    body:not(.light-mode) #tab-dex:hover .sidebar-item-icon{ color:#34E39B !important; filter:drop-shadow(0 0 8px rgba(52,227,155,.5)); }
+    body:not(.light-mode) #tab-advanced-crosschain:hover .sidebar-item-icon,
+    body:not(.light-mode) #tab-multisend:hover .sidebar-item-icon{ color:#22D3EE !important; filter:drop-shadow(0 0 8px rgba(34,211,238,.5)); }
+    body:not(.light-mode) #tab-history:hover .sidebar-item-icon{ color:#FBA94C !important; filter:drop-shadow(0 0 8px rgba(251,169,76,.5)); }
+    body:not(.light-mode) #tab-agents:hover .sidebar-item-icon,
+    body:not(.light-mode) #tab-autonoma:hover .sidebar-item-icon{ color:#A78BFF !important; filter:drop-shadow(0 0 8px rgba(167,139,255,.55)); }
+    body:not(.light-mode) #tab-unifiedbalance:hover .sidebar-item-icon{ color:#F5C542 !important; filter:drop-shadow(0 0 8px rgba(245,197,66,.5)); }
+    body:not(.light-mode) #tab-dashboard:hover .sidebar-item-icon{ color:#38BDF8 !important; filter:drop-shadow(0 0 8px rgba(56,189,248,.5)); }
+
+    /* Active — premium blue→purple (unified, overrides per-module) */
+    body:not(.light-mode) #left-sidebar .sidebar-item.active{
+      background: linear-gradient(135deg, rgba(26,99,255,.92), rgba(109,60,255,.92)) !important;
+      border:1px solid rgba(130,165,255,.55) !important; color:#fff !important; font-weight:700 !important;
+      box-shadow: 0 0 22px rgba(45,110,255,.42), 0 8px 24px rgba(80,40,220,.26), inset 0 1px 0 rgba(255,255,255,.18) !important;
+    }
+    body:not(.light-mode) #left-sidebar .sidebar-item.active .sidebar-item-label{ color:#fff !important; }
+    body:not(.light-mode) #left-sidebar .sidebar-item.active .sidebar-item-icon{
+      color:#fff !important; opacity:1 !important; transform:scale(1.06) !important;
+      filter: drop-shadow(0 0 8px rgba(255,255,255,.5)) !important; animation:none !important;
+    }
+    /* Left accent glowing bar */
+    body:not(.light-mode) #left-sidebar .sidebar-item.active .sidebar-item-active-bar{
+      display:block !important; width:3px !important; height:26px !important; border-radius:999px !important;
+      background: linear-gradient(180deg,#3B82F6,#8B5CF6) !important; box-shadow:0 0 10px rgba(90,130,255,.85) !important;
+      animation: sbBarPulse 2.4s ease-in-out infinite !important;
+    }
+    @keyframes sbBarPulse{ 0%,100%{opacity:.6} 50%{opacity:1} }
+
+    /* Section labels */
+    body:not(.light-mode) .sidebar-section-label{
+      font-size:10.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+      color:rgba(150,168,200,.5); padding:14px 16px 6px; user-select:none; pointer-events:none;
+    }
+    body:not(.light-mode) .sidebar-nav > .sidebar-section-label:first-child{ padding-top:2px; }
+
+    /* Brand pop */
+    body:not(.light-mode) .sidebar-brand-icon{ box-shadow:0 4px 14px rgba(80,60,220,.4), inset 0 1px 0 rgba(255,255,255,.2); }
+
+    /* Footer premium */
+    body:not(.light-mode) .sidebar-footer{ border-top:1px solid rgba(120,150,255,.10) !important; }
+    body:not(.light-mode) .sidebar-footer-btn{
+      width:38px !important; height:38px !important; border-radius:12px !important;
+      background:rgba(255,255,255,.04) !important; border:1px solid rgba(120,150,255,.16) !important; color:#C9D3E7 !important;
+      transition: transform .18s, background .2s, border-color .2s, color .2s, box-shadow .2s !important;
+    }
+    body:not(.light-mode) .sidebar-footer-btn:hover{
+      transform: translateY(-1px) !important; background:rgba(120,150,255,.12) !important;
+      border-color:rgba(120,150,255,.4) !important; color:#fff !important; box-shadow:0 0 14px rgba(80,120,255,.35) !important;
+    }
+    body:not(.light-mode) .sidebar-footer-net{
+      margin-top:2px; padding:7px 10px; border-radius:10px;
+      background:rgba(34,197,94,.06); border:1px solid rgba(34,197,94,.14);
+    }
+    body:not(.light-mode) .sidebar-footer-dot{
+      width:9px !important; height:9px !important; box-shadow:0 0 8px rgba(34,197,94,.8) !important;
+      animation: sbNetPulse 3s ease-in-out infinite !important;
+    }
+    @keyframes sbNetPulse{
+      0%,100%{ box-shadow:0 0 6px rgba(34,197,94,.6); transform:scale(1); }
+      50%{ box-shadow:0 0 14px rgba(34,197,94,1); transform:scale(1.18); }
+    }
+    body:not(.light-mode) .sidebar-footer-netname{ color:#8fa2bd !important; font-weight:600 !important; letter-spacing:.02em; }
+
+    /* Collapsed: centered icons + tooltips (hover behaviour preserved) */
+    body.sidebar-collapsed #left-sidebar .sidebar-item::after{
+      content: attr(data-label);
+      position:absolute; left:calc(100% + 12px); top:50%; transform:translateY(-50%) translateX(-6px);
+      background:#0D1324; color:#E6F1FF; border:1px solid rgba(120,150,255,.28);
+      padding:7px 11px; border-radius:9px; font-size:12px; font-weight:600; white-space:nowrap;
+      box-shadow:0 8px 24px rgba(0,0,0,.5); opacity:0; pointer-events:none;
+      transition:opacity .15s ease, transform .15s ease; z-index:60;
+    }
+    body.sidebar-collapsed #left-sidebar .sidebar-item:hover::after{ opacity:1; transform:translateY(-50%) translateX(0); }
+
+    /* Accessibility: keep focus visible */
+    body:not(.light-mode) .sidebar-item:focus-visible,
+    body:not(.light-mode) .sidebar-footer-btn:focus-visible{
+      outline:2px solid rgba(120,160,255,.8) !important; outline-offset:2px !important;
+    }
+    /* Respect reduced motion */
+    @media (prefers-reduced-motion: reduce){
+      body:not(.light-mode) .sidebar-item,
+      body:not(.light-mode) .sidebar-item-icon,
+      body:not(.light-mode) .sidebar-footer-btn{ transition:none !important; }
+      body:not(.light-mode) .sidebar-item.active .sidebar-item-active-bar,
+      body:not(.light-mode) .sidebar-footer-dot{ animation:none !important; }
+    }
+  </style>
 
   <!-- ═══ LEFT SIDEBAR ═══ -->
   <aside id="left-sidebar" class="left-sidebar">
@@ -591,6 +961,7 @@
 
     <!-- Nav items -->
     <nav class="sidebar-nav" role="navigation" aria-label="Main navigation">
+      <div class="sidebar-section-label" aria-hidden="true">Payments</div>
       <button onclick="switchTab('payments');sidebarClose();" id="tab-payments" class="tab-btn sidebar-item" data-label="Payments">
         <span class="sidebar-item-icon"><i class="fas fa-dollar-sign"></i></span>
         <span class="sidebar-item-label" data-i18n="tab_payments">Payments</span>
@@ -616,6 +987,7 @@
         <span class="sidebar-item-active-bar"></span>
       </button>
 
+      <div class="sidebar-section-label" aria-hidden="true">Assets</div>
       <button onclick="switchTab('dex');sidebarClose();" id="tab-dex" class="tab-btn sidebar-item" data-label="Swap">
         <span class="sidebar-item-icon"><i class="fas fa-exchange-alt"></i></span>
         <span class="sidebar-item-label">Swap</span>
@@ -629,21 +1001,16 @@
         <span class="sidebar-item-active-bar"></span>
       </button>
 
+      <button onclick="switchTab('unifiedbalance');sidebarClose();" id="tab-unifiedbalance" class="tab-btn sidebar-item" data-label="Unified Balance">
+        <span class="sidebar-item-icon"><i class="fas fa-coins"></i></span>
+        <span class="sidebar-item-label">Unified Balance</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <div class="sidebar-section-label" aria-hidden="true">Automation</div>
       <button onclick="switchTab('autonoma');sidebarClose();" id="tab-autonoma" class="tab-btn sidebar-item" data-label="Autonomous">
         <span class="sidebar-item-icon"><i class="fas fa-robot"></i></span>
         <span class="sidebar-item-label">Autonomous</span>
-        <span class="sidebar-item-active-bar"></span>
-      </button>
-
-      <button onclick="switchTab('history');sidebarClose();" id="tab-history" class="tab-btn sidebar-item" data-label="History">
-        <span class="sidebar-item-icon"><i class="fas fa-history"></i></span>
-        <span class="sidebar-item-label">History</span>
-        <span class="sidebar-item-active-bar"></span>
-      </button>
-
-      <button onclick="switchTab('dashboard');sidebarClose();" id="tab-dashboard" class="tab-btn sidebar-item" data-label="Information">
-        <span class="sidebar-item-icon"><i class="fas fa-info-circle"></i></span>
-        <span class="sidebar-item-label">Information</span>
         <span class="sidebar-item-active-bar"></span>
       </button>
 
@@ -653,9 +1020,16 @@
         <span class="sidebar-item-active-bar"></span>
       </button>
 
-      <button onclick="switchTab('unifiedbalance');sidebarClose();" id="tab-unifiedbalance" class="tab-btn sidebar-item" data-label="Unified Balance">
-        <span class="sidebar-item-icon"><i class="fas fa-coins"></i></span>
-        <span class="sidebar-item-label">Unified Balance</span>
+      <div class="sidebar-section-label" aria-hidden="true">System</div>
+      <button onclick="switchTab('history');sidebarClose();" id="tab-history" class="tab-btn sidebar-item" data-label="History">
+        <span class="sidebar-item-icon"><i class="fas fa-history"></i></span>
+        <span class="sidebar-item-label">History</span>
+        <span class="sidebar-item-active-bar"></span>
+      </button>
+
+      <button onclick="switchTab('dashboard');sidebarClose();" id="tab-dashboard" class="tab-btn sidebar-item" data-label="Information">
+        <span class="sidebar-item-icon"><i class="fas fa-info-circle"></i></span>
+        <span class="sidebar-item-label">Information</span>
         <span class="sidebar-item-active-bar"></span>
       </button>
     </nav>
@@ -677,6 +1051,23 @@
       </div>
     </div>
   </aside>
+
+  <!-- Sidebar premium: subtle mouse-follow glow (presentation only; sets CSS vars) -->
+  <script>
+    (function(){
+      try{
+        var sb=document.getElementById('left-sidebar'); if(!sb) return;
+        var raf=null, mx='50%', my='14%';
+        sb.addEventListener('mousemove', function(e){
+          var r=sb.getBoundingClientRect(); if(!r.width||!r.height) return;
+          mx=(((e.clientX-r.left)/r.width)*100).toFixed(1)+'%';
+          my=(((e.clientY-r.top)/r.height)*100).toFixed(1)+'%';
+          if(!raf) raf=requestAnimationFrame(function(){ raf=null; sb.style.setProperty('--sb-mx',mx); sb.style.setProperty('--sb-my',my); });
+        }, {passive:true});
+        sb.addEventListener('mouseleave', function(){ sb.style.setProperty('--sb-mx','50%'); sb.style.setProperty('--sb-my','14%'); }, {passive:true});
+      }catch(e){}
+    })();
+  </script>
 
   <!-- ═══ MAIN CONTENT WRAPPER (offset by sidebar) ═══ -->
   <div id="app-content-wrap" class="app-content-wrap">
@@ -1542,6 +1933,8 @@
 
       <!-- ══ CONTRACTS STYLES ══ -->
       <style>
+        @keyframes cfNewPulse { 0%,100%{ box-shadow:0 0 8px rgba(34,197,94,.45); } 50%{ box-shadow:0 0 15px rgba(34,197,94,.85); } }
+        @media (prefers-reduced-motion: reduce){ [style*="cfNewPulse"]{ animation:none !important; } }
         .cf-panel { background:rgba(10,12,24,0.98); border:1px solid rgba(55,138,221,0.18); border-radius:18px; position:relative; overflow:hidden; }
         .cf-panel::after { content:''; position:absolute; top:0; left:0; right:0; height:1px; pointer-events:none; background:linear-gradient(90deg,transparent,rgba(55,138,221,0.6) 40%,rgba(29,158,117,0.5) 60%,transparent); }
         .cf-input { background:rgba(255,255,255,0.06) !important; border:1px solid rgba(55,138,221,0.32) !important; border-radius:12px !important; color:#e8edf8 !important; transition:all 0.2s; outline:none !important; }
@@ -3274,6 +3667,126 @@
 
       <!-- DEX animation styles -->
       <style>
+        /* --- Swap Premium Visual Evolution (scoped to swap panel, no layout changes) --- */
+
+        /* CARD — layered depth, glass surface, refined border */
+        body:not(.light-mode) #amm-panel-swap > div{
+          background:
+            radial-gradient(50% 40% at 10% 90%, rgba(80,120,255,0.08), transparent 60%),
+            radial-gradient(40% 30% at 90% 10%, rgba(6,182,212,0.06), transparent 60%),
+            rgba(15,23,45,0.95) !important;
+          border:1px solid rgba(59,130,246,0.20) !important;
+          border-radius:20px !important;
+          box-shadow:0 4px 24px rgba(0,0,0,0.25), 0 0 0 1px rgba(59,130,246,0.06) !important;
+          backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+        }
+
+        /* TABS — premium segmented control (active = blue→purple, inactive = deeper). JS
+           re-writes className, so we key off the classes JS applies. */
+        body:not(.light-mode) #amm-tab-swap.bg-gradient-to-r,
+        body:not(.light-mode) #amm-tab-liquidity.bg-gradient-to-r{
+          background:linear-gradient(135deg, #1a63ff,#6d3cff) !important;
+          box-shadow:0 0 14px rgba(80,100,255,0.35), 0 0 0 1px rgba(130,150,255,0.30), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+          color:#fff !important; font-weight:700 !important;
+        }
+        body:not(.light-mode) #amm-tab-swap:not(.bg-gradient-to-r),
+        body:not(.light-mode) #amm-tab-liquidity:not(.bg-gradient-to-r){
+          background:rgba(255,255,255,0.03) !important; color:#7b8eb8 !important; font-weight:600 !important;
+        }
+        body:not(.light-mode) #amm-tab-swap:not(.bg-gradient-to-r):hover,
+        body:not(.light-mode) #amm-tab-liquidity:not(.bg-gradient-to-r):hover{
+          background:rgba(120,150,255,0.10) !important; color:#c9d3e7 !important;
+        }
+
+        /* YOU PAY / YOU RECEIVE panels (the px-4 py-3.5 boxes inside the swap panel) */
+        body:not(.light-mode) #amm-panel-swap [class*="px-4"][class*="py-3"]{
+          background:rgba(255,255,255,0.03) !important;
+          border-color:rgba(120,150,255,0.16) !important; border-radius:14px !important;
+          box-shadow:inset 0 1px 0 rgba(255,255,255,0.03) !important;
+        }
+        body:not(.light-mode) #amm-swap-input{ color:#fff !important; font-weight:700 !important; }
+        body:not(.light-mode) #amm-swap-output{ color:#34d399 !important; font-weight:700 !important; }
+        body:not(.light-mode) #amm-panel-swap [class*="px-4"][class*="py-3"] > div:first-child span:first-child{
+          color:#99aecf !important; letter-spacing:.02em !important;
+        }
+
+        /* Token selector chips (bg-gray-700/50 inside the swap panel) */
+        body:not(.light-mode) #amm-panel-swap [class*="bg-gray-700/50"]{
+          background:rgba(255,255,255,0.045) !important;
+          border-color:rgba(120,150,255,0.18) !important; border-radius:12px !important;
+          transition:border-color .2s ease, background .2s ease;
+        }
+        body:not(.light-mode) #amm-swap-from-logo,
+        body:not(.light-mode) #amm-swap-to-logo{ font-size:22px !important; }
+
+        /* FLIP BUTTON — premium circular, glow, hover rotation (the -my-1 container) */
+        body:not(.light-mode) #amm-panel-swap [class*="-my-1"] > button{
+          width:40px !important; height:40px !important; border-radius:50% !important;
+          background:rgba(11,16,40,0.95) !important;
+          border:1px solid rgba(120,150,255,0.25) !important;
+          box-shadow:0 4px 16px rgba(80,100,255,0.18), 0 0 0 1px rgba(120,150,255,0.08) !important;
+          transition:transform .25s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease !important;
+        }
+        body:not(.light-mode) #amm-panel-swap [class*="-my-1"] > button:hover{
+          border-color:rgba(59,130,246,0.55) !important;
+          box-shadow:0 0 22px rgba(59,130,246,0.40), 0 6px 20px rgba(80,100,255,0.25) !important;
+          transform:rotate(180deg) scale(1.06);
+          background:rgba(20,30,60,0.98) !important;
+        }
+
+        /* QUOTE ROW — the 3 grid-cols-3 cards inside the swap panel */
+        body:not(.light-mode) #amm-panel-swap [class*="grid-cols-3"] > div{
+          background:rgba(255,255,255,0.03) !important;
+          border:1px solid rgba(120,150,255,0.14) !important; border-radius:13px !important;
+          transition:border-color .2s ease, background .2s ease;
+        }
+        body:not(.light-mode) #amm-panel-swap [class*="grid-cols-3"] > div:hover{
+          background:rgba(120,150,255,0.07) !important; border-color:rgba(120,150,255,0.30) !important;
+        }
+        body:not(.light-mode) #amm-panel-swap [class*="grid-cols-3"] > div > :first-child{
+          color:#7b8eb8 !important; letter-spacing:.02em !important; font-weight:600 !important;
+        }
+        body:not(.light-mode) #amm-panel-swap [class*="grid-cols-3"] > div > :last-child{ font-weight:700 !important; }
+
+        /* SLIPPAGE — active pill gradient+glow, inactive refined (JS rewrites className) */
+        body:not(.light-mode) #amm-slip-01[class*="bg-cyan-600"],
+        body:not(.light-mode) #amm-slip-05[class*="bg-cyan-600"],
+        body:not(.light-mode) #amm-slip-10[class*="bg-cyan-600"]{
+          background:linear-gradient(135deg, #1a63ff,#6d3cff) !important;
+          box-shadow:0 0 10px rgba(80,100,255,0.35) !important; color:#fff !important; font-weight:700 !important;
+        }
+        body:not(.light-mode) #amm-slip-01[class*="bg-gray-700"],
+        body:not(.light-mode) #amm-slip-05[class*="bg-gray-700"],
+        body:not(.light-mode) #amm-slip-10[class*="bg-gray-700"]{
+          background:rgba(255,255,255,0.05) !important; color:#7b8eb8 !important; font-weight:600 !important;
+          border:1px solid rgba(120,150,255,0.12) !important;
+          transition:background .2s ease, border-color .2s ease, color .2s ease;
+        }
+        body:not(.light-mode) #amm-slip-01[class*="bg-gray-700"]:hover,
+        body:not(.light-mode) #amm-slip-05[class*="bg-gray-700"]:hover,
+        body:not(.light-mode) #amm-slip-10[class*="bg-gray-700"]:hover{
+          background:rgba(120,150,255,0.12) !important; color:#c9d3e7 !important; border-color:rgba(120,150,255,0.30) !important;
+        }
+
+        /* SWAP BUTTON — premium gradient, glow, hover, elegant disabled */
+        body:not(.light-mode) #amm-swap-btn:not(:disabled){
+          background:linear-gradient(135deg, #2563eb, #7c3aed) !important;
+          box-shadow:0 8px 22px rgba(80,50,200,0.35), 0 0 0 1px rgba(130,150,255,0.25), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+          transition:transform .16s ease, box-shadow .2s ease, filter .2s ease !important;
+          border-radius:18px !important; font-weight:700 !important; letter-spacing:.02em !important;
+        }
+        body:not(.light-mode) #amm-swap-btn:not(:disabled):hover{
+          transform:translateY(-1px); filter:brightness(1.06);
+          box-shadow:0 10px 28px rgba(80,50,200,0.5), 0 0 20px rgba(120,90,255,0.30), 0 0 0 1px rgba(130,150,255,0.35), inset 0 1px 0 rgba(255,255,255,0.22) !important;
+        }
+        body:not(.light-mode) #amm-swap-btn:not(:disabled):active{ transform:translateY(0) scale(.97); }
+        body:not(.light-mode) #amm-swap-btn:disabled{ opacity:0.32 !important; filter:grayscale(20%); border-radius:18px !important; }
+
+        @media (prefers-reduced-motion: reduce){
+          body:not(.light-mode) #amm-panel-swap [class*="-my-1"] > button:hover{ transform:none !important; }
+        }
+
+        /* ── (existing DEX animation styles below) ──────────────────────────── */
         /* Pool-status slide-in / slide-out */
         #dex-pool-col {
           transition: opacity 0.28s ease, transform 0.28s ease;
@@ -4845,6 +5358,106 @@
 
   <!-- ===== CHATBOT WIDGET v2 ===== -->
   <!-- Floating Action Button -->
+  <!-- ═══ AI ASSISTANT — PREMIUM (presentation only, scoped to chat ids) ═══ -->
+  <style id="ai-chat-premium">
+    /* Widget — glass, blur, glow, refined border (beats chat.js injected style via specificity) */
+    body:not(.light-mode) #chat-widget{
+      background:
+        radial-gradient(60% 30% at 15% 0%, rgba(109,60,255,0.12), transparent 60%),
+        linear-gradient(180deg, rgba(15,20,40,0.97), rgba(11,15,30,0.97)) !important;
+      border:1px solid rgba(120,150,255,0.20) !important;
+      border-radius:20px !important;
+      box-shadow:0 20px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(120,150,255,0.06), 0 0 40px rgba(80,60,220,0.12) !important;
+      backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%);
+    }
+    /* Header glass */
+    body:not(.light-mode) #chat-header{
+      background:linear-gradient(90deg, rgba(30,27,75,0.55), rgba(23,37,84,0.45)) !important;
+      border-bottom:1px solid rgba(120,150,255,0.14) !important;
+    }
+    /* SIZE — controlled here so Expand grows in place (wider + taller), anchored to
+       the corner chat.js already positions it at. Only width/height are forced, so
+       dragging (which sets left/top) still works. Overrides chat.js inline sizes. */
+    body:not(.light-mode) #chat-widget{
+      width:420px !important;
+      height:600px !important;
+      max-width:calc(100vw - 24px) !important;
+      max-height:calc(100vh - 40px) !important;
+    }
+    body:not(.light-mode) #chat-widget.ai-chat-expanded{
+      width:min(720px, 92vw) !important;
+      height:min(780px, 86vh) !important;
+    }
+    /* Declutter: hide the legacy raw size controls (kept in DOM for compatibility) */
+    #chat-size-mini, #chat-size-medium, #chat-size-wide, #chat-size-full, #chat-width-toggle-btn{ display:none !important; }
+    /* Expand button */
+    #chat-expand-btn{ width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;
+      background:rgba(255,255,255,0.05); border:1px solid rgba(120,150,255,0.18); color:#c2cee6; cursor:pointer;
+      transition:transform .16s ease, background .2s ease, border-color .2s ease, color .2s ease; }
+    #chat-expand-btn:hover{ transform:translateY(-1px); background:rgba(120,150,255,0.14); border-color:rgba(120,150,255,0.4); color:#fff; }
+    #chat-expand-btn:active{ transform:scale(.94); }
+
+    /* Messages — premium bubbles (scoped to #chat-messages so nothing else is touched) */
+    body:not(.light-mode) #chat-messages [class*="bg-purple-700"]{
+      background:linear-gradient(135deg,#2563eb,#6d3cff) !important; border-color:rgba(130,150,255,0.45) !important;
+      box-shadow:0 2px 10px rgba(60,60,200,0.25) !important;
+    }
+    body:not(.light-mode) #chat-messages [class*="bg-gray-800"]{
+      background:rgba(255,255,255,0.045) !important; border-color:rgba(120,150,255,0.14) !important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,0.04) !important;
+    }
+    body:not(.light-mode) #chat-messages [class*="from-purple-700"]{ box-shadow:0 0 10px rgba(109,60,255,0.4); }
+
+    /* Elegant thin scrollbar */
+    #chat-messages::-webkit-scrollbar{ width:6px; }
+    #chat-messages::-webkit-scrollbar-track{ background:transparent !important; }
+    #chat-messages::-webkit-scrollbar-thumb{ background:rgba(120,150,255,0.28) !important; border-radius:999px; }
+    #chat-messages::-webkit-scrollbar-thumb:hover{ background:rgba(120,150,255,0.5) !important; }
+    #chat-messages{ scrollbar-color:rgba(120,150,255,0.28) transparent !important; }
+
+    /* Toolbar quick-action chips — premium */
+    body:not(.light-mode) #chat-quick-actions .chat-quick-btn{
+      background:rgba(255,255,255,0.045) !important; border:1px solid rgba(120,150,255,0.16) !important; color:#b9c6e2 !important;
+      transition:transform .15s ease, background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease !important;
+    }
+    body:not(.light-mode) #chat-quick-actions .chat-quick-btn:hover{
+      transform:translateY(-1px); background:rgba(120,150,255,0.14) !important; border-color:rgba(120,150,255,0.4) !important;
+      color:#fff !important; box-shadow:0 0 12px rgba(80,120,255,0.25) !important;
+    }
+
+    /* Input — glass + glow + focus */
+    body:not(.light-mode) #chat-input-row{
+      background:rgba(255,255,255,0.05) !important; border:1px solid rgba(120,150,255,0.18) !important; border-radius:14px !important;
+      transition:border-color .2s ease, box-shadow .2s ease, background .2s ease !important;
+    }
+    body:not(.light-mode) #chat-input-row:focus-within{
+      border-color:rgba(96,140,255,0.6) !important; box-shadow:0 0 0 3px rgba(80,120,255,0.12), 0 0 18px rgba(80,120,255,0.2) !important;
+      background:rgba(255,255,255,0.07) !important;
+    }
+    body:not(.light-mode) #chat-send-btn{
+      background:linear-gradient(135deg,#2563eb,#7c3aed) !important;
+      box-shadow:0 4px 12px rgba(80,50,200,0.35), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+      transition:transform .16s ease, filter .2s ease !important;
+    }
+    body:not(.light-mode) #chat-send-btn:hover{ transform:translateY(-1px) scale(1.05); filter:brightness(1.08); }
+    body:not(.light-mode) #chat-send-btn:active{ transform:scale(.95); }
+
+    /* FAB polish (mascot already swapped via the global fa-robot rule) */
+    body:not(.light-mode) #chat-fab{
+      background:linear-gradient(135deg,#6d28d9,#2563eb) !important;
+      box-shadow:0 8px 26px rgba(80,50,200,0.45), 0 0 0 1px rgba(120,150,255,0.25) !important;
+    }
+
+    /* Empty-state hint (only when no messages yet) */
+    #chat-messages:empty::before{
+      content:'Ask me to send payments, swap tokens, bridge, or manage contracts.';
+      display:block; text-align:center; color:#63769c; font-size:12px; line-height:1.6; padding:28px 22px; opacity:.9;
+    }
+    @media (prefers-reduced-motion: reduce){
+      #chat-expand-btn:hover, body:not(.light-mode) #chat-send-btn:hover, body:not(.light-mode) #chat-quick-actions .chat-quick-btn:hover{ transform:none !important; }
+    }
+  </style>
+
   <button id="chat-fab"
     onclick="toggleChat()"
     class="fixed bottom-5 right-5 z-[9998] flex items-center gap-2 bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 rounded-full shadow-lg shadow-purple-900/40 px-4 py-3 transition-all hover:scale-105 active:scale-95"
@@ -4891,14 +5504,18 @@
           style="font-size:11px;padding:3px 7px;">
           <i class="fas fa-arrows-alt-h"></i>
         </button>
-        <!-- Clear -->
-        <button onclick="clearChatHistory()" title="Clear chat" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
-          <i class="fas fa-trash text-xs"></i>
-        </button>
-        <!-- Close -->
-        <button onclick="toggleChat()" class="text-gray-500 hover:text-red-400 p-1 rounded hover:bg-gray-800 transition-all">
-          <i class="fas fa-times text-xs"></i>
-        </button>
+          <!-- Clear -->
+          <button onclick="clearChatHistory()" title="Clear chat" class="text-gray-500 hover:text-gray-300 p-1 rounded hover:bg-gray-800 transition-all">
+            <i class="fas fa-trash text-xs"></i>
+          </button>
+          <!-- Expand (toggles compact ⇄ wide) -->
+          <button id="chat-expand-btn" onclick="toggleChatExpand()" title="Expand chat" aria-label="Expand chat">
+            <i class="fas fa-arrows-alt" style="font-size:11px;"></i>
+          </button>
+          <!-- Close -->
+          <button onclick="toggleChat()" class="text-gray-500 hover:text-red-400 p-1 rounded hover:bg-gray-800 transition-all">
+            <i class="fas fa-times text-xs"></i>
+          </button>
       </div>
     </div>
 
@@ -4992,6 +5609,48 @@
       <p class="text-center text-gray-700 text-[10px] mt-1">Ctrl+/ · ESC · 📎 CSV batch · 🛡️ Guardian</p>
     </div>
   </div>
+
+  <!-- AI Assistant: Expand toggle (grows wider+taller in place) + compact-on-open — UI only -->
+  <script>
+    (function(){
+      function setExpandIcon(expanded){
+        var btn = document.getElementById('chat-expand-btn'); if(!btn) return;
+        var ic = btn.querySelector('i');
+        if(ic){ ic.className = 'fas ' + (expanded ? 'fa-compress-alt' : 'fa-arrows-alt'); ic.style.fontSize = '11px'; }
+        btn.title = expanded ? 'Collapse chat' : 'Expand chat';
+      }
+      window.toggleChatExpand = function(){
+        try{
+          var w = document.getElementById('chat-widget'); if(!w) return;
+          var expanded = w.classList.toggle('ai-chat-expanded');
+          setExpandIcon(expanded);
+        }catch(e){}
+      };
+      // Ensure the chat always OPENS compact (remove expanded state when it opens).
+      (function wrapToggle(){
+        var tries = 0;
+        (function tick(){
+          if(typeof window.toggleChat === 'function' && !window.__aiChatOpenWrapped){
+            var orig = window.toggleChat;
+            window.toggleChat = function(){
+              var r = orig.apply(this, arguments);
+              try{
+                var w = document.getElementById('chat-widget');
+                if(w && !w.classList.contains('hidden') && w.getAttribute('data-chat-closing') !== 'true'){
+                  w.classList.remove('ai-chat-expanded');
+                  setExpandIcon(false);
+                }
+              }catch(e){}
+              return r;
+            };
+            window.__aiChatOpenWrapped = true;
+            return;
+          }
+          if(tries++ < 60) setTimeout(tick, 100);
+        })();
+      })();
+    })();
+  </script>
 
   <!-- Notification Toast -->
   <div id="toast" class="fixed bottom-6 right-6 z-50 hidden">
@@ -5438,20 +6097,25 @@
   <script src="/static/cross-chain-service.js?v=20260705c"></script>
   <script src="/static/turbo-bridge-core.js?v=20260704b"></script>
   <script src="/static/turbo-bridge-integration.js?v=20260704b"></script>
-  <script src="/static/advanced-crosschain.js?v=20260705c"></script>
-  <script src="/static/ub-bridge.js?v=20260704b"></script>
+  <!-- Treasury Core API (Elligent) — Phase 3/4 integration layer (config → client → integration → ui-sync) -->
+  <script src="/static/treasury-config.js?v=20260705b"></script>
+  <script src="/static/treasury-core-client.js?v=20260705b"></script>
+  <script src="/static/treasury-core-integration.js?v=20260705b"></script>
+  <script src="/static/treasury-ui-sync.js?v=20260705b"></script>
+  <script src="/static/advanced-crosschain.js?v=20260705d"></script>
+  <script src="/static/ub-bridge.js?v=20260705d"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
   <script src="/static/app.js?v=20260404a"></script>
   <script src="/static/payments.js?v=20260704b"></script>
   <script src="/static/smart-payments.js?v=20260704b"></script>
-  <script src="/static/contracts.js?v=20250325a"></script>
+  <script src="/static/contracts.js?v=20260706d"></script>
   <script src="/static/verified-contracts.js?v=20260411a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20260703c"></script>
-  <script src="/static/bridge.js?v=20260705c"></script>
+  <script src="/static/bridge.js?v=20260705d"></script>
   <script src="/static/multisend.js?v=20260327b"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
@@ -5869,8 +6533,25 @@
       apply(collapsed);
       try { localStorage.setItem('execdaat_sidebar_collapsed', collapsed ? '1' : '0'); } catch (e) {}
     };
-    // Restore persisted state on load.
-    try { if (localStorage.getItem('execdaat_sidebar_collapsed') === '1') apply(true); } catch (e) {}
+    // Restore persisted state on load — ONLY on desktop (≥1024). Collapse is a
+    // desktop-only feature; applying it on mobile would hide the drawer labels and
+    // the collapse button is hidden on mobile (user could not undo it).
+    try {
+      if (localStorage.getItem('execdaat_sidebar_collapsed') === '1'
+          && window.matchMedia('(min-width:1024px)').matches) apply(true);
+    } catch (e) {}
+    // If the viewport crosses below the desktop breakpoint, drop the collapsed state
+    // so the mobile drawer always shows full-width items with labels (never touches
+    // the persisted preference, which is re-applied when back on desktop).
+    try {
+      var _mq = window.matchMedia('(max-width:1023px)');
+      var _onMq = function (e) {
+        if (e.matches) { document.body.classList.remove('sidebar-collapsed'); }
+        else if (localStorage.getItem('execdaat_sidebar_collapsed') === '1') { apply(true); }
+      };
+      if (_mq.addEventListener) _mq.addEventListener('change', _onMq);
+      else if (_mq.addListener) _mq.addListener(_onMq);
+    } catch (e) {}
   })();
 </script>
 
