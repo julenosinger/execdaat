@@ -390,6 +390,68 @@ function msDownloadTemplate() {
   a.click(); URL.revokeObjectURL(url);
 }
 
+// ─── Edit All — bulk edit all rows as CSV text ────────────────────────────
+function msEditAll() {
+  const rows = document.querySelectorAll('.ms-row');
+  const header = 'address,amount,note';
+  const lines = [header];
+  rows.forEach(function (row) {
+    const addr = (row.querySelector('.ms-addr')?.value || '').trim();
+    const amt  = (row.querySelector('.ms-amt')?.value  || '').trim();
+    const note = (row.querySelector('.ms-note')?.value || '').trim();
+    if (!addr && !amt) return;
+    lines.push(addr + ',' + amt + ',' + (note ? '"' + note.replace(/"/g,'""') + '"' : ''));
+  });
+  const text = lines.join('\n');
+
+  // Modal
+  document.getElementById('ms-editall-modal')?.remove();
+  var modal = document.createElement('div');
+  modal.id = 'ms-editall-modal';
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm';
+  modal.innerHTML =
+    '<div style="background:#0a0c18;border:1px solid rgba(6,182,212,0.3);border-radius:20px;width:100%;max-width:680px;padding:20px;max-height:90vh;display:flex;flex-direction:column;">' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
+    '<h3 style="color:#dde2f0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px;"><i class="fas fa-edit" style="color:#22d3ee;"></i>Edit All Recipients</h3>' +
+    '<span style="font-size:10px;color:#3a4870;margin-left:auto;">CSV format — address,amount,note per line</span>' +
+    '</div>' +
+    '<textarea id="ms-editall-textarea" rows="14" style="flex:1;width:100%;background:rgba(6,182,212,0.04);border:1px solid rgba(6,182,212,0.2);border-radius:12px;padding:12px;color:#dde2f0;font-size:12px;font-family:monospace;resize:none;outline:none;white-space:pre;tab-size:2;" onfocus="this.style.borderColor=\'rgba(6,182,212,0.5)\'" onblur="this.style.borderColor=\'rgba(6,182,212,0.2)\'">' + text + '</textarea>' +
+    '<div style="display:flex;gap:10px;margin-top:12px;flex-shrink:0;">' +
+    '<button onclick="msApplyEditAll()" id="ms-editall-apply" style="flex:1;padding:12px;border-radius:12px;border:none;font-size:13px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#0e7490,#0891b2);color:#fff;"><i class="fas fa-check mr-2"></i>Apply</button>' +
+    '<button onclick="document.getElementById(\'ms-editall-modal\').remove()" style="padding:12px 18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280;border-radius:12px;cursor:pointer;font-size:13px;">Cancel</button>' +
+    '</div>' +
+    '<p style="font-size:10px;color:#3a4870;margin-top:8px;text-align:center;">First line is the header (address,amount,note) — edit the rows below it.</p>' +
+    '</div>';
+  modal.addEventListener('click', function (e) { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+  setTimeout(function () { var ta = document.getElementById('ms-editall-textarea'); if (ta) ta.focus(); }, 80);
+}
+
+function msApplyEditAll() {
+  var ta = document.getElementById('ms-editall-textarea');
+  if (!ta) return;
+  var text = ta.value || '';
+  var parsed = msParseCSV(text);
+  if (!parsed || !parsed.length) { showToast('No valid rows found.', 'warning'); return; }
+
+  var container = document.getElementById('ms-rows');
+  if (!container) return;
+  container.querySelectorAll('.ms-row').forEach(function (r) { r.remove(); });
+
+  var count = 0;
+  parsed.forEach(function (row) {
+    var r = msNormalizeRow(row);
+    var amt = parseFloat(r.amount || '');
+    if (!r.address || !msIsAddr(r.address)) return;
+    if (isNaN(amt) || amt <= 0 || amt > MS_MAX_AMOUNT_ROW) return;
+    msAddRow(r.address, msFmt2(amt), r.note || '');
+    count++;
+  });
+  showToast(count + ' row' + (count !== 1 ? 's' : '') + ' updated.', 'success');
+  document.getElementById('ms-editall-modal')?.remove();
+  msUpdateStats();
+}
+
 // ─── Network switch ───────────────────────────────────────────────────────────
 async function msSwitchToArc() {
   try {
@@ -1817,6 +1879,7 @@ window.msInit             = msInit;
 window.msAddRow           = msAddRow;
 window.msSubmit           = msExecute;
 window.msHandleCSV        = msHandleCSV;
+window.msEditAll          = msEditAll;
 window.msDownloadTemplate = msDownloadTemplate;
 window.msDownloadReceipt  = msDownloadReceipt;
 window.msPdfReceipt       = msPdfReceipt;
