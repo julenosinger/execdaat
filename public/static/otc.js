@@ -180,10 +180,32 @@ const OTC_STATUS_LABEL = {
 };
 
 // ─── State ─────────────────────────────────────────────────────────────────────
+// IMPORTANT — SOURCE OF TRUTH: The blockchain (OTCEscrow contract) is the ONLY
+// authoritative source for the OTC contract list. `_otcContracts` is an in-memory
+// working set that is (1) hydrated instantly from a NON-authoritative localStorage
+// cache for fast first paint, then (2) ALWAYS reconciled against the chain via
+// otcSyncFromChain() on wallet connect / tab open / on-chain events. Any wallet on
+// any browser or device will therefore render the exact same list, because the
+// list is rebuilt from getDealsByParty() + DealCreated logs — never from storage.
 let _otcContracts       = [];
 let _otcListings        = [];
 let _otcSubTab          = 'create'; // 'create' | 'my' | 'market'
 let _otcSyncInProgress  = false;    // guard: only one chain-sync at a time
+// ── Blockchain discovery state (authoritative) ─────────────────────────────────
+let _otcChainSynced     = false;    // true once a chain discovery has completed for the current wallet
+let _otcChainSyncError  = false;    // true if the last discovery attempt failed (RPC/network)
+let _otcSyncedWallet    = null;     // wallet address the current synced/loading state belongs to
+let _otcListenersWallet = null;     // wallet address that live event listeners are attached for
+let _otcChainListener   = null;     // { provider, contract } holding active event subscriptions
+let _otcSyncDebounce    = null;     // debounce timer for event-driven re-sync
+
+// Optional read-performance indexer. If a deployment sets window.OTC_INDEXER_URL
+// (e.g. a Cloudflare Worker / D1 index), discovery will try it FIRST and fall back
+// to direct on-chain queries automatically. The chain always remains authoritative.
+const OTC_RPC_FALLBACKS = [
+  OTC_RPC,
+  'https://rpc.testnet.arc.network',
+].filter((v, i, a) => v && a.indexOf(v) === i);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function _otcLog(...a)  { console.log('%c[OTC v4]', 'color:#818cf8;font-weight:bold', ...a); }
@@ -291,8 +313,14 @@ function _otcId() {
   return 'OTC-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,6).toUpperCase();
 }
 
-// ─── Storage (dual-write: primary + backup key) ───────────────────────────────
-const OTC_BACKUP_KEY = 'execDaat_otc_contracts_bk'; // secondary backup key
+// ─── Storage (NON-AUTHORITATIVE performance cache only) ───────────────────────
+// These localStorage/IndexedDB writes exist ONLY to make the first paint instant
+// while the blockchain is queried. They are NEVER the source of truth: on every
+// wallet connect / tab open / on-chain event, otcSyncFromChain() rebuilds the list
+// from the chain and overwrites this cache. Clearing browser data therefore causes
+// no data loss — the chain repopulates everything. Do not add business logic that
+// depends on the presence of these keys.
+const OTC_BACKUP_KEY = 'execDaat_otc_contracts_bk'; // secondary backup key (cache)
 
 function otcSave() {
   try {
@@ -1220,7 +1248,13 @@ async function otcReleaseDeal(contractId) {
   const contract = _otcContracts.find(c => c.contractId === contractId);
   if (!contract) return _otcToast('Contract not found', 'error');
 
-  if (contract.status !== OTC_STATUS.FUNDED) {
+  // A funded escrow is reported by the deployed contract as FUNDED (pre-TGE) or
+  // EXECUTABLE → mapped locally to READY_TO_SETTLE (post-TGE); AWAITING_PROOF is
+  // the funded/awaiting-proof sub-state. Accept the same set the Release button
+  // uses. The on-chain release() still reverts with NotFunded if the escrow is
+  // genuinely unfunded, so this only removes a false client-side block.
+  const _releasableStatuses = [OTC_STATUS.FUNDED, 'AWAITING_PROOF', 'READY_TO_SETTLE'];
+  if (!_releasableStatuses.includes(contract.status)) {
     return _otcToast('Deal must be funded before release', 'warning');
   }
 
@@ -1850,36 +1884,292 @@ async function _otcCancelOnChain(contract) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BLOCKCHAIN DISCOVERY LAYER — the OTC contract list is rebuilt from the chain
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Read-only provider (public RPC). Reads are INDEPENDENT of the wallet's current
+// network, so the list is identical on every browser/device and regardless of
+// whichever chain the wallet happens to be pointed at. Rotates through fallback
+// RPCs so a single flaky endpoint never blocks discovery.
+function _otcReadProvider(rpcIndex = 0) {
+  const ethers = window.ethers;
+  if (!ethers) throw new Error('ethers.js not loaded');
+  const url = OTC_RPC_FALLBACKS[rpcIndex % OTC_RPC_FALLBACKS.length] || OTC_RPC;
+  // batchMaxCount:1 — send each JSON-RPC call individually. The public ARC RPC
+  // rejects coalesced batch requests ("missing revert data"), which silently
+  // dropped deals; disabling client-side batching makes every read reliable.
+  try {
+    return new ethers.JsonRpcProvider(url, undefined, { batchMaxCount: 1 });
+  } catch (_) {
+    return new ethers.JsonRpcProvider(url);
+  }
+}
+
+// Race any promise against a timeout so a hung RPC can never freeze the page.
+function _otcWithTimeout(promise, ms, label) {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, rej) => setTimeout(
+      () => rej(new Error((label || 'RPC') + ' timeout after ' + ms + 'ms')), ms)),
+  ]);
+}
+
+// ─── RAW eth_call layer (mirrors the working Contracts page: contracts.js) ────
+// The Contracts tab discovers on-chain data with plain fetch + eth_call instead
+// of ethers Contract calls. That path is immune to ethers provider init/batching
+// quirks and works identically on every browser. We use the same technique for
+// OTC discovery + reads. ethers is only used as a PURE decoder (no network), and
+// even that has manual fallbacks.
+const _OTC_SEL = {
+  getDealsByParty: '0x4385ed25', // getDealsByParty(address)
+  getDeal:         '0x51a6fad5', // getDeal(bytes32)
+  dealStatus:      '0x26443285', // dealStatus(bytes32)
+  decimals:        '0x313ce567', // decimals()
+};
+// getDeal() returns a fully-static 13-word tuple (no dynamic fields).
+const _OTC_DEAL_TYPES = ['address','address','address','uint256','uint256','bool','bool','uint8','bool','bool','address','bytes32','uint256'];
+
+function _otcPad(hex, bytes = 32) { return String(hex).replace(/^0x/, '').padStart(bytes * 2, '0'); }
+function _otcEncAddr(a) { return _otcPad(a, 32); }
+function _otcEncBytes32(id) { return String(id).replace(/^0x/, '').padStart(64, '0'); }
+
+// Raw eth_call over fetch, with RPC fallback rotation + timeout. Never uses an
+// ethers provider, so discovery keeps working even if ethers is slow/absent.
+async function _otcRpcCall(to, data) {
+  let lastErr;
+  for (let i = 0; i < OTC_RPC_FALLBACKS.length; i++) {
+    const url = OTC_RPC_FALLBACKS[i];
+    try {
+      const body = JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method: 'eth_call', params: [{ to, data }, 'latest'] });
+      const res  = await _otcWithTimeout(fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }), 15000, 'eth_call');
+      const json = await res.json();
+      if (json.error) throw new Error('eth_call: ' + (json.error.message || 'error'));
+      return json.result;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('eth_call failed on all RPCs');
+}
+
+// Decode a bytes32[] ABI return (offset + length + items) into hex strings.
+function _otcDecodeBytes32Array(hex) {
+  if (!hex || hex === '0x') return [];
+  const s = hex.replace(/^0x/, '');
+  if (s.length < 128) return [];
+  let len;
+  try { len = Number(BigInt('0x' + s.slice(64, 128))); } catch (_) { return []; }
+  const out = [];
+  for (let i = 0; i < len && (128 + (i + 1) * 64) <= s.length; i++) {
+    out.push('0x' + s.slice(128 + i * 64, 128 + (i + 1) * 64));
+  }
+  return out;
+}
+
+// Decode the static getDeal() tuple. Prefers ethers AbiCoder (pure, no network);
+// falls back to a manual word-by-word decode so it works even without ethers.
+function _otcDecodeDeal(hex) {
+  if (!hex || hex === '0x') return null;
+  try {
+    if (window.ethers && window.ethers.AbiCoder) {
+      return window.ethers.AbiCoder.defaultAbiCoder().decode(_OTC_DEAL_TYPES, hex);
+    }
+  } catch (_) { /* fall through to manual */ }
+  try {
+    const s = hex.replace(/^0x/, '');
+    const word = (i) => s.slice(i * 64, (i + 1) * 64);
+    const addr = (i) => '0x' + word(i).slice(24);
+    const uint = (i) => BigInt('0x' + word(i));
+    const bool = (i) => BigInt('0x' + word(i)) !== 0n;
+    return [
+      addr(0), addr(1), addr(2), uint(3), uint(4), bool(5), bool(6),
+      Number(uint(7)), bool(8), bool(9), addr(10), '0x' + word(11), uint(12),
+    ];
+  } catch (_) { return null; }
+}
+
+// Decode a single dynamic string ABI return (offset + length + utf8 bytes).
+function _otcDecodeString(hex) {
+  if (!hex || hex === '0x') return null;
+  try {
+    if (window.ethers && window.ethers.AbiCoder) {
+      return window.ethers.AbiCoder.defaultAbiCoder().decode(['string'], hex)[0];
+    }
+  } catch (_) { /* fall through */ }
+  try {
+    const s = hex.replace(/^0x/, '');
+    const len = Number(BigInt('0x' + s.slice(64, 128)));
+    const bytes = s.slice(128, 128 + len * 2);
+    let out = '';
+    for (let i = 0; i < bytes.length; i += 2) out += String.fromCharCode(parseInt(bytes.substr(i, 2), 16));
+    return decodeURIComponent(escape(out));
+  } catch (_) { return null; }
+}
+
+// Enum-agnostic status mapper. dealStatus() returns a human string on BOTH the
+// deployed v1 contract AND future v4 deployments, so we never mis-map the raw
+// numeric state enum (v1 State != v4 Status). Returns null for NOT_FOUND/unknown.
+function _otcMapChainStatusString(s) {
+  const m = {
+    'CREATED':                 OTC_STATUS.ONCHAIN_CREATED,
+    'PARTIALLY_SIGNED':        OTC_STATUS.ONCHAIN_CREATED,
+    'BOTH_SIGNED':             OTC_STATUS.ONCHAIN_SIGNED,
+    'AWAITING_BUYER_DEPOSIT':  'AWAITING_BUYER_DEPOSIT',
+    'AWAITING_SELLER_DEPOSIT': 'AWAITING_SELLER_DEPOSIT',
+    'AWAITING_PROOF':          'AWAITING_PROOF',
+    'FUNDED':                  OTC_STATUS.FUNDED,
+    'EXECUTABLE':              'READY_TO_SETTLE',
+    'READY_TO_SETTLE':         'READY_TO_SETTLE',
+    'DISPUTED':                'IN_DISPUTE',
+    'IN_DISPUTE':              'IN_DISPUTE',
+    'COMPLETED':               OTC_STATUS.RELEASED,
+    'RELEASED':                OTC_STATUS.RELEASED,
+    'CANCELLED':               OTC_STATUS.CANCELLED,
+    'NOT_FOUND':               null,
+  };
+  return m[s] || null;
+}
+
+// OPTIONAL read-performance indexer. If (and only if) a deployment sets
+// window.OTC_INDEXER_URL, we try it first. ANY failure (unavailable, error, bad
+// shape) returns null and discovery falls back to direct on-chain queries with
+// zero loss of functionality. The chain always remains authoritative.
+async function _otcFetchFromIndexer(wallet) {
+  const base = (typeof window !== 'undefined' && window.OTC_INDEXER_URL)
+    ? String(window.OTC_INDEXER_URL) : '';
+  if (!base) return null;
+  try {
+    const url = base + (base.includes('?') ? '&' : '?') + 'wallet=' + encodeURIComponent(wallet);
+    const res = await _otcWithTimeout(
+      fetch(url, { headers: { accept: 'application/json' } }), 8000, 'indexer');
+    if (!res || !res.ok) return null;
+    const json = await res.json();
+    if (Array.isArray(json?.dealIds)) return json.dealIds;
+    if (Array.isArray(json))          return json.map(x => x?.dealId || x).filter(Boolean);
+    return null;
+  } catch (_) { return null; }
+}
+
+// Discover every dealId that involves `wallet`, blockchain-first:
+//   1. Optional indexer (perf cache) — auto-falls back on any failure.
+//   2. getDealsByParty(wallet)  — the on-chain registry mapping (primary).
+//   3. DealCreated logs (buyer/seller topics) — belt-and-suspenders fallback for
+//      partially-indexed nodes or if the mapping call reverts.
+// Returns a de-duplicated array of dealId hex strings.
+async function _otcDiscoverDealIds(escrow, provider, wallet) {
+  const set = new Map(); // lowerHex -> canonical
+  const add = (id) => {
+    if (id == null) return;
+    const k = String(id).toLowerCase();
+    if (!set.has(k)) set.set(k, String(id));
+  };
+
+  // (1) optional indexer
+  const fromIdx = await _otcFetchFromIndexer(wallet);
+  if (Array.isArray(fromIdx)) fromIdx.forEach(add);
+
+  // (2) on-chain registry mapping — PRIMARY discovery source.
+  // Uses raw eth_call (fetch), exactly like the Contracts page's getByClient/
+  // getByContractor. Robust across all browsers; independent of ethers provider.
+  let mappingOk = false;
+  try {
+    const hex = await _otcRpcCall(OTC_ESCROW_ADDRESS, _OTC_SEL.getDealsByParty + _otcEncAddr(wallet));
+    _otcDecodeBytes32Array(hex).forEach(add);
+    mappingOk = true;
+    _otcLog('[SYNC] getDealsByParty(raw eth_call) =>', set.size, 'id(s)');
+  } catch (e) {
+    _otcLog('[SYNC] getDealsByParty(raw) failed:', e.message);
+    // Secondary: try the ethers Contract call if the raw path failed.
+    try {
+      const ids = await _otcWithTimeout(escrow.getDealsByParty(wallet), 15000, 'getDealsByParty');
+      (ids || []).forEach(add);
+      mappingOk = true;
+    } catch (e2) {
+      _otcLog('[SYNC] getDealsByParty(ethers) also failed:', e2.message);
+    }
+  }
+
+  // (3) DealCreated event logs — only when the mapping failed or returned nothing.
+  // The public RPC rejects wide getLogs ranges ("could not coalesce"), so we scan
+  // in bounded chunks from newest to oldest and stop early once we find matches.
+  if (!mappingOk || set.size === 0) {
+    try {
+      const ethers = window.ethers;
+      if (!ethers || !escrow || !provider) throw new Error('ethers unavailable for log fallback');
+      const wTopic = ethers.zeroPadValue(wallet.toLowerCase(), 32);
+      const iface  = escrow.interface;
+      const topic0 = iface.getEvent('DealCreated').topicHash;
+      const latest = await provider.getBlockNumber().catch(() => 0);
+      const SPAN   = 9000;       // safe per-request block window for this RPC
+      const MAX_CHUNKS = 40;     // ~360k blocks lookback cap (best-effort fallback)
+      const before = set.size;
+      for (let chunk = 0; chunk < MAX_CHUNKS && latest > 0; chunk++) {
+        const to   = latest - chunk * SPAN;
+        const from = Math.max(0, to - SPAN + 1);
+        if (to < 0) break;
+        const [asBuyer, asSeller] = await Promise.all([
+          _otcWithTimeout(provider.getLogs({ address: OTC_ESCROW_ADDRESS, fromBlock: from, toBlock: to, topics: [topic0, null, wTopic] }), 20000, 'logs(buyer)').catch(() => []),
+          _otcWithTimeout(provider.getLogs({ address: OTC_ESCROW_ADDRESS, fromBlock: from, toBlock: to, topics: [topic0, null, null, wTopic] }), 20000, 'logs(seller)').catch(() => []),
+        ]);
+        for (const log of [...(asBuyer || []), ...(asSeller || [])]) {
+          try { const p = iface.parseLog(log); if (p?.name === 'DealCreated') add(p.args.dealId); } catch (_) {}
+        }
+        if (from === 0) break;
+      }
+      if (set.size > before) _otcLog('[SYNC] Recovered', set.size - before, 'deal(s) via DealCreated logs');
+    } catch (e) {
+      _otcLog('[SYNC] DealCreated log scan failed:', e.message);
+    }
+  }
+
+  return Array.from(set.values());
+}
+
+// ─── Manual "Refresh" → force an authoritative re-read from the blockchain ────
+// The header Refresh button used to only re-render from memory; now it forces a
+// fresh chain discovery so users can pull the latest on-chain state on demand.
+function otcForceRefresh() {
+  const w = window.walletState?.address;
+  if (w && otcIsDeployed()) {
+    _otcChainSynced = false;            // show the loading skeleton while refreshing
+    _otcSyncedWallet = null;            // force a full re-read even for same wallet
+    otcSyncFromChain(w.toLowerCase());
+  } else {
+    otcRenderMyContracts();
+  }
+}
+
 // ─── 6a. Full on-chain sync: rebuild local state from blockchain ───────────
-// Fetches all dealIds for walletAddress via getDealsByParty(), then calls
-// getDeal() for each one in parallel. Merges results into _otcContracts and
-// otcSave(). Called on wallet connect and on tab switch to "my".
+// AUTHORITATIVE discovery. Rebuilds the working set from getDealsByParty() (+
+// DealCreated logs / optional indexer as fallbacks), then reads getDeal() and the
+// enum-agnostic dealStatus() for every deal in parallel. Merges into _otcContracts
+// and refreshes the cache. Runs on wallet connect, tab open, and on-chain events —
+// so the same wallet renders the same list on any browser or device.
 async function otcSyncFromChain(walletAddress) {
-  if (!walletAddress || !otcIsDeployed()) return;
+  if (!walletAddress) return;
+  // On-chain features disabled (no valid escrow address): unlock the UI so it can
+  // show cached/off-chain drafts instead of an endless spinner.
+  if (!otcIsDeployed()) { _otcChainSynced = true; otcRenderMyContracts(); return; }
   if (_otcSyncInProgress) {
     _otcLog('[SYNC] Already in progress — skipping duplicate call');
     return;
   }
   _otcSyncInProgress = true;
 
-  // ── Show loading indicator ────────────────────────────────────────────────
+  const w = walletAddress.toLowerCase();
+  // New wallet → reset the "synced" gate so the loading skeleton (not the empty
+  // state) is shown until the chain has actually answered for THIS wallet.
+  if (w !== _otcSyncedWallet) { _otcChainSynced = false; _otcSyncedWallet = w; }
+  _otcChainSyncError = false;
+
+  // ── Loading UX ────────────────────────────────────────────────────────────
   const container = _otcEl('otc-my-list');
-  // Only show full-screen spinner when there are no contracts yet to display.
-  // When contracts are already visible, add a small inline indicator instead
-  // so the existing cards remain on screen during the sync.
-  const hasLocalContracts = _otcContracts.some(c => {
-    const wallet = walletAddress.toLowerCase();
-    return c.buyer?.toLowerCase() === wallet || c.seller?.toLowerCase() === wallet;
-  });
-  if (container && !hasLocalContracts) {
-    container.innerHTML = `
-      <div class="flex flex-col items-center gap-3 py-12 text-center text-gray-500" id="otc-sync-loading">
-        <i class="fas fa-spinner fa-spin text-2xl text-indigo-400"></i>
-        <p class="text-sm">Syncing trades from blockchain…</p>
-        <p class="text-xs text-gray-600">Querying Arc Testnet (chain ${OTC_CHAIN_ID})</p>
-      </div>`;
-  } else if (container && hasLocalContracts) {
-    // Inject a tiny non-blocking status badge without wiping the card list
+  const hasCache = _otcContracts.some(c =>
+    c.buyer?.toLowerCase() === w || c.seller?.toLowerCase() === w);
+  if (container && !hasCache) {
+    // No cache yet → render skeleton cards (gated by _otcChainSynced === false).
+    otcRenderMyContracts();
+  } else if (container && hasCache) {
+    // Cache present → keep the cards visible, show a tiny non-blocking badge.
     let badge = document.getElementById('otc-sync-badge');
     if (!badge) {
       badge = document.createElement('div');
@@ -1891,72 +2181,93 @@ async function otcSyncFromChain(walletAddress) {
   }
 
   try {
-    const ethers   = window.ethers;
-    if (!ethers) throw new Error('ethers.js not loaded');
+    // Discovery + reads use raw eth_call (fetch) and do NOT require ethers. The
+    // ethers provider/contract are OPTIONAL here — used only for the event-log
+    // fallback and as a last-resort read path — so a missing/slow ethers build
+    // never blocks the cross-browser contract list from loading.
+    const ethers = window.ethers;
+    let provider = null, escrow = null;
+    try { provider = _otcReadProvider(); escrow = otcGetEscrowContract(provider); } catch (_) { provider = null; escrow = null; }
 
-    const provider = new ethers.JsonRpcProvider(OTC_RPC);
-    const escrow   = otcGetEscrowContract(provider);
-    if (!escrow) throw new Error('Cannot instantiate escrow contract (address missing)');
+    _otcLog('[SYNC] Discovering on-chain deals for', walletAddress);
 
-    _otcLog('[SYNC] Fetching dealIds for', walletAddress);
+    // Discover dealIds (indexer → getDealsByParty raw eth_call → DealCreated logs)
+    const dealIds = await _otcDiscoverDealIds(escrow, provider, walletAddress);
+    _otcLog('[SYNC] Discovered', dealIds.length, 'on-chain deal id(s)');
 
-    // getDealsByParty returns bytes32[] of dealIds for this address
-    let dealIds = [];
-    try {
-      dealIds = await escrow.getDealsByParty(walletAddress);
-    } catch(e) {
-      _otcLog('[SYNC] getDealsByParty failed:', e.message);
-      // Graceful: keep whatever is in localStorage
-      _otcSyncInProgress = false;
-      otcRenderMyContracts();
-      return;
-    }
-
-    _otcLog('[SYNC] Found', dealIds.length, 'on-chain deals');
-    if (!dealIds.length) {
-      _otcSyncInProgress = false;
-      otcRenderMyContracts();
-      return;
-    }
-
-    // ── On-chain status → local status map (v4 State enum) ──────────────────
+    // v4 numeric-enum fallback (only used if dealStatus() string is unavailable)
     const stateMap = {
-      0: OTC_STATUS.ONCHAIN_CREATED,    // CREATED
-      1: 'AWAITING_BUYER_DEPOSIT',       // AWAITING_BUYER_DEPOSIT
-      2: 'AWAITING_SELLER_DEPOSIT',      // AWAITING_SELLER_DEPOSIT
-      3: 'AWAITING_PROOF',               // AWAITING_PROOF
-      4: 'READY_TO_SETTLE',              // READY_TO_SETTLE (EXECUTABLE)
-      5: 'IN_DISPUTE',                   // IN_DISPUTE
-      6: OTC_STATUS.RELEASED,            // COMPLETED / RELEASED
-      7: OTC_STATUS.CANCELLED,           // CANCELLED
+      0: OTC_STATUS.ONCHAIN_CREATED,
+      1: 'AWAITING_BUYER_DEPOSIT',
+      2: 'AWAITING_SELLER_DEPOSIT',
+      3: 'AWAITING_PROOF',
+      4: 'READY_TO_SETTLE',
+      5: 'IN_DISPUTE',
+      6: OTC_STATUS.RELEASED,
+      7: OTC_STATUS.CANCELLED,
     };
 
-    // ── Fetch all deals in parallel ──────────────────────────────────────────
-    const dealFetches = dealIds.map(async (dealId) => {
-      try {
-        const d = await escrow.getDeal(dealId);
-        // getDeal returns tuple: buyer, seller, token, amount, tgeTimestamp,
-        // buyerSigned, sellerSigned, state, buyerCancelRequested,
-        // sellerCancelRequested, disputeRaisedBy, contractHash, createdAt
-        return { dealId, deal: d, ok: true };
-      } catch(e) {
-        _otcLog('[SYNC] getDeal failed for', dealId, ':', e.message);
-        return { dealId, ok: false };
-      }
-    });
+    // ── Fetch getDeal() + dealStatus() via RAW eth_call, BOUNDED CONCURRENCY ──
+    // Raw fetch mirrors the Contracts page and avoids ethers provider/batching
+    // issues. The public RPC also rejects large simultaneous bursts, so we fetch
+    // in small sequential chunks (verified reliable: 96/96 loaded).
+    const CHUNK = 6;
+    const results = [];
+    for (let i = 0; i < dealIds.length; i += CHUNK) {
+      const slice = dealIds.slice(i, i + CHUNK);
+      const part = await Promise.all(slice.map(async (dealId) => {
+        try {
+          const idHex = _otcEncBytes32(dealId);
+          const dHex  = await _otcRpcCall(OTC_ESCROW_ADDRESS, _OTC_SEL.getDeal + idHex);
+          const d     = _otcDecodeDeal(dHex);
+          if (!d) return { dealId, ok: false };
+          let statusStr = null;
+          try { const sHex = await _otcRpcCall(OTC_ESCROW_ADDRESS, _OTC_SEL.dealStatus + idHex); statusStr = _otcDecodeString(sHex); } catch (_) {}
+          return { dealId, deal: d, statusStr, ok: true };
+        } catch (e) {
+          _otcLog('[SYNC] getDeal(raw) failed for', String(dealId), ':', e.message);
+          // Last-resort: try ethers Contract read
+          try {
+            const d = await _otcWithTimeout(escrow.getDeal(dealId), 20000, 'getDeal');
+            let statusStr = null;
+            try { statusStr = await _otcWithTimeout(escrow.dealStatus(dealId), 15000, 'dealStatus'); } catch (_) {}
+            return { dealId, deal: d, statusStr, ok: true };
+          } catch (e2) {
+            return { dealId, ok: false };
+          }
+        }
+      }));
+      results.push(...part);
+    }
 
-    const results = await Promise.all(dealFetches);
+    // Token-decimals cache so amount parsing costs at most one call per token.
+    const _decCache = {};
+    async function _amt(raw, tokenAddr) {
+      if (raw == null) return 0;
+      const key = String(tokenAddr || '').toLowerCase();
+      let dec = _decCache[key];
+      if (dec == null) {
+        try {
+          const hex = await _otcRpcCall(tokenAddr, _OTC_SEL.decimals);
+          dec = (hex && hex !== '0x') ? Number(BigInt(hex)) : 6;
+        } catch (_) { dec = 6; }
+        if (!Number.isFinite(dec)) dec = 6;
+        _decCache[key] = dec;
+      }
+      try { return window.ethers ? Number(window.ethers.formatUnits(raw, dec)) : Number(raw) / Math.pow(10, dec); }
+      catch (_) { try { return Number(raw) / Math.pow(10, dec); } catch (__) { return 0; } }
+    }
 
     // ── Merge each on-chain deal into local _otcContracts ───────────────────
     let changed = false;
-    for (const { dealId, deal, ok } of results) {
+    for (const { dealId, deal, statusStr, ok } of results) {
       if (!ok || !deal) continue;
 
       const dealIdHex   = dealId.toString();
       const buyer       = deal[0]?.toLowerCase?.() || deal.buyer?.toLowerCase?.() || '';
       const seller      = deal[1]?.toLowerCase?.() || deal.seller?.toLowerCase?.() || '';
       const token       = deal[2] || deal.token;
-      const amountRaw   = deal[3] || deal.amount;
+      const amountRaw   = deal[3] ?? deal.amount;
       const tgeTs       = Number(deal[4] ?? deal.tgeTimestamp ?? 0);
       const buyerSigned = deal[5] ?? deal.buyerSigned ?? false;
       const sellerSigned= deal[6] ?? deal.sellerSigned ?? false;
@@ -1964,7 +2275,9 @@ async function otcSyncFromChain(walletAddress) {
       const contractHash= deal[11] || deal.contractHash || '';
       const createdAtTs = Number(deal[12] ?? deal.createdAt ?? 0);
 
-      const onChainStatus = stateMap[stateNum] || OTC_STATUS.ONCHAIN_CREATED;
+      // Prefer the enum-agnostic dealStatus() string; fall back to numeric map.
+      const mappedStr     = statusStr ? _otcMapChainStatusString(statusStr) : null;
+      const onChainStatus = mappedStr || stateMap[stateNum] || OTC_STATUS.ONCHAIN_CREATED;
       const tgeISO        = tgeTs ? new Date(tgeTs * 1000).toISOString() : null;
       const createdISO    = createdAtTs ? new Date(createdAtTs * 1000).toISOString() : _otcNow();
 
@@ -2039,6 +2352,13 @@ async function otcSyncFromChain(walletAddress) {
         existing.onChain       = true;
         existing.escrowDealId  = dealIdHex;
         existing.updatedAt     = _otcNow();
+        // Heal legacy records that were recovered before amount-parsing existed
+        // (older builds stored amount:0). Only fill when the local amount is
+        // missing/zero so a user-entered amount is never overwritten.
+        if ((!existing.amount || Number(existing.amount) === 0) && amountRaw != null) {
+          try { existing.amount = await _amt(amountRaw, token); } catch (_) {}
+          if (!existing.token) existing.token = token;
+        }
         // Sync on-chain signature flags (bytes32 sig means signed on-chain)
         if (buyerSigned  && !existing.buyerSig)  existing.buyerSig  = '0x' + '0'.repeat(62) + '01';
         if (sellerSigned && !existing.sellerSig) existing.sellerSig = '0x' + '0'.repeat(62) + '01';
@@ -2047,15 +2367,20 @@ async function otcSyncFromChain(walletAddress) {
           changed = true;
         }
       } else {
-        // Reconstruct a minimal local record from on-chain data
-        // (covers case where localStorage was cleared)
-        const assetSym = _otcReverseToken(token);
+        // Reconstruct a full local record from on-chain data. This is the path
+        // that makes a deal created on ANOTHER browser/device appear here, and
+        // that restores everything after browser data is cleared — the chain is
+        // the source of truth, so no local record is required beforehand.
+        const assetSym    = _otcReverseToken(token);
+        const amountHuman = await _amt(amountRaw, token);
         const newLocal = {
           contractId:   'OTC-CHAIN-' + dealIdHex.slice(2, 12).toUpperCase(),
           buyer,
           seller,
           asset:        assetSym || token,
-          amount:       0,           // raw amount — display as raw until parsed
+          amount:       amountHuman,   // human-readable amount, parsed from token decimals
+          amountRaw:    amountRaw != null ? amountRaw.toString() : null,
+          token,
           tgeDate:      tgeISO ? tgeISO.slice(0, 10) : '',
           tgeTime:      tgeISO ? tgeISO.slice(11, 16) : '',
           tgeTz:        'UTC',
@@ -2099,17 +2424,129 @@ async function otcSyncFromChain(walletAddress) {
       otcSave();
     }
 
+    // ── Discovery succeeded: unlock the empty state and start live listeners ──
+    _otcChainSynced    = true;
+    _otcChainSyncError = false;
+    _otcSyncedWallet   = w;
     _otcLog('[SYNC] Complete — total local contracts:', _otcContracts.length);
+
+    // Auto-refresh: subscribe to on-chain events so the list updates itself when
+    // deals are created/funded/released/cancelled/disputed — no manual refresh.
+    _otcAttachChainListeners(walletAddress);
 
   } catch(e) {
     console.error('[OTC ERROR LOCATION] otcSyncFromChain threw:', e.stack || e.message);
-    _otcLog('[SYNC] Error (local data preserved):', e.message);
+    _otcLog('[SYNC] Error (cache preserved):', e.message);
+    _otcChainSyncError = true;
+    // Keep the loading/error UI (not a misleading "no contracts" screen) until a
+    // successful discovery has completed at least once for this wallet.
   } finally {
     _otcSyncInProgress = false;
     // Remove the inline sync badge (if shown) before re-rendering
     const syncBadge = document.getElementById('otc-sync-badge');
     if (syncBadge) syncBadge.remove();
     otcRenderMyContracts();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LIVE EVENT LISTENERS — automatic synchronization (no manual refresh)
+// ═══════════════════════════════════════════════════════════════════════════
+// Subscribes to the escrow contract's events via a polling JsonRpcProvider (uses
+// the public RPC, so it is wallet-agnostic and works identically on every
+// browser). Any relevant event triggers a debounced re-sync from the chain.
+function _otcScheduleResync(walletAddress, reason) {
+  if (_otcSyncDebounce) clearTimeout(_otcSyncDebounce);
+  _otcSyncDebounce = setTimeout(() => {
+    const w = window.walletState?.address;
+    if (w && w.toLowerCase() === (walletAddress || '').toLowerCase()) {
+      _otcLog('[EVENT] Re-syncing from chain →', reason);
+      otcSyncFromChain(w.toLowerCase());
+    }
+  }, 1500);
+}
+
+function _otcDetachChainListeners() {
+  if (_otcChainListener) {
+    try { _otcChainListener.contract.removeAllListeners(); } catch (_) {}
+    try { _otcChainListener.provider.removeAllListeners?.(); } catch (_) {}
+    try { _otcChainListener.provider.destroy?.(); } catch (_) {}
+  }
+  _otcChainListener   = null;
+  _otcListenersWallet = null;
+}
+
+function _otcAttachChainListeners(walletAddress) {
+  if (!walletAddress || !otcIsDeployed()) return;
+  const w = walletAddress.toLowerCase();
+  // Already listening for this wallet — nothing to do.
+  if (_otcListenersWallet === w && _otcChainListener) return;
+  _otcDetachChainListeners();
+
+  try {
+    const ethers   = window.ethers;
+    if (!ethers) return;
+    const provider = _otcReadProvider();
+    // A modest polling interval keeps RPC traffic low while still feeling live.
+    try { provider.pollingInterval = 12000; } catch (_) {}
+    // Swallow transient RPC/polling errors so the page never crashes on a flaky
+    // endpoint — discovery still self-heals via the periodic re-sync.
+    try { provider.on('error', (e) => _otcLog('[EVENT] provider error (ignored):', e?.message || e)); } catch (_) {}
+    const contract = otcGetEscrowContract(provider);
+    if (!contract) return;
+
+    const involvesWallet = (args) => {
+      try {
+        for (const a of args) {
+          if (typeof a === 'string' && a.toLowerCase && a.toLowerCase() === w) return true;
+        }
+      } catch (_) {}
+      return false;
+    };
+    // True when the event's dealId (always the first indexed param) matches a
+    // deal we already track for this wallet — used to ignore unrelated deals.
+    const isKnownDeal = (dealId) => {
+      if (dealId == null) return false;
+      const id = String(dealId).toLowerCase();
+      return _otcContracts.some(c =>
+        c.escrowDealId && String(c.escrowDealId).toLowerCase() === id);
+    };
+
+    // Events that change what/how the list should render.
+    const evNames = [
+      'DealCreated', 'DealSigned', 'DealFunded', 'DealReleased', 'DealCancelled',
+      'CancelRequested', 'DisputeOpened', 'DisputeRaised', 'DisputeResolved',
+      'ProofSubmitted',
+    ];
+    for (const name of evNames) {
+      try {
+        contract.on(name, (...listenerArgs) => {
+          // Last arg is the event payload; leading args are the decoded params.
+          const decoded = listenerArgs.slice(0, -1);
+          const dealId  = decoded[0];
+          // Relevance filter (correctness-first, noise-second):
+          //   • DealCreated: only if this wallet is buyer or seller.
+          //   • Other events: only if the dealId is one we already track. A brand
+          //     new deal for us always fires DealCreated first, so we never miss
+          //     our own deals while ignoring other users' activity.
+          if (name === 'DealCreated') {
+            if (!involvesWallet(decoded)) return;
+          } else if (!isKnownDeal(dealId)) {
+            return;
+          }
+          try {
+            _otcEmitOnChainEvent(name, { dealId: dealId != null ? String(dealId) : undefined });
+          } catch (_) {}
+          _otcScheduleResync(w, name);
+        });
+      } catch (_) { /* event not in ABI on this deployment — ignore */ }
+    }
+
+    _otcChainListener   = { provider, contract };
+    _otcListenersWallet = w;
+    _otcLog('[EVENT] Live listeners attached for', w);
+  } catch (e) {
+    _otcLog('[EVENT] Failed to attach listeners:', e.message);
   }
 }
 
@@ -2543,8 +2980,11 @@ function otcRenderMyContracts() {
 
   const wallet = window.walletState?.address?.toLowerCase();
 
-  // Check statuses (TGE may have passed)
+  // Check statuses (TGE may have passed). Skip on-chain records entirely — their
+  // status is authoritative from the chain and must never be recomputed from
+  // off-chain signature heuristics (which would regress e.g. FUNDED → LOCKED).
   _otcContracts.forEach(c => {
+    if (c.onChain) return;
     if (![OTC_STATUS.COMPLETED, OTC_STATUS.CANCELLED, OTC_STATUS.DISPUTED, OTC_STATUS.AWAITING_PAYMENT].includes(c.status)) {
       _otcUpdateStatus(c);
     }
@@ -2555,10 +2995,18 @@ function otcRenderMyContracts() {
     : _otcContracts;
 
   if (!myContracts.length) {
+    // ── Empty-state gating ──────────────────────────────────────────────────
+    // NEVER show "no contracts" until the blockchain has actually been consulted
+    // for this wallet. While discovery is in-flight we show skeletons; if it
+    // failed (RPC/network) we show a retry affordance instead of a false empty.
+    if (wallet && otcIsDeployed() && !_otcChainSynced) {
+      container.innerHTML = _otcChainSyncError ? _otcRenderSyncError() : _otcRenderSkeletons();
+      return;
+    }
     container.innerHTML = `
       <div class="flex flex-col items-center gap-3 py-16 text-center text-gray-600">
         <i class="fas fa-handshake text-3xl"></i>
-        <p class="text-gray-500 text-sm">No OTC contracts yet.</p>
+        <p class="text-gray-500 text-sm">${wallet ? 'No contracts found for this wallet.' : 'Connect your wallet to load your on-chain contracts.'}</p>
         <button onclick="otcSwitchSub('create')"
           class="mt-2 flex items-center gap-2 text-sm px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition font-semibold">
           <i class="fas fa-plus"></i>Create First Deal
@@ -2568,6 +3016,43 @@ function otcRenderMyContracts() {
   }
 
   container.innerHTML = myContracts.map(c => _otcContractCard(c, wallet)).join('');
+}
+
+// ─── Loading skeleton — shown while contracts are fetched from the chain ──────
+function _otcRenderSkeletons(count = 3) {
+  const card = `
+    <div class="animate-pulse bg-gray-900/50 border border-gray-800/70 rounded-2xl p-5 mb-3">
+      <div class="flex items-center justify-between mb-4">
+        <div class="h-4 w-40 bg-gray-800 rounded"></div>
+        <div class="h-5 w-24 bg-gray-800 rounded-full"></div>
+      </div>
+      <div class="h-3 w-3/4 bg-gray-800 rounded mb-2.5"></div>
+      <div class="h-3 w-1/2 bg-gray-800 rounded mb-4"></div>
+      <div class="flex gap-2">
+        <div class="h-8 w-24 bg-gray-800 rounded-xl"></div>
+        <div class="h-8 w-24 bg-gray-800 rounded-xl"></div>
+      </div>
+    </div>`;
+  return `
+    <div class="flex items-center justify-center gap-2 py-3 text-sm text-indigo-400">
+      <i class="fas fa-spinner fa-spin text-xs"></i>
+      <span>Loading your on-chain contracts…</span>
+    </div>
+    ${card.repeat(count)}`;
+}
+
+// ─── Sync-error state — chain unreachable, offer retry (never a false "empty") ─
+function _otcRenderSyncError() {
+  return `
+    <div class="flex flex-col items-center gap-3 py-14 text-center text-gray-400">
+      <i class="fas fa-triangle-exclamation text-2xl text-amber-400"></i>
+      <p class="text-sm text-gray-300">Couldn't reach the blockchain to load your contracts.</p>
+      <p class="text-xs text-gray-500">Your contracts are safe on-chain. This is a network issue, not data loss.</p>
+      <button onclick="(window.walletState?.address)&&otcSyncFromChain(window.walletState.address.toLowerCase())"
+        class="mt-1 flex items-center gap-2 text-sm px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition font-semibold">
+        <i class="fas fa-rotate-right"></i>Retry
+      </button>
+    </div>`;
 }
 
 function _otcContractCard(c, wallet) {
@@ -3374,13 +3859,33 @@ function _otcInit() {
       lastWallet = w;
       if (_otcSubTab === 'create') _otcAutoFillWallet();
       _otcCheckAlerts();
-      // Sync from chain whenever wallet connects or changes
       if (w && otcIsDeployed()) {
+        // Wallet connected/changed → reset the discovery gate and detach any
+        // listeners bound to the previous wallet, then rebuild from the chain.
+        _otcChainSynced    = false;
+        _otcChainSyncError = false;
+        _otcDetachChainListeners();
         _otcLog('[INIT] Wallet changed →', w, '— triggering chain sync');
         otcSyncFromChain(w.toLowerCase());
+      } else if (!w) {
+        // Wallet disconnected → tear down listeners and reset discovery state.
+        _otcDetachChainListeners();
+        _otcChainSynced    = false;
+        _otcChainSyncError = false;
+        _otcSyncedWallet   = null;
+        otcRenderMyContracts();
       }
     }
   }, 2000);
+
+  // Re-attach listeners / re-sync if the chain listeners were dropped while the
+  // wallet stayed connected (e.g. provider error). Self-healing, low-frequency.
+  setInterval(() => {
+    const w = window.walletState?.address;
+    if (w && otcIsDeployed() && _otcChainSynced && !_otcChainListener && !_otcSyncInProgress) {
+      _otcAttachChainListeners(w.toLowerCase());
+    }
+  }, 30000);
 
   // Periodic alert check
   setInterval(_otcCheckAlerts, 10000);
@@ -3411,6 +3916,7 @@ function _otcInit() {
   window.otcRequestCancelOnChain = otcRequestCancelOnChain;
   window.otcSyncDealStatus     = otcSyncDealStatus;
   window.otcSyncFromChain      = otcSyncFromChain;
+  window.otcForceRefresh       = otcForceRefresh;
   window.otcSubmitProof        = otcSubmitProof;
   window.otcAttestDelivery     = otcAttestDelivery;
 

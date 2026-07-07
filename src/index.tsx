@@ -544,6 +544,11 @@ for (const routePath of SPA_ROUTES) {
 
 // GET / - main SPA shell (served verbatim from src/app.html)
 app.get('/', (c) => {
+  // Never edge/browser-cache the HTML shell so new deployments (which reference
+  // content-hashed JS bundles) propagate to every browser immediately. The JS
+  // assets themselves stay long-cached via their hashed filenames.
+  c.header('Cache-Control', 'no-store, no-cache, must-revalidate')
+  c.header('Pragma', 'no-cache')
   return c.html(appHtml)
 })
 

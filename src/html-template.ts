@@ -4689,14 +4689,14 @@ export function getMainHTML(): string {
     Cache-Control: immutable is set. Using content-hash in the filename
     guarantees a fresh fetch regardless of browser cache state.
 
-    Current hashes (updated 2026-04-09a — OTC_ESCROW_DEPLOYED fully removed, error stack traces on all critical functions):
+    Current hashes (updated 2026-07-06 — blockchain-first discovery: getDealsByParty + DealCreated log fallback, live event listeners, loading skeletons, empty-state gating; localStorage demoted to non-authoritative cache):
       otc-escrow-abi.72e5bfc4.js  ← single source of truth for OTC_ESCROW_ADDRESS + getOTCEscrowContract()
-      otc.f5e54315.js              ← OTC v20260410g: Proof Submission feature (seller add/buyer view, proofData, release gate)
+      otc.c619b754.js              ← OTC on-chain discovery (cross-browser / cross-device); chain is the single source of truth
 
     ZERO references to OTC_ESCROW_DEPLOYED in any form.
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
-  <script src="/static/otc.f5e54315.js"></script>
+  <script src="/static/otc.c619b754.js"></script>
   <script src="/static/autonoma.js?v=20260404l"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
