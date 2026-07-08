@@ -13,7 +13,7 @@
   const HIST_KEY = 'execdaat_xbridge_history_v1';
   const IRIS_PING = 'https://iris-api-sandbox.circle.com/v2/messages/0?transactionHash=0x0000000000000000000000000000000000000000000000000000000000000000';
   const ARC_RPC = 'https://rpc.testnet.arc.network';
-  const VERSION = '20260708x-compact-sidebar';
+  const VERSION = '20260708x-complete-fix';
 
   const S = {
     from: null, to: null, token: 'USDC', amount: '', recipient: '', balance: null,
@@ -117,8 +117,8 @@
       #tab-content-xbridge .xb-card::before{content:'';position:absolute;inset:0;border-radius:22px;padding:1px;background:linear-gradient(140deg,rgba(103,232,249,.35),rgba(96,180,255,.06) 30%,transparent 55%,rgba(167,139,250,.14));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;}
       #tab-content-xbridge .xb-card::after{content:'';position:absolute;top:-40%;left:-10%;width:60%;height:60%;background:radial-gradient(closest-side,rgba(103,232,249,.10),transparent);pointer-events:none;}
       #tab-content-xbridge .xb-card .xb-topbar{position:relative;height:3px;background:linear-gradient(90deg,transparent,#06b6d4 40%,#1D9E75 60%,transparent);z-index:1;}
-      #tab-content-xbridge .xb-card .xb-body{position:relative;padding:22px;z-index:1;}
-      #tab-content-xbridge .xb-sec-t{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8aaac8;display:flex;align-items:center;gap:7px;margin:0 0 14px;}
+      #tab-content-xbridge .xb-card .xb-body{position:relative;padding:16px 18px;z-index:1;}
+      #tab-content-xbridge .xb-sec-t{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8aaac8;display:flex;align-items:center;gap:7px;margin:0 0 9px;}
       /* Brand logos */
       #tab-content-xbridge .xb-logo{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;overflow:hidden;flex-shrink:0;box-shadow:0 3px 10px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.06);}
       #tab-content-xbridge .xb-logo svg{width:100%;height:100%;display:block;}
@@ -126,10 +126,10 @@
       #tab-content-xbridge .xb-tlogo{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;overflow:hidden;flex-shrink:0;vertical-align:middle;box-shadow:0 1px 4px rgba(0,0,0,.35);}
       #tab-content-xbridge .xb-tlogo svg{width:100%;height:100%;display:block;}
       /* Route visualization — premium animated bridge */
-      #tab-content-xbridge .xb-route{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:168px;background:radial-gradient(120% 150% at 0% 0%,rgba(6,182,212,.12),transparent 55%),radial-gradient(120% 150% at 100% 100%,rgba(167,139,250,.10),transparent 55%),linear-gradient(135deg,rgba(79,140,255,.06),rgba(10,14,26,.55));border:1px solid rgba(96,180,255,0.16);border-radius:18px;padding:20px 20px;overflow:hidden;box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 10px 30px -14px rgba(0,0,0,.6);}
+      #tab-content-xbridge .xb-route{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:120px;background:radial-gradient(120% 150% at 0% 0%,rgba(6,182,212,.12),transparent 55%),radial-gradient(120% 150% at 100% 100%,rgba(167,139,250,.10),transparent 55%),linear-gradient(135deg,rgba(79,140,255,.06),rgba(10,14,26,.55));border:1px solid rgba(96,180,255,0.16);border-radius:18px;padding:14px 18px;overflow:hidden;box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 10px 30px -14px rgba(0,0,0,.6);}
       #tab-content-xbridge .xb-route-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;}
       #tab-content-xbridge .xb-node{position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;min-width:104px;z-index:3;}
-      #tab-content-xbridge .xb-node-logo{position:relative;width:64px;height:64px;border-radius:20px;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,rgba(20,26,46,.9),rgba(8,11,24,.8));border:1px solid rgba(96,180,255,.28);box-shadow:0 10px 26px -8px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.04) inset;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .25s;}
+      #tab-content-xbridge .xb-node-logo{position:relative;width:52px;height:52px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,rgba(20,26,46,.9),rgba(8,11,24,.8));border:1px solid rgba(96,180,255,.28);box-shadow:0 10px 26px -8px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.04) inset;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .25s;}
       #tab-content-xbridge .xb-node-logo:hover{transform:translateY(-4px) scale(1.05);border-color:rgba(103,232,249,.55);box-shadow:0 16px 36px -10px rgba(6,182,212,.5),0 0 0 1px rgba(103,232,249,.15) inset;}
       #tab-content-xbridge .xb-node-logo .xb-logo{width:44px;height:44px;box-shadow:none;}
       #tab-content-xbridge .xb-node-logo::after{content:'';position:absolute;inset:-6px;border-radius:24px;background:radial-gradient(closest-side,rgba(103,232,249,.22),transparent);opacity:.8;z-index:-1;filter:blur(4px);}
@@ -149,7 +149,7 @@
       #tab-content-xbridge .xb-route-cctp{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);z-index:4;display:inline-flex;align-items:center;gap:5px;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#67e8f9;background:rgba(103,232,249,.08);border:1px solid rgba(103,232,249,.24);border-radius:999px;padding:3px 10px;}
       /* Fields */
       #tab-content-xbridge .xb-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-      #tab-content-xbridge .xb-field{margin-bottom:14px;}
+      #tab-content-xbridge .xb-field{margin-bottom:9px;}
       #tab-content-xbridge .xb-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#5f7ba0;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between;}
       #tab-content-xbridge .xb-input,#tab-content-xbridge .xb-select{width:100%;background:rgba(12,16,32,0.65);border:1px solid rgba(96,180,255,0.16);border-radius:12px;color:#dbe4f2;font-size:14px;padding:12px 13px;outline:none;transition:border-color .18s,box-shadow .18s,background .18s;}
       #tab-content-xbridge .xb-input:hover:not(:disabled),#tab-content-xbridge .xb-select:hover:not(:disabled){border-color:rgba(103,232,249,.3);}
@@ -159,18 +159,18 @@
       #tab-content-xbridge .xb-amount-wrap{position:relative;}
       #tab-content-xbridge .xb-amount-wrap .xb-input{padding-right:118px;}
       #tab-content-xbridge .xb-amount-wrap .xb-token{position:absolute;right:8px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:12px;color:#dbe4f2;background:rgba(96,180,255,0.14);border:1px solid rgba(96,180,255,0.26);border-radius:10px;padding:5px 10px;}
-      #tab-content-xbridge .xb-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;}
+      #tab-content-xbridge .xb-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
       #tab-content-xbridge .xb-qbtn{position:relative;flex:1;min-width:52px;background:linear-gradient(160deg,rgba(55,138,221,0.1),rgba(55,138,221,0.04));border:1px solid rgba(96,180,255,0.2);border-radius:11px;color:#9db8d8;font-size:12.5px;font-weight:800;padding:9px 4px;cursor:pointer;transition:transform .12s,box-shadow .18s,border-color .18s,color .18s,background .18s;}
       #tab-content-xbridge .xb-qbtn:hover{background:linear-gradient(160deg,rgba(103,232,249,.18),rgba(103,232,249,.06));color:#eef6ff;border-color:rgba(103,232,249,.45);transform:translateY(-2px);box-shadow:0 8px 20px -8px rgba(6,182,212,.55);}
       #tab-content-xbridge .xb-qbtn:active{transform:translateY(0) scale(.96);box-shadow:0 2px 8px -4px rgba(6,182,212,.4);}
       #tab-content-xbridge .xb-qbtn.sel{background:linear-gradient(160deg,rgba(103,232,249,.22),rgba(96,180,255,.1));color:#eef6ff;border-color:rgba(103,232,249,.6);box-shadow:0 0 0 1px rgba(103,232,249,.2) inset,0 6px 18px -8px rgba(6,182,212,.5);}
-      #tab-content-xbridge .xb-summary{background:linear-gradient(160deg,rgba(96,180,255,0.06),rgba(96,180,255,0.02));border:1px solid rgba(96,180,255,0.14);border-radius:14px;padding:14px;margin-top:8px;}
-      #tab-content-xbridge .xb-srow{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:6px 0;}
+      #tab-content-xbridge .xb-summary{background:linear-gradient(160deg,rgba(96,180,255,0.06),rgba(96,180,255,0.02));border:1px solid rgba(96,180,255,0.14);border-radius:14px;padding:11px 13px;margin-top:6px;}
+      #tab-content-xbridge .xb-srow{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:4px 0;}
       #tab-content-xbridge .xb-srow .k{color:#5f7ba0;}
       #tab-content-xbridge .xb-srow .v{color:#cdd8ea;font-weight:700;display:inline-flex;align-items:center;gap:6px;}
       #tab-content-xbridge .xb-srow.big{padding-bottom:9px;margin-bottom:3px;border-bottom:1px solid rgba(96,180,255,.1);}
       #tab-content-xbridge .xb-srow.big .v{font-size:17px;color:#67e8f9;font-weight:800;}
-      #tab-content-xbridge .xb-action{position:relative;overflow:hidden;width:100%;margin-top:16px;padding:15px;border:none;border-radius:15px;font-size:15px;font-weight:800;letter-spacing:.01em;color:#fff;cursor:pointer;background:linear-gradient(120deg,#2563eb,#6d28d9 55%,#7c3aed);background-size:180% 100%;box-shadow:0 10px 30px -8px rgba(109,40,217,.55),0 0 0 1px rgba(255,255,255,.06) inset;transition:filter .15s,transform .1s,box-shadow .25s,background-position .5s;display:flex;align-items:center;justify-content:center;gap:10px;}
+      #tab-content-xbridge .xb-action{position:relative;overflow:hidden;width:100%;margin-top:11px;padding:12px;border:none;border-radius:15px;font-size:15px;font-weight:800;letter-spacing:.01em;color:#fff;cursor:pointer;background:linear-gradient(120deg,#2563eb,#6d28d9 55%,#7c3aed);background-size:180% 100%;box-shadow:0 10px 30px -8px rgba(109,40,217,.55),0 0 0 1px rgba(255,255,255,.06) inset;transition:filter .15s,transform .1s,box-shadow .25s,background-position .5s;display:flex;align-items:center;justify-content:center;gap:10px;}
       #tab-content-xbridge .xb-action::before{content:'';position:absolute;top:0;left:-60%;width:45%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-18deg);animation:xbShimmer 3.4s ease-in-out infinite;}
       @keyframes xbShimmer{0%{left:-60%}55%,100%{left:130%}}
       #tab-content-xbridge .xb-action:hover:not(:disabled){filter:brightness(1.08);background-position:100% 0;transform:translateY(-2px);box-shadow:0 16px 40px -8px rgba(109,40,217,.7),0 0 0 1px rgba(255,255,255,.08) inset;}
@@ -182,7 +182,7 @@
       @keyframes xbOkPop{0%{transform:scale(.96)}50%{transform:scale(1.02)}100%{transform:scale(1)}}
       #tab-content-xbridge .xb-note{font-size:11px;color:#5f7ba0;margin-top:10px;text-align:center;}
       /* Execution panel */
-      #tab-content-xbridge .xb-exec{position:relative;flex:0 0 340px;max-width:340px;min-width:0;background:linear-gradient(165deg,rgba(15,20,38,0.92),rgba(8,11,24,0.96));backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid rgba(103,232,249,0.22);border-radius:22px;overflow:hidden;opacity:0;transform:translateX(28px);transition:opacity .28s ease,transform .28s ease;box-shadow:0 24px 60px -18px rgba(0,0,0,.65),0 1px 0 rgba(255,255,255,.04) inset;}
+      #tab-content-xbridge .xb-exec{position:relative;flex:0 0 408px;max-width:408px;min-width:0;background:linear-gradient(165deg,rgba(15,20,38,0.92),rgba(8,11,24,0.96));backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);border:1px solid rgba(103,232,249,0.22);border-radius:22px;overflow:hidden;opacity:0;transform:translateX(28px);transition:opacity .28s ease,transform .28s ease;box-shadow:0 24px 60px -18px rgba(0,0,0,.65),0 1px 0 rgba(255,255,255,.04) inset;}
       #tab-content-xbridge .xb-exec.in{opacity:1;transform:translateX(0);}
       #tab-content-xbridge .xb-exec.hidden{display:none;}
       #tab-content-xbridge .xb-exec .xb-body{padding:16px;}
@@ -288,7 +288,7 @@
                 <p class="xb-sec-t"><i class="fas fa-route" style="color:#67e8f9;"></i>Bridge Route</p>
                 <div id="xb-route" class="xb-route"></div>
 
-                <p class="xb-sec-t" style="margin-top:18px;"><i class="fas fa-sliders" style="color:#60b4ff;"></i>Bridge Details</p>
+                <p class="xb-sec-t" style="margin-top:12px;"><i class="fas fa-sliders" style="color:#60b4ff;"></i>Bridge Details</p>
                 <div class="xb-grid2">
                   <div class="xb-field"><div class="xb-lbl">Source Chain</div><select id="xb-from" class="xb-select" onchange="xbSetFrom(this.value)">${chainOptions(S.from)}</select></div>
                   <div class="xb-field"><div class="xb-lbl">Destination Chain</div><select id="xb-to" class="xb-select" onchange="xbSetTo(this.value)">${chainOptions(S.to)}</select></div>
@@ -570,7 +570,35 @@
     catch (_) { S.balance = null; if (el) el.textContent = 'Balance: —'; }
     updateActionState();
   }
+  // ─── Bridge Steps preview visibility ───────────────────────────────────────
+  // The Bridge Steps (execution) panel becomes visible as soon as the form holds
+  // a valid bridge configuration — Source Chain, Destination Chain, Token and
+  // Amount > 0 — with every step in its initial "Waiting" state, so the user can
+  // preview the whole flow BEFORE clicking Bridge. While a bridge is executing or
+  // finished, the existing execution logic owns the panel (this is a no-op then).
+  function readyForPreview() {
+    const amt = parseFloat(S.amount) || 0;
+    const sup = AB() ? AB().isRouteSupported(S.from, S.to) : { ok: false };
+    return !!(S.from && S.to && S.from !== S.to && S.token && amt > 0 && sup && sup.ok);
+  }
+  function updateStepsPreview() {
+    const exec = q('xb-exec'); if (!exec) return;
+    if (S.executing || S.done) return; // execution controls the panel while running
+    if (readyForPreview()) {
+      initSteps();          // all steps → 'pending' (renders as "Waiting")
+      renderExec();
+      if (exec.classList.contains('hidden')) {
+        exec.classList.remove('hidden');
+        requestAnimationFrame(() => exec.classList.add('in'));
+      }
+    } else if (!exec.classList.contains('hidden')) {
+      exec.classList.remove('in');
+      exec.classList.add('hidden');
+    }
+  }
+
   function updateActionState() {
+    updateStepsPreview();
     const btn = q('xb-action'); if (!btn || S.executing || S.done) return;
     const amt = parseFloat(S.amount) || 0;
     const sup = AB() ? AB().isRouteSupported(S.from, S.to) : { ok: false };
@@ -668,6 +696,21 @@
     } catch (_) {}
     return null;
   }
+  // ── Derived completion — the UI must NOT depend on a single event/status. ──
+  // A Turbo bridge is finalized when ANY real-state signal confirms delivery:
+  // destination tx confirmed (arcTxHash), assets credited (Fulfilled/Credited),
+  // settlement completed, or intent status Settled/Completed. Any one finalizes.
+  function _turboIsComplete(it) {
+    if (!it) return false;
+    const st = String(it.status || '').toLowerCase();
+    const settle = String(it.settlementStatus || it.settlement || '').toLowerCase();
+    return (
+      !!it.arcTxHash ||                                             // destination tx / assets credited
+      it.completed === true ||
+      /^(settled|completed|complete|fulfilled|credited|delivered)$/.test(st) ||
+      /^(settled|completed|complete|done)$/.test(settle)
+    );
+  }
   function _turboStopMonitor() { if (S.turboMonitor) { clearInterval(S.turboMonitor); S.turboMonitor = null; } }
   function _turboMonitorIntent(intentId, amt, feeAtExec, started, onDone) {
     _turboStopMonitor();
@@ -685,24 +728,23 @@
           netAmount: it.netAmount, feeAmount: it.feeAmount,
           updatedAt: it.updatedAt,
         });
-        // Map real intent status → lifecycle steps
+        // Map REAL intent state → completion (derived, not event-only).
         const st = String(it.status || '');
-        if (st === 'Fulfilled' || st === 'Settled') {
-          if (it.arcTxHash) S.txs.mintTxHash = it.arcTxHash;
+        const arcTx = it.arcTxHash || S.txs.mintTxHash || null;
+        if (arcTx) S.txs.mintTxHash = arcTx;
+
+        if (_turboIsComplete(it)) {
+          setStep('intent', 'done');
           setStep('accept', 'done');
           setStep('settle', 'done');
-          setStep('credit', 'active', it.arcTxHash ? 'Credited · ' + shortHash(it.arcTxHash) : 'Assets credited on Arc');
-          logAdd('Treasury fulfilled intent on Arc' + (it.arcTxHash ? ' (' + shortHash(it.arcTxHash) + ')' : ''));
-          setProgress(st === 'Settled' ? 100 : 92);
-        }
-        if (st === 'Settled') {
-          setStep('credit', 'done');
-          setStep('complete', 'done');
+          setStep('credit', 'done', arcTx ? 'Credited · ' + shortHash(arcTx) : 'Assets credited on ' + chainShort(S.to));
+          setStep('complete', 'done', 'Funds available on ' + chainShort(S.to));
           setProgress(100);
-          logAdd('Turbo Bridge complete — settlement confirmed ✓');
+          logAdd('Turbo Bridge complete — funds available on ' + chainShort(S.to) + (arcTx ? ' (' + shortHash(arcTx) + ')' : ''));
           _turboStopMonitor();
+          onSuccess();
           if (typeof onDone === 'function') onDone(true, it);
-          renderTurboStatus();
+          renderExec(); renderTurboStatus();
           return;
         }
         if (st === 'Failed') {
@@ -748,7 +790,7 @@
       const all = loadHist();
       const idx = all.findIndex((h) => h.intentId && h.intentId === intentId);
       if (idx === -1) return;
-      const settled = ok && it && String(it.status) === 'Settled';
+      const settled = ok && _turboIsComplete(it);
       all[idx].status = settled ? 'completed' : (ok ? 'processing' : 'failed');
       if (it && it.arcTxHash) all[idx].mintTxHash = it.arcTxHash;
       if (settled) all[idx].durationMs = Date.now() - (all[idx].ts || Date.now());
@@ -824,8 +866,8 @@
 
           _turboMonitorIntent(result.intentId, amt, feeAtExec, started, (ok, it, timedOut) => {
             _turboUpdateHistory(result.intentId, ok, it);
-            if (ok && it && String(it.status) === 'Settled') {
-              toast('Turbo Bridge complete — assets credited on Arc ⚡', 'success');
+            if (ok && _turboIsComplete(it)) {
+              toast('Turbo Bridge complete — assets credited on ' + chainShort(S.to) + ' ⚡', 'success');
             } else if (timedOut) {
               logAdd('Settlement still processing — operator will complete fulfillment. Track it in Recent Bridges.');
             } else if (!ok) {
@@ -900,7 +942,7 @@
     _turboStopMonitor();
     S.done = false; S.error = null; S.txs = {}; S.log = []; S.turboLive = null; initSteps();
     const ts = q('xb-turbo-status'); if (ts) { ts.style.display = 'none'; ts.innerHTML = ''; }
-    const exec = q('xb-exec'); if (exec) { exec.classList.remove('in'); setTimeout(() => exec.classList.add('hidden'), 280); }
+    const exec = q('xb-exec'); if (exec) { exec.classList.remove('in'); setTimeout(() => { if (!readyForPreview()) exec.classList.add('hidden'); }, 280); }
     const btn = q('xb-action'); if (btn) { btn.classList.remove('ok'); btn.innerHTML = '<i class="fas fa-bolt"></i>Bridge Assets'; btn.onclick = window.xbBridge; }
     setInputsDisabled(false); updateActionState();
   };
@@ -918,7 +960,7 @@
           if (it) {
             const st = String(it.status || '');
             if (it.arcTxHash && !h.mintTxHash) { h.mintTxHash = it.arcTxHash; changed = true; }
-            if (st === 'Settled') { h.status = 'completed'; if (!h.durationMs) h.durationMs = Date.now() - (h.ts || Date.now()); changed = true; }
+            if (_turboIsComplete(it)) { h.status = 'completed'; if (!h.durationMs) h.durationMs = Date.now() - (h.ts || Date.now()); changed = true; }
             else if (st === 'Failed') { h.status = 'failed'; changed = true; }
           }
         }
