@@ -20,9 +20,44 @@ const AMM_EXPLORER  = 'https://testnet.arcscan.app';
 const AMM_RPC       = 'https://rpc.testnet.arc.network';
 
 const AMM_TOKENS = {
-  EURC: { symbol: 'EURC', name: 'Euro Coin',  address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a', decimals: 6, logo: '💶' },
-  USDC: { symbol: 'USDC', name: 'USD Coin',   address: '0x3600000000000000000000000000000000000000', decimals: 6, logo: '💵' },
+  EURC: { symbol: 'EURC', name: 'Euro Coin',  address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a', decimals: 6 },
+  USDC: { symbol: 'USDC', name: 'USD Coin',   address: '0x3600000000000000000000000000000000000000', decimals: 6 },
 };
+
+// ─── Official Circle Token Icons ── centralized registry; SVG, crisp at any size
+const AMM_TOKEN_ICONS = {
+  USDC: `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#2775CA"/><path d="M20.5 18.6c0-2.38-1.43-3.2-4.29-3.54-2.04-.27-2.45-.82-2.45-1.78 0-.96.69-1.57 2.07-1.57 1.24 0 1.93.41 2.28 1.44.07.2.27.34.48.34h1.1c.28 0 .48-.2.48-.48v-.07a3.42 3.42 0 00-3.09-2.8V8.86c0-.27-.2-.48-.55-.55h-1.03c-.28 0-.48.21-.55.55v1.02c-2.04.27-3.33 1.64-3.33 3.34 0 2.25 1.37 3.13 4.22 3.47 1.92.34 2.52.75 2.52 1.85 0 1.1-.96 1.85-2.27 1.85-1.79 0-2.41-.75-2.62-1.78-.07-.27-.27-.41-.48-.41h-1.16a.47.47 0 00-.48.48v.07c.27 1.64 1.3 2.8 3.57 3.13v1.03c0 .27.2.48.55.55h1.03c.28 0 .48-.21.55-.55v-1.03c2.04-.34 3.4-1.78 3.4-3.61z" fill="#FFF"/><path d="M12.95 25.15c-5.3-1.92-8.02-7.84-6.03-13.07 1.03-2.87 3.3-5.06 6.03-6.09.28-.14.41-.34.41-.68v-.96c0-.27-.13-.48-.41-.55-.07 0-.2 0-.28.07a11.3 11.3 0 00-7.4 14.24c1.17 3.68 4 6.5 7.4 7.67.28.14.55 0 .62-.27.07-.07.07-.14.07-.28v-.96c0-.2-.2-.47-.41-.61zm6.16-21.44c-.28-.14-.55 0-.62.27-.07.07-.07.13-.07.27v.96c0 .27.2.55.41.68 5.3 1.92 8.02 7.84 6.03 13.07-1.03 2.87-3.3 5.06-6.03 6.09-.28.14-.41.34-.41.68v.96c0 .27.13.48.41.55.07 0 .2 0 .28-.07a11.3 11.3 0 007.4-14.24c-1.17-3.75-4.07-6.57-7.4-7.74z" fill="#FFF"/></svg>`,
+  EURC: `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#1A65D6"/><path d="M18.9 20.3a4.6 4.6 0 01-3.55 1.63c-1.94 0-3.6-1.15-4.36-2.86h4.06l.63-1.45h-5.1a5.3 5.3 0 010-1.34h5.7l.62-1.45h-6.02a4.77 4.77 0 014.47-3.1c1.42 0 2.7.62 3.55 1.62l1.6-1.35A6.86 6.86 0 0015.35 9.3c-3.1 0-5.74 2.02-6.66 4.83H7.1l-.63 1.45h1.98a7.3 7.3 0 000 1.34H7.1l-.63 1.45h2.22c.92 2.8 3.56 4.82 6.66 4.82 2.02 0 3.85-.86 5.13-2.23l-1.58-1.34z" fill="#FFF"/></svg>`,
+};
+
+function ammTokenIcon(sym, size) {
+  const s = size || 28; const key = String(sym || 'USDC').toUpperCase(); const svg = AMM_TOKEN_ICONS[key] || AMM_TOKEN_ICONS.USDC;
+  return `<span class="amm-tlogo" style="width:${s}px;height:${s}px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;overflow:hidden;flex-shrink:0;vertical-align:middle;">${svg}</span>`;
+}
+function ammSetSwapLogo(id, sym) { const el = $(id); if (el) el.innerHTML = ammTokenIcon(sym, 28); }
+
+// Render all official Circle token icons across the Swap + Liquidity module.
+// Nothing is hardcoded per-component: every icon is pulled from the registry.
+function ammRenderTokenIcons() {
+  const set = (id, sym, sz) => { const el = document.getElementById(id); if (el) el.innerHTML = ammTokenIcon(sym, sz); };
+  // Swap card (dynamic — follow swap direction)
+  set('amm-swap-from-logo', ammState.swapFrom, 28);
+  set('amm-swap-to-logo',   ammState.swapTo,   28);
+  // Liquidity add inputs (pool order: EURC = tokenA, USDC = tokenB)
+  set('amm-liq-logo-a', 'EURC', 24);
+  set('amm-liq-logo-b', 'USDC', 24);
+  // Remove-liquidity expected returns
+  set('amm-remove-icon-eurc', 'EURC', 15);
+  set('amm-remove-icon-usdc', 'USDC', 15);
+  // Pool reserves
+  set('amm-reserve-logo-a', 'EURC', 22);
+  set('amm-reserve-logo-b', 'USDC', 22);
+  // Your balances
+  set('amm-bal-logo-eurc', 'EURC', 22);
+  set('amm-bal-logo-usdc', 'USDC', 22);
+}
+window.ammTokenIcon = ammTokenIcon;
+window.ammRenderTokenIcons = ammRenderTokenIcons;
 
 // Full ERC-20 ABI (human-readable, for ethers.Contract)
 const AMM_ERC20_ABI = [
@@ -554,11 +589,11 @@ window.ammFlipSwap = function() {
   setText('amm-swap-to-symbol',   ammState.swapTo);
   setText('amm-swap-to-label',    ammState.swapTo);
 
-  // Update logo/color
+  // Update logo (official Circle SVG icons, dynamic)
   const fromLogo = $('amm-swap-from-logo');
   const toLogo   = $('amm-swap-to-logo');
-  if (fromLogo) fromLogo.textContent = AMM_TOKENS[ammState.swapFrom].logo;
-  if (toLogo)   toLogo.textContent   = AMM_TOKENS[ammState.swapTo].logo;
+  if (fromLogo) fromLogo.innerHTML = ammTokenIcon(ammState.swapFrom, 28);
+  if (toLogo)   toLogo.innerHTML   = ammTokenIcon(ammState.swapTo, 28);
 
   const inputEl  = $('amm-swap-input');
   const outputEl = $('amm-swap-output');
@@ -1033,6 +1068,9 @@ window.ammDeployContract = async function() {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function ammInit() {
   console.log('[AMM] Initialising DEX · Arc Testnet', AMM_CHAIN_ID);
+
+  // Render official Circle token icons (dynamic, from centralized registry)
+  ammRenderTokenIcons();
 
   // Attach input listeners
   const swapInput = $('amm-swap-input');

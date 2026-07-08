@@ -925,6 +925,13 @@ function cfRenderContracts(contracts, wallet) {
   const el = cfEl('cf-contracts-list');
   if (!el) return;
 
+  // Focused "live page" mode (opened via /contracts?focus=<id> or the Open Page
+  // button). Renders only the selected contract, fully interactive. Additive:
+  // only active when window.cfFocusId is set, so normal rendering is untouched.
+  if (window.cfFocusId != null && String(window.cfFocusId) !== '') {
+    return cfRenderFocused(el, contracts, wallet, String(window.cfFocusId));
+  }
+
   // Determine which view-mode tab is active (default: onchain)
   const viewMode = (window._cfViewMode) || 'onchain';
 
@@ -1205,7 +1212,8 @@ function cfContractCard(c, wallet) {
   // ── Milestones — one card per milestone (dynamic count, handlers unchanged) ──
   const msHtml = milestones.length ? milestones.map((m, i) => {
     const rel = m.status === 'Released';
-    return `<div class="cf-ms">
+    return `<div class="cf-ms-block" style="padding-bottom:9px;margin-bottom:9px;border-bottom:1px solid rgba(55,138,221,0.08);">
+      <div class="cf-ms">
         <span class="cf-ms-num" style="${rel?'background:rgba(52,211,153,0.16);border:1px solid rgba(52,211,153,0.35);color:#34d399':'background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.25);color:#60b4ff'}">${i + 1}</span>
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:700;color:#dbe4f2;word-break:break-word;">${cfEsc(m.description || ('Milestone ' + (i + 1)))}</div>
@@ -1222,7 +1230,9 @@ function cfContractCard(c, wallet) {
               ? `<span style="font-size:10px;color:#f87171;" title="Funds locked due to active dispute"><i class="fas fa-lock mr-1"></i>Locked</span>`
               : ''}
         </div>
-      </div>`;
+      </div>
+      ${cfMilestoneWorkflowHtml(c, i, m, { isClient, isContr, mode, uiStatus, isInDispute, isClosed })}
+    </div>`;
   }).join('') : `<p style="font-size:12px;color:#5f7ba0;font-style:italic;margin:0;">No milestones defined for this contract.</p>`;
 
   // ── Proofs — professional attachment cards (thumbnails / handlers unchanged) ─
@@ -1523,6 +1533,7 @@ function cfContractCard(c, wallet) {
 
   // ── Hide button (top of card) — contract stays on-chain, only hidden locally ─
   const hideBtn = `<button class="cf-action-btn" onclick="event.stopPropagation();if(typeof arcHideContract==='function')arcHideContract('${c.id}');cfRenderContracts(cfState.contracts,window.walletState?.address);" title="Hide from view — on-chain contracts cannot be deleted, only hidden" aria-label="Hide contract from view" style="padding:3px 9px;font-size:10px;background:rgba(74,85,104,0.12);border:1px solid rgba(74,85,104,0.3);color:#9ca3af;"><i class="fas fa-eye-slash mr-1"></i>Hide</button>`;
+  const openPageBtn = `<button class="cf-action-btn" onclick="event.stopPropagation();cfOpenContractPage(${c.id});" title="Open this contract's information in a separate page" aria-label="Open contract in a separate page" style="padding:3px 9px;font-size:10px;background:rgba(55,138,221,0.1);border:1px solid rgba(55,138,221,0.28);color:#60b4ff;"><i class="fas fa-up-right-from-square mr-1"></i>Open Page</button>`;
 
   const headerBadges = `${cfStatusBadge(uiStatus)}
       ${cfIsNew(c) && uiStatus !== 'Completed' && uiStatus !== 'Cancelled' && !isClosed ? `<span title="Recently created" style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:800;letter-spacing:.06em;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;padding:2px 7px;border-radius:999px;box-shadow:0 0 10px rgba(34,197,94,.55);animation:cfNewPulse 2s ease-in-out infinite;"><i class="fas fa-star" style="font-size:7px;"></i>NEW</span>` : ''}
@@ -1551,7 +1562,7 @@ function cfContractCard(c, wallet) {
           </div>
         </div>
         <div style="text-align:right;flex-shrink:0;">
-          <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">${hideBtn}</div>
+          <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:6px;">${openPageBtn}${hideBtn}</div>
           <div class="cf-amount-xl">$${cfFmtUsdc(total)}<small>USDC</small></div>
           <div style="font-size:10px;color:#5f7ba0;margin-top:5px;">Net: <span style="color:#34d399;font-weight:700;">$${cfFmtUsdc(netRaw)}</span></div>
         </div>
@@ -2790,13 +2801,14 @@ async function cfMarkComplete(contractId) {
   const milestones = c.milestones || [];
   const pending = milestones.filter(m => m.status === 'Pending');
 
-  if (!window.confirm(
+  if (!(await cfConfirm(
     `Mark Contract #${contractId} as COMPLETE?\n\n` +
     `This will release ${pending.length} pending milestone(s) to the contractor.\n` +
     `Platform fee (0.2%) = $${cfFmtUsdc(cfCalcFee(BigInt(c.totalValue)))} USDC will be deducted.\n` +
     `Net to contractor: $${cfFmtUsdc(cfNetAmount(BigInt(c.totalValue)))} USDC.\n\n` +
-    t("contracts_irreversible_action")
-  )) return;
+    t("contracts_irreversible_action"),
+    'Complete Contract'
+  ))) return;
 
   cfState.pending = true;
   try {
@@ -3011,7 +3023,7 @@ async function cfRunTx(label, fn, contractId = null) {
   try {
     const init = await cfInitProvider();
     if (!init.ok) { showToast(`❌ ${init.message}`, 'error'); return null; }
-    if (!window.confirm(`Confirm transaction:\n${label}\n\nThis requires a wallet signature.`)) return null;
+    if (!(await cfConfirm(`Confirm transaction:\n${label}\n\nThis requires a wallet signature.`, 'Confirm Transaction'))) return null;
     showToast(`📝 ${label} — confirme na carteira…`, 'info');
     const tx = await fn(init);
     cfLog(`${label} tx submitted:`, tx.hash);
@@ -3214,7 +3226,7 @@ async function cfReleaseMilestone(contractId, milestoneIdx) {
   if (c?.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Only the client can release.', 'error'); return; }
   const ms = c?.milestones?.[milestoneIdx];
   const humanAmt = ms ? cfFmtUsdc(ms.amount) : '?';
-  if (!window.confirm(`Release Milestone ${milestoneIdx+1} — $${humanAmt} USDC?\n\nThis action is irreversible.`)) return;
+  if (!(await cfConfirm(`Release Milestone ${milestoneIdx+1} — $${humanAmt} USDC?\n\nThis action is irreversible.`, 'Release Milestone'))) return;
 
   cfState.pending = true;
   try {
@@ -3245,7 +3257,7 @@ async function cfCancelContract(contractId) {
   if (cfState.pending) { showToast('Please wait.', 'warning'); return; }
   const c = cfState.contracts.find(x => x.id === contractId);
   if (c?.client?.toLowerCase() !== wallet.toLowerCase()) { showToast('❌ Only the client can cancel.', 'error'); return; }
-  if (!window.confirm(`Cancel Contract #${contractId}?\n\n$${c ? cfFmtUsdc(c.depositedValue) : '?'} USDC will be returned.\nThis action is irreversible.`)) return;
+  if (!(await cfConfirm(`Cancel Contract #${contractId}?\n\n$${c ? cfFmtUsdc(c.depositedValue) : '?'} USDC will be returned.\nThis action is irreversible.`, 'Cancel Contract', { danger: true, okLabel: 'Cancel Contract', cancelLabel: 'Keep Contract' }))) return;
 
   cfState.pending = true;
   try {
@@ -3713,6 +3725,9 @@ window.addEventListener('walletConnected', () => {
 });
 window.addEventListener('walletDisconnected', () => {
   cfLog('walletDisconnected event');
+  // Leave the focused single-contract subpage — its contract belonged to the
+  // previous wallet; show the normal list for the new wallet state.
+  if (window.cfFocusId != null) { try { cfExitFocus(); } catch (_) {} }
   cfShowListState('no_wallet'); // mode-guard inside — skipped for local tabs
   // Don't wipe _allContracts for local tabs — off-chain data stays visible
   if ((window._cfViewMode || 'onchain') === 'onchain') {
@@ -3729,6 +3744,9 @@ window.addEventListener('walletDisconnected', () => {
 });
 window.addEventListener('walletChanged', () => {
   cfLog('walletChanged event → reloading contracts');
+  // Switching wallet: exit the focused subpage so we don't get stuck loading a
+  // contract that belongs to the previous account. Show the new wallet's list.
+  if (window.cfFocusId != null) { try { cfExitFocus(); } catch (_) {} }
   cfState.contracts = [];
   // Only chain-reload when on the On-Chain tab.
   if ((window._cfViewMode || 'onchain') === 'onchain') {
@@ -4018,7 +4036,7 @@ async function cfExecuteDisputeResolution(contractId, outcome) {
 
   const note = document.getElementById('cf-resolve-note')?.value?.trim() || '';
   const outcomeLabel = outcome === 'contractor' ? 'liberar para o Contratado' : 'devolver ao Cliente';
-  if (!window.confirm(`Confirm resolution: ${outcomeLabel}?\n\nThis action is irreversible.`)) return;
+  if (!(await cfConfirm(`Confirm resolution: ${outcomeLabel}?\n\nThis action is irreversible.`, 'Confirm Resolution', { danger: true }))) return;
 
   cfSetDispute(contractId, {
     status: 'resolved',
@@ -4225,7 +4243,491 @@ function cfExecuteCloseContract(contractId) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+//  NATIVE IN-APP MODALS  (additive — replaces all browser alert/confirm/prompt)
+//  Reusable ExecDaat components: confirm / success / error / loading /
+//  transaction-pending. Wallet signatures still originate ONLY from the wallet
+//  provider (ethers → MetaMask/Rabby/Coinbase/WalletConnect). No browser popups.
+// ════════════════════════════════════════════════════════════════════════════
+const CF_MODAL_THEME = {
+  confirm: { icon: 'fa-circle-question',     color: '#60b4ff' },
+  success: { icon: 'fa-circle-check',        color: '#34d399' },
+  error:   { icon: 'fa-circle-exclamation',  color: '#f87171' },
+  loading: { icon: 'fa-spinner fa-spin',     color: '#60b4ff' },
+  pending: { icon: 'fa-arrows-rotate fa-spin', color: '#a78bfa' },
+  wallet:  { icon: 'fa-wallet',              color: '#fbbf24' },
+};
+
+function cfModalClose(id) {
+  const el = document.getElementById(id || 'cf-ui-modal');
+  if (el) { el.style.opacity = '0'; setTimeout(() => { if (el.parentNode) el.remove(); }, 160); }
+}
+
+// Core reusable modal renderer. Returns the overlay element.
+function cfModalOpen(opts) {
+  const o = opts || {};
+  const id = o.id || 'cf-ui-modal';
+  const prev = document.getElementById(id); if (prev) prev.remove();
+  const theme = CF_MODAL_THEME[o.type] || CF_MODAL_THEME.confirm;
+  const dismissable = o.dismissable !== false;   // click-outside / ESC (only when safe)
+  const overlay = document.createElement('div');
+  overlay.id = id;
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', o.title || 'Dialog');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;transition:opacity 0.18s;';
+  const buttons = o.buttons || [];
+  const actionsHtml = buttons.map((b, i) =>
+    `<button data-cf-btn="${i}" style="padding:9px 18px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;${b.primary
+      ? 'background:linear-gradient(135deg,#378ADD,#1D9E75);border:none;color:#fff;box-shadow:0 2px 12px rgba(55,138,221,0.25);'
+      : b.danger
+        ? 'background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#f87171;'
+        : 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#8aaac8;'}">${cfEsc(b.label)}</button>`
+  ).join('');
+  overlay.innerHTML =
+    '<div role="document" style="background:linear-gradient(160deg,rgba(10,15,28,0.98) 0%,rgba(6,11,22,1) 100%);border:1px solid rgba(55,138,221,0.2);border-radius:18px;max-width:' + (o.maxWidth || 440) + 'px;width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.6);transform:scale(.96);transition:transform .18s;max-height:90vh;overflow-y:auto;">'
+    + '<div style="padding:20px 22px 0;display:flex;align-items:center;gap:11px;">'
+    + '<div style="width:38px;height:38px;border-radius:11px;background:' + theme.color + '1f;border:1px solid ' + theme.color + '44;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fas ' + theme.icon + '" style="color:' + theme.color + ';font-size:16px;"></i></div>'
+    + '<div style="flex:1;min-width:0;"><div style="color:#dde2f0;font-size:14px;font-weight:800;">' + cfEsc(o.title || '') + '</div></div>'
+    + (dismissable ? '<button data-cf-x style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#6b7280;cursor:pointer;flex-shrink:0;"><i class="fas fa-times text-xs"></i></button>' : '')
+    + '</div>'
+    + '<div style="padding:12px 22px ' + (actionsHtml ? '4' : '18') + 'px;color:#8aaac8;font-size:12px;line-height:1.6;white-space:pre-wrap;">' + (o.html || cfEsc(o.message || '')) + '</div>'
+    + (actionsHtml ? '<div style="padding:0 22px 18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">' + actionsHtml + '</div>' : '')
+    + '</div>';
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => { overlay.style.opacity = '1'; const box = overlay.querySelector('[role=document]'); if (box) box.style.transform = 'scale(1)'; });
+  const doClose = (fromUser) => { cfModalClose(id); if (fromUser && typeof o.onDismiss === 'function') o.onDismiss(); };
+  buttons.forEach((b, i) => {
+    const el = overlay.querySelector('[data-cf-btn="' + i + '"]');
+    if (el) el.onclick = () => { if (!b.keepOpen) cfModalClose(id); if (typeof b.onClick === 'function') b.onClick(); };
+  });
+  if (dismissable) {
+    const x = overlay.querySelector('[data-cf-x]'); if (x) x.onclick = () => doClose(true);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) doClose(true); });
+    const esc = (e) => { if (e.key === 'Escape') { document.removeEventListener('keydown', esc); doClose(true); } };
+    document.addEventListener('keydown', esc);
+  }
+  return overlay;
+}
+
+// Promise<boolean> confirmation — native (never window.confirm)
+function cfConfirm(message, title, opts) {
+  const o = opts || {};
+  return new Promise((resolve) => {
+    let settled = false; const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    cfModalOpen({
+      id: 'cf-ui-confirm', type: o.danger ? 'error' : 'confirm', title: title || 'Confirm',
+      html: '<div style="white-space:pre-wrap;">' + cfEsc(message) + '</div>',
+      dismissable: true, onDismiss: () => done(false),
+      buttons: [
+        { label: o.cancelLabel || 'Cancel', onClick: () => done(false) },
+        { label: o.okLabel || 'Confirm', primary: !o.danger, danger: !!o.danger, onClick: () => done(true) },
+      ],
+    });
+  });
+}
+function cfAlertSuccess(message, title) { cfModalOpen({ id: 'cf-ui-alert', type: 'success', title: title || 'Success', message, buttons: [{ label: 'OK', primary: true }] }); }
+function cfAlertError(message, title)   { cfModalOpen({ id: 'cf-ui-alert', type: 'error', title: title || 'Error', message, buttons: [{ label: 'Close', primary: true }] }); }
+function cfShowLoading(message, title)  { return cfModalOpen({ id: 'cf-ui-loading', type: 'loading', title: title || 'Please wait…', message: message || '', dismissable: false }); }
+function cfShowTxPending(message, title){ return cfModalOpen({ id: 'cf-ui-loading', type: 'pending', title: title || 'Transaction Pending', message: message || 'Confirm in your wallet, then wait for on-chain confirmation…', dismissable: false }); }
+function cfHideLoading() { cfModalClose('cf-ui-loading'); }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  INDEPENDENT PER-MILESTONE PROOF & ATTESTATION WORKFLOW  (additive)
+//  Each milestone keeps fully independent state under meta.milestoneData[idx].
+//  Nothing here changes escrow / payment / deployment / dispute / refund logic:
+//  the on-chain release still runs through the existing cfReleaseMilestone().
+//  All state is persisted in localStorage, so a page refresh restores it.
+// ════════════════════════════════════════════════════════════════════════════
+const CF_MS_STATUS = {
+  created:         { label: 'Created',            color: '#5f7ba0', icon: 'fa-circle' },
+  proof_submitted: { label: 'Proof Submitted',    color: '#a78bfa', icon: 'fa-file-upload' },
+  attested:        { label: 'Attestation Created',color: '#67e8f9', icon: 'fa-stamp' },
+  approved:        { label: 'Approved',           color: '#fbbf24', icon: 'fa-user-check' },
+  rejected:        { label: 'Rejected',           color: '#f87171', icon: 'fa-times-circle' },
+  released:        { label: 'Released',           color: '#34d399', icon: 'fa-unlock' },
+};
+
+function cfGetMsData(contractId, idx) {
+  const all = cfGetMeta(contractId).milestoneData || {};
+  return all[String(idx)] || {};
+}
+function cfSetMsData(contractId, idx, patch) {
+  const meta = cfGetMeta(contractId);
+  const all = { ...(meta.milestoneData || {}) };
+  all[String(idx)] = { ...(all[String(idx)] || {}), ...patch };
+  cfSetMeta(contractId, { milestoneData: all });
+}
+function cfMsEffectiveStatus(c, idx, m) {
+  const d = cfGetMsData(c.id, idx);
+  if ((m && m.status === 'Released') || d.released) return 'released';
+  return d.status || 'created';
+}
+async function cfSha256Text(text) {
+  try {
+    const buf = new TextEncoder().encode(String(text));
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch { return 'sha-' + Math.random().toString(16).slice(2); }
+}
+function cfMsRerender() {
+  try { cfRenderContracts(cfState.contracts, window.walletState?.address); } catch (_) {}
+}
+
+// Render the independent workflow block for a single milestone.
+function cfMilestoneWorkflowHtml(c, i, m, ctx) {
+  ctx = ctx || {};
+  const d = cfGetMsData(c.id, i);
+  const st = cfMsEffectiveStatus(c, i, m);
+  const info = CF_MS_STATUS[st] || CF_MS_STATUS.created;
+  const isContr = !!ctx.isContr, isClient = !!ctx.isClient;
+  const onchain = ctx.mode === 'onchain';
+  const locked = !!ctx.isInDispute || !!ctx.isClosed;
+  const hasProof = !!d.proofHash;
+  const hasAtt = !!d.attestationUID;
+  const approved = d.attestationStatus === 'approved';
+  const rejected = d.attestationStatus === 'rejected';
+  const released = st === 'released';
+  const relTs = d.releaseTimestamp || (m && Number(m.releasedAt) > 0 ? Number(m.releasedAt) * 1000 : 0);
+
+  const steps = [
+    { label: 'Created',             done: true,        ts: d.createdAt },
+    { label: 'Proof Submitted',     done: hasProof,    ts: d.proofTimestamp },
+    { label: 'Attestation Created', done: hasAtt,      ts: d.attestationTimestamp },
+    { label: 'Approved',            done: approved,    ts: d.approvedAt },
+    { label: 'Released',            done: released,    ts: relTs },
+  ];
+  const tl = steps.map((s, k) => `<div style="display:flex;align-items:center;gap:6px;">
+      <span style="width:14px;height:14px;border-radius:50%;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:7px;${s.done ? 'background:rgba(52,211,153,0.18);border:1px solid rgba(52,211,153,0.4);color:#34d399' : 'background:rgba(74,85,104,0.12);border:1px solid rgba(74,85,104,0.3);color:#5f7ba0'}"><i class="fas ${s.done ? 'fa-check' : 'fa-circle'}"></i></span>
+      <span style="font-size:9.5px;color:${s.done ? '#cdd8ea' : '#5f7ba0'};font-weight:${s.done ? '700' : '500'};">${s.label}${s.done && s.ts ? ' · ' + cfTsMs(s.ts) : ''}</span>
+    </div>`).join('<div style="width:1px;height:8px;background:rgba(55,138,221,0.2);margin-left:6px;"></div>');
+
+  const btn = (fn, label, icon, style) => `<button onclick="event.stopPropagation();${fn}" class="cf-action-btn" style="padding:3px 9px;font-size:9.5px;${style || ''}"><i class="fas ${icon} mr-1"></i>${label}</button>`;
+  const btns = [];
+  if (!locked && !released) {
+    if (isContr && !hasProof) btns.push(btn(`cfMsSubmitProof(${c.id},${i})`, 'Submit Proof', 'fa-upload', 'background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);color:#a78bfa;'));
+    if (isClient && hasProof && !hasAtt) btns.push(btn(`cfMsCreateAttestation(${c.id},${i})`, 'Create Attestation', 'fa-stamp', 'background:rgba(103,232,249,0.1);border:1px solid rgba(103,232,249,0.3);color:#67e8f9;'));
+    if (isClient && hasAtt && !approved && !rejected) {
+      btns.push(btn(`cfMsApproveProof(${c.id},${i})`, 'Approve', 'fa-check', 'background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:#34d399;'));
+      btns.push(btn(`cfMsRejectProof(${c.id},${i})`, 'Reject', 'fa-times', 'background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;'));
+    }
+    if (isClient && approved) btns.push(btn(`cfMsRelease(${c.id},${i})`, 'Release Funds', 'fa-unlock', 'background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.35);color:#34d399;'));
+  }
+  if (hasProof) btns.push(btn(`cfMsViewProof(${c.id},${i})`, 'View Proof', 'fa-eye', 'background:rgba(55,138,221,0.09);border:1px solid rgba(55,138,221,0.25);color:#60b4ff;'));
+  if (hasAtt && isClient) btns.push(btn(`cfMsViewAttestation(${c.id},${i})`, 'View Attestation', 'fa-certificate', 'background:rgba(55,138,221,0.09);border:1px solid rgba(55,138,221,0.25);color:#60b4ff;'));
+
+  const proofLine = hasProof
+    ? `<div style="font-size:9.5px;color:#8aaac8;"><i class="fas fa-fingerprint mr-1" style="color:#a78bfa;"></i>${cfEsc(d.proofCID || 'proof')} · <span class="cf-mono">${(d.proofHash || '').slice(0, 12)}…</span></div>`
+    : `<div style="font-size:9.5px;color:#5f7ba0;font-style:italic;">No proof submitted yet.</div>`;
+  const attLine = (hasAtt && isClient)
+    ? `<div style="font-size:9.5px;color:#8aaac8;"><i class="fas fa-certificate mr-1" style="color:#67e8f9;"></i>UID <span class="cf-mono">${(d.attestationUID || '').slice(0, 12)}…</span> · <span style="color:${approved ? '#34d399' : rejected ? '#f87171' : '#fbbf24'};font-weight:700;">${approved ? 'Approved' : rejected ? 'Rejected' : 'Pending'}</span></div>`
+    : '';
+
+  return `<div class="cf-ms-wf" style="margin-top:8px;padding:9px 11px;border-radius:10px;background:rgba(10,14,26,0.5);border:1px solid rgba(55,138,221,0.1);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:7px;">
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;color:${info.color};"><i class="fas ${info.icon}" style="font-size:9px;"></i>${info.label}</span>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;">${btns.join('')}</div>
+      </div>
+      ${proofLine}
+      ${attLine}
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:7px;">${tl}</div>
+    </div>`;
+}
+
+// ── Submit Proof (independent per milestone) ────────────────────────────────
+function cfMsSubmitProof(contractId, idx) {
+  const c = cfState.contracts.find(x => x.id === contractId);
+  const m = c?.milestones?.[idx];
+  document.getElementById('cf-ms-proof-modal')?.remove();
+  const modal = cfModalOpen({
+    id: 'cf-ms-proof-modal', type: 'wallet', title: `Submit Proof · Milestone ${idx + 1}`, dismissable: true,
+    html:
+      `<div style="font-size:11px;color:#8aaac8;margin-bottom:10px;">Attach a file <strong>or</strong> provide a reference (URL, GitHub repo, IPFS CID). This proof belongs only to milestone ${idx + 1} and never overwrites other milestones.</div>`
+      + `<input type="file" id="cf-ms-proof-file" style="width:100%;font-size:11px;color:#8aaac8;margin-bottom:10px;">`
+      + `<input type="text" id="cf-ms-proof-ref" placeholder="Reference (https://…, github.com/…, ipfs://CID)" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(167,139,250,0.25);color:#dde2f0;border-radius:8px;padding:9px 11px;font-size:12px;outline:none;">`,
+    buttons: [
+      { label: 'Cancel' },
+      { label: 'Submit Proof', primary: true, keepOpen: true, onClick: () => cfMsExecuteProof(contractId, idx) },
+    ],
+  });
+  return modal;
+}
+async function cfMsExecuteProof(contractId, idx) {
+  const c = cfState.contracts.find(x => x.id === contractId);
+  const m = c?.milestones?.[idx];
+  const fileEl = document.getElementById('cf-ms-proof-file');
+  const refEl = document.getElementById('cf-ms-proof-ref');
+  const file = fileEl?.files?.[0] || null;
+  const ref = (refEl?.value || '').trim();
+  if (!file && !ref) { cfAlertError('Please attach a file or enter a reference.', 'Proof required'); return; }
+
+  const existing = cfGetMsData(contractId, idx);
+  if (existing.proofHash) {
+    const ok = await cfConfirm(`Milestone ${idx + 1} already has a proof. Replace it? The previous proof for this milestone will be overwritten (other milestones are unaffected).`, 'Replace proof?');
+    if (!ok) return;
+  }
+
+  let proofHash, proofCID, proofUrl = null, proofName = null, proofMime = null;
+  try {
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) { cfAlertError('File exceeds 10MB.', 'Too large'); return; }
+      proofHash = await cfHashFile(file);
+      proofUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file); });
+      proofName = file.name; proofMime = file.type;
+      proofCID = ref || file.name;
+    } else {
+      proofHash = await cfSha256Text(ref + '|' + contractId + '|' + idx);
+      proofCID = ref;
+    }
+  } catch (e) { cfAlertError('Failed to process proof: ' + (e.message || e), 'Error'); return; }
+
+  cfSetMsData(contractId, idx, {
+    milestoneId: idx,
+    title: (m && m.description) || ('Milestone ' + (idx + 1)),
+    amount: m ? String(m.amount) : '0',
+    status: 'proof_submitted',
+    proofCID, proofHash,
+    proofUrl, proofName, proofMime,
+    proofTimestamp: Date.now(),
+    proofAuthor: window.walletState?.address || 'unknown',
+    createdAt: existing.createdAt || Date.now(),
+  });
+  cfModalClose('cf-ms-proof-modal');
+  try { cfLog(`[milestone ${idx}] proof submitted · #${contractId} · ${(proofHash || '').slice(0, 16)}…`); } catch (_) {}
+  showToast(`✅ Proof submitted for Milestone ${idx + 1}.`, 'success');
+  cfMsRerender();
+}
+
+function cfMsViewProof(contractId, idx) {
+  const d = cfGetMsData(contractId, idx);
+  if (!d.proofHash) { cfAlertError('No proof for this milestone.', 'Not found'); return; }
+  let body = '';
+  if (d.proofUrl && (d.proofMime || '').startsWith('image/')) {
+    body = `<img src="${d.proofUrl}" alt="${cfEsc(d.proofName || 'proof')}" style="max-width:100%;border-radius:10px;">`;
+  } else if (d.proofUrl && d.proofMime === 'application/pdf') {
+    body = `<iframe src="${d.proofUrl}" style="width:100%;height:60vh;border:none;border-radius:10px;background:#fff;" title="proof"></iframe>`;
+  } else if (d.proofUrl) {
+    body = `<a href="${d.proofUrl}" download="${cfEsc(d.proofName || 'proof')}" style="color:#a78bfa;">Download ${cfEsc(d.proofName || 'file')}</a>`;
+  } else {
+    const isLink = /^(https?:|ipfs:)/i.test(d.proofCID || '');
+    body = isLink
+      ? `<a href="${cfEsc(d.proofCID)}" target="_blank" rel="noopener" style="color:#60b4ff;word-break:break-all;">${cfEsc(d.proofCID)}</a>`
+      : `<span style="word-break:break-all;color:#dde2f0;">${cfEsc(d.proofCID || '')}</span>`;
+  }
+  cfModalOpen({
+    id: 'cf-ui-viewer', type: 'confirm', title: `Proof · Milestone ${idx + 1}`, maxWidth: 620, dismissable: true,
+    html: body
+      + `<div style="margin-top:12px;font-size:10px;color:#5f7ba0;">`
+      + `<div>SHA-256: <span class="cf-mono" style="word-break:break-all;color:#8aaac8;">${cfEsc(d.proofHash || '')}</span></div>`
+      + `<div style="margin-top:3px;">Submitted by ${cfEsc(cfShort(d.proofAuthor))} · ${d.proofTimestamp ? cfTsMs(d.proofTimestamp) : ''}</div>`
+      + `</div>`,
+    buttons: [{ label: 'Close', primary: true }],
+  });
+}
+
+async function cfMsCreateAttestation(contractId, idx) {
+  const _c = (cfState.contracts || []).find(x => String(x.id) === String(contractId));
+  const _w = (window.walletState && window.walletState.address || '').toLowerCase();
+  if (!_c || !_w || (_c.client || '').toLowerCase() !== _w) { cfAlertError('Only the client can create attestations.', 'Client only'); return; }
+  const d = cfGetMsData(contractId, idx);
+  if (!d.proofHash) { cfAlertError('Attestation requires a submitted proof first.', 'Proof required'); return; }
+  if (d.attestationUID) { cfAlertError('This milestone already has an attestation.', 'Already attested'); return; }
+  const ok = await cfConfirm(`Create an on-record attestation for the proof of Milestone ${idx + 1}?\n\nThis certifies the delivered work for client review.`, 'Create Attestation');
+  if (!ok) return;
+  const uid = await cfSha256Text('att|' + contractId + '|' + idx + '|' + d.proofHash + '|' + Date.now());
+  cfSetMsData(contractId, idx, {
+    status: 'attested',
+    attestationUID: uid,
+    attestationTimestamp: Date.now(),
+    attestationStatus: 'pending',
+    attestationAuthor: window.walletState?.address || 'unknown',
+  });
+  try { cfLog(`[milestone ${idx}] attestation ${uid.slice(0, 16)}… created · #${contractId}`); } catch (_) {}
+  showToast(`✅ Attestation created for Milestone ${idx + 1}.`, 'success');
+  cfMsRerender();
+}
+
+function cfMsViewAttestation(contractId, idx) {
+  const _c = (cfState.contracts || []).find(x => String(x.id) === String(contractId));
+  const _w = (window.walletState && window.walletState.address || '').toLowerCase();
+  if (!_c || !_w || (_c.client || '').toLowerCase() !== _w) { cfAlertError('Only the client can view attestations.', 'Client only'); return; }
+  const d = cfGetMsData(contractId, idx);
+  if (!d.attestationUID) { cfAlertError('No attestation for this milestone.', 'Not found'); return; }
+  const stColor = d.attestationStatus === 'approved' ? '#34d399' : d.attestationStatus === 'rejected' ? '#f87171' : '#fbbf24';
+  cfModalOpen({
+    id: 'cf-ui-viewer', type: 'confirm', title: `Attestation · Milestone ${idx + 1}`, maxWidth: 520, dismissable: true,
+    html:
+      `<div style="font-size:11px;line-height:1.8;color:#8aaac8;">`
+      + `<div>UID: <span class="cf-mono" style="word-break:break-all;color:#dde2f0;">${cfEsc(d.attestationUID)}</span></div>`
+      + `<div>Status: <span style="color:${stColor};font-weight:800;">${cfEsc((d.attestationStatus || 'pending').toUpperCase())}</span></div>`
+      + `<div>Linked proof: <span class="cf-mono" style="color:#8aaac8;">${cfEsc((d.proofHash || '').slice(0, 20))}…</span></div>`
+      + `<div>Created: ${d.attestationTimestamp ? cfTsMs(d.attestationTimestamp) : '—'}</div>`
+      + (d.reviewer ? `<div>Reviewer: ${cfEsc(cfShort(d.reviewer))}</div>` : '')
+      + (d.approvedAt ? `<div>Approved: ${cfTsMs(d.approvedAt)}</div>` : '')
+      + `</div>`,
+    buttons: [{ label: 'Close', primary: true }],
+  });
+}
+
+async function cfMsApproveProof(contractId, idx) {
+  const d = cfGetMsData(contractId, idx);
+  if (!d.attestationUID) { cfAlertError('Create the attestation before approving.', 'Attestation required'); return; }
+  if (d.attestationStatus === 'approved') { cfAlertError('This milestone is already approved.', 'Already approved'); return; }
+  const ok = await cfConfirm(`Approve the attestation for Milestone ${idx + 1}?\n\nAfter approval you can release the funds for this milestone.`, 'Approve Milestone');
+  if (!ok) return;
+  cfSetMsData(contractId, idx, { status: 'approved', attestationStatus: 'approved', reviewer: window.walletState?.address || 'unknown', approvedAt: Date.now() });
+  showToast(`✅ Milestone ${idx + 1} approved.`, 'success');
+  cfMsRerender();
+}
+
+async function cfMsRejectProof(contractId, idx) {
+  const d = cfGetMsData(contractId, idx);
+  if (!d.attestationUID) { cfAlertError('Nothing to reject — no attestation yet.', 'Not found'); return; }
+  if (d.attestationStatus === 'approved') { cfAlertError('Cannot reject an already-approved milestone.', 'Already approved'); return; }
+  const ok = await cfConfirm(`Reject the attestation for Milestone ${idx + 1}?\n\nThe contractor can submit a new proof afterwards.`, 'Reject Milestone', { danger: true, okLabel: 'Reject' });
+  if (!ok) return;
+  cfSetMsData(contractId, idx, { status: 'rejected', attestationStatus: 'rejected', reviewer: window.walletState?.address || 'unknown', rejectedAt: Date.now() });
+  showToast(`Milestone ${idx + 1} attestation rejected.`, 'warning');
+  cfMsRerender();
+}
+
+// Release funds for a single milestone. On-chain contracts reuse the existing
+// cfReleaseMilestone() (real wallet signature + completeMilestone tx). Off-chain
+// agreements mark the milestone released locally. Validation prevents releasing
+// without proof and prevents double release.
+async function cfMsRelease(contractId, idx) {
+  const c = cfState.contracts.find(x => x.id === contractId);
+  const d = cfGetMsData(contractId, idx);
+  const m = c?.milestones?.[idx];
+  if ((m && m.status === 'Released') || d.released) { cfAlertError('This milestone was already released.', 'Already released'); return; }
+  if (!d.proofHash) { cfAlertError('Cannot release without a submitted proof.', 'Proof required'); return; }
+  if (d.attestationStatus !== 'approved') {
+    const ok = await cfConfirm(`Milestone ${idx + 1} has not been approved yet. Release anyway?`, 'Release without approval', { danger: true, okLabel: 'Release' });
+    if (!ok) return;
+  }
+  const onchain = (c?.mode || (c?.custodian ? 'custodian' : 'onchain')) === 'onchain';
+  if (onchain && typeof cfReleaseMilestone === 'function') {
+    // Delegates to the existing, unchanged on-chain release flow.
+    await cfReleaseMilestone(contractId, idx);
+    // Record per-milestone release metadata (does not affect on-chain logic).
+    cfSetMsData(contractId, idx, { status: 'released', released: true, releaseTimestamp: Date.now() });
+    cfMsRerender();
+  } else {
+    cfSetMsData(contractId, idx, { status: 'released', released: true, releaseTimestamp: Date.now() });
+    showToast(`✅ Milestone ${idx + 1} marked as released.`, 'success');
+    cfMsRerender();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  OPEN CONTRACT AS AN IN-APP SUBPAGE  (additive)
+//  Clicking "Open Page" shows a focused subpage — inside the SAME tab — with
+//  only that contract's section, keeping the flow clearer while working on /
+//  finishing the contract. Fully interactive (reuses the live card). No new tab,
+//  no reload. Additive: only active while window.cfFocusId is set.
+// ════════════════════════════════════════════════════════════════════════════
+function cfOpenContractPage(contractId) {
+  window.cfFocusId = String(contractId);
+  try { if (typeof switchTab === 'function') switchTab('contracts'); } catch (_) {}
+  // Hide the create-contract form + list chrome — show only this contract section.
+  try { var tab = document.getElementById('tab-content-contracts'); if (tab) tab.classList.add('cf-focus-mode'); } catch (_) {}
+  try { cfRenderContracts(cfState.contracts, window.walletState && window.walletState.address); } catch (_) {}
+  // Bring the focused subpage into view (same tab).
+  try {
+    var top = document.getElementById('tab-content-contracts') || cfEl('cf-contracts-list');
+    if (top && top.scrollIntoView) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (_) {}
+}
+
+// Render a single contract as a focused, fully-interactive "page" (used by the
+// /contracts?focus=<id> deep link and the in-app fallback). Reuses the exact
+// same live card, so every action button works. Additive — only active when
+// window.cfFocusId is set.
+function cfRenderFocused(el, contracts, wallet, focusId) {
+  const c = (contracts || []).find(x => String(x.id) === focusId)
+         || (cfState.contracts || []).find(x => String(x.id) === focusId);
+  const banner = '<div class="cf-focus-banner" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:11px 14px;border-radius:12px;background:linear-gradient(135deg,rgba(55,138,221,0.1),rgba(29,158,117,0.06));border:1px solid rgba(55,138,221,0.25);">'
+    + '<span style="width:30px;height:30px;border-radius:9px;background:rgba(55,138,221,0.15);border:1px solid rgba(55,138,221,0.3);display:inline-flex;align-items:center;justify-content:center;color:#60b4ff;flex-shrink:0;"><i class="fas fa-file-contract"></i></span>'
+    + '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:800;color:#dde2f0;">Contract #' + cfEsc(focusId) + ' · Focused page</div>'
+    + '<div style="font-size:10.5px;color:#8aaac8;">Live view — complete every action for this contract right here.</div></div>'
+    + '<button onclick="cfExitFocus()" class="cf-action-btn" style="padding:5px 12px;font-size:11px;background:rgba(55,138,221,0.1);border:1px solid rgba(55,138,221,0.3);color:#60b4ff;"><i class="fas fa-layer-group mr-1"></i>Show all contracts</button>'
+    + '</div>';
+  if (!c) {
+    const arr = cfState.contracts || [];
+    const hasWallet = !!(window.walletState && window.walletState.address);
+    const loading = !!cfState.pending || (arr.length === 0 && hasWallet);
+    const icon = loading ? 'fa-spinner fa-spin' : 'fa-circle-question';
+    const msg = loading
+      ? 'Loading contract #' + cfEsc(focusId) + '…'
+      : 'Contract #' + cfEsc(focusId) + ' is not available for the connected wallet.';
+    const hint = loading
+      ? 'Fetching from the network…'
+      : 'It may belong to another wallet, be on a different mode tab, or still be syncing.';
+    el.innerHTML = banner + '<div style="color:#8aaac8;font-size:12px;text-align:center;padding:36px 0;display:flex;flex-direction:column;align-items:center;gap:12px;">'
+      + '<div style="width:46px;height:46px;border-radius:13px;background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.12);display:flex;align-items:center;justify-content:center;"><i class="fas ' + icon + '" style="color:#60b4ff;font-size:18px;"></i></div>'
+      + '<span>' + msg + '</span>'
+      + '<span style="font-size:11px;color:#3a4870;max-width:340px;">' + hint + '</span>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">'
+      + '<button onclick="cfLoadContracts({force:true})" class="cf-action-btn" style="padding:6px 14px;font-size:11px;background:rgba(55,138,221,0.1);border:1px solid rgba(55,138,221,0.3);color:#60b4ff;"><i class="fas fa-rotate mr-1"></i>Retry</button>'
+      + '<button onclick="cfExitFocus()" class="cf-action-btn" style="padding:6px 14px;font-size:11px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:#34d399;"><i class="fas fa-layer-group mr-1"></i>Show all contracts</button>'
+      + '</div></div>';
+    return;
+  }
+  el.innerHTML = banner + cfContractCard(c, wallet);
+}
+
+// Exit the focused page → restore the full contract list (and clean the URL).
+function cfExitFocus() {
+  window.cfFocusId = null;
+  try { var tab = document.getElementById('tab-content-contracts'); if (tab) tab.classList.remove('cf-focus-mode'); } catch (_) {}
+  try { if (history && history.replaceState) history.replaceState({ tab: 'contracts', path: '/contracts' }, '', '/contracts'); } catch (_) {}
+  try { cfRenderContracts(cfState.contracts, window.walletState && window.walletState.address); } catch (_) {}
+}
+
+// Bootstrap: if the page was opened as /contracts?focus=<id>, enter focus mode.
+(function cfFocusBootstrap() {
+  try {
+    var f = new URLSearchParams(location.search).get('focus');
+    if (!f) return;
+    window.cfFocusId = String(f);
+    var kick = function () {
+      try { if (typeof switchTab === 'function') switchTab('contracts'); } catch (_) {}
+      try { var tab = document.getElementById('tab-content-contracts'); if (tab) tab.classList.add('cf-focus-mode'); } catch (_) {}
+      // switchTab('contracts') triggers cfLoadContracts(); ensure a focused render
+      // once data arrives (and a couple of retries while it loads).
+      var tries = 0;
+      var iv = setInterval(function () {
+        tries++;
+        try { cfRenderContracts(cfState.contracts, window.walletState && window.walletState.address); } catch (_) {}
+        var found = (cfState.contracts || []).some(function (x) { return String(x.id) === String(window.cfFocusId); });
+        if (found || tries >= 8 || !window.cfFocusId) clearInterval(iv);
+      }, 900);
+    };
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(kick, 350);
+    else document.addEventListener('DOMContentLoaded', function () { setTimeout(kick, 350); });
+  } catch (_) {}
+})();
+
 // ─── Global exports ────────────────────────────────────────────────────────────
+window.cfOpenContractPage     = cfOpenContractPage;
+window.cfExitFocus            = cfExitFocus;
+window.cfModalOpen            = cfModalOpen;
+window.cfModalClose           = cfModalClose;
+window.cfConfirm              = cfConfirm;
+window.cfAlertSuccess         = cfAlertSuccess;
+window.cfAlertError           = cfAlertError;
+window.cfShowLoading          = cfShowLoading;
+window.cfShowTxPending        = cfShowTxPending;
+window.cfHideLoading          = cfHideLoading;
+window.cfMsSubmitProof        = cfMsSubmitProof;
+window.cfMsExecuteProof       = cfMsExecuteProof;
+window.cfMsViewProof          = cfMsViewProof;
+window.cfMsCreateAttestation  = cfMsCreateAttestation;
+window.cfMsViewAttestation    = cfMsViewAttestation;
+window.cfMsApproveProof       = cfMsApproveProof;
+window.cfMsRejectProof        = cfMsRejectProof;
+window.cfMsRelease            = cfMsRelease;
 window.cfCreateContract       = cfCreateContract;
 window.cfLoadContracts        = cfLoadContracts;
 window.cfSignContract         = cfSignContract;

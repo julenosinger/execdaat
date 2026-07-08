@@ -1016,7 +1016,7 @@
         <span class="sidebar-item-active-bar"></span>
       </button>
 
-      <button onclick="switchTab('agents');sidebarClose();" id="tab-agents" class="tab-btn sidebar-item" data-label="AI Agents">
+      <button onclick="switchTab('agents');sidebarClose();" id="tab-agents" class="tab-btn sidebar-item" data-label="AI Agents" style="display:none !important;" aria-hidden="true" tabindex="-1">
         <span class="sidebar-item-icon"><i class="fas fa-brain"></i></span>
         <span class="sidebar-item-label">AI Agents</span>
         <span class="sidebar-item-active-bar"></span>
@@ -1988,6 +1988,14 @@
         .cf-btn-receipt  { background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);color:#93c5fd; }
         .cf-btn-receipt:hover { background:rgba(59,130,246,0.18); }
 
+        /* Focused single-contract subpage — hide the create form + list chrome,
+           show only the selected contract section. Toggled by cfOpenContractPage. */
+        #tab-content-contracts.cf-focus-mode #cf-create-col,
+        #tab-content-contracts.cf-focus-mode #cf-summary,
+        #tab-content-contracts.cf-focus-mode #cf-view-mode-tabs,
+        #tab-content-contracts.cf-focus-mode #cf-list-header { display:none !important; }
+        #tab-content-contracts.cf-focus-mode #cf-list-col { grid-column:1 / -1 !important; }
+
         /* ─── Contract Details — enterprise section layout (v6 UI refresh) ─── */
         .cf-card2 { background:rgba(8,11,24,0.96); border:1px solid rgba(55,138,221,0.14); border-radius:16px; overflow:hidden; transition:border-color 0.2s; }
         .cf-card2:hover { border-color:rgba(55,138,221,0.28); }
@@ -2100,7 +2108,7 @@
       <div class="grid grid-cols-1 xl:grid-cols-5 gap-5">
 
         <!-- ══ LEFT: Create Contract Form ══ -->
-        <div class="xl:col-span-2">
+        <div id="cf-create-col" class="xl:col-span-2">
           <div class="cf-panel">
             <div style="height:2px;background:linear-gradient(90deg,transparent,#378ADD 40%,#1D9E75 60%,transparent);"></div>
             <div class="p-5">
@@ -2299,7 +2307,7 @@
         </div>
 
         <!-- ══ RIGHT: Contracts list ══ -->
-        <div class="xl:col-span-3">
+        <div id="cf-list-col" class="xl:col-span-3">
           <!-- Summary stats -->
           <div id="cf-summary" class="mb-4"></div>
 
@@ -2320,7 +2328,7 @@
           </div>
 
           <!-- Header -->
-          <div class="flex items-center justify-between mb-3">
+          <div id="cf-list-header" class="flex items-center justify-between mb-3">
             <div class="flex items-center gap-2">
               <i id="cf-list-header-icon" class="fas fa-link" style="color:#60b4ff;font-size:14px;"></i>
               <span id="cf-list-header-title" style="color:#dde2f0;font-size:14px;font-weight:700;">On-Chain Contracts</span>
@@ -3870,7 +3878,8 @@
           transition:border-color .2s ease, background .2s ease;
         }
         body:not(.light-mode) #amm-swap-from-logo,
-        body:not(.light-mode) #amm-swap-to-logo{ font-size:22px !important; }
+        body:not(.light-mode) #amm-swap-to-logo{ font-size:22px !important; line-height:0; }
+        #amm-swap-from-logo svg, #amm-swap-to-logo svg{ display:block; }
 
         /* FLIP BUTTON — premium circular, glow, hover rotation (the -my-1 container) */
         body:not(.light-mode) #amm-panel-swap [class*="-my-1"] > button{
@@ -4069,7 +4078,7 @@
                 </div>
                 <div class="flex items-center gap-3">
                   <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 min-w-fit border border-gray-600/30">
-                    <span class="text-lg" id="amm-swap-from-logo">💶</span>
+                    <span class="flex items-center" id="amm-swap-from-logo"></span>
                     <span class="text-white font-bold text-sm" id="amm-swap-from-symbol">EURC</span>
                   </div>
                   <input type="number" id="amm-swap-input" placeholder="0.00" min="0" step="0.000001"
@@ -4096,7 +4105,7 @@
                 </div>
                 <div class="flex items-center gap-3">
                   <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 min-w-fit border border-gray-600/30">
-                    <span class="text-lg" id="amm-swap-to-logo">💵</span>
+                    <span class="flex items-center" id="amm-swap-to-logo"></span>
                     <span class="text-white font-bold text-sm" id="amm-swap-to-symbol">USDC</span>
                   </div>
                   <input type="number" id="amm-swap-output" placeholder="0.00" readonly
@@ -4219,7 +4228,7 @@
                 </div>
                 <div class="flex items-center gap-3">
                   <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 border border-gray-600/30">
-                    <span>💶</span><span class="text-white font-bold text-sm">EURC</span>
+                    <span class="flex items-center" id="amm-liq-logo-a"></span><span class="text-white font-bold text-sm">EURC</span>
                   </div>
                    <input type="number" id="amm-liq-input-a" placeholder="0.00" min="0" step="0.000001"
                     class="flex-1 bg-transparent text-white text-xl font-bold text-right outline-none placeholder-gray-700 w-0"
@@ -4244,7 +4253,7 @@
                 </div>
                 <div class="flex items-center gap-3">
                   <div class="flex items-center gap-2 bg-gray-700/50 rounded-xl px-3 py-2 border border-gray-600/30">
-                    <span>💵</span><span class="text-white font-bold text-sm">USDC</span>
+                    <span class="flex items-center" id="amm-liq-logo-b"></span><span class="text-white font-bold text-sm">USDC</span>
                   </div>
                    <input type="number" id="amm-liq-input-b" placeholder="0.00" min="0" step="0.000001"
                     class="flex-1 bg-transparent text-white text-xl font-bold text-right outline-none placeholder-gray-700 w-0"
@@ -4334,11 +4343,11 @@
                 <div class="border-t border-gray-700/40 pt-3 space-y-1.5">
                   <div class="text-gray-500 font-semibold mb-1">Expected to receive:</div>
                   <div class="flex justify-between">
-                    <span class="text-gray-400">💶 EURC</span>
+                    <span class="text-gray-400"><span class="inline-flex align-middle mr-1" id="amm-remove-icon-eurc"></span>EURC</span>
                     <span id="amm-remove-est-eurc" class="font-mono text-green-300 font-bold">—</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-gray-400">💵 USDC</span>
+                    <span class="text-gray-400"><span class="inline-flex align-middle mr-1" id="amm-remove-icon-usdc"></span>USDC</span>
                     <span id="amm-remove-est-usdc" class="font-mono text-green-300 font-bold">—</span>
                   </div>
                 </div>
@@ -4460,7 +4469,7 @@
                 <div class="text-xs text-gray-600 font-semibold uppercase tracking-wide">Reserves</div>
                 <div class="flex items-center justify-between bg-gray-800/50 hover:bg-gray-800/70 rounded-xl px-3 py-2.5 transition-colors">
                   <div class="flex items-center gap-2">
-                    <span class="text-base">💶</span>
+                    <span class="flex items-center" id="amm-reserve-logo-a"></span>
                     <div>
                       <div class="text-xs text-gray-400 font-semibold">EURC</div>
                       <div class="text-[10px] text-gray-600 font-mono">0x89B5…D72a</div>
@@ -4470,7 +4479,7 @@
                 </div>
                 <div class="flex items-center justify-between bg-gray-800/50 hover:bg-gray-800/70 rounded-xl px-3 py-2.5 transition-colors">
                   <div class="flex items-center gap-2">
-                    <span class="text-base">💵</span>
+                    <span class="flex items-center" id="amm-reserve-logo-b"></span>
                     <div>
                       <div class="text-xs text-gray-400 font-semibold">USDC</div>
                       <div class="text-[10px] text-gray-600 font-mono">0x3600…0000</div>
@@ -4540,7 +4549,7 @@
             <div class="p-4 space-y-2">
               <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
                 <div class="flex items-center gap-2">
-                  <span>💶</span>
+                  <span class="flex items-center" id="amm-bal-logo-eurc"></span>
                   <div>
                     <div class="text-xs text-gray-400 font-semibold">EURC</div>
                     <div class="text-[10px] text-gray-600">Euro Coin</div>
@@ -4550,7 +4559,7 @@
               </div>
               <div class="flex items-center justify-between bg-gray-800/50 rounded-xl px-3 py-2.5">
                 <div class="flex items-center gap-2">
-                  <span>💵</span>
+                  <span class="flex items-center" id="amm-bal-logo-usdc"></span>
                   <div>
                     <div class="text-xs text-gray-400 font-semibold">USDC</div>
                     <div class="text-[10px] text-gray-600">USD Coin</div>
@@ -5166,8 +5175,9 @@
             </div>
             <span id="ub-detail-contract-full" class="hidden"></span>
             <a id="ub-detail-explorer-link" href="#" target="_blank" class="block text-center text-xs text-cyan-400 hover:text-cyan-300 underline">View on Explorer ↗</a>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-4 gap-2">
               <button id="ub-detail-bridge" onclick="ubDetailBridge()" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-cyan-900/20 border border-cyan-700/30 hover:bg-cyan-900/30 transition-colors"><i class="fas fa-right-left text-cyan-400"></i><span class="text-[10px] text-cyan-300 font-semibold">Bridge</span></button>
+              <button id="ub-detail-bring2arc" onclick="ubDetailBringToArc()" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-amber-900/20 border border-amber-700/30 hover:bg-amber-900/30 transition-colors"><i class="fas fa-bolt text-amber-400"></i><span class="text-[10px] text-amber-300 font-semibold">Bring to Arc</span></button>
               <button id="ub-detail-swap" onclick="ubDetailSwap()" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-yellow-900/20 border border-yellow-700/30 hover:bg-yellow-900/30 transition-colors"><i class="fas fa-exchange-alt text-yellow-400"></i><span class="text-[10px] text-yellow-300 font-semibold">Swap</span></button>
               <button id="ub-detail-pay" onclick="ubDetailPay()" class="flex flex-col items-center gap-1 py-3 rounded-xl bg-purple-900/20 border border-purple-700/30 hover:bg-purple-900/30 transition-colors"><i class="fas fa-paper-plane text-purple-400"></i><span class="text-[10px] text-purple-300 font-semibold">Pay</span></button>
             </div>
@@ -6270,7 +6280,7 @@
   <script src="/static/wallet.js?v=20260327a"></script>
   <script src="/static/wallet-create.js?v=20260407a"></script>
   <script src="/static/router.js?v=20260707x1"></script>
-  <script src="/static/unifiedbalance.js?v=20260705c"></script>
+  <script src="/static/unifiedbalance.js?v=20260708-bring2arc"></script>
   <script src="/static/cross-chain-service.js?v=20260705c"></script>
   <script src="/static/turbo-bridge-core.js?v=20260704b"></script>
   <script src="/static/turbo-bridge-integration.js?v=20260704b"></script>
@@ -6287,12 +6297,12 @@
   <script src="/static/app.js?v=20260707x1"></script>
   <script src="/static/payments.js?v=20260704b"></script>
   <script src="/static/smart-payments.js?v=20260704b"></script>
-  <script src="/static/contracts.js?v=20260707ui3"></script>
+  <script src="/static/contracts.js?v=20260708-attest-client"></script>
   <script src="/static/dispute-center.js?v=20260706c"></script>
   <script src="/static/verified-contracts.js?v=20260411a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
-  <script src="/static/dex.js?v=20260703c"></script>
+  <script src="/static/dex.js?v=20260708-token-icons2"></script>
   <script src="/static/treasury.js?v=20260707t5"></script>
   <script src="/static/treasury-bridge-link.js?v=20260707l1"></script>
   <script src="/static/xbridge.js?v=20260708x-complete-fix"></script>
