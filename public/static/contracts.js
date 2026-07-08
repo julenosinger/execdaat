@@ -212,9 +212,10 @@ function cfEsc(s) {
 var CF_NEW_WINDOW_MS = 24 * 60 * 60 * 1000; // show "NEW" for 24h after creation
 function cfCreatedTs(c) {
   var raw = Number(c && c.createdAt) || 0;
-  if (raw > 0) return raw;
-  var id = Number(c && c.id) || 0;
-  return id < 0 ? Math.abs(id) : id;
+  if (raw > 0) return raw > 1e12 ? raw : raw * 1000; // normalize seconds → ms
+  // Unknown createdAt (freshly created, not yet indexed on-chain) → treat as
+  // newest so a brand-new contract always appears first in the list.
+  return Date.now();
 }
 function cfIsNew(c) {
   var raw = Number(c && c.createdAt) || 0;
@@ -1002,6 +1003,87 @@ function cfStateProgress(uiStatus) {
   </div>`;
 }
 
+// ─── Presentation helpers (v6 UI refresh — no logic/data changes) ───────────────
+// Deterministic wallet avatar (identicon-style). Purely visual, derived from the
+// address only — introduces no new data and never alters wallet handling.
+function cfAvatar(addr, size = 36) {
+  const a = (addr || '0x0').toLowerCase().replace(/^0x/, '');
+  let h = 0;
+  for (let i = 0; i < a.length; i++) h = (h * 31 + a.charCodeAt(i)) >>> 0;
+  const hue1 = h % 360;
+  const hue2 = (hue1 + 120) % 360;
+  const initials = (a.slice(0, 2) || '00').toUpperCase();
+  return `<span class="cf-avatar" aria-hidden="true" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.34)}px;background:linear-gradient(135deg,hsl(${hue1},68%,46%),hsl(${hue2},64%,38%));">${initials}</span>`;
+}
+
+// Copy-to-clipboard with graceful fallback + accessible toast confirmation.
+function cfCopy(text, label) {
+  const done = () => { if (typeof showToast === 'function') showToast(((label ? label + ' ' : '') + 'copied!').trim(), 'success'); };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => cfCopyFallback(text, done));
+    } else { cfCopyFallback(text, done); }
+  } catch (_) { cfCopyFallback(text, done); }
+}
+function cfCopyFallback(text, done) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (typeof done === 'function') done();
+  } catch (_) { /* non-critical */ }
+}
+
+// Format a millisecond timestamp (local metadata) consistently with cfTs (seconds).
+function cfTsMs(ms) {
+  if (!ms) return '—';
+  return new Date(Number(ms)).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+// Collapsible-section state is remembered in-memory so re-renders keep the view.
+window._cfCollapse = window._cfCollapse || {};
+function cfToggleSection(key) {
+  const body = document.getElementById('cf-sec-body-' + key);
+  const btn  = document.getElementById('cf-sec-btn-' + key);
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  window._cfCollapse[key] = isOpen ? 'closed' : 'open';
+  if (btn) {
+    btn.setAttribute('aria-expanded', String(!isOpen));
+    const chev = btn.querySelector('.cf-chevron');
+    if (chev) chev.style.transform = isOpen ? 'rotate(-90deg)' : 'rotate(0deg)';
+  }
+}
+
+// Small copy-button markup (address / hash) used across the detail sections.
+function cfCopyBtn(val, label) {
+  const safe = String(val || '').replace(/'/g, "\\'");
+  return `<button type="button" class="cf-icon-btn" title="Copy ${cfEsc(label || '')}" aria-label="Copy ${cfEsc(label || '')}" onclick="event.stopPropagation();cfCopy('${safe}','${cfEsc(label || '')}')"><i class="fas fa-copy"></i></button>`;
+}
+function cfExplorerBtn(path, label) {
+  return `<a class="cf-icon-btn" href="${CF_EXPLORER}/${path}" target="_blank" rel="noopener" title="View ${cfEsc(label || '')} on ArcScan" aria-label="View ${cfEsc(label || '')} on ArcScan" onclick="event.stopPropagation();"><i class="fas fa-external-link-alt"></i></a>`;
+}
+
+// Section wrapper — consistent card, optional collapsible header (a11y-friendly).
+function cfSection(key, title, icon, iconColor, bodyHtml, opts) {
+  opts = opts || {};
+  const collapsible = !!opts.collapsible;
+  const defState = opts.defaultOpen === false ? 'closed' : 'open';
+  const state = collapsible ? (window._cfCollapse[key] || defState) : 'open';
+  const isOpen = state === 'open';
+  const titleHtml = `<span class="cf-sec-title"><i class="fas ${icon}" style="color:${iconColor};"></i>${title}</span>`;
+  const head = collapsible
+    ? `<button type="button" id="cf-sec-btn-${key}" class="cf-sec-toggle" aria-expanded="${isOpen}" aria-controls="cf-sec-body-${key}" onclick="cfToggleSection('${key}')">${titleHtml}<i class="fas fa-chevron-down cf-chevron" style="transform:${isOpen ? 'rotate(0deg)' : 'rotate(-90deg)'};"></i></button>`
+    : titleHtml;
+  return `<section class="cf-sec" aria-label="${cfEsc(title)}">
+    <div class="cf-sec-head">${head}${opts.right ? `<span class="cf-sec-head-actions">${opts.right}</span>` : ''}</div>
+    <div class="cf-sec-body" id="cf-sec-body-${key}"${collapsible && !isOpen ? ' style="display:none;"' : ''}>${bodyHtml}</div>
+  </section>`;
+}
+
 // ─── Contract card ─────────────────────────────────────────────────────────────
 function cfContractCard(c, wallet) {
   const uiStatus  = cfUiStatus(c);
@@ -1116,63 +1198,83 @@ function cfContractCard(c, wallet) {
   </span>`;
 
   // ── Mode badge ─────────────────────────────────────────────────────────────
-  const modeBadge = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
-    background:rgba(55,138,221,0.06);border:1px solid rgba(55,138,221,0.15);
-    color:${modeInfo.color};padding:1px 8px;border-radius:999px;">
-    <i class="fas ${modeInfo.icon}" style="font-size:8px;"></i>${modeInfo.label}
+  const modeBadge = `<span class="cf-chip" style="color:${modeInfo.color};border-color:rgba(55,138,221,0.16);">
+    <i class="fas ${modeInfo.icon}"></i>${modeInfo.label}
   </span>`;
 
-  // ── Milestones ─────────────────────────────────────────────────────────────
-  const msHtml = milestones.length ? `
-    <div style="margin-top:10px;">
-      <p style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:6px;">Milestones</p>
-      ${milestones.map((m, i) => `
-        <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(55,138,221,0.06);">
-          <div style="width:18px;height:18px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:8px;
-            ${m.status==='Released'?'background:rgba(52,211,153,0.2);border:1px solid rgba(52,211,153,0.4);color:#34d399':'background:rgba(55,138,221,0.1);border:1px solid rgba(55,138,221,0.2);color:#60b4ff'}">
-            <i class="fas ${m.status==='Released'?'fa-check':'fa-clock'}"></i>
+  // ── Milestones — one card per milestone (dynamic count, handlers unchanged) ──
+  const msHtml = milestones.length ? milestones.map((m, i) => {
+    const rel = m.status === 'Released';
+    return `<div class="cf-ms">
+        <span class="cf-ms-num" style="${rel?'background:rgba(52,211,153,0.16);border:1px solid rgba(52,211,153,0.35);color:#34d399':'background:rgba(55,138,221,0.12);border:1px solid rgba(55,138,221,0.25);color:#60b4ff'}">${i + 1}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;color:#dbe4f2;word-break:break-word;">${cfEsc(m.description || ('Milestone ' + (i + 1)))}</div>
+          <div style="font-size:10.5px;color:#5f7ba0;margin-top:2px;">
+            <span style="color:${rel?'#34d399':'#7f93b5'};font-weight:700;"><i class="fas ${rel?'fa-check-circle':'fa-clock'} mr-1" style="font-size:9px;"></i>${rel?'Released':'Pending'}</span>
+            ${rel && Number(m.releasedAt) > 0 ? ` · Released ${cfTs(m.releasedAt)}` : ''}
           </div>
-          <span style="flex:1;font-size:12px;color:#8899bb;">${m.description}</span>
-          <span style="font-size:11px;font-weight:700;color:${m.status==='Released'?'#34d399':'#60b4ff'};">$${cfFmtUsdc(m.amount)}</span>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:14px;font-weight:800;color:${rel?'#34d399':'#60b4ff'};">$${cfFmtUsdc(m.amount)}</div>
           ${uiStatus==='Active'&&isClient&&m.status==='Pending'&&mode==='onchain'&&!isInDispute&&!isClosed
-            ? `<button onclick="cfReleaseMilestone(${c.id},${i})" style="font-size:10px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.25);color:#34d399;padding:2px 8px;border-radius:6px;cursor:pointer;">Release</button>`
+            ? `<button onclick="cfReleaseMilestone(${c.id},${i})" class="cf-action-btn cf-btn-receive" style="margin-top:5px;padding:3px 10px;font-size:10px;"><i class="fas fa-unlock mr-1"></i>Release</button>`
             : isInDispute && m.status==='Pending'
               ? `<span style="font-size:10px;color:#f87171;" title="Funds locked due to active dispute"><i class="fas fa-lock mr-1"></i>Locked</span>`
-              : `<span style="font-size:10px;color:${m.status==='Released'?'#34d399':'#3a4870'};">${m.status}</span>`}
-        </div>`).join('')}
-    </div>` : '';
+              : ''}
+        </div>
+      </div>`;
+  }).join('') : `<p style="font-size:12px;color:#5f7ba0;font-style:italic;margin:0;">No milestones defined for this contract.</p>`;
 
-  // ── Proofs section ─────────────────────────────────────────────────────────
+  // ── Proofs — professional attachment cards (thumbnails / handlers unchanged) ─
+  const proofsAddBtn = (uiStatus==='Active'||mode!=='onchain') && isContr
+    ? `<button onclick="cfShowProofUpload(${c.id})" class="cf-action-btn cf-btn-proof" style="padding:3px 10px;font-size:10px;"><i class="fas fa-upload mr-1"></i>Add</button>` : '';
   const proofsHtml = `
-    <div style="margin-top:8px;">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-        <p style="font-size:10px;color:#3a4870;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;flex:1;">Proof of Work</p>
-        ${proofBadge}
-        ${(uiStatus==='Active'||mode!=='onchain') && isContr
-          ? `<button onclick="cfShowProofUpload(${c.id})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);padding:2px 8px;border-radius:6px;cursor:pointer;"><i class="fas fa-upload mr-1"></i>Add</button>` : ''}
-      </div>
-      ${proofs.length ? proofs.map((p, pi) => `
-        <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,${p.committed?'0.3':'0.1'});border-radius:8px;margin-bottom:4px;">
-          <i class="fas ${p.type==='image'?'fa-image':p.type==='pdf'?'fa-file-pdf':'fa-file'}" style="color:${p.committed?'#34d399':'#a78bfa'};font-size:12px;flex-shrink:0;"></i>
-          <span style="flex:1;font-size:11px;color:#8899bb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${cfEsc(p.name)}">${cfEsc(p.name)}</span>
-          ${p.committed ? `<span style="font-size:9px;color:#34d399;flex-shrink:0;"><i class="fas fa-lock mr-1"></i>Committed</span>` : `<span style="font-size:9px;color:#fbbf24;flex-shrink:0;"><i class="fas fa-clock mr-1"></i>Pending</span>`}
-          <button onclick="cfViewProof(${c.id},${pi})" style="font-size:10px;color:#a78bfa;background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.18);padding:2px 8px;border-radius:6px;cursor:pointer;flex-shrink:0;"><i class="fas fa-eye mr-1"></i>Ver</button>
-          ${p.hash ? `<span style="font-size:9px;color:#3a4870;font-family:monospace;" title="SHA-256: ${p.hash}">${p.hash.slice(0,8)}…</span>` : ''}
-          ${isContr && !p.committed ? `<button onclick="cfDeleteProof(${c.id},${pi})" title="Delete proof" style="font-size:10px;color:#f87171;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.22);padding:2px 7px;border-radius:6px;cursor:pointer;flex-shrink:0;"><i class="fas fa-trash-alt"></i></button>` : ''}
-        </div>`).join('')
-        : `<p style="font-size:11px;color:#252a40;font-style:italic;padding:4px 0;">${t("cf_no_proof_submitted_yet")}</p>`}
+      ${proofs.length ? proofs.map((p, pi) => {
+        const isImg = p.type === 'image' || (p.mimeType && p.mimeType.startsWith('image/'));
+        const isPdf = p.type === 'pdf' || p.mimeType === 'application/pdf';
+        const isZip = /zip|compressed|x-7z|x-rar|x-tar|gzip/.test(p.mimeType || '') || /\.(zip|rar|7z|tar|gz)$/i.test(p.name || '');
+        const fileIcon = isPdf ? 'fa-file-pdf' : isZip ? 'fa-file-archive' : p.type === 'doc' ? 'fa-file-alt' : 'fa-file';
+        const thumb = isImg && p.url
+          ? `<img src="${p.url}" alt="${cfEsc(p.name)} preview" loading="lazy">`
+          : `<i class="fas ${fileIcon}" style="color:${p.committed?'#34d399':'#a78bfa'};font-size:17px;"></i>`;
+        return `<div class="cf-attach">
+          <span class="cf-attach-thumb">${thumb}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:700;color:#dbe4f2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${cfEsc(p.name)}">${cfEsc(p.name)}</div>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px;">
+              ${p.committed
+                ? `<span style="font-size:9.5px;font-weight:700;color:#34d399;"><i class="fas fa-lock mr-1" style="font-size:8px;"></i>Committed</span>`
+                : `<span style="font-size:9.5px;font-weight:700;color:#fbbf24;"><i class="fas fa-clock mr-1" style="font-size:8px;"></i>Pending commit</span>`}
+              ${p.uploadedAt ? `<span style="font-size:9.5px;color:#5f7ba0;"><i class="far fa-calendar mr-1"></i>${cfTsMs(p.uploadedAt)}</span>` : ''}
+              ${p.size ? `<span style="font-size:9.5px;color:#5f7ba0;">${(p.size/1024).toFixed(0)} KB</span>` : ''}
+            </div>
+            ${p.hash ? `<div style="display:flex;align-items:center;gap:5px;margin-top:5px;font-size:9.5px;color:#5f7ba0;">
+              <span>SHA-256:</span>
+              <span id="cf-hashS-${c.id}-${pi}" class="cf-mono">${p.hash.slice(0,10)}…</span>
+              <span id="cf-hashF-${c.id}-${pi}" class="cf-mono" style="display:none;word-break:break-all;">${p.hash}</span>
+              <button type="button" class="cf-icon-btn" title="Reveal full hash" aria-label="Reveal full hash" onclick="var S=document.getElementById('cf-hashS-${c.id}-${pi}'),F=document.getElementById('cf-hashF-${c.id}-${pi}');var open=F.style.display!=='none';F.style.display=open?'none':'inline';S.style.display=open?'inline':'none';this.querySelector('i').className=open?'fas fa-chevron-down':'fas fa-chevron-up';"><i class="fas fa-chevron-down"></i></button>
+              ${cfCopyBtn(p.hash, 'SHA-256 hash')}
+            </div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+            <button onclick="cfViewProof(${c.id},${pi})" class="cf-action-btn cf-btn-proof" style="padding:4px 11px;font-size:10px;"><i class="fas fa-eye mr-1"></i>View</button>
+            <button onclick="cfDownloadProofByUrl(${c.id},${pi})" class="cf-action-btn" style="padding:4px 11px;font-size:10px;background:rgba(96,180,255,0.08);border:1px solid rgba(96,180,255,0.2);color:#93c5fd;"><i class="fas fa-download mr-1"></i>Download</button>
+            ${isContr && !p.committed ? `<button onclick="cfDeleteProof(${c.id},${pi})" title="Delete proof" aria-label="Delete proof" class="cf-action-btn cf-btn-cancel" style="padding:4px 11px;font-size:10px;"><i class="fas fa-trash-alt"></i></button>` : ''}
+          </div>
+        </div>`;
+      }).join('')
+        : `<p style="font-size:12px;color:#5f7ba0;font-style:italic;margin:0;">${t("cf_no_proof_submitted_yet")}</p>`}
       ${proofs.length > 0 && !isCommitted && isClient ? `
-        <button onclick="cfCommitProof(${c.id})" style="width:100%;margin-top:6px;padding:7px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:#34d399;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">
+        <button onclick="cfCommitProof(${c.id})" style="width:100%;margin-top:10px;padding:9px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);color:#34d399;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">
           <i class="fas fa-stamp mr-1.5"></i>Commit Proof — Lock & Verify
-        </button>` : ''}
-    </div>`;
+        </button>` : ''}`;
 
   // ── Off-chain fields ────────────────────────────────────────────────────────
   const offchainHtml = mode !== 'onchain' ? `
-    <div style="margin-top:8px;padding:8px 10px;background:rgba(${mode==='custodial'?'167,139,250':'251,191,36'},0.06);border:1px solid rgba(${mode==='custodial'?'167,139,250':'251,191,36'},0.2);border-radius:10px;">
+    <div style="margin-top:12px;padding:10px 12px;background:rgba(${mode==='custodial'?'167,139,250':'251,191,36'},0.06);border:1px solid rgba(${mode==='custodial'?'167,139,250':'251,191,36'},0.2);border-radius:11px;">
       <div style="font-size:10px;font-weight:700;color:${modeInfo.color};text-transform:uppercase;margin-bottom:4px;"><i class="fas ${modeInfo.icon} mr-1"></i>${modeInfo.label}</div>
-      ${meta.paymentNote ? `<div style="font-size:11px;color:#8899bb;margin-bottom:4px;"><i class="fas fa-sticky-note mr-1" style="color:#fbbf24;"></i>${meta.paymentNote}</div>` : ''}
-      ${meta.escrowRef ? `<div style="font-size:11px;color:#8899bb;"><i class="fas fa-shield-alt mr-1" style="color:#a78bfa;"></i>Escrow Ref: <span style="font-family:monospace;">${meta.escrowRef}</span></div>` : ''}
+      ${meta.paymentNote ? `<div style="font-size:11px;color:#8899bb;margin-bottom:4px;"><i class="fas fa-sticky-note mr-1" style="color:#fbbf24;"></i>${cfEsc(meta.paymentNote)}</div>` : ''}
+      ${meta.escrowRef ? `<div style="font-size:11px;color:#8899bb;"><i class="fas fa-shield-alt mr-1" style="color:#a78bfa;"></i>Escrow Ref: <span style="font-family:monospace;">${cfEsc(meta.escrowRef)}</span></div>` : ''}
       ${meta.offchainStatus ? `<div style="margin-top:4px;font-size:11px;font-weight:600;color:${meta.offchainStatus==='confirmed'?'#34d399':meta.offchainStatus==='disputed'?'#f87171':'#fbbf24'};">
         Status: ${meta.offchainStatus.toUpperCase()}</div>` : ''}
     </div>` : '';
@@ -1255,100 +1357,235 @@ function cfContractCard(c, wallet) {
       ${meta.custodianAddr ? `<div style="font-size:11px;color:#c4b5fd;margin-top:4px;"><i class="fas fa-shield-alt mr-1" style="color:#a78bfa;"></i>Custodian: <span style="font-family:monospace;">${meta.custodianAddr.slice(0,10)}…${meta.custodianAddr.slice(-6)}</span></div>` : ''}
     </div>` : '';
 
-  return `
-  <div class="cf-card mb-4" id="cf-contract-${c.id}" style="overflow:hidden;">
-    <div style="padding:14px 16px 0;">
-      <!-- Header row -->
-      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
+  // ── Derived workflow state (presentation only — no logic/data changes) ──────
+  const msCount       = Number(c.milestoneCount) || milestones.length;
+  const signed        = !!c.contractorSigned;
+  const isFunded      = mode === 'onchain' ? (deposited > 0n) : (!!meta.offchainStatus && meta.offchainStatus !== 'pending');
+  const workSubmitted = hasProofs;
+  const approved      = isCommitted;
+  const released      = releasedAmt > 0n || uiStatus === 'Completed';
+  const completed     = uiStatus === 'Completed';
+  const cancelled     = uiStatus === 'Cancelled';
+  const youTag        = ' <span style="font-size:8.5px;font-weight:800;color:#34d399;">(You)</span>';
+
+  // Current-status summary line
+  let statusLine, statusLineColor, statusLineIcon;
+  if (isClosed)         { statusLine = 'Contract Closed';                statusLineColor = '#9ca3af'; statusLineIcon = 'fa-lock'; }
+  else if (isInDispute) { statusLine = 'In Dispute — funds locked';     statusLineColor = '#f87171'; statusLineIcon = 'fa-gavel'; }
+  else if (cancelled)   { statusLine = 'Contract Cancelled — refunded'; statusLineColor = '#f87171'; statusLineIcon = 'fa-times-circle'; }
+  else if (completed)   { statusLine = 'Contract Completed';            statusLineColor = '#34d399'; statusLineIcon = 'fa-check-circle'; }
+  else if (!isFunded)                     { statusLine = 'Awaiting Funding';              statusLineColor = '#fbbf24'; statusLineIcon = 'fa-hourglass-half'; }
+  else if (mode === 'onchain' && !signed) { statusLine = 'Awaiting Contractor Signature'; statusLineColor = '#67e8f9'; statusLineIcon = 'fa-pen-nib'; }
+  else if (!workSubmitted)                { statusLine = 'Awaiting Work Submission';       statusLineColor = '#fbbf24'; statusLineIcon = 'fa-hourglass-half'; }
+  else if (!approved)                     { statusLine = 'Waiting Client Approval';        statusLineColor = '#fbbf24'; statusLineIcon = 'fa-user-check'; }
+  else if (!released)                     { statusLine = 'Awaiting Fund Release';          statusLineColor = '#fbbf24'; statusLineIcon = 'fa-coins'; }
+  else                                    { statusLine = 'Finalizing';                     statusLineColor = '#67e8f9'; statusLineIcon = 'fa-spinner'; }
+
+  // Workflow checklist steps
+  const wfSteps = [{ label: 'Escrow Created', done: true }, { label: mode === 'onchain' ? 'Escrow Funded' : 'Agreement Registered', done: isFunded }];
+  if (mode === 'onchain') wfSteps.push({ label: 'Contractor Signed', done: signed });
+  wfSteps.push({ label: 'Work Submitted', done: workSubmitted }, { label: 'Client Approved', done: approved }, { label: 'Funds Released', done: released }, { label: 'Contract Completed', done: completed });
+  let curMarked = false;
+  const statusStepsHtml = wfSteps.map(s => {
+    const isCurrent = !s.done && !curMarked && !completed && !cancelled && !isClosed && !isInDispute;
+    if (isCurrent) curMarked = true;
+    const dotStyle = s.done
+      ? 'background:rgba(52,211,153,0.16);border:1px solid rgba(52,211,153,0.4);color:#34d399'
+      : isCurrent ? 'background:rgba(96,180,255,0.16);border:1px solid rgba(96,180,255,0.45);color:#60b4ff'
+                  : 'background:rgba(74,85,104,0.12);border:1px solid rgba(74,85,104,0.3);color:#5f7ba0';
+    return `<div class="cf-status-step">
+        <span class="dot" style="${dotStyle}"><i class="fas ${s.done ? 'fa-check' : isCurrent ? 'fa-dot-circle' : 'fa-circle'}" style="font-size:${s.done ? '9px' : '7px'};"></i></span>
+        <span class="lbl" style="color:${s.done ? '#cdd8ea' : isCurrent ? '#dbe4f2' : '#5f7ba0'};font-weight:${isCurrent ? '700' : '500'};">${s.label}</span>
+      </div>`;
+  }).join('');
+  const statusCardHtml = `${statusStepsHtml}
+      <div style="margin-top:12px;display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:11px;background:rgba(${statusLineColor==='#f87171'?'239,68,68':statusLineColor==='#34d399'?'52,211,153':statusLineColor==='#9ca3af'?'74,85,104':'55,138,221'},0.07);border:1px solid rgba(${statusLineColor==='#f87171'?'239,68,68':statusLineColor==='#34d399'?'52,211,153':statusLineColor==='#9ca3af'?'74,85,104':'55,138,221'},0.22);">
+        <i class="fas ${statusLineIcon}" style="color:${statusLineColor};"></i>
+        <span style="font-size:13px;font-weight:800;color:${statusLineColor};">${statusLine}</span>
+      </div>`;
+
+  // ── Action Required (connected participant only) ────────────────────────────
+  let ar = null;
+  if (isParticipant) {
+    if (isClosed) ar = { level: 'info', icon: 'fa-lock', title: 'No action required', sub: 'This contract has been closed.' };
+    else if (isInDispute) ar = { level: 'danger', icon: 'fa-gavel', title: 'Active dispute', sub: 'Funds are locked until the dispute is resolved.' };
+    else if (cancelled) ar = { level: 'danger', icon: 'fa-times-circle', title: 'Contract cancelled', sub: 'The escrow was refunded to the client.' };
+    else if (completed) ar = { level: 'ok', icon: 'fa-check-circle', title: 'No action required', sub: 'Contract successfully completed.' };
+    else if (mode === 'onchain') {
+      if ((uiStatus === 'Funded' || uiStatus === 'Pending') && isContr && !signed) ar = { level: 'attention', icon: 'fa-pen-nib', title: 'Sign the contract', sub: 'Sign to activate the escrow and begin work.' };
+      else if (uiStatus === 'Active' && isContr && !workSubmitted) ar = { level: 'attention', icon: 'fa-upload', title: 'Upload proof of work', sub: 'Submit your deliverables for client review.' };
+      else if (uiStatus === 'Active' && isContr && workSubmitted && !approved) ar = { level: 'info', icon: 'fa-hourglass-half', title: 'Awaiting client review', sub: 'Your proof was submitted and is pending approval.' };
+      else if (uiStatus === 'Active' && isClient && !workSubmitted) ar = { level: 'info', icon: 'fa-hourglass-half', title: 'Waiting for proof of work', sub: 'The contractor has not submitted deliverables yet.' };
+      else if (uiStatus === 'Active' && isClient && workSubmitted && !approved) ar = { level: 'attention', icon: 'fa-user-check', title: 'Review & commit proof', sub: 'Verify the submitted work and commit to continue.' };
+      else if (uiStatus === 'Active' && isClient && approved && !released) ar = { level: 'attention', icon: 'fa-coins', title: 'Release the funds', sub: 'Approve milestones to release escrow to the contractor.' };
+      else if (!isFunded && isClient) ar = { level: 'attention', icon: 'fa-hand-holding-usd', title: 'Fund the escrow', sub: 'Deposit USDC to activate the contract.' };
+    } else {
+      if (isContr && !workSubmitted) ar = { level: 'attention', icon: 'fa-upload', title: 'Upload proof of work', sub: 'Attach deliverables for this agreement.' };
+      else if (isClient && workSubmitted && !approved) ar = { level: 'attention', icon: 'fa-stamp', title: 'Commit the submitted proof', sub: 'Lock and verify the delivered work.' };
+    }
+    if (!ar) ar = { level: 'ok', icon: 'fa-check-circle', title: 'No action required', sub: 'Nothing needs your attention right now.' };
+  }
+  const actionReqHtml = ar ? `<div class="cf-alert cf-alert-${ar.level}">
+      <span class="cf-alert-ic"><i class="fas ${ar.icon}"></i></span>
+      <div><div class="cf-alert-title">${ar.title}</div><div class="cf-alert-sub">${ar.sub}</div></div>
+    </div>` : '';
+
+  // ── Participants ────────────────────────────────────────────────────────────
+  const partyCard = (label, addr, color, amtLabel, amtVal, amtColor, isYou) => `
+    <div class="cf-party"${isYou ? ' style="border-color:rgba(52,211,153,0.3);background:rgba(52,211,153,0.04);"' : ''}>
+      <div style="display:flex;align-items:center;gap:11px;">
+        ${cfAvatar(addr, 38)}
         <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:13px;font-weight:800;color:#dde2f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;" title="${cfEsc(c.title||'')}">${cfEsc(c.title || 'Untitled')}</span>
-            <span style="font-size:10px;color:#3a4870;font-family:monospace;">#${c.id}</span>
-            ${cfStatusBadge(uiStatus)}
-            ${cfIsNew(c) && uiStatus !== 'Completed' && uiStatus !== 'Cancelled' && !isClosed ? `<span title="Recently created" style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:800;letter-spacing:.06em;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;padding:2px 7px;border-radius:999px;box-shadow:0 0 10px rgba(34,197,94,.55);animation:cfNewPulse 2s ease-in-out infinite;"><i class="fas fa-star" style="font-size:7px;"></i>NEW</span>` : ''}
-            ${isInDispute ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#f87171;padding:1px 8px;border-radius:999px;"><i class="fas fa-gavel" style="font-size:8px;"></i>In Dispute</span>` : ''}
-            ${isClosed ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(74,85,104,0.15);border:1px solid rgba(74,85,104,0.3);color:#9ca3af;padding:1px 8px;border-radius:999px;"><i class="fas fa-lock" style="font-size:8px;"></i>Closed</span>` : ''}
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.07em;font-weight:700;color:${color};">${label}${isYou ? youTag : ''}</div>
+          <div style="display:flex;align-items:center;gap:5px;margin-top:3px;">
+            <span class="cf-mono" style="font-size:11.5px;color:#cdd8ea;overflow:hidden;text-overflow:ellipsis;" title="${addr}">${cfShort(addr)}</span>
+            ${cfCopyBtn(addr, label + ' address')}
+            ${cfExplorerBtn('address/' + addr, label)}
           </div>
-          <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;">
-            <span style="font-size:10px;font-weight:600;background:rgba(55,138,221,0.08);border:1px solid rgba(55,138,221,0.15);color:${roleColor};padding:1px 8px;border-radius:999px;">${role}</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:11px;padding-top:10px;border-top:1px solid rgba(55,138,221,0.1);">
+        <span style="font-size:10px;color:#5f7ba0;">${amtLabel}</span>
+        <span style="font-size:15px;font-weight:800;color:${amtColor};">$${amtVal}</span>
+      </div>
+    </div>`;
+  const participantsHtml = `<div>
+      ${partyCard('Client', c.client, '#60b4ff', 'Amount Paid', cfFmtUsdc(mode === 'onchain' ? deposited : total), '#60b4ff', isClient)}
+      ${partyCard('Contractor', c.contractor, '#34d399', 'Amount Received', cfFmtUsdc(releasedAmt), '#34d399', isContr)}
+    </div>${metaHtml}`;
+
+  // ── Financial summary ───────────────────────────────────────────────────────
+  const finMetrics = mode === 'onchain' ? `
+      <div class="cf-metrics">
+        <div class="cf-metric"><div class="k">Escrow Amount</div><div class="v">$${cfFmtUsdc(total)}</div></div>
+        <div class="cf-metric"><div class="k">Platform Fee (0.2%)</div><div class="v sm" style="color:#fbbf24;">$${cfFmtUsdc(feeRaw)}</div></div>
+        <div class="cf-metric"><div class="k">Contractor Receives</div><div class="v sm" style="color:#34d399;">$${cfFmtUsdc(netRaw)}</div></div>
+        <div class="cf-metric"><div class="k">Funding</div><div class="v">${pct}%</div></div>
+        <div class="cf-metric"><div class="k">Token</div><div class="v sm">USDC</div></div>
+        <div class="cf-metric"><div class="k">Network</div><div class="v sm">${CF_NETWORK_NAME}</div></div>
+      </div>
+      <div style="margin-top:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#5f7ba0;margin-bottom:5px;">
+          <span>Escrow funded: $${cfFmtUsdc(deposited)} / $${cfFmtUsdc(total)}</span><span>${pct}%</span>
+        </div>
+        <div style="height:6px;background:rgba(55,138,221,0.12);border-radius:6px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#378ADD,#1D9E75);border-radius:6px;transition:width 0.5s;"></div></div>
+      </div>` : `
+      <div class="cf-metrics">
+        <div class="cf-metric"><div class="k">Contract Amount</div><div class="v">$${cfFmtUsdc(total)}</div></div>
+        <div class="cf-metric"><div class="k">Escrow Type</div><div class="v sm" style="color:${modeInfo.color};">${modeInfo.label}</div></div>
+        <div class="cf-metric"><div class="k">Network</div><div class="v sm">${CF_NETWORK_NAME}</div></div>
+      </div>${offchainHtml}`;
+
+  // ── Timeline (existing timestamps only) ─────────────────────────────────────
+  const tlEvents = [];
+  if (c.createdAt) tlEvents.push({ sort: Number(c.createdAt) * 1000, label: 'Contract Created', icon: 'fa-file-contract', color: '#60b4ff', time: cfTs(c.createdAt) });
+  if (mode === 'onchain' && deposited > 0n && c.createdAt) tlEvents.push({ sort: Number(c.createdAt) * 1000 + 1, label: 'Escrow Funded', icon: 'fa-coins', color: '#34d399', time: cfTs(c.createdAt) });
+  if (c.startedAt) tlEvents.push({ sort: Number(c.startedAt) * 1000, label: 'Contractor Signed', icon: 'fa-pen-nib', color: '#67e8f9', time: cfTs(c.startedAt) });
+  const firstProofTs = proofs.length ? Math.min(...proofs.map(p => Number(p.uploadedAt) || Infinity)) : 0;
+  if (firstProofTs && isFinite(firstProofTs)) tlEvents.push({ sort: firstProofTs, label: 'Work Submitted', icon: 'fa-upload', color: '#a78bfa', time: cfTsMs(firstProofTs) });
+  if (meta.commitmentTs) tlEvents.push({ sort: Number(meta.commitmentTs), label: 'Proof Committed / Approved', icon: 'fa-stamp', color: '#34d399', time: cfTsMs(meta.commitmentTs) });
+  const relTimes = milestones.filter(m => m.status === 'Released' && Number(m.releasedAt) > 0).map(m => Number(m.releasedAt) * 1000);
+  if (relTimes.length) { const lr = Math.max(...relTimes); tlEvents.push({ sort: lr, label: 'Funds Released', icon: 'fa-unlock', color: '#34d399', time: cfTsMs(lr) }); }
+  if (dispute && dispute.openedAt) tlEvents.push({ sort: Number(dispute.openedAt), label: 'Dispute Opened', icon: 'fa-gavel', color: '#f87171', time: cfTsMs(dispute.openedAt) });
+  if (c.completedAt) tlEvents.push({ sort: Number(c.completedAt) * 1000, label: 'Contract Completed', icon: 'fa-flag-checkered', color: '#34d399', time: cfTs(c.completedAt) });
+  if (isClosed && meta.closedAt) tlEvents.push({ sort: Number(meta.closedAt), label: 'Contract Closed', icon: 'fa-lock', color: '#9ca3af', time: cfTsMs(meta.closedAt) });
+  tlEvents.sort((a, b) => a.sort - b.sort);
+  const timelineHtml = tlEvents.length ? `<div class="cf-tl">${tlEvents.map((e, i) => `
+      <div class="cf-tl-item">
+        <div class="cf-tl-rail">
+          <span class="cf-tl-dot" style="border:1px solid ${e.color};color:${e.color};background:rgba(8,11,24,0.6);"><i class="fas ${e.icon}"></i></span>
+          ${i < tlEvents.length - 1 ? '<span class="cf-tl-line"></span>' : ''}
+        </div>
+        <div class="cf-tl-body"><div class="cf-tl-label">${e.label}</div><div class="cf-tl-time">${e.time}</div></div>
+      </div>`).join('')}</div>` : `<p style="font-size:12px;color:#5f7ba0;font-style:italic;margin:0;">No timeline events recorded yet.</p>`;
+
+  // ── Blockchain information (existing data only — no new requests) ────────────
+  const txLogAll = (() => { try { return JSON.parse(localStorage.getItem(CF_TX_LOG_KEY) || '[]'); } catch (_) { return []; } })();
+  const myTxs = txLogAll.filter(x => String(x.contractId) === String(c.id) && /^0x[0-9a-fA-F]{64}$/.test(x.txHash || ''));
+  const bcRow = (label, value, mono, extra) => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(55,138,221,0.08);">
+      <span style="font-size:10.5px;color:#5f7ba0;min-width:118px;flex-shrink:0;">${label}</span>
+      <span class="${mono ? 'cf-mono' : ''}" style="font-size:11.5px;color:#cdd8ea;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${cfEsc(String(value))}">${cfEsc(String(value))}</span>
+      ${extra || ''}
+    </div>`;
+  const blockchainHtml = `
+      ${bcRow('Network', CF_NETWORK_NAME + ' · Chain ' + CF_CHAIN_ID)}
+      ${mode === 'onchain' ? bcRow('Contract (Factory)', CF_FACTORY_ADDR, true, cfCopyBtn(CF_FACTORY_ADDR, 'contract address') + cfExplorerBtn('address/' + CF_FACTORY_ADDR, 'contract')) : ''}
+      ${mode === 'onchain' ? bcRow('USDC Token', CF_USDC_ADDR, true, cfCopyBtn(CF_USDC_ADDR, 'USDC address') + cfExplorerBtn('address/' + CF_USDC_ADDR, 'token')) : ''}
+      ${meta.commitmentHash ? bcRow('Commit Hash', meta.commitmentHash, true, cfCopyBtn(meta.commitmentHash, 'commit hash')) : ''}
+      ${meta.escrowRef ? bcRow('Escrow Ref', meta.escrowRef, true, cfCopyBtn(meta.escrowRef, 'escrow ref')) : ''}
+      ${myTxs.map(x => bcRow('Tx · ' + (x.action || 'transaction'), x.txHash, true, cfCopyBtn(x.txHash, 'transaction hash') + cfExplorerBtn('tx/' + x.txHash, 'transaction'))).join('')}
+      ${bcRow('Created', cfTs(c.createdAt))}
+      ${c.completedAt ? bcRow('Completed', cfTs(c.completedAt)) : ''}
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="cfViewOnChainProofs(${c.id})" class="cf-action-btn" style="background:rgba(16,185,129,0.09);border:1px solid rgba(16,185,129,0.28);color:#34d399;"><i class="fas fa-search-plus mr-1.5"></i>View On-Chain Proofs</button>
+        ${mode === 'onchain' ? `<a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" rel="noopener" class="cf-action-btn cf-btn-receipt"><i class="fas fa-external-link-alt mr-1.5"></i>Open in ArcScan</a>` : ''}
+      </div>`;
+
+  // ── Hide button (top of card) — contract stays on-chain, only hidden locally ─
+  const hideBtn = `<button class="cf-action-btn" onclick="event.stopPropagation();if(typeof arcHideContract==='function')arcHideContract('${c.id}');cfRenderContracts(cfState.contracts,window.walletState?.address);" title="Hide from view — on-chain contracts cannot be deleted, only hidden" aria-label="Hide contract from view" style="padding:3px 9px;font-size:10px;background:rgba(74,85,104,0.12);border:1px solid rgba(74,85,104,0.3);color:#9ca3af;"><i class="fas fa-eye-slash mr-1"></i>Hide</button>`;
+
+  const headerBadges = `${cfStatusBadge(uiStatus)}
+      ${cfIsNew(c) && uiStatus !== 'Completed' && uiStatus !== 'Cancelled' && !isClosed ? `<span title="Recently created" style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:800;letter-spacing:.06em;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;padding:2px 7px;border-radius:999px;box-shadow:0 0 10px rgba(34,197,94,.55);animation:cfNewPulse 2s ease-in-out infinite;"><i class="fas fa-star" style="font-size:7px;"></i>NEW</span>` : ''}
+      ${isInDispute ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#f87171;padding:2px 8px;border-radius:999px;"><i class="fas fa-gavel" style="font-size:8px;"></i>In Dispute</span>` : ''}
+      ${isClosed ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:rgba(74,85,104,0.15);border:1px solid rgba(74,85,104,0.3);color:#9ca3af;padding:2px 8px;border-radius:999px;"><i class="fas fa-lock" style="font-size:8px;"></i>Closed</span>` : ''}`;
+
+  const primaryActionsHtml = actionBtns
+    ? `<div class="cf-actions-row">${actionBtns}</div>`
+    : `<p style="font-size:12px;color:#5f7ba0;font-style:italic;margin:0;">No actions available for your role on this contract.</p>`;
+
+  return `
+  <div class="cf-card2 mb-4" id="cf-contract-${c.id}">
+    <div style="height:3px;background:linear-gradient(90deg,transparent,#378ADD 40%,#1D9E75 60%,transparent);"></div>
+    <div class="cf-body">
+
+      <!-- 1. Header -->
+      <div class="cf-hdr">
+        <div style="min-width:0;flex:1;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px;">${headerBadges}</div>
+          <h3 class="cf-hdr-title" title="${cfEsc(c.title || '')}">${cfEsc(c.title || 'Untitled Contract')}</h3>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;">
+            <span class="cf-chip cf-mono">#${c.id}</span>
             ${modeBadge}
+            <span class="cf-chip"><i class="fas fa-tasks"></i>${msCount} Milestone${msCount === 1 ? '' : 's'}</span>
+            <span class="cf-chip" style="color:${roleColor};"><i class="fas fa-user"></i>${role}</span>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
-          <div style="text-align:right;">
-            <div style="font-size:18px;font-weight:800;color:#dde2f0;">$${cfFmtUsdc(total)}</div>
-            <div style="font-size:10px;color:#3a4870;">USDC · 0.2% fee</div>
-            <div style="font-size:10px;color:#4a6490;">Net: $${cfFmtUsdc(netRaw)}</div>
-          </div>
-          <!-- Hide button — contract still exists on-chain, only hidden from view -->
-          <button class="arc-dismiss-btn"
-            onclick="event.stopPropagation();if(typeof arcHideContract==='function')arcHideContract('${c.id}');cfRenderContracts(cfState.contracts,window.walletState?.address);"
-            title="Hide from view — on-chain contracts cannot be deleted, only hidden"
-            style="width:auto;height:auto;font-size:11px;padding:3px 9px;border-radius:7px;font-weight:600;letter-spacing:0.01em;">Hide</button>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:6px;">${hideBtn}</div>
+          <div class="cf-amount-xl">$${cfFmtUsdc(total)}<small>USDC</small></div>
+          <div style="font-size:10px;color:#5f7ba0;margin-top:5px;">Net: <span style="color:#34d399;font-weight:700;">$${cfFmtUsdc(netRaw)}</span></div>
         </div>
       </div>
 
-      <!-- Escrow bar (only for on-chain) -->
-      ${mode === 'onchain' ? `
-      <div style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;font-size:10px;color:#3a4870;margin-bottom:4px;">
-          <span>Escrow: $${cfFmtUsdc(deposited)} / $${cfFmtUsdc(total)}</span>
-          <span>${pct}% funded</span>
-        </div>
-        <div style="height:4px;background:rgba(55,138,221,0.1);border-radius:4px;overflow:hidden;">
-          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#378ADD,#1D9E75);border-radius:4px;transition:width 0.5s;"></div>
-        </div>
-      </div>` : ''}
+      <!-- 2. Action required -->
+      ${actionReqHtml}
 
-      <!-- Parties -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-        <div style="background:rgba(55,138,221,0.04);border:1px solid rgba(55,138,221,0.1);border-radius:10px;padding:8px;">
-          <p style="font-size:9px;color:#3a4870;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:3px;">Client</p>
-          <a href="${CF_EXPLORER}/address/${c.client}" target="_blank" style="font-size:11px;font-family:monospace;color:#60b4ff;">${cfShort(c.client)}</a>
-        </div>
-        <div style="background:rgba(29,158,117,0.04);border:1px solid rgba(29,158,117,0.1);border-radius:10px;padding:8px;">
-          <p style="font-size:9px;color:#3a4870;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:3px;">Contractor</p>
-          <a href="${CF_EXPLORER}/address/${c.contractor}" target="_blank" style="font-size:11px;font-family:monospace;color:#34d399;">${cfShort(c.contractor)}</a>
-        </div>
-      </div>
-
-      <!-- Fee breakdown (on-chain only) -->
-      ${mode === 'onchain' ? `
-      <div style="display:flex;gap:8px;margin-bottom:10px;font-size:10px;">
-        <div style="flex:1;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:6px 10px;">
-          <div style="color:#6b7280;">Platform Fee (0.2%)</div>
-          <div style="color:#fbbf24;font-weight:700;">$${cfFmtUsdc(feeRaw)} USDC</div>
-        </div>
-        <div style="flex:1;background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.15);border-radius:8px;padding:6px 10px;">
-          <div style="color:#6b7280;">Net to Contractor</div>
-          <div style="color:#34d399;font-weight:700;">$${cfFmtUsdc(netRaw)} USDC</div>
-        </div>
-      </div>` : ''}
-
-      ${notesHtml}
-      ${offchainHtml}
-      ${metaHtml}
-      ${msHtml}
-      ${proofsHtml}
+      <!-- Dispute / closed notices (existing data) -->
       ${disputeHtml}
       ${closedHtml}
 
-      <!-- State progress -->
-      <div style="margin:10px 0;">${cfStateProgress(uiStatus)}</div>
-
-      <!-- Timestamps -->
-      <div style="font-size:10px;color:#252a40;margin-bottom:6px;">
-        Created: ${cfTs(c.createdAt)}
-        ${c.startedAt ? ` · Started: ${cfTs(c.startedAt)}` : ''}
-        ${c.completedAt ? ` · Completed: ${cfTs(c.completedAt)}` : ''}
-        ${mode==='onchain' ? ` · <a href="${CF_EXPLORER}/address/${CF_FACTORY_ADDR}" target="_blank" style="color:#3a5a8a;">ArcScan ↗</a>` : ''}
+      <!-- Two-column detail grid (compact) -->
+      <div class="cf-cols">
+        <div class="cf-col">
+          ${cfSection('status-' + c.id, 'Current Status', 'fa-list-check', '#60b4ff', statusCardHtml)}
+          ${cfSection('fin-' + c.id, 'Financial Summary', 'fa-coins', '#fbbf24', finMetrics)}
+          ${cfSection('tl-' + c.id, 'Timeline', 'fa-stream', '#67e8f9', timelineHtml, { collapsible: true, defaultOpen: false })}
+        </div>
+        <div class="cf-col">
+          ${cfSection('parties-' + c.id, 'Participants', 'fa-users', '#60b4ff', participantsHtml)}
+          ${cfSection('ms-' + c.id, 'Milestones', 'fa-tasks', '#a78bfa', msHtml, { right: `<span class="cf-chip"><i class="fas fa-layer-group"></i>${milestones.length || msCount}</span>` })}
+          ${cfSection('proof-' + c.id, 'Proof of Work', 'fa-shield-alt', '#a78bfa', proofsHtml, { collapsible: true, defaultOpen: true, right: `${proofBadge}${proofsAddBtn}` })}
+          ${cfSection('bc-' + c.id, 'Blockchain Information', 'fa-link', '#60b4ff', blockchainHtml, { collapsible: true, defaultOpen: false })}
+        </div>
       </div>
-      <!-- Local-only disclaimer -->
-      <p style="font-size:9px;color:#2a4030;margin:0 0 6px;line-height:1.3;">
-        <i class="fas fa-info-circle" style="margin-right:3px;"></i>Local only — contract still exists on-chain
-      </p>
+
+      <!-- Notes (existing data) -->
+      ${notesHtml}
+
+      <!-- 10. Actions -->
+      ${cfSection('act-' + c.id, 'Actions', 'fa-bolt', '#34d399', primaryActionsHtml)}
+
     </div>
-    ${actionBtns ? `<div style="padding:10px 16px 14px;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid rgba(55,138,221,0.08);">${actionBtns}</div>` : ''}
   </div>`;
 }
 
@@ -4021,6 +4258,9 @@ window.cfUiStatus             = cfUiStatus;
 window.loadContracts          = cfLoadContracts;
 window.cfRenderProofPreview   = cfRenderProofPreview;
 window.cfViewProof            = cfViewProof;
+// Presentation helpers (v6 UI refresh)
+window.cfCopy                 = cfCopy;
+window.cfToggleSection        = cfToggleSection;
 window.cfUpdateNetworkBanner  = cfUpdateNetworkBanner;
 window.cfLogTx                = cfLogTx;
 window.cfGetSelectedMode      = cfGetSelectedMode;

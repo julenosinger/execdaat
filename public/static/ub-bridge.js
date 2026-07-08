@@ -145,11 +145,7 @@
     if (S.sym !== 'USDC') { toast('Cross-chain supports USDC', 'warning'); return; }
     if (amount <= 0) { el('ubx-status').textContent = 'Enter an amount.'; return; }
     if (S.fromKey === S.toKey) { el('ubx-status').textContent = 'Choose a different destination network.'; return; }
-    if (S.fromKey !== ARC_KEY && S.toKey === ARC_KEY) {
-      el('ubx-status').innerHTML = '<span style="color:#f87171;">Bridging from other chains into Arc is temporarily unavailable — inbound liquidity is depleted. Please don\u2019t use this route right now; try again later.</span>';
-      el('ubx-exec-btn').disabled = true;
-      return;
-    }
+    // Inbound (Other Chains → Arc) is ENABLED — continue to the real route decision below.
     if (S.balance != null && amount > S.balance) { el('ubx-status').innerHTML = '<span style="color:#f87171;">Insufficient balance.</span>'; return; }
 
     S.quoting = true;

@@ -93,6 +93,8 @@ function switchTab(tab) {
         contracts: ['border-blue-500',   'text-blue-400'],
         otc:       ['border-indigo-500', 'text-indigo-400'],
         dex:       ['border-yellow-500', 'text-yellow-400'],
+        treasury:  ['border-amber-500',  'text-amber-400'],
+        xbridge:   ['border-cyan-500',   'text-cyan-400'],
         bridge:    ['border-cyan-500',   'text-cyan-400'],
         multisend: ['border-cyan-500',   'text-cyan-400'],
         autonoma:  ['border-purple-500', 'text-purple-400'],
@@ -159,6 +161,22 @@ function switchTab(tab) {
         window.ammInit();
       } else if (window.ammRefreshAll) {
         window.ammRefreshAll();
+      }
+    }
+    if (tab === 'treasury') {
+      if (window.treasuryInit && !window._treasuryInitialized) {
+        window._treasuryInitialized = true;
+        window.treasuryInit();
+      } else if (window.treasuryRefresh) {
+        window.treasuryRefresh();
+      }
+    }
+    if (tab === 'xbridge') {
+      if (window.xbridgeInit && !window._xbridgeInitialized) {
+        window._xbridgeInitialized = true;
+        window.xbridgeInit();
+      } else if (window.xbridgeRefresh) {
+        window.xbridgeRefresh();
       }
     }
     if (tab === 'bridge') {

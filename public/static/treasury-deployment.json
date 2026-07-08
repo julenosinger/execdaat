@@ -1,0 +1,47 @@
+{
+  "configured": true,
+  "network": "Arc Testnet",
+  "chainId": 5042002,
+  "environment": "testnet",
+  "wallet": {
+    "address": "0xBF95437aC325b579Af46849592Ae685314998745"
+  },
+  "treasury": {
+    "address": "0x1fd3cd592b58e838ab778Baa14f842EBEa52853D",
+    "version": "1.0.0",
+    "type": "multisig-governance",
+    "deployBlock": 50650632,
+    "signers": [
+      "0xBF95437aC325b579Af46849592Ae685314998745"
+    ],
+    "threshold": 1
+  },
+  "vault": {
+    "address": "0x1e039fF538Ed84Ad54610D644ca36D4b03167B87",
+    "version": "1.0.0",
+    "type": "inbound-liquidity",
+    "deployBlock": 50650643,
+    "governor": "0x1fd3cd592b58e838ab778Baa14f842EBEa52853D",
+    "operators": [
+      "0xBF95437aC325b579Af46849592Ae685314998745"
+    ]
+  },
+  "assets": [
+    {
+      "address": "0x3600000000000000000000000000000000000000",
+      "symbol": "USDC",
+      "decimals": 6
+    },
+    {
+      "address": "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+      "symbol": "EURC",
+      "decimals": 6
+    }
+  ],
+  "chains": [
+    "arc"
+  ],
+  "direction": "inbound (External Chains -> Arc)",
+  "deployedAt": "2026-07-07T20:46:31.489Z",
+  "note": "Addresses only — never contains keys or secrets. Consumed by the Treasury page for auto-discovery."
+}

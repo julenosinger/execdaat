@@ -18,6 +18,11 @@ dist-vercel/
 .env
 .dev.vars
 
+# Treasury secrets — NEVER commit keys/keystores/mnemonics (operator-side only)
+.treasury-secrets/
+**/.treasury-secrets/
+*.keystore.json
+
 # Dependencies lockfiles (optional - uncomment if needed)
 # package-lock.json
 # yarn.lock

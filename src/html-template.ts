@@ -1390,6 +1390,93 @@ export function getMainHTML(): string {
         .cf-btn-cancel:hover { background:rgba(239,68,68,0.15); }
         .cf-btn-receipt  { background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);color:#93c5fd; }
         .cf-btn-receipt:hover { background:rgba(59,130,246,0.18); }
+
+        /* ─── Contract Details — enterprise section layout (v6 UI refresh) ─── */
+        .cf-card2 { background:rgba(8,11,24,0.96); border:1px solid rgba(55,138,221,0.14); border-radius:18px; overflow:hidden; transition:border-color 0.2s; }
+        .cf-card2:hover { border-color:rgba(55,138,221,0.28); }
+        .cf-card2 .cf-body { padding:18px; display:flex; flex-direction:column; gap:14px; }
+        .cf-sec { background:rgba(12,16,32,0.6); border:1px solid rgba(55,138,221,0.12); border-radius:14px; padding:14px 16px; }
+        .cf-sec-head { display:flex; align-items:center; gap:10px; }
+        .cf-sec-body { margin-top:12px; }
+        .cf-sec-title { display:inline-flex; align-items:center; gap:7px; font-size:11px; font-weight:800; letter-spacing:0.09em; text-transform:uppercase; color:#8aaac8; margin:0; }
+        .cf-sec-title i { font-size:11px; }
+        .cf-sec-toggle { display:inline-flex; align-items:center; gap:8px; background:none; border:none; padding:0; margin:0; cursor:pointer; flex:1; text-align:left; color:inherit; }
+        .cf-sec-toggle:focus-visible { outline:2px solid #60b4ff; outline-offset:3px; border-radius:6px; }
+        .cf-sec-head-actions { margin-left:auto; display:inline-flex; align-items:center; gap:6px; }
+        .cf-chevron { margin-left:auto; color:#4a6490; font-size:11px; transition:transform 0.2s ease; }
+
+        .cf-hdr { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+        .cf-hdr-title { font-size:16px; font-weight:800; color:#eef2fb; line-height:1.3; word-break:break-word; }
+        .cf-amount-xl { font-size:30px; font-weight:800; line-height:1; color:#eef2fb; letter-spacing:-0.02em; }
+        .cf-amount-xl small { font-size:13px; font-weight:700; color:#7a9cc0; margin-left:4px; letter-spacing:0; }
+        .cf-chip { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:999px; background:rgba(55,138,221,0.08); border:1px solid rgba(55,138,221,0.16); color:#9db8d8; }
+        .cf-chip i { font-size:9px; }
+
+        .cf-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .cf-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+        .cf-metric { background:rgba(55,138,221,0.05); border:1px solid rgba(55,138,221,0.12); border-radius:11px; padding:10px 12px; }
+        .cf-metric .k { font-size:9.5px; text-transform:uppercase; letter-spacing:0.07em; font-weight:700; color:#5f7ba0; margin-bottom:4px; }
+        .cf-metric .v { font-size:15px; font-weight:800; color:#dde6f5; }
+        .cf-metric .v.sm { font-size:13px; }
+
+        .cf-party { background:rgba(55,138,221,0.04); border:1px solid rgba(55,138,221,0.12); border-radius:13px; padding:12px; }
+        .cf-avatar { display:inline-flex; align-items:center; justify-content:center; border-radius:50%; color:#fff; font-weight:800; flex-shrink:0; box-shadow:0 2px 8px rgba(0,0,0,0.35); letter-spacing:0.02em; }
+        .cf-icon-btn { width:24px; height:24px; border-radius:6px; background:rgba(55,138,221,0.09); border:1px solid rgba(55,138,221,0.2); color:#7fa8d8; cursor:pointer; font-size:10px; display:inline-flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; }
+        .cf-icon-btn:hover { background:rgba(55,138,221,0.2); color:#bcd6f5; }
+        .cf-icon-btn:focus-visible { outline:2px solid #60b4ff; outline-offset:2px; }
+
+        .cf-ms { display:flex; align-items:center; gap:10px; padding:10px 12px; background:rgba(55,138,221,0.04); border:1px solid rgba(55,138,221,0.1); border-radius:11px; }
+        .cf-ms + .cf-ms { margin-top:8px; }
+        .cf-ms-num { width:24px; height:24px; border-radius:8px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; }
+
+        .cf-attach { display:flex; align-items:center; gap:11px; padding:11px 12px; background:rgba(167,139,250,0.05); border:1px solid rgba(167,139,250,0.14); border-radius:12px; }
+        .cf-attach + .cf-attach { margin-top:8px; }
+        .cf-attach-thumb { width:42px; height:42px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; overflow:hidden; background:rgba(167,139,250,0.1); border:1px solid rgba(167,139,250,0.2); }
+        .cf-attach-thumb img { width:100%; height:100%; object-fit:cover; }
+
+        .cf-tl { position:relative; padding-left:6px; }
+        .cf-tl-item { position:relative; display:flex; gap:12px; padding-bottom:14px; }
+        .cf-tl-item:last-child { padding-bottom:0; }
+        .cf-tl-rail { position:relative; display:flex; flex-direction:column; align-items:center; flex-shrink:0; }
+        .cf-tl-dot { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; flex-shrink:0; z-index:1; }
+        .cf-tl-line { width:2px; flex:1; background:rgba(55,138,221,0.18); margin-top:2px; min-height:10px; }
+        .cf-tl-body { padding-top:3px; }
+        .cf-tl-label { font-size:12.5px; font-weight:700; color:#cdd8ea; }
+        .cf-tl-time { font-size:10.5px; color:#5f7ba0; margin-top:1px; }
+
+        .cf-status-step { display:flex; align-items:center; gap:9px; padding:6px 0; }
+        .cf-status-step .dot { width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; flex-shrink:0; }
+        .cf-status-step .lbl { font-size:12.5px; }
+
+        .cf-alert { border-radius:13px; padding:13px 15px; display:flex; align-items:flex-start; gap:11px; }
+        .cf-alert .cf-alert-ic { width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:13px; }
+        .cf-alert-title { font-size:13px; font-weight:800; margin-bottom:2px; }
+        .cf-alert-sub { font-size:11.5px; opacity:0.85; }
+        .cf-alert-attention { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3); }
+        .cf-alert-attention .cf-alert-ic { background:rgba(245,158,11,0.16); color:#fbbf24; }
+        .cf-alert-attention .cf-alert-title { color:#fbbf24; }
+        .cf-alert-danger { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); }
+        .cf-alert-danger .cf-alert-ic { background:rgba(239,68,68,0.16); color:#f87171; }
+        .cf-alert-danger .cf-alert-title { color:#f87171; }
+        .cf-alert-ok { background:rgba(52,211,153,0.07); border:1px solid rgba(52,211,153,0.25); }
+        .cf-alert-ok .cf-alert-ic { background:rgba(52,211,153,0.15); color:#34d399; }
+        .cf-alert-ok .cf-alert-title { color:#34d399; }
+        .cf-alert-info { background:rgba(96,180,255,0.07); border:1px solid rgba(96,180,255,0.25); }
+        .cf-alert-info .cf-alert-ic { background:rgba(96,180,255,0.15); color:#60b4ff; }
+        .cf-alert-info .cf-alert-title { color:#93c5fd; }
+
+        .cf-actions-row { display:flex; gap:8px; flex-wrap:wrap; }
+        .cf-actions-sec { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; padding-top:12px; border-top:1px dashed rgba(55,138,221,0.14); }
+        .cf-mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+
+        @media (max-width: 720px) {
+          .cf-grid-2 { grid-template-columns:1fr; }
+          .cf-metrics { grid-template-columns:1fr 1fr; }
+          .cf-amount-xl { font-size:26px; }
+        }
+        body.light-mode .cf-card2 { background:var(--lm-bg-raised)!important; border:1px solid var(--lm-border-soft)!important; box-shadow:var(--lm-shadow-xs)!important; }
+        body.light-mode .cf-sec { background:var(--lm-bg-sunken)!important; border:1px solid var(--lm-border-soft)!important; }
+        body.light-mode .cf-hdr-title, body.light-mode .cf-amount-xl, body.light-mode .cf-metric .v { color:var(--lm-text)!important; }
       </style>
 
       <!-- ── Network warning banner (shown on wrong chain) ── -->
@@ -4589,7 +4676,7 @@ export function getMainHTML(): string {
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
   <script src="/static/app.js?v=20260404a"></script>
   <script src="/static/payments.js?v=20260330a"></script>
-  <script src="/static/contracts.js?v=20250325a"></script>
+  <script src="/static/contracts.js?v=20260707ui"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20250325b"></script>

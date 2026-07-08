@@ -101,6 +101,14 @@
   Pragma: no-cache
   X-Content-Type-Options: nosniff
 
+# Multisend JS — no-cache so fixes propagate immediately to all users.
+# The immutable /static/* rule was serving a stale copy (missing msEditAll and
+# other v7 functions) under an old ?v= URL. Revalidate on every load instead.
+/static/multisend.js
+  Cache-Control: no-store, no-cache, must-revalidate
+  Pragma: no-cache
+  X-Content-Type-Options: nosniff
+
 # HTML pages — no caching (always fresh)
 /*.html
   Cache-Control: no-store
