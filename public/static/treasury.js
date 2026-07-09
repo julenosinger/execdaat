@@ -23,7 +23,7 @@
   const TRS_CHAIN_ID = 5042002;
   const TRS_RPC      = 'https://rpc.testnet.arc.network';
   const TRS_REFRESH_MS = 25000;
-  const TRS_VERSION  = '20260707t5';
+  const TRS_VERSION  = '20260709t-mint';
   const ARC_KEY = 'arc', ARC_DOMAIN = 26;
 
   const DEFAULT_VAULT_ADDR = '0xbfC9E8F79bd30b912081ae88F9ad0A515F08c2F1';
@@ -58,6 +58,7 @@
     { id: 'vault',       label: 'Vault',       icon: 'fa-vault' },
     { id: 'intents',     label: 'Intents',     icon: 'fa-list-check' },
     { id: 'settlements', label: 'Settlements', icon: 'fa-check-double' },
+    { id: 'mint',        label: 'Mint',        icon: 'fa-coins' },
     { id: 'liquidity',   label: 'Liquidity',   icon: 'fa-water' },
     { id: 'analytics',   label: 'Analytics',   icon: 'fa-chart-pie' },
     { id: 'diagnostics', label: 'Diagnostics', icon: 'fa-stethoscope' },
@@ -119,7 +120,7 @@
   // ─── Intent normalization + INBOUND filter ──────────────────────────────────
   function isInbound(it) { const dst = String(it.dstChain || '').toLowerCase(); const src = String(it.srcChain || '').toLowerCase(); const dstArc = dst === '' || dst === ARC_KEY || dst.includes('arc') || Number(it.raw && (it.raw.destinationDomain != null ? it.raw.destinationDomain : it.raw.destDomain)) === ARC_DOMAIN; const srcArc = src === ARC_KEY || src.includes('arc'); return dstArc && !srcArc; }
   function normIntent(x, source) { if (!x || typeof x !== 'object') return null; const pick = (...k) => { for (const kk of k) { if (x[kk] != null && x[kk] !== '') return x[kk]; } return null; }; const status = pick('status', 'state', 'intentStatus', 'phase');
-    return { id: pick('id', 'intentId', 'intent_id', 'intentBytes32', 'hash') || ('intent-' + Math.random().toString(16).slice(2, 8)), intentId: pick('intentId', 'intent_id', 'id', 'intentBytes32'), bytes32: pick('intentBytes32', 'intentId'), asset: (pick('asset', 'token', 'symbol', 'currency') || '—'), amount: pick('grossAmount', 'amount', 'value', 'inputAmount', 'srcAmount'), net: pick('netAmount', 'receive', 'outputAmount', 'dstAmount'), fee: pick('feeAmount', 'fee', 'bridgeFee'), sender: pick('userAddress', 'sender', 'from', 'wallet', 'account'), recipient: pick('recipient', 'receiver', 'to', 'destination'), srcChain: pick('srcChain', 'sourceChain', 'source_chain', 'from_chain', 'origin'), dstChain: pick('dstChain', 'destinationChain', 'destination_chain', 'to_chain') || 'arc', sourceDomain: pick('sourceDomain', 'source_domain'), status: status || 'unknown', statusKey: bucket(status), created: toMs(pick('createdAt', 'created_at', 'created', 'timestamp', 'ts')), updated: toMs(pick('updatedAt', 'updated_at', 'updated', 'lastUpdate')), settled: toMs(pick('settledAt', 'settled_at', 'completedAt', 'completed_at')), fulfilled: toMs(pick('arcFulfillmentTimestamp')), txHash: pick('txHash', 'sourceTxHash', 'burnTxHash', 'depositTxHash', 'source_tx'), arcTx: pick('arcTxHash'), settleTx: pick('settlementTxHash', 'destinationTxHash', 'mintTxHash', 'settle_tx'), cctpMsgHash: pick('cctpMsgHash'), error: pick('settlementError', 'error', 'failReason', 'lastError'), retryCount: num(pick('retryCount', 'retries', 'attempts')), source: source, raw: x }; }
+    return { id: pick('id', 'intentId', 'intent_id', 'intentBytes32', 'hash') || ('intent-' + Math.random().toString(16).slice(2, 8)), intentId: pick('intentId', 'intent_id', 'id', 'intentBytes32'), bytes32: pick('intentBytes32', 'intentId'), asset: (pick('asset', 'token', 'symbol', 'currency') || '—'), amount: pick('grossAmount', 'amount', 'value', 'inputAmount', 'srcAmount'), net: pick('netAmount', 'receive', 'outputAmount', 'dstAmount'), fee: pick('feeAmount', 'fee', 'bridgeFee'), sender: pick('userAddress', 'sender', 'from', 'wallet', 'account'), recipient: pick('recipient', 'receiver', 'to', 'destination', 'userAddress'), srcChain: pick('srcChain', 'sourceChain', 'source_chain', 'from_chain', 'origin'), dstChain: pick('dstChain', 'destinationChain', 'destination_chain', 'to_chain') || 'arc', sourceDomain: pick('sourceDomain', 'source_domain'), status: status || 'unknown', statusKey: bucket(status), created: toMs(pick('createdAt', 'created_at', 'created', 'timestamp', 'ts')), updated: toMs(pick('updatedAt', 'updated_at', 'updated', 'lastUpdate')), settled: toMs(pick('settledAt', 'settled_at', 'completedAt', 'completed_at')), fulfilled: toMs(pick('arcFulfillmentTimestamp')), txHash: pick('txHash', 'sourceTxHash', 'burnTxHash', 'depositTxHash', 'source_tx'), arcTx: pick('arcTxHash'), settleTx: pick('settlementTxHash', 'destinationTxHash', 'mintTxHash', 'settle_tx'), cctpMsgHash: pick('cctpMsgHash'), error: pick('settlementError', 'error', 'failReason', 'lastError'), retryCount: num(pick('retryCount', 'retries', 'attempts')), source: source, raw: x }; }
   async function loadIntents() { const out = [], seen = new Set();
     try { const rc = W('RepaymentContract'); if (rc && rc.getAll) (rc.getAll() || []).forEach((x) => { const n = normIntent(x, 'local'); if (n && isInbound(n)) { const k = String(n.intentId || n.id); if (!seen.has(k)) { seen.add(k); out.push(n); } } }); } catch (_) {}
     try { const td = W('TreasuryData'); if (td && td.history) { const arr = await withTimeout(td.history({ limit: 300 }), 9000).catch(() => null); if (Array.isArray(arr)) arr.forEach((x) => { const n = normIntent(x, 'remote'); if (n && isInbound(n)) { const k = String(n.intentId || n.id); if (!seen.has(k)) { seen.add(k); out.push(n); } } }); } } catch (_) {}
@@ -507,6 +508,34 @@
     q('trs-settlements-list').innerHTML = settled.length ? settled.map((it) => `<div class="trs-settle" onclick="trsOpenIntent('${esc(String(it.id))}')" style="cursor:pointer;"><span class="trs-settle-ic"><i class="fas fa-check" style="color:#34d399;"></i></span><div style="flex:1;min-width:0;"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="trs-mono" style="color:#cdd8ea;">${esc(shortHash(String(it.intentId || it.id)))}</span>${tokenBadge(it.asset)}<span style="font-weight:800;color:#34d399;">${it.amount != null ? fmtNum(it.amount, 2) : '—'}</span><span class="trs-dim">${esc(chainName(it.srcChain))} → Arc · ${it.created && it.settled ? fmtDur(it.settled - it.created) : '—'}</span></div><div class="trs-dim" style="margin-top:2px;">${esc(fmtDate(it.settled || it.updated))}</div></div><div style="display:flex;align-items:center;gap:5px;flex-shrink:0;" onclick="event.stopPropagation();">${it.settleTx ? `<span class="trs-mono trs-dim">${esc(shortHash(it.settleTx))}</span>${copyBtn(it.settleTx, 'tx hash')}${txLink(it.settleTx, 'settlement')}` : `<span class="trs-dim">no tx</span>`}</div></div>`).join('') : `<div class="trs-empty">No inbound settlements recorded yet.</div>`;
   }
 
+  // MINT — operator delivers vault liquidity to inbound intent recipients (Turbo <-> Treasury)
+  function renderMintWs() {
+    const liqEl = q('trs-mint-liquidity');
+    if (liqEl) {
+      liqEl.innerHTML = (S.vault || []).length
+        ? `<div class="trs-liq-wrap">${S.vault.map((r) => `<div class="trs-liq"><div class="trs-liq-head"><span class="trs-token">${esc(r.asset)}</span></div><div class="trs-liq-grid"><div><div class="trs-liq-k">Mintable (available)</div><div class="trs-liq-v" style="color:#34d399;">${r.available != null ? fmtNum(r.available, 2) : '—'}</div></div><div><div class="trs-liq-k">Locked</div><div class="trs-liq-v" style="color:#fbbf24;">${r.locked != null ? fmtNum(r.locked, 2) : (r.available != null ? '0.00' : '—')}</div></div><div><div class="trs-liq-k">Pending</div><div class="trs-liq-v" style="color:#67e8f9;">${fmtNum(r.pending || 0, 2)}</div></div></div></div>`).join('')}</div>`
+        : `<div class="trs-empty">No vault liquidity data. Fund the vault from the Vault workspace before minting.</div>`;
+    }
+    const opEl = q('trs-mint-operator');
+    const configured = !!(DEPLOYMENT && DEPLOYMENT.configured && TREASURY_ADDR && W('TreasuryBridge'));
+    if (opEl) {
+      const addr = S.operator.address; let msg, bg, col, ic;
+      if (!configured) { msg = 'Treasury Vault not configured/deployed — minting unavailable.'; bg = 'rgba(239,68,68,0.10)'; col = '#f87171'; ic = 'fa-triangle-exclamation'; }
+      else if (!addr) { msg = 'Connect your wallet to mint/settle inbound intents.'; bg = 'rgba(245,158,11,0.10)'; col = '#fbbf24'; ic = 'fa-wallet'; }
+      else if (!S.operator.isOperator) { msg = 'Wallet ' + shortAddr(addr) + ' is not an authorized Vault operator — minting disabled.'; bg = 'rgba(245,158,11,0.10)'; col = '#fbbf24'; ic = 'fa-user-shield'; }
+      else { msg = 'Operator ' + shortAddr(addr) + ' authorized — deliver vault liquidity to intent recipients on Arc.'; bg = 'rgba(52,211,153,0.10)'; col = '#34d399'; ic = 'fa-user-shield'; }
+      opEl.innerHTML = `<div style="display:flex;align-items:center;gap:9px;background:${bg};border:1px solid ${col}33;border-radius:10px;padding:9px 12px;font-size:12px;color:${col};font-weight:700;"><i class="fas ${ic}"></i><span>${esc(msg)}</span></div>`;
+    }
+    const el = q('trs-mint-queue'); if (!el) return;
+    const canMint = S.operator.isOperator && configured;
+    const pend = S.intents.filter((it) => ['pending', 'processing', 'review'].includes(it.statusKey));
+    if (!pend.length) { el.innerHTML = `<div class="trs-empty">No inbound intents awaiting mint. External → Arc transfers appear here until settled.</div>`; return; }
+    el.innerHTML = `<div class="trs-tablewrap"><table class="trs-table"><thead><tr><th scope="col">Intent</th><th scope="col">Asset</th><th scope="col">Amount</th><th scope="col">Origin → Arc</th><th scope="col">Recipient</th><th scope="col">Status</th><th scope="col" style="text-align:right;">Action</th></tr></thead><tbody>${pend.map((it) => {
+      const rcpt = it.recipient || it.sender;
+      return `<tr class="trs-tr"><td><span class="trs-mono">${esc(shortHash(String(it.intentId || it.id)))}</span></td><td>${tokenBadge(it.asset)}</td><td class="trs-mono">${it.amount != null ? fmtNum(it.amount, 2) : '—'}</td><td><span class="trs-route">${esc(chainName(it.srcChain))} <i class="fas fa-arrow-right" style="font-size:8px;color:#5f7ba0;"></i> Arc</span></td><td class="trs-mono" title="${esc(rcpt || '')}">${esc(shortAddr(rcpt))}</td><td>${statusChip(it.statusKey)}</td><td style="text-align:right;">${canMint ? `<button class="trs-btn trs-btn-sm trs-btn-primary" onclick="trsSettleViaTreasury('${esc(String(it.id))}')"><i class="fas fa-hand-holding-dollar"></i>Mint</button>` : `<button class="trs-btn trs-btn-sm" onclick="trsOpenIntent('${esc(String(it.id))}')"><i class="fas fa-up-right-from-square"></i>View</button>`}</td></tr>`;
+    }).join('')}</tbody></table></div><div class="trs-dim" style="margin-top:10px;"><i class="fas fa-circle-info" style="color:#60b4ff;"></i> Minting runs the on-chain lifecycle on the ArcVault (<b>reserve → start → complete</b>), delivering the asset to the recipient on Arc and finalizing the Turbo intent. The outbound Arc → External route is never touched.</div>`;
+  }
+
   // LIQUIDITY — assets, heatmap, reserves, forecast
   function renderLiquidityWs() {
     const dm = S.dm; const vt = vaultTotals();
@@ -666,6 +695,8 @@
     if (go) { go.disabled = true; go.innerHTML = '<i class="fas fa-spinner fa-spin"></i>Settling…'; }
     try {
       const res = await window.TreasuryBridge.settleInbound(it, { onStep: (s) => setStat('Step: ' + esc(s) + '…', '#60b4ff') });
+      try { const rc = W('RepaymentContract'); if (rc && rc.verifyAndSettle) rc.verifyAndSettle((it.raw && it.raw.id) || it.id, { mintTxHash: res && res.txHash }); } catch (_) {}
+      try { window.dispatchEvent(new CustomEvent('treasury:completed', { detail: { intentId: it.id } })); } catch (_) {}
       setStat(`<i class="fas fa-check-circle" style="color:#34d399;"></i> Settled on-chain. <a href="${res.explorer}" target="_blank" rel="noopener" style="color:#60b4ff;">View tx ↗</a>`, '#34d399');
       toast('Inbound settlement completed via Treasury Vault', 'success');
       setTimeout(() => { trsCloseModal(); trsCloseIntent(); refresh(false); }, 2600);
@@ -674,6 +705,27 @@
       toast('Settlement failed', 'error');
       if (go) { go.disabled = false; go.innerHTML = '<i class="fas fa-money-bill-transfer"></i>Settle'; }
     }
+  };
+
+  // ── Mint All — settle every pending inbound intent (operator, sequential) ────
+  window.trsMintAll = async function () {
+    if (!S.operator.isOperator) { toast('Minting requires an authorized operator wallet', 'warning'); return; }
+    if (!W('TreasuryBridge')) { toast('Treasury bridge link not loaded', 'warning'); return; }
+    const pend = S.intents.filter((it) => ['pending', 'processing', 'review'].includes(it.statusKey));
+    if (!pend.length) { toast('No pending intents to mint', 'info'); return; }
+    toast('Minting ' + pend.length + ' intent' + (pend.length === 1 ? '' : 's') + '…', 'info');
+    let ok = 0, bad = 0;
+    for (const it of pend) {
+      try {
+        const settleObj = Object.assign({}, it, { recipient: it.recipient || it.sender, amount: it.amount, asset: it.asset });
+        const res = await window.TreasuryBridge.settleInbound(settleObj, {});
+        try { const rc = W('RepaymentContract'); if (rc && rc.verifyAndSettle) rc.verifyAndSettle((it.raw && it.raw.id) || it.id, { mintTxHash: res && res.txHash }); } catch (_) {}
+        ok++;
+      } catch (e) { bad++; }
+    }
+    try { window.dispatchEvent(new CustomEvent('treasury:completed', { detail: {} })); } catch (_) {}
+    toast('Mint complete: ' + ok + ' settled' + (bad ? ', ' + bad + ' failed' : ''), bad ? 'warning' : 'success');
+    refresh(false);
   };
   window.trsExport = function (kind) {
     let payload; const base = { generatedAt: new Date().toISOString(), network: TRS_NETWORK, chainId: TRS_CHAIN_ID, vault: VAULT_ADDR, direction: 'inbound (External → Arc)' };
@@ -962,6 +1014,11 @@
         ${sec('Recent Settlements', 'fa-check-double', '#34d399', 'trs-settlements-list')}
       </div>
 
+      <div id="trs-ws-mint" class="trs-ws hidden">
+        ${sec('Mintable Liquidity — Vault Reserves', 'fa-coins', '#34d399', 'trs-mint-liquidity')}
+        <section class="trs-sec"><div class="trs-sec-head"><span class="trs-sec-title"><i class="fas fa-hand-holding-dollar" style="color:#f59e0b;"></i>Inbound Intents — Mint &amp; Settle</span><div class="trs-controls"><button class="trs-btn trs-btn-primary trs-btn-sm" onclick="trsMintAll()" aria-label="Mint all pending intents"><i class="fas fa-wand-magic-sparkles"></i>Mint All Pending</button></div></div><div id="trs-mint-operator" style="margin-bottom:10px;"></div><div class="trs-card trs-pad"><div id="trs-mint-queue"></div></div></section>
+      </div>
+
       <div id="trs-ws-liquidity" class="trs-ws hidden">
         ${sec('Liquidity by Asset', 'fa-water', '#60b4ff', 'trs-liq-assets')}
         ${sec('Liquidity Heatmap — Origin × Asset', 'fa-fire', '#f59e0b', 'trs-heatmap')}
@@ -992,6 +1049,7 @@
       case 'vault': renderVaultWs(); break;
       case 'intents': renderIntents(); break;
       case 'settlements': renderSettlementsWs(); break;
+      case 'mint': renderMintWs(); break;
       case 'liquidity': renderLiquidityWs(); break;
       case 'analytics': renderAnalyticsWs(); break;
       case 'diagnostics': renderDiagnosticsWs(); break;

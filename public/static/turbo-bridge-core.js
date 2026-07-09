@@ -13,7 +13,10 @@ const CCTP_ATTEST_URL  = 'https://iris-api-sandbox.circle.com/attestations/';
 const TURBO_FEE_BPS    = 100;  // 1.00%
 const SETTLE_FEE_BPS   = 5;    // 0.05% settlement rebate
 
-const TREASURY_VAULT_ADDRESS = '0xbfC9E8F79bd30b912081ae88F9ad0A515F08c2F1';
+// Compiled fallback — overridden at runtime by the ExecDaat Treasury deployment
+// manifest (/static/treasury-deployment.json) so the Turbo Bridge fronts liquidity
+// from — and settles into — the SAME on-chain ArcVault the Treasury page manages.
+let TREASURY_VAULT_ADDRESS = '0xbfC9E8F79bd30b912081ae88F9ad0A515F08c2F1';
 const TREASURY_OWNER_ADDRESS = '0xA43ABD9Dc38840376d3C469bFBf5951912936c9f';
 
 const TREASURY_ASSETS = {
@@ -28,7 +31,7 @@ const TREASURY_DEPOSIT_WHITELIST = [
   '0xC77F058339Bb0ff06554b2D0Efcb0E2FD4852cb0',
 ];
 
-const TURBO_OPERATORS = [
+let TURBO_OPERATORS = [
   '0xA43ABD9Dc38840376d3C469bFBf5951912936c9f',
   '0x01dE545e8Fea5EcAAb78eC2C09E6D98117f7687d',
   '0xBBE4Bf2D53A4A752c0eF21573FA0162BddafCD12',
@@ -78,6 +81,35 @@ function toUsdc(s) {
 }
 function fromUsdc(n) {
   return window.ethers?.formatUnits ? window.ethers.formatUnits(n, 6) : (Number(n) / 1e6).toString();
+}
+
+// ─── Treasury Vault auto-discovery (bind Turbo ⇄ ExecDaat Treasury) ───────────
+// Resolve the deployed ArcVault address + operators from the Treasury deployment
+// manifest so the Turbo Bridge and the Treasury settlement engine operate on the
+// SAME vault. Memoized; falls back to the compiled default if unavailable.
+let _treasuryDiscovery = null;
+async function _discoverTreasuryVault() {
+  try {
+    const r = await fetch('/static/treasury-deployment.json?ts=' + Date.now(), { headers: { Accept: 'application/json' } });
+    if (!r || !r.ok) return;
+    const d = await r.json();
+    if (d && d.configured && d.vault && /^0x[0-9a-fA-F]{40}$/.test(d.vault.address || '')) {
+      TREASURY_VAULT_ADDRESS = d.vault.address;
+      window.TREASURY_VAULT_ADDRESS = TREASURY_VAULT_ADDRESS;
+      if (Array.isArray(d.vault.operators)) {
+        d.vault.operators.forEach((op) => {
+          if (typeof op === 'string' && /^0x[0-9a-fA-F]{40}$/.test(op) && !TURBO_OPERATORS.some((a) => a.toLowerCase() === op.toLowerCase())) TURBO_OPERATORS.push(op);
+        });
+        window.TURBO_OPERATORS = TURBO_OPERATORS;
+      }
+      if (Array.isArray(d.assets)) d.assets.forEach((a) => { if (a && a.symbol && /^0x[0-9a-fA-F]{40}$/.test(a.address || '')) TREASURY_ASSETS[String(a.symbol).toLowerCase()] = a.address; });
+      _log('Treasury vault bound:', shortAddr(TREASURY_VAULT_ADDRESS), '· operators:', TURBO_OPERATORS.length);
+    }
+  } catch (e) { /* keep compiled default */ }
+}
+function _ensureTreasuryDiscovered() {
+  if (!_treasuryDiscovery) _treasuryDiscovery = _discoverTreasuryVault();
+  return _treasuryDiscovery;
 }
 
 // ─── VaultStore ──────────────────────────────────────────────────────────────
@@ -156,6 +188,7 @@ const VaultAccounting = (() => {
   async function fetchOnChainReserves() {
     try {
       if (!window.ethers) return null;
+      await _ensureTreasuryDiscovered();
       const rpc = 'https://rpc.testnet.arc.network';
       const p = new window.ethers.JsonRpcProvider(rpc);
       const vc = new window.ethers.Contract(TREASURY_VAULT_ADDRESS, TREASURY_VAULT_ABI, p);
@@ -239,11 +272,7 @@ const RepaymentContract = (() => {
     const intent = all[idx];
     if (!window.walletState?.address) throw new Error('WALLET_NOT_CONNECTED');
     if (!window.ethers) throw new Error('ETHERS_NOT_LOADED');
-
-    const assetAddr = TREASURY_ASSETS[intent.asset];
-    const rawGross = toUsdc(intent.grossAmount.toFixed(6));
-    const rawFee   = toUsdc(intent.feeAmount.toFixed(6));
-    const bytes32  = intent.intentBytes32;
+    await _ensureTreasuryDiscovered();
 
     const provider = new window.ethers.BrowserProvider(window.walletState.provider);
     const signer = await provider.getSigner();
@@ -253,13 +282,23 @@ const RepaymentContract = (() => {
     try { isOp = await vaultWrite.isOperator(await signer.getAddress()); } catch(e) {}
     if (!isOp) throw new Error('NOT_OPERATOR');
 
-    const tx = await vaultWrite.fulfillAndPayWithFee(assetAddr, rawGross, rawFee, bytes32, intent.userAddress);
-    const receipt = await tx.wait();
-    if (!receipt || receipt.status !== 1) throw new Error('FULFILL_FAILED');
+    // Settle through the ExecDaat Treasury Vault (reserve → start → complete) —
+    // the deployed ArcVault delivers liquidity to the recipient. This binds the
+    // Turbo Bridge fulfillment to the Treasury settlement engine.
+    if (!window.TreasuryBridge || typeof window.TreasuryBridge.settleInbound !== 'function') throw new Error('TREASURY_BRIDGE_UNAVAILABLE');
+    const settleObj = {
+      id: intent.id, intentId: intent.id, intentBytes32: intent.intentBytes32,
+      asset: intent.asset, amount: intent.grossAmount, grossAmount: intent.grossAmount,
+      recipient: intent.userAddress, userAddress: intent.userAddress,
+      srcChain: intent.srcChain, dstChain: intent.dstChain || 'arc', sourceDomain: intent.sourceDomain,
+    };
+    const res = await window.TreasuryBridge.settleInbound(settleObj, {});
 
-    intent.status = 'Fulfilled';
-    intent.arcTxHash = tx.hash;
+    intent.status = 'Settled';
+    intent.arcTxHash = res && res.txHash;
+    intent.settlementTxHash = res && res.txHash;
     intent.arcFulfillmentTimestamp = Date.now();
+    intent.settledAt = Date.now();
     intent.updatedAt = Date.now();
 
     VaultStore.lockFunds(intent.asset, intent.grossAmount);
@@ -267,8 +306,8 @@ const RepaymentContract = (() => {
     VaultStore.addVolume('turbo', intent.grossAmount);
 
     saveAll(all);
-    _log('[INTENT] Fulfilled:', intentId, 'arcTX:', shortAddr(tx.hash));
-    return { success: true, arcTxHash: tx.hash };
+    _log('[INTENT] Settled via Treasury Vault:', intentId, 'arcTX:', shortAddr(res && res.txHash));
+    return { success: true, arcTxHash: res && res.txHash, settled: true };
   }
 
   function initiateSettlement(intentId, cctpMsgHash, sourceDomain) {
@@ -312,6 +351,7 @@ const FulfillerEngine = (() => {
   async function execute(srcChainId, dstChainId, asset, amount, userAddress, onProgress) {
     const wallet = window.walletState?.address;
     if (!wallet) throw new Error('WALLET_NOT_CONNECTED');
+    await _ensureTreasuryDiscovered();
 
     const fromKey = Object.keys(window.BRIDGE_CHAINS || {}).find(k => window.BRIDGE_CHAINS[k].chainId === (typeof srcChainId === 'number' ? srcChainId : window.BRIDGE_CHAINS[srcChainId]?.chainId));
     if (!fromKey) throw new Error('UNKNOWN_SOURCE_CHAIN: ' + srcChainId);
@@ -395,12 +435,11 @@ const FulfillerEngine = (() => {
     }
 
     const intentAfter = RepaymentContract.getAll().find(i => i.id === intentId);
-    if (intentAfter && intentAfter.status === 'Fulfilled') {
-      if (onProgress) onProgress(4, 'Turbo complete — CCTP settling...');
+    if (intentAfter && (intentAfter.status === 'Settled' || intentAfter.status === 'Fulfilled')) {
+      if (onProgress) onProgress(4, 'Turbo settled on Arc — funds delivered to recipient');
       RepaymentContract.initiateSettlement(intentId, burnTx.hash, fromChain.domain);
-      _startSettlementPoller(intentId, fromChain, burnTx.hash);
     } else {
-      if (onProgress) onProgress(4, 'Turbo queued — operator will fulfill');
+      if (onProgress) onProgress(4, 'Turbo queued — operator will mint via Treasury');
     }
 
     return { intentId, txHash: burnTx.hash };
@@ -545,6 +584,7 @@ window.fetchTurboFeeBps   = fetchTurboFeeBps;
 window.TREASURY_VAULT_ADDRESS = TREASURY_VAULT_ADDRESS;
 
 VaultStore.load();
+_ensureTreasuryDiscovered();
 _log('Turbo Bridge Core loaded — Vault v3, TreasuryVault:', shortAddr(TREASURY_VAULT_ADDRESS));
 
 })();
