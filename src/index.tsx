@@ -32,6 +32,9 @@ const app = new Hono<{
     TREASURY_MODE?: string;
     // Server-side ONLY secret (never exposed to the browser)
     TREASURY_APPLICATION_SECRET?: string;
+    // ─── Autonomous Treasury Keys (server-side ONLY) ─────────────────────────
+    TURBO_RELAYER_PRIVATE_KEY?: string;
+    OPERATOR_PRIVATE_KEY?: string;
   }
 }>()
 

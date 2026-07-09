@@ -316,6 +316,9 @@ const RepaymentContract = (() => {
     if (idx === -1) return;
     all[idx].settlementStarted = true;
     all[idx].cctpMsgHash = cctpMsgHash;
+    if (all[idx].status !== 'Settled') {
+      all[idx].status = 'Fulfilled';
+    }
     all[idx].updatedAt = Date.now();
     saveAll(all);
   }
@@ -341,7 +344,7 @@ const RepaymentContract = (() => {
     saveAll(all);
   }
 
-  return { getAll, createIntent, fulfill, initiateSettlement, verifyAndSettle, markFailed };
+  return { getAll, saveAll, createIntent, fulfill, initiateSettlement, verifyAndSettle, markFailed };
 })();
 
 // ─── FulfillerEngine ─────────────────────────────────────────────────────────
@@ -431,6 +434,17 @@ const FulfillerEngine = (() => {
           i.lastAttempt = Date.now();
         }
       });
+      const rcAll = RepaymentContract.getAll();
+      const rcIdx = rcAll.findIndex(i => i.id === intentId);
+      if (rcIdx !== -1) {
+        rcAll[rcIdx].status = 'Awaiting Operator';
+        rcAll[rcIdx].settlementError = 'Awaiting operator: ' + ((fulfillErr.shortMessage || fulfillErr.message || '').slice(0, 80));
+        rcAll[rcIdx].lastAttempt = Date.now();
+        rcAll[rcIdx].updatedAt = Date.now();
+        RepaymentContract.saveAll(rcAll);
+      }
+      // Try server-side autonomous settlement with the Operator/Turbo Relayer key
+      _tryServerSettle(intentId, fromKey, fromChain, asset, amount, userAddress);
       _startOperatorFulfillmentPoller(intentId);
     }
 
@@ -443,6 +457,48 @@ const FulfillerEngine = (() => {
     }
 
     return { intentId, txHash: burnTx.hash };
+  }
+
+  // ─── Server-side autonomous settlement (uses Cloudflare Operator keys) ─────
+  // When the browser wallet is NOT an on-chain operator, fall back to the
+  // server-side Worker which holds TURBO_RELAYER_PRIVATE_KEY / OPERATOR_PRIVATE_KEY.
+  // The Worker executes reserve → startSettlement → completeSettlement atomically.
+  async function _tryServerSettle(intentId, fromKey, fromChain, asset, amount, userAddress) {
+    try {
+      const intent = RepaymentContract.getAll().find(i => i.id === intentId);
+      if (!intent || !intent.intentBytes32) return;
+      const assetAddr = TREASURY_ASSETS[asset] || asset;
+      const rawAmount = window.ethers.parseUnits(String(amount), 6).toString();
+      const body = JSON.stringify({
+        intentBytes32: String(intent.intentBytes32),
+        asset: assetAddr,
+        amount: rawAmount,
+        recipient: userAddress,
+        vault: TREASURY_VAULT_ADDRESS,
+      });
+      _log('[AUTO-SETTLE] Trying server-side settlement for', intentId);
+      const resp = await fetch('/api/treasury/auto-settle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      const data = await resp.json();
+      if (data.ok && data.txHash) {
+        _log('[AUTO-SETTLE] Success! tx:', shortAddr(data.txHash));
+        RepaymentContract.verifyAndSettle(intentId, { mintTxHash: data.txHash });
+        VaultStore.lockFunds(intent.asset, intent.grossAmount);
+        VaultStore.addTurboFee(intent.asset, intent.feeAmount);
+        VaultStore.addVolume('turbo', intent.grossAmount);
+        VaultStore.mutate(s => {
+          const i = s.intents.find(x => x.id === intentId);
+          if (i) { i.status = 'Settled'; i.arcFulfillmentTimestamp = Date.now(); i.updatedAt = Date.now(); }
+        });
+      } else {
+        _warn('[AUTO-SETTLE] Failed:', data.error || 'unknown');
+      }
+    } catch(e) {
+      _warn('[AUTO-SETTLE] Network error:', e.message || e);
+    }
   }
 
   function _startOperatorFulfillmentPoller(intentId) {

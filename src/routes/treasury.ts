@@ -29,6 +29,8 @@ import {
   getTreasuryConfig,
   getPublicTreasuryConfig,
   getApplicationSecret,
+  getTurboRelayerKey,
+  getOperatorKey,
   type TreasuryBindings,
 } from '../config/treasury'
 
@@ -243,6 +245,126 @@ metaRouter.get('/health', async (c) => {
     )
   }
   return forwardToCore(c, cfg, 'GET', '/health', correlationId)
+})
+
+// ─── Autonomous Settlement (server-side Operator keys) ────────────────────────
+// POST /api/treasury/auto-settle
+// Executes the ArcVault settlement lifecycle (reserve → startSettlement →
+// completeSettlement) using the server-side TURBO_RELAYER_PRIVATE_KEY or
+// OPERATOR_PRIVATE_KEY. This runs autonomously in the Worker — no browser
+// wallet confirmation needed.
+//
+// Body: { intentBytes32, asset, amount, recipient, vault? }
+//   - intentBytes32: bytes32 hex string identifying the intent
+//   - asset: ERC-20 token address (e.g. 0x3600...0000 for USDC)
+//   - amount: raw amount string (in token's smallest unit, e.g. "1000000" for 1 USDC)
+//   - recipient: Arc address receiving the settled funds
+//   - vault (optional): override ArcVault address (default from deployment)
+metaRouter.post('/auto-settle', async (c) => {
+  const started = Date.now()
+  const cfg = getTreasuryConfig(c.env)
+  const correlationId = safeCorrelationId(c.req.header('X-Correlation-Id'))
+
+  if (!cfg.hasTurboRelayerKey && !cfg.hasOperatorKey) {
+    return c.json({ ok: false, error: 'No server-side operator keys configured', correlationId }, 503)
+  }
+
+  let body: {
+    intentBytes32?: string
+    asset?: string
+    amount?: string
+    recipient?: string
+    vault?: string
+  } = {}
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'Invalid JSON body', correlationId }, 400) }
+
+  const intentBytes32 = (body.intentBytes32 || '').trim()
+  const asset = (body.asset || '').trim()
+  const amount = (body.amount || '').trim()
+  const recipient = (body.recipient || '').trim()
+  const vaultAddr = (body.vault || '0x1e039fF538Ed84Ad54610D644ca36D4b03167B87').trim()
+
+  if (!intentBytes32 || !/^0x[0-9a-fA-F]{64}$/.test(intentBytes32)) {
+    return c.json({ ok: false, error: 'Invalid intentBytes32', correlationId }, 400)
+  }
+  if (!asset || !/^0x[0-9a-fA-F]{40}$/.test(asset)) {
+    return c.json({ ok: false, error: 'Invalid asset address', correlationId }, 400)
+  }
+  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    return c.json({ ok: false, error: 'Invalid amount', correlationId }, 400)
+  }
+  if (!recipient || !/^0x[0-9a-fA-F]{40}$/.test(recipient)) {
+    return c.json({ ok: false, error: 'Invalid recipient address', correlationId }, 400)
+  }
+
+  // Use Turbo Relayer key first, fall back to Operator key
+  let privateKey = getTurboRelayerKey(c.env)
+  if (!privateKey) privateKey = getOperatorKey(c.env)
+  if (!privateKey) {
+    return c.json({ ok: false, error: 'No operator private key available', correlationId }, 503)
+  }
+
+  // ethers v6 normally uses fetch/WebSocket — Cloudflare Workers need a
+  // custom JsonRpcProvider that avoids the node.js net/http polyfill mismatch.
+  // We construct a lightweight provider using only the global fetch.
+  const ethersModule = await import('ethers')
+  const { Interface, JsonRpcProvider, Wallet } = ethersModule
+
+  const RPC_URL = 'https://rpc.testnet.arc.network'
+  const V_ABI = [
+    'function reserve(bytes32 intentId, address asset, uint256 amount) external',
+    'function startSettlement(bytes32 intentId, address asset, uint256 amount) external',
+    'function completeSettlement(bytes32 intentId, address asset, address to, uint256 amount) external',
+  ]
+
+  try {
+    const iface = new Interface(V_ABI)
+    const provider = new JsonRpcProvider(RPC_URL)
+    const wallet = new Wallet(privateKey, provider)
+    const CONTRACT = vaultAddr
+
+    // Step 1 — reserve
+    const reserveData = iface.encodeFunctionData('reserve', [intentBytes32, asset, amount])
+    const r1 = await wallet.sendTransaction({ to: CONTRACT, data: reserveData })
+    const r1r = await r1.wait()
+    if (!r1r || r1r.status !== 1) throw new Error('reserve reverted')
+
+    // Step 2 — startSettlement
+    const startData = iface.encodeFunctionData('startSettlement', [intentBytes32, asset, amount])
+    const r2 = await wallet.sendTransaction({ to: CONTRACT, data: startData })
+    const r2r = await r2.wait()
+    if (!r2r || r2r.status !== 1) throw new Error('startSettlement reverted')
+
+    // Step 3 — completeSettlement
+    const completeData = iface.encodeFunctionData('completeSettlement', [intentBytes32, asset, recipient, amount])
+    const r3 = await wallet.sendTransaction({ to: CONTRACT, data: completeData })
+    const r3r = await r3.wait()
+    if (!r3r || r3r.status !== 1) throw new Error('completeSettlement reverted')
+
+    const latencyMs = Date.now() - started
+    return c.json({
+      ok: true,
+      settlementId: r3.hash,
+      txHash: r3.hash,
+      steps: {
+        reserve: r1.hash,
+        startSettlement: r2.hash,
+        completeSettlement: r3.hash,
+      },
+      block: r3r.blockNumber,
+      latencyMs,
+      correlationId,
+    })
+  } catch (e: any) {
+    const msg = (e && (e.shortMessage || e.message)) || String(e)
+    console.error('[TREASURY:AUTO_SETTLE]', correlationId, msg)
+    return c.json({
+      ok: false,
+      error: msg.slice(0, 200),
+      correlationId,
+      latencyMs: Date.now() - started,
+    }, 500)
+  }
 })
 
 // ─── Core proxy handlers ─────────────────────────────────────────────────────
