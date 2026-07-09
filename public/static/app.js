@@ -94,6 +94,8 @@ function switchTab(tab) {
         otc:       ['border-indigo-500', 'text-indigo-400'],
         dex:       ['border-yellow-500', 'text-yellow-400'],
         treasury:  ['border-amber-500',  'text-amber-400'],
+        reimbursements: ['border-emerald-500', 'text-emerald-400'],
+        toc:       ['border-cyan-500',   'text-cyan-400'],
         xbridge:   ['border-cyan-500',   'text-cyan-400'],
         bridge:    ['border-cyan-500',   'text-cyan-400'],
         multisend: ['border-cyan-500',   'text-cyan-400'],
@@ -169,6 +171,22 @@ function switchTab(tab) {
         window.treasuryInit();
       } else if (window.treasuryRefresh) {
         window.treasuryRefresh();
+      }
+    }
+    if (tab === 'reimbursements') {
+      if (window.reimbursementsInit && !window._reimbursementsInitialized) {
+        window._reimbursementsInitialized = true;
+        window.reimbursementsInit();
+      } else if (window.reimbursementsRefresh) {
+        window.reimbursementsRefresh();
+      }
+    }
+    if (tab === 'toc') {
+      if (window.tocInit && !window._tocInitialized) {
+        window._tocInitialized = true;
+        window.tocInit();
+      } else if (window.tocRefresh) {
+        window.tocRefresh();
       }
     }
     if (tab === 'xbridge') {

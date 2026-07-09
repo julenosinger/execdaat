@@ -17,6 +17,8 @@ const DAAT_ROUTES = [
   { path: '/swap',       tab: 'dex',        label: 'Swap',       icon: 'fas fa-exchange-alt',  color: '#eab308' },
   { path: '/bridge',     tab: 'xbridge',    label: 'Bridge',     icon: 'fas fa-bridge',        color: '#06b6d4' },
   { path: '/treasury',   tab: 'treasury',   label: 'Treasury',   icon: 'fas fa-landmark',      color: '#f59e0b' },
+  { path: '/reimbursements', tab: 'reimbursements', label: 'Reimbursements', icon: 'fas fa-arrow-rotate-left', color: '#10b981' },
+  { path: '/operations', tab: 'toc', label: 'Operations Center', icon: 'fas fa-satellite-dish', color: '#06b6d4' },
   { path: '/multisend',  tab: 'multisend',  label: 'MultiSend',  icon: 'fas fa-paper-plane',   color: '#06b6d4' },
   { path: '/history',    tab: 'history',    label: 'History',    icon: 'fas fa-history',       color: '#60a5fa' },
   { path: '/unified-balance', tab: 'unifiedbalance',  label: 'Unified Balance', icon: 'fas fa-coins', color: '#a78bfa' },

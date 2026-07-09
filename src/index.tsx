@@ -9,7 +9,8 @@ import chatRouter from './routes/chat'
 import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
-import treasuryCoreRouter, { metaRouter as treasuryMetaRouter } from './routes/treasury'
+import treasuryCoreRouter from './routes/treasury-core'
+import { metaRouter as treasuryMetaRouter } from './routes/treasury'
 import { ARC_TESTNET } from './types/arc'
 import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 // @ts-ignore - Vite raw import: full SPA HTML shell served at "/"
@@ -35,6 +36,9 @@ const app = new Hono<{
     // ─── Autonomous Treasury Keys (server-side ONLY) ─────────────────────────
     TURBO_RELAYER_PRIVATE_KEY?: string;
     OPERATOR_PRIVATE_KEY?: string;
+    // ─── ExecDaat Native Treasury Core (self-contained) ──────────────────────
+    AGENT_INTENTS?: KVNamespace;
+    EXECDAAT_VAULT_ADDRESS?: string;
   }
 }>()
 

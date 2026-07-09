@@ -24,7 +24,8 @@ import chatRouter      from '../src/routes/chat'
 import guardianRouter  from '../src/routes/guardian'
 import yieldRouter     from '../src/routes/yield-optimizer'
 import dexRouter       from '../src/routes/dex'
-import treasuryCoreRouter, { metaRouter as treasuryMetaRouter } from '../src/routes/treasury'
+import treasuryCoreRouter from '../src/routes/treasury-core'
+import { metaRouter as treasuryMetaRouter } from '../src/routes/treasury'
 
 // HTML template (no Cloudflare deps)
 import { getMainHTML } from '../src/html-template'
