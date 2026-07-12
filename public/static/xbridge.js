@@ -301,7 +301,6 @@
                     <div class="xb-amount-wrap"><input id="xb-amount" class="xb-input" type="number" min="0" step="0.01" placeholder="0.00" oninput="xbAmount(this.value)"><span class="xb-token">${tokenLogo('USDC', 16)}USDC <button type="button" onclick="xbMax()" style="background:none;border:none;color:#67e8f9;font-weight:800;cursor:pointer;font-size:10px;">MAX</button></span></div>
                   </div>
                 </div>
-                <div class="xb-field"><div class="xb-lbl">Recipient Address (destination)</div><input id="xb-recipient" class="xb-input xb-mono" type="text" placeholder="0x…" value="${esc(S.recipient)}" oninput="xbSetRecipient(this.value)"></div>
                 <div class="xb-quick">
                   ${[10, 50, 100, 500, 1000].map((a) => `<button class="xb-qbtn" data-amt="${a}" onclick="xbQuick(${a})">${a}</button>`).join('')}
                 </div>

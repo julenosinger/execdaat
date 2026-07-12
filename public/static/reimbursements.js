@@ -644,8 +644,14 @@
     S.timer = setInterval(() => { if (tabActive() && !document.hidden) refresh(false); }, want);
   }
 
+  var REFRESH_COOLDOWN_MS = 3000;  // Phase 8: prevent cascade refreshes
+
   async function refresh(showFeedback) {
-    if (S.loading) return; S.loading = true; setSyncing(true);
+    if (S.loading) return;
+    var now = Date.now();
+    if (now - (S.lastRefresh || 0) < REFRESH_COOLDOWN_MS) return;  // Phase 8: cooldown
+    S.lastRefresh = now;
+    S.loading = true; setSyncing(true);
     try {
       const [list, metrics, apps] = await Promise.all([loadData().catch(() => S.intents), loadMetrics().catch(() => S.metricsRemote), loadApplications().catch(() => S.applications)]);
       S.intents = Array.isArray(list) ? list : S.intents;

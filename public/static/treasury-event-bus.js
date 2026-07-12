@@ -232,9 +232,14 @@
     Failed: ['Bridge operation failed', 'error']
   };
 
+  var _lastReactorRun = 0;
+  var REACTOR_COOLDOWN_MS = 3000;  // Phase 8: prevent cascade refreshes from rapid events
+
   function wireReactors() {
-    // Every event → keep the native Core ledger + UI in sync (debounced).
     onAny(function (p) {
+      var now = Date.now();
+      if (now - _lastReactorRun < REACTOR_COOLDOWN_MS) return;  // Phase 8: skip if refreshed recently
+      _lastReactorRun = now;
       pushToCore();
       refreshReimbursements();
       refreshTreasury();

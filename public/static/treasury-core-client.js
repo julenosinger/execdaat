@@ -29,9 +29,10 @@
 'use strict';
 
 (function () {
-  var TRANSIENT = { 0: 1, 502: 1, 503: 1, 504: 1 };
-  var MAX_RETRIES = 2;
+  var TRANSIENT = { 0: 1, 429: 1, 502: 1, 503: 1, 504: 1 };   // Phase 8: 429 added for rate-limit backoff
+  var MAX_RETRIES = 3;                                           // increased from 2
   var RETRY_BASE_MS = 250;
+  var RATE_LIMIT_BACKOFF = [2000, 5000, 10000];                  // longer backoff for 429
   var DEFAULT_TIMEOUT_MS = 25000;
   // In-flight GET de-duplication (idempotent reads only).
   var _inflight = {};
@@ -143,7 +144,8 @@
           // Non-OK. Retry transient GETs.
           if (TRANSIENT[status] && canRetry && n < MAX_RETRIES) {
             _obs({ correlationId: correlationId, endpoint: cleanEndpoint, method: method, status: status, latencyMs: Date.now() - started, result: 'transient', attempt: n });
-            return _sleep(RETRY_BASE_MS * Math.pow(2, n)).then(function () { return attempt(n + 1); });
+            var delay = status === 429 ? (RATE_LIMIT_BACKOFF[n] || 5000) : RETRY_BASE_MS * Math.pow(2, n);
+            return _sleep(delay).then(function () { return attempt(n + 1); });
           }
 
           var code = status === 404 ? 'NOTFOUND' : TRANSIENT[status] ? 'UNAVAILABLE' : 'UPSTREAM';
