@@ -1042,15 +1042,15 @@
         <span class="sidebar-item-active-bar"></span>
       </button>
 
-      <!-- Reimbursements — read-only Settlement/Reimbursement monitor (Treasury Core) -->
-      <button onclick="switchTab('reimbursements');sidebarClose();" id="tab-reimbursements" class="tab-btn sidebar-item" data-label="Reimbursements">
+      <!-- Reimbursements — now inside Treasury tab -->
+      <button onclick="switchTab('treasury');sidebarClose();" id="tab-reimbursements" class="tab-btn sidebar-item hidden" data-label="Reimbursements">
         <span class="sidebar-item-icon"><i class="fas fa-arrow-rotate-left"></i></span>
         <span class="sidebar-item-label">Reimbursements</span>
         <span class="sidebar-item-active-bar"></span>
       </button>
 
-      <!-- Treasury Operations Center — real-time observability console (read-only) -->
-      <button onclick="switchTab('toc');sidebarClose();" id="tab-toc" class="tab-btn sidebar-item" data-label="Operations Center">
+      <!-- Treasury Operations Center — now inside Treasury tab -->
+      <button onclick="switchTab('treasury');sidebarClose();" id="tab-toc" class="tab-btn sidebar-item hidden" data-label="Operations Center">
         <span class="sidebar-item-icon"><i class="fas fa-satellite-dish"></i></span>
         <span class="sidebar-item-label">Operations Center</span>
         <span class="sidebar-item-active-bar"></span>
@@ -4642,6 +4642,24 @@
 
     <!-- ══════════════════════════ TREASURY TAB — Turbo Bridge Control Center ══════════════════════════ -->
     <div id="tab-content-treasury" class="tab-content hidden">
+      <!-- Treasury sub-navigation — sticky -->
+      <div style="position:sticky;top:var(--topbar-h,60px);z-index:40;background:rgba(3,7,18,0.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,0.06);padding:8px 16px;">
+        <div style="max-width:1400px;margin:0 auto;display:flex;gap:4px;overflow-x:auto;">
+          <button onclick="document.getElementById('trs-root').scrollIntoView({behavior:'smooth',block:'start'})" class="trs-sub-tab" style="padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:rgba(245,158,11,0.12);color:#fbbf24;white-space:nowrap;transition:all 0.15s;flex-shrink:0;">
+            <i class="fas fa-landmark mr-1.5"></i>Overview
+          </button>
+          <button onclick="document.getElementById('trs-mint-section').scrollIntoView({behavior:'smooth',block:'start'})" class="trs-sub-tab" style="padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#9ca3af;white-space:nowrap;transition:all 0.15s;flex-shrink:0;">
+            <i class="fas fa-coins mr-1.5"></i>Mint
+          </button>
+          <button onclick="document.getElementById('reim-root').scrollIntoView({behavior:'smooth',block:'start'})" class="trs-sub-tab" style="padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#9ca3af;white-space:nowrap;transition:all 0.15s;flex-shrink:0;">
+            <i class="fas fa-arrow-rotate-left mr-1.5"></i>Reimbursements
+          </button>
+          <button onclick="document.getElementById('toc-root').scrollIntoView({behavior:'smooth',block:'start'})" class="trs-sub-tab" style="padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#9ca3af;white-space:nowrap;transition:all 0.15s;flex-shrink:0;">
+            <i class="fas fa-satellite-dish mr-1.5"></i>Operations Center
+          </button>
+        </div>
+      </div>
+      <!-- Treasury Overview (default view) -->
       <div id="trs-root" class="max-w-7xl mx-auto" role="region" aria-label="Treasury — Turbo Bridge Control Center">
         <div style="padding:64px 0;text-align:center;color:#8aaac8;">
           <div style="width:56px;height:56px;border-radius:16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
@@ -4649,11 +4667,10 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- ═════════ REIMBURSEMENTS TAB (read-only Treasury Core monitor) ═════════ -->
-    <div id="tab-content-reimbursements" class="tab-content hidden">
-      <div id="reim-root" class="max-w-7xl mx-auto" role="region" aria-label="Reimbursements — Settlement monitor">
+      <!-- Mint section (part of treasury.js) -->
+      <div id="trs-mint-section" style="border-top:1px solid rgba(255,255,255,0.04);padding-top:16px;"></div>
+      <!-- Reimbursements section -->
+      <div id="reim-root" class="max-w-7xl mx-auto" role="region" aria-label="Reimbursements" style="border-top:1px solid rgba(255,255,255,0.04);padding-top:16px;">
         <div style="padding:64px 0;text-align:center;color:#8aaac8;">
           <div style="width:56px;height:56px;border-radius:16px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
             <i class="fas fa-arrow-rotate-left" style="color:#10b981;font-size:22px;"></i>
@@ -4661,15 +4678,8 @@
           <p style="font-size:13px;">Loading Reimbursements monitor…</p>
         </div>
       </div>
-    </div>
-
-    <!-- ════════════════════════════════════════════════════════════════ -->
-
-    <!-- ════════════════════════════════════════════════════════════════ -->
-
-    <!-- ═════════ TREASURY OPERATIONS CENTER (observability, read-only) ═════════ -->
-    <div id="tab-content-toc" class="tab-content hidden">
-      <div id="toc-root" class="max-w-7xl mx-auto" role="region" aria-label="Treasury Operations Center">
+      <!-- Operations Center section -->
+      <div id="toc-root" class="max-w-7xl mx-auto" role="region" aria-label="Treasury Operations Center" style="border-top:1px solid rgba(255,255,255,0.04);padding-top:16px;">
         <div style="padding:64px 0;text-align:center;color:#8aaac8;">
           <div style="width:56px;height:56px;border-radius:16px;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
             <i class="fas fa-satellite-dish" style="color:#06b6d4;font-size:22px;"></i>
@@ -4678,6 +4688,10 @@
         </div>
       </div>
     </div>
+
+    <!-- ═════════ OLD STANDALONE TABS (hidden — now inside Treasury) ═════════ -->
+    <div id="tab-content-reimbursements" style="display:none !important;"></div>
+    <div id="tab-content-toc" style="display:none !important;"></div>
 
     <!-- ═════════ UNIFIED BALANCE TAB (restored from 5ed8378a) ═════════ -->
     <div id="tab-content-unifiedbalance" class="tab-content hidden">
@@ -6314,6 +6328,25 @@
     </div>
   </footer>
 
+  <!-- ══ ExecDaat Shared Infrastructure (Phase 2) — loaded first ══ -->
+  <script src="/static/shared/constants.js?v=20260712p2"></script>
+  <script src="/static/shared/token-registry.js?v=20260712p2"></script>
+  <script src="/static/shared/contracts.js?v=20260712p2"></script>
+  <script src="/static/shared/address.js?v=20260712p2"></script>
+  <script src="/static/shared/format.js?v=20260712p2"></script>
+  <script src="/static/shared/token.js?v=20260712p2"></script>
+  <script src="/static/shared/rpc.js?v=20260712p2"></script>
+  <script src="/static/shared/config.js?v=20260712p2"></script>
+  <script src="/static/shared/errors.js?v=20260712p2"></script>
+  <script src="/static/shared/ui.js?v=20260712p2"></script>
+  <!-- ══ Phase 4 Reliability Modules ══ -->
+  <script src="/static/shared/cache.js?v=20260712p4"></script>
+  <script src="/static/shared/health.js?v=20260712p4"></script>
+  <script src="/static/shared/telemetry.js?v=20260712p4"></script>
+  <script src="/static/shared/debug.js?v=20260712p4"></script>
+  <!-- ══ Phase 8 Operations Modules ══ -->
+  <script src="/static/shared/contract-monitor.js?v=20260712p8"></script>
+
   <script src="/static/wallet.js?v=20260327a"></script>
   <script src="/static/wallet-create.js?v=20260407a"></script>
   <script src="/static/router.js?v=20260709toc1"></script>
@@ -6334,7 +6367,12 @@
   <script src="/static/app.js?v=20260709toc1"></script>
   <script src="/static/payments.js?v=20260704b"></script>
   <script src="/static/smart-payments.js?v=20260704b"></script>
-  <script src="/static/contracts.js?v=20260708-attest-client"></script>
+  <!-- ══ Contracts Module (Phase 3 — split from contracts.js) ══ -->
+  <script src="/static/contracts/contracts-core.js?v=20260712p3"></script>
+  <script src="/static/contracts/contracts-ui.js?v=20260712p3"></script>
+  <script src="/static/contracts/contracts-execute.js?v=20260712p3"></script>
+  <script src="/static/contracts/contracts-index.js?v=20260712p3"></script>
+  <!-- legacy contracts.js preserved as fallback — loaded conditionally below -->
   <script src="/static/dispute-center.js?v=20260706c"></script>
   <script src="/static/verified-contracts.js?v=20260411a"></script>
   <script src="/static/settings.js?v=20250322"></script>
@@ -6349,7 +6387,11 @@
   <script src="/static/treasury-bridge-link.js?v=20260707l1"></script>
   <script src="/static/xbridge.js?v=20260708x-complete-fix"></script>
   <script src="/static/bridge.js?v=20260707in"></script>
-  <script src="/static/multisend.js?v=20260707ui4"></script>
+  <!-- ══ MultiSend Module (Phase 3 — split from multisend.js) ══ -->
+  <script src="/static/multisend/multisend-core.js?v=20260712p3"></script>
+  <script src="/static/multisend/multisend-execute.js?v=20260712p3"></script>
+  <script src="/static/multisend/multisend-receipt.js?v=20260712p3"></script>
+  <script src="/static/multisend/multisend-index.js?v=20260712p3"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
   <script src="/static/history.js?v=20250323b"></script>
@@ -6360,7 +6402,11 @@
   <script src="/static/permit2-engine.js?v=20260328a"></script>
   <script src="/static/permit2-chat.js?v=20260328b"></script>
   <script src="/static/chat-csv.js?v=20260328a"></script>
-  <script src="/static/chat.js?v=20260404l"></script>
+  <!-- ══ Chat Module (Phase 3 — split from chat.js) ══ -->
+  <script src="/static/chat/chat-core.js?v=20260712p3"></script>
+  <script src="/static/chat/chat-commands.js?v=20260712p3"></script>
+  <script src="/static/chat/chat-ui.js?v=20260712p3"></script>
+  <script src="/static/chat/chat-index.js?v=20260712p3"></script>
   <script src="/static/queue-engine.js?v=20260403a"></script>
   
   <!-- ═══════════════════════════════════════════════════════════════════════════

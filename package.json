@@ -8,7 +8,15 @@
     "preview": "wrangler pages dev",
     "deploy": "npm run build && wrangler pages deploy",
     "deploy:vercel": "vercel --prod",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "security:scan": "node scripts/security-scan.cjs",
+    "test": "node tests/run.cjs",
+    "test:verbose": "node tests/run.cjs --verbose",
+    "test:filter": "node tests/run.cjs --filter=",
+    "test:unit": "node tests/run.cjs",
+    "test:integration": "node tests/run.cjs",
+    "test:contracts": "cd contracts/hardhat && npx hardhat test",
+    "deployment:check": "node scripts/deployment-check.cjs"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "^1.12.1",

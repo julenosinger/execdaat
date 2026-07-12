@@ -340,7 +340,12 @@ async function submitVaultAction(token) {
           showToast(`🚫 Guardian bloqueou: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance falhou'}`, 'error');
           return;
         }
-      } catch (_) {}
+      } catch (gcErr) {
+        console.error('[Vaults] Guardian compliance check failed for withdraw:', gcErr.message || gcErr);
+        addVaultLog('[VAULT] Guardian compliance check failed — operation blocked for security', 'error');
+        showToast('Compliance verification unavailable. Please try again later.', 'error');
+        return;
+      }
 
       setBtn('<i class="fas fa-spinner fa-spin mr-2"></i>Processando saque...', true);
       const res = await (async function() {
@@ -421,7 +426,12 @@ async function submitVaultAction(token) {
         showToast(`🚫 Guardian bloqueou: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance falhou'}`, 'error');
         return;
       }
-    } catch (_) {}
+    } catch (gcErr) {
+      console.error('[Vaults] Guardian compliance check failed for deposit:', gcErr.message || gcErr);
+      addVaultLog('[VAULT] Guardian compliance check failed — operation blocked for security', 'error');
+      showToast('Compliance verification unavailable. Please try again later.', 'error');
+      return;
+    }
 
     const custodian = VAULT_CUSTODIAN[token];
     const amountRaw = BigInt(Math.round(amount * 1_000_000)); // 6 decimais

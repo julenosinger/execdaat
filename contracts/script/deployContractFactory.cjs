@@ -174,11 +174,15 @@ async function deploy(privateKey, bytecode, abi) {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 (async () => {
-  const privateKey = process.argv[2];
+  const privateKey = process.env.DEPLOYER_PRIVATE_KEY || process.argv[2];
   if (!privateKey || !privateKey.startsWith('0x')) {
     console.error('Usage: node contracts/script/deployContractFactory.cjs <PRIVATE_KEY>');
-    console.error('Example: node contracts/script/deployContractFactory.cjs 0xabc123...');
+    console.error('   or: DEPLOYER_PRIVATE_KEY=0x... node contracts/script/deployContractFactory.cjs');
     process.exit(1);
+  }
+  if (process.argv[2] && process.argv[2].startsWith('0x')) {
+    console.warn('[SECURITY] Private key passed via CLI argument is visible in shell history and process listings.');
+    console.warn('[SECURITY] Consider using: DEPLOYER_PRIVATE_KEY=0x... node contracts/script/deployContractFactory.cjs');
   }
 
   console.log('🔨 Compiling ContractFactory.sol…');

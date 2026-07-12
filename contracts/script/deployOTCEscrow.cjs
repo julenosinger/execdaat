@@ -29,13 +29,18 @@ const ethers = require('ethers');
 const ARC_RPC  = 'https://rpc.testnet.arc.network';
 const CHAIN_ID = 5042002;
 
-const PRIVATE_KEY      = process.argv[2];
+const PRIVATE_KEY      = process.env.DEPLOYER_PRIVATE_KEY || process.argv[2];
 const ARBITRATOR_ARG   = process.argv[3] || null;
 const RELAYERS_ARG     = process.argv[4] ? process.argv[4].split(',').map(a => a.trim()).filter(Boolean) : [];
 
 if (!PRIVATE_KEY) {
   console.error('Usage: node contracts/script/deployOTCEscrow.cjs <PRIVATE_KEY> [ARBITRATOR_ADDR] [RELAYER_ADDR,...]');
+  console.error('   or: DEPLOYER_PRIVATE_KEY=0x... node contracts/script/deployOTCEscrow.cjs');
   process.exit(1);
+}
+if (process.argv[2] && process.argv[2].startsWith('0x')) {
+  console.warn('[SECURITY] Private key passed via CLI argument is visible in shell history and process listings.');
+  console.warn('[SECURITY] Consider using: DEPLOYER_PRIVATE_KEY=0x... node contracts/script/deployOTCEscrow.cjs');
 }
 
 // ── Resolve OpenZeppelin source paths ────────────────────────────────────────

@@ -2,20 +2,27 @@
 pragma solidity ^0.8.20;
 
 // ============================================================
-//  SimpleAMM — Constant-Product AMM (x * y = k)
+//  SimpleAMM v2 — Constant-Product AMM (x * y = k)
 //  Arc Testnet · EURC / USDC pool
+//
+//  Phase 7 Hardening: ReentrancyGuard, deadline, input checks
+//  Backward-compatible: existing function signatures preserved
 //
 //  EURC: 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a  (ERC-20, 6 dec)
 //  USDC: 0x3600000000000000000000000000000000000000  (ERC-20, 6 dec)
 //
 //  Fee: 0.3 %  (997 / 1000)
 //
-//  Functions:
-//    addLiquidity(amountA, amountB)   → mint LP tokens
-//    removeLiquidity(lpAmount)        → burn LP, return tokens
-//    swapAforB(amountA, minOut)       → EURC → USDC
-//    swapBforA(amountB, minOut)       → USDC → EURC
-//    getAmountOut(amountIn, rIn, rOut)→ pure AMM quote
+//  Functions (v1 preserved):
+//    addLiquidity(amountA, amountB)    → mint LP tokens
+//    removeLiquidity(lpAmount)         → burn LP, return tokens
+//    swapAforB(amountA, minOut)        → EURC → USDC
+//    swapBforA(amountB, minOut)        → USDC → EURC
+//    getAmountOut(amountIn, rIn, rOut) → pure AMM quote
+//
+//  Functions (v2 — deadline-protected overloads):
+//    swapAforB(amountA, minOut, deadline)
+//    swapBforA(amountB, minOut, deadline)
 // ============================================================
 
 interface IERC20 {
@@ -47,6 +54,10 @@ contract SimpleAMM {
     uint256 private constant FEE_NUM   = 997;
     uint256 private constant FEE_DENOM = 1000;
     uint256 private constant MINIMUM_LIQUIDITY = 1000; // locked forever
+
+    // ── Reentrancy guard (self-contained, no imports) ──────────────────────
+    uint256 private _guard = 1;
+    modifier nonReentrant() { require(_guard == 1, "AMM: reentrant"); _guard = 2; _; _guard = 1; }
 
     // ── Events ─────────────────────────────────────────────────────────────
     event LiquidityAdded(
@@ -133,6 +144,7 @@ contract SimpleAMM {
     ///          Caller must approve this contract on both tokens first.
     function addLiquidity(uint256 amountA, uint256 amountB)
         external
+        nonReentrant
         returns (uint256 lpMinted)
     {
         require(amountA > 0 && amountB > 0, "Amounts must be > 0");
@@ -169,6 +181,7 @@ contract SimpleAMM {
     /// @notice  Burn lpAmount LP tokens → receive proportional tokenA + tokenB.
     function removeLiquidity(uint256 lpAmount)
         external
+        nonReentrant
         returns (uint256 amountA, uint256 amountB)
     {
         require(lpAmount > 0,                      "LP amount must be > 0");
@@ -189,11 +202,12 @@ contract SimpleAMM {
         emit LiquidityRemoved(msg.sender, amountA, amountB, lpAmount, reserveA, reserveB);
     }
 
-    // ── swapAforB (EURC → USDC) ─────────────────────────────────────────────
+    // ── swapAforB (EURC → USDC) — v1 (no deadline, preserved) ────────────
     /// @param amountA   exact amount of EURC to sell (6 dec)
     /// @param minOut    minimum USDC to receive (slippage guard)
     function swapAforB(uint256 amountA, uint256 minOut)
         external
+        nonReentrant
         returns (uint256 amountOut)
     {
         require(amountA > 0, "AmountIn must be > 0");
@@ -211,13 +225,56 @@ contract SimpleAMM {
         emit Swap(msg.sender, address(tokenA), address(tokenB), amountA, amountOut, reserveA, reserveB);
     }
 
-    // ── swapBforA (USDC → EURC) ─────────────────────────────────────────────
-    /// @param amountB   exact amount of USDC to sell (6 dec)
-    /// @param minOut    minimum EURC to receive (slippage guard)
-    function swapBforA(uint256 amountB, uint256 minOut)
+    // ── swapAforB with deadline (v2 overload) ─────────────────────────────
+    function swapAforB(uint256 amountA, uint256 minOut, uint256 deadline)
         external
+        nonReentrant
         returns (uint256 amountOut)
     {
+        require(block.timestamp <= deadline, "AMM: deadline expired");
+        require(amountA > 0, "AmountIn must be > 0");
+        require(reserveA > 0 && reserveB > 0, "Pool empty");
+
+        amountOut = getAmountOut(amountA, reserveA, reserveB);
+        require(amountOut >= minOut, "Slippage exceeded");
+
+        require(tokenA.transferFrom(msg.sender, address(this), amountA), "TransferFrom A failed");
+        require(tokenB.transfer(msg.sender, amountOut), "Transfer B failed");
+
+        reserveA += amountA;
+        reserveB -= amountOut;
+
+        emit Swap(msg.sender, address(tokenA), address(tokenB), amountA, amountOut, reserveA, reserveB);
+    }
+
+    // ── swapBforA (USDC → EURC) — v1 (no deadline, preserved) ────────────
+    function swapBforA(uint256 amountB, uint256 minOut)
+        external
+        nonReentrant
+        returns (uint256 amountOut)
+    {
+        require(amountB > 0, "AmountIn must be > 0");
+        require(reserveA > 0 && reserveB > 0, "Pool empty");
+
+        amountOut = getAmountOut(amountB, reserveB, reserveA);
+        require(amountOut >= minOut, "Slippage exceeded");
+
+        require(tokenB.transferFrom(msg.sender, address(this), amountB), "TransferFrom B failed");
+        require(tokenA.transfer(msg.sender, amountOut), "Transfer A failed");
+
+        reserveB += amountB;
+        reserveA -= amountOut;
+
+        emit Swap(msg.sender, address(tokenB), address(tokenA), amountB, amountOut, reserveA, reserveB);
+    }
+
+    // ── swapBforA with deadline (v2 overload) ─────────────────────────────
+    function swapBforA(uint256 amountB, uint256 minOut, uint256 deadline)
+        external
+        nonReentrant
+        returns (uint256 amountOut)
+    {
+        require(block.timestamp <= deadline, "AMM: deadline expired");
         require(amountB > 0, "AmountIn must be > 0");
         require(reserveA > 0 && reserveB > 0, "Pool empty");
 

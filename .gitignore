@@ -23,6 +23,18 @@ dist-vercel/
 **/.treasury-secrets/
 *.keystore.json
 
+# Private keys and deployer credentials
+.my-deployer.json
+private-key.json
+*.pem
+*.key
+
+# Deployment outputs (may contain addresses)
+deployment.json
+
+# Security scan artifacts
+.security-scan-results.json
+
 # Dependencies lockfiles (optional - uncomment if needed)
 # package-lock.json
 # yarn.lock

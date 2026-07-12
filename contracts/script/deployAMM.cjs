@@ -18,10 +18,15 @@ const CHAIN_ID   = 5042002;
 const TOKEN_A    = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a'; // EURC
 const TOKEN_B    = '0x3600000000000000000000000000000000000000'; // USDC
 
-const PRIVATE_KEY = process.argv[2];
+const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || process.argv[2];
 if (!PRIVATE_KEY) {
-  console.error('Usage: node deployAMM.js <PRIVATE_KEY>');
+  console.error('Usage: node deployAMM.cjs <PRIVATE_KEY>');
+  console.error('   or: DEPLOYER_PRIVATE_KEY=0x... node deployAMM.cjs');
   process.exit(1);
+}
+if (process.argv[2] && process.argv[2].startsWith('0x')) {
+  console.warn('[SECURITY] Private key passed via CLI argument is visible in shell history and process listings.');
+  console.warn('[SECURITY] Consider using: DEPLOYER_PRIVATE_KEY=0x... node deployAMM.cjs');
 }
 
 // ── Read Solidity source ─────────────────────────────────────────────────────

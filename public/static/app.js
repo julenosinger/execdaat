@@ -172,22 +172,26 @@ function switchTab(tab) {
       } else if (window.treasuryRefresh) {
         window.treasuryRefresh();
       }
+      // Pre-load Reimbursements + Operations Center (now live inside Treasury tab)
+      setTimeout(function() {
+        if (window.reimbursementsInit && !window._reimbursementsInitialized) {
+          window._reimbursementsInitialized = true;
+          window.reimbursementsInit();
+        }
+        if (window.tocInit && !window._tocInitialized) {
+          window._tocInitialized = true;
+          window.tocInit();
+        }
+      }, 600);
     }
-    if (tab === 'reimbursements') {
-      if (window.reimbursementsInit && !window._reimbursementsInitialized) {
-        window._reimbursementsInitialized = true;
-        window.reimbursementsInit();
-      } else if (window.reimbursementsRefresh) {
-        window.reimbursementsRefresh();
-      }
-    }
-    if (tab === 'toc') {
-      if (window.tocInit && !window._tocInitialized) {
-        window._tocInitialized = true;
-        window.tocInit();
-      } else if (window.tocRefresh) {
-        window.tocRefresh();
-      }
+    if (tab === 'reimbursements' || tab === 'toc') {
+      // Redirect old links to Treasury tab + scroll to section
+      switchTab('treasury');
+      var targetId = tab === 'reimbursements' ? 'reim-root' : 'toc-root';
+      setTimeout(function() {
+        var el = document.getElementById(targetId);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 800);
     }
     if (tab === 'xbridge') {
       if (window.xbridgeInit && !window._xbridgeInitialized) {
@@ -245,7 +249,8 @@ function showToast(message, type = 'info') {
     info: 'text-blue-400',
   };
   
-  content.innerHTML = `<span class="${colors[type] || colors.info}">${message}</span>`;
+  const escaped = typeof arcEscapeHtml === 'function' ? arcEscapeHtml(message) : String(message).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  content.innerHTML = `<span class="${colors[type] || colors.info}">${escaped}</span>`;
   toast.classList.remove('hidden');
   
   setTimeout(() => {

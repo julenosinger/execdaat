@@ -11,8 +11,18 @@
 
 const { ethers } = require('ethers');
 
-const PRIVATE_KEY = '0xd385cb85f60fcb6ad677a841ba9d5bb69af3b9a91a1dae00250bec3df7f75674';
-const RPC_URL = 'https://rpc.testnet.arc.network';
+function getRequiredEnv(name) {
+  const val = process.env[name];
+  if (!val) {
+    console.error('Missing required environment variable: ' + name);
+    console.error('Set it before running: ' + name + '=0x... node scripts/register-operator.cjs');
+    process.exit(1);
+  }
+  return val;
+}
+
+const PRIVATE_KEY = getRequiredEnv('REGISTER_OPERATOR_KEY');
+const RPC_URL = process.env.ARC_RPC_URL || 'https://rpc.testnet.arc.network';
 
 const TREASURY_ADDR = '0x1fd3cd592b58e838ab778Baa14f842EBEa52853D';
 const VAULT_ADDR    = '0x1e039fF538Ed84Ad54610D644ca36D4b03167B87';

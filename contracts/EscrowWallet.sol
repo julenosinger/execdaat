@@ -2,19 +2,11 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title EscrowWallet
+ * @title EscrowWallet v2
  * @notice Milestone-based USDC escrow for ARC Testnet (EVM-compatible)
- * @dev    Compatible with ARC Testnet (Chain ID 5042002)
+ * @dev    Phase 7 Hardening: ReentrancyGuard, timeout/expiration, recovery events
+ *         Compatible with ARC Testnet (Chain ID 5042002)
  *         USDC: 0x3600000000000000000000000000000000000000
- *
- * Flow:
- *   1. client calls createEscrow(contractor, totalAmount, milestoneAmounts[])
- *   2. client calls depositUSDC(amount) — triggers ERC-20 transferFrom
- *   3. contractor calls requestMilestoneVerification(milestoneId)
- *   4. client calls verifyMilestone(milestoneId)  → marks milestone completed
- *   5. contractor calls releaseMilestonePayment(milestoneId) → receives USDC
- *   6. Either party can call raiseDispute() → freezes escrow
- *   7. client can call refundClient() only when disputed
  */
 
 interface IERC20 {
@@ -27,8 +19,12 @@ interface IERC20 {
 contract EscrowWallet {
 
     // ─── Enums ────────────────────────────────────────────────────────────────
-    enum EscrowState { Created, Active, Disputed, Completed, Refunded }
+    enum EscrowState { Created, Active, Disputed, Completed, Refunded, Expired }
     enum MilestoneState { Pending, RequestedByContractor, Verified, Released }
+
+    // ─── Reentrancy guard ─────────────────────────────────────────────────────
+    uint256 private _guard = 1;
+    modifier nonReentrant() { require(_guard == 1, "EW: reentrant"); _guard = 2; _; _guard = 1; }
 
     // ─── Milestone Struct (mirrors Solidity best practices) ──────────────────
     struct Milestone {
@@ -55,6 +51,7 @@ contract EscrowWallet {
     mapping(uint256 => Milestone) public milestones;
     uint256 public milestoneCount;
     uint256 public escrowId;
+    uint256 public expiresAt;       // 0 = no expiration (backward compat)
 
     // ─── Events ───────────────────────────────────────────────────────────────
     event EscrowCreated(
@@ -103,6 +100,8 @@ contract EscrowWallet {
         uint256 amount,
         uint256 timestamp
     );
+    event EscrowExpired(uint256 indexed escrowId, uint256 timestamp);
+    event RecoveryExecuted(uint256 indexed escrowId, address indexed by, uint256 amount, uint256 timestamp);
 
     // ─── Modifiers ────────────────────────────────────────────────────────────
     modifier onlyClient() {
@@ -211,6 +210,7 @@ contract EscrowWallet {
      */
     function depositUSDC(uint256 amount)
         external
+        nonReentrant
         onlyClient
     {
         require(amount > 0, "EscrowWallet: amount must be > 0");
@@ -302,6 +302,7 @@ contract EscrowWallet {
      */
     function releaseMilestonePayment(uint256 milestoneId)
         external
+        nonReentrant
         onlyContractor
         inState(EscrowState.Active)
         notDisputed
@@ -345,6 +346,7 @@ contract EscrowWallet {
      */
     function raiseDispute()
         external
+        nonReentrant
         onlyParticipant
         inState(EscrowState.Active)
     {
@@ -358,6 +360,7 @@ contract EscrowWallet {
      */
     function refundClient()
         external
+        nonReentrant
         onlyClient
         inState(EscrowState.Disputed)
     {
@@ -373,6 +376,35 @@ contract EscrowWallet {
         require(success, "EscrowWallet: USDC refund failed");
 
         emit RefundIssued(escrowId, client, refundAmount, block.timestamp);
+    }
+
+    /**
+     * @notice Recover funds after escrow expiration (only client)
+     * @dev Only callable when expiresAt > 0 AND block.timestamp > expiresAt
+     */
+    function recoverExpired()
+        external
+        nonReentrant
+        onlyClient
+    {
+        require(expiresAt > 0, "EscrowWallet: no expiration set");
+        require(block.timestamp > expiresAt, "EscrowWallet: not expired");
+        require(state == EscrowState.Created || state == EscrowState.Active, "EscrowWallet: invalid state for recovery");
+
+        uint256 remaining = depositedAmount - releasedAmount;
+
+        if (remaining > 0) {
+            state = EscrowState.Expired;
+            depositedAmount = releasedAmount;
+            emit EscrowExpired(escrowId, block.timestamp);
+
+            bool success = IERC20(usdcToken).transfer(client, remaining);
+            require(success, "EscrowWallet: recovery transfer failed");
+            emit RecoveryExecuted(escrowId, client, remaining, block.timestamp);
+        } else {
+            state = EscrowState.Expired;
+            emit EscrowExpired(escrowId, block.timestamp);
+        }
     }
 
     // ─── View Functions ───────────────────────────────────────────────────────

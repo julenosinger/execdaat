@@ -478,7 +478,11 @@ async function executeSwap() {
         showToast(`🚫 Guardian: ${gcRes.data.check?.result?.reasons?.[0] || 'Compliance falhou'}`, 'error');
         _showSwapStep(2, 'error'); return;
       }
-    } catch (_) { /* guardian indisponível — continuar */ }
+    } catch (gcErr) {
+      console.error('[SWAP] Guardian compliance check failed:', gcErr.message || gcErr);
+      showToast('Compliance verification unavailable. Please try again later.', 'error');
+      _showSwapStep(2, 'error'); return;
+    }
     _showSwapStep(2, 'done');
 
     // ── STEP 3: Approve (apenas EURC — USDC é nativo) ─────────────────────

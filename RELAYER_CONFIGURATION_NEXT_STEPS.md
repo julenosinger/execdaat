@@ -26,7 +26,7 @@ Ask the dApp admin to run: wrangler secret put RELAYER_PRIVATE_KEY
 ### ✅ Step 1: Generated Relayer Wallet
 ```
 Address: 0x145E5F1E55f3276B42E699752772E1f0309d98B4
-Private Key: 0xd934cb72788a34a78a0098a9b0e1a7485f15a2b405b4e7ddcca55de544bfd3cd
+Private Key: <REDACTED> — stored as Cloudflare Secret (RELAYER_PRIVATE_KEY). Never commit raw keys.
 ```
 
 ### ✅ Step 2: Configured Cloudflare Secret

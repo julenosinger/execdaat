@@ -2,17 +2,9 @@
 pragma solidity ^0.8.20;
 
 // ============================================================
-//  ContractFactory — Arc Testnet
-//  Creates and manages on-chain work contracts with milestones.
-//
-//  Tokens:
-//    USDC  0x3600000000000000000000000000000000000000 (native, 6 dec)
-//
-//  Flow:
-//    1. client calls createContract(...) + approve(factory, amount) first
-//    2. contractor calls signContract(id) → status = Active
-//    3. client calls completeMilestone(id, idx) → releases payment
-//    4. client can cancelContract before signing → full refund
+//  ContractFactory v2 — Arc Testnet
+//  Phase 7 Hardening: ReentrancyGuard, expiration support
+//  Backward-compatible: existing function signatures preserved
 // ============================================================
 
 interface IERC20 {
@@ -27,6 +19,10 @@ contract ContractFactory {
     // ─── Types ────────────────────────────────────────────────────────────────
     enum Status { Draft, Active, Completed, Cancelled }
     enum MsStatus { Pending, Released }
+
+    // ─── Reentrancy guard (self-contained) ────────────────────────────────────
+    uint256 private _guard = 1;
+    modifier nonReentrant() { require(_guard == 1, "CF: reentrant"); _guard = 2; _; _guard = 1; }
 
     struct Milestone {
         uint256  id;
@@ -50,6 +46,7 @@ contract ContractFactory {
         uint256 completedAt;
         uint256 milestoneCount;
         uint256 completedMilestones;
+        uint256 expiresAt;        // 0 = no expiration (Phase 7)
     }
 
     // ─── Storage ──────────────────────────────────────────────────────────────
@@ -91,6 +88,7 @@ contract ContractFactory {
         uint256 refundAmount,
         uint256 timestamp
     );
+    event ContractExpired(uint256 indexed contractId, uint256 timestamp);
 
     // ─── Constructor ──────────────────────────────────────────────────────────
     constructor(address _usdc) {
@@ -110,7 +108,7 @@ contract ContractFactory {
         uint256   _totalValue,
         string[]  calldata _mDesc,
         uint256[] calldata _mAmts
-    ) external returns (uint256) {
+    ) external nonReentrant returns (uint256) {
         _validateCreate(_contractor, _title, _totalValue, _mDesc, _mAmts);
 
         // Pull USDC from caller
@@ -196,7 +194,7 @@ contract ContractFactory {
     }
 
     // ─── completeMilestone ────────────────────────────────────────────────────
-    function completeMilestone(uint256 _cid, uint256 _idx) external exists(_cid) {
+    function completeMilestone(uint256 _cid, uint256 _idx) external nonReentrant exists(_cid) {
         WorkContract storage c = contracts[_cid];
         require(c.status == Status.Active,       "Not active");
         require(msg.sender == c.client,           "Not client");
@@ -221,7 +219,7 @@ contract ContractFactory {
     }
 
     // ─── cancelContract ───────────────────────────────────────────────────────
-    function cancelContract(uint256 _cid) external exists(_cid) {
+    function cancelContract(uint256 _cid) external nonReentrant exists(_cid) {
         WorkContract storage c = contracts[_cid];
         require(c.status == Status.Draft,  "Only cancel Draft");
         require(msg.sender == c.client,    "Not client");
