@@ -157,7 +157,11 @@ function wcClearSession() {
 /* ── Build EIP-1193 compatible provider from private key ──── */
 function _buildLocalProvider(privateKey) {
   if (!window.ethers) throw new Error('ethers.js not loaded');
-  const ARC_RPC = 'https://rpc.testnet.arc.network';
+  // Same-origin failover proxy: distributes reads/broadcasts across all 4
+  // public Arc RPCs server-side (immune to per-IP "request limit reached").
+  const ARC_RPC = (window.location && String(window.location.origin).indexOf('http') === 0)
+    ? window.location.origin + '/api/rpc'
+    : 'https://rpc.testnet.arc.network';
   const rpcProvider = new window.ethers.JsonRpcProvider(ARC_RPC);
   const signer      = new window.ethers.Wallet(privateKey, rpcProvider);
 

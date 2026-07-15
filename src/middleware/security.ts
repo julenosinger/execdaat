@@ -65,6 +65,7 @@ const RATE_LIMITS: Record<string, number> = {
   '/api/guardian': 20,
   '/api/yield':    40,
   '/api/dex':      30,
+  '/api/rpc':      600,  // same-origin RPC proxy (frontend read traffic; contracts/OTC pages burst dozens of eth_calls)
   '/api/':         60,   // all other API
   '/':             200,  // static / HTML
 }

@@ -72,6 +72,11 @@ const BRIDGE_CHAINS = {
     chainHex:   '0x4cef52',
     domain:     26,
     rpcUrl:     'https://rpc.testnet.arc.network',
+    rpcAlternatives: [
+      'https://rpc.blockdaemon.testnet.arc.network',
+      'https://rpc.drpc.testnet.arc.network',
+      'https://rpc.quicknode.testnet.arc.network',
+    ],
     explorer:   'https://testnet.arcscan.app',
     usdcAddress:            '0x3600000000000000000000000000000000000000',
     tokenMessengerV2:       '0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA',
@@ -393,7 +398,7 @@ async function bridgeSwitchWalletChain(chainKey) {
           params: [{
             chainId:          chain.chainHex,
             chainName:        chain.name,
-            rpcUrls:          [chain.rpcUrl],
+            rpcUrls:          [chain.rpcUrl].concat(chain.rpcAlternatives || []),
             nativeCurrency:   chainKey === 'arc'
               ? { name: 'USDC', symbol: 'USDC', decimals: 18 }
               : { name: 'ETH', symbol: 'ETH', decimals: 18 },

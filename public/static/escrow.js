@@ -187,7 +187,7 @@
             params: [{
               chainId: CHAIN_HEX,
               chainName: NETWORK_NAME,
-              rpcUrls: ['https://rpc.testnet.arc.network'],
+              rpcUrls: ['https://rpc.testnet.arc.network', 'https://rpc.blockdaemon.testnet.arc.network', 'https://rpc.drpc.testnet.arc.network', 'https://rpc.quicknode.testnet.arc.network'],
               nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
               blockExplorerUrls: [EXPLORER],
             }],

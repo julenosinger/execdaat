@@ -2,12 +2,27 @@
 // SWAP API — Arc Testnet  USDC ↔ EURC
 // Quote é calculado com reservas reais do AMM on-chain.
 // O swap real é executado on-chain pela wallet do usuário.
-// Este backend: cotação, registro de histórico, estatísticas.
+// Este backend: cotação, verificação de receipt, histórico.
 // AMM: 0x3148E2807F172D1cC354F35fB4fC4104e8b6b561
+//
+// Phase 1 hardening:
+//   • Sem fallback de liquidez fabricada — NUNCA.
+//   • source real: 'on-chain' | 'cache' | 'error'.
+//   • Cache verificado (só atualiza após leitura on-chain OK).
+//   • Failover multi-RPC com timeout/retry/backoff.
+//   • /execute só aceita swaps verificados via receipt on-chain.
 // ========================================================
 
 import { Hono } from 'hono';
-import { isValidEthAddress, isValidTxHash } from '../middleware/security';
+import { isValidEthAddress } from '../middleware/security';
+import { createRpcClient } from '../lib/arc-rpc.mjs';
+import { createReserveCache } from '../lib/reserve-cache.mjs';
+import { makeDeadlineGuidance } from '../lib/pool-analytics.mjs';
+import {
+  verifySwapTransaction,
+  verifyEscrowSwapTransaction,
+  type VerifiedSwap,
+} from '../lib/swap-verify.mjs';
 
 const swapRouter = new Hono();
 
@@ -15,28 +30,24 @@ const swapRouter = new Hono();
 const AMM_ADDRESS    = '0x3148E2807F172D1cC354F35fB4fC4104e8b6b561';
 const USDC_ADDRESS   = '0x3600000000000000000000000000000000000000';
 const EURC_ADDRESS   = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';
-const RPC_URL        = 'https://rpc.testnet.arc.network';
+const ESCROW_ADDRESS = '0x867650F5eAe8df91445971f14d89fd84F0C9a9f8'; // FxEscrow (Swap UI router)
 const EXPLORER_URL   = 'https://testnet.arcscan.app';
 const CHAIN_ID       = 5042002;
 const AMM_FEE        = 0.003;   // 0.3%
-const USDC_DECIMALS  = 6;
 
-// ─── Cache de reservas (atualizado a cada request de quote) ───────────────────
-interface PoolCache {
-  reserveA:    bigint;   // EURC (tokenA no SimpleAMM)
-  reserveB:    bigint;   // USDC (tokenB no SimpleAMM)
-  totalSupply: bigint;
-  lastUpdated: number;   // timestamp ms
-  ttl:         number;   // ms
+// ─── Structured logging ───────────────────────────────────────────────────────
+function slog(fields: Record<string, unknown>): void {
+  try {
+    console.log(JSON.stringify(
+      { ts: new Date().toISOString(), mod: 'swap-api', ...fields },
+      (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
+    ));
+  } catch (_) { /* logging must never throw */ }
 }
 
-let poolCache: PoolCache = {
-  reserveA:    0n,
-  reserveB:    0n,
-  totalSupply: 0n,
-  lastUpdated: 0,
-  ttl:         15_000,   // 15 segundos
-};
+// ─── RPC client (multi-endpoint failover) + verified reserve cache ────────────
+const rpcClient = createRpcClient({ log: slog });
+const reserveCache = createReserveCache({ rpcClient, ammAddress: AMM_ADDRESS, log: slog });
 
 interface SwapRecord {
   id:            string;
@@ -51,69 +62,20 @@ interface SwapRecord {
   onChain:       boolean;
   timestamp:     string;
   status:        'completed' | 'pending' | 'failed';
+  // Phase 1: dados reconstruídos do receipt on-chain
+  verified:         boolean;
+  verificationKind: 'amm-swap' | 'escrow-transfer';
+  tokenIn:          string;
+  tokenOut:         string;
+  blockNumber:      number | null;
+  gasUsed:          string | null;
+  amountOutSource:  'on-chain-event' | 'quote-estimate';
 }
 
-// Histórico em memória (limpo a cada restart)
+// Histórico em memória (limpo a cada restart) — apenas swaps verificados
 const swapHistory: SwapRecord[] = [];
 let totalSwaps  = 0;
 let totalVolume = 0;
-
-// ─── RPC helper ───────────────────────────────────────────────────────────────
-async function rpcCall(method: string, params: unknown[] = []): Promise<unknown> {
-  const res  = await fetch(RPC_URL, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    signal:  AbortSignal.timeout(8000),
-  });
-  const json = await res.json() as { result?: unknown; error?: { message?: string } };
-  if (json.error) throw new Error(json.error.message || JSON.stringify(json.error));
-  return json.result;
-}
-
-async function ethCall(to: string, data: string): Promise<string> {
-  return rpcCall('eth_call', [{ to, data }, 'latest']) as Promise<string>;
-}
-
-function padHex(hex: string, bytes = 32): string {
-  return hex.replace(/^0x/, '').padStart(bytes * 2, '0');
-}
-
-function decUint256(hex: string, wordIdx = 0): bigint {
-  const s = hex.replace(/^0x/, '');
-  return BigInt('0x' + s.slice(wordIdx * 64, wordIdx * 64 + 64));
-}
-
-// ─── Fetch reservas reais do AMM on-chain ─────────────────────────────────────
-async function fetchAMMReserves(): Promise<{ reserveA: bigint; reserveB: bigint; totalSupply: bigint }> {
-  const now = Date.now();
-  if (poolCache.lastUpdated > 0 && now - poolCache.lastUpdated < poolCache.ttl) {
-    return { reserveA: poolCache.reserveA, reserveB: poolCache.reserveB, totalSupply: poolCache.totalSupply };
-  }
-
-  try {
-    // getReserves() → returns (uint256, uint256) — reserveA (EURC), reserveB (USDC)
-    const [reservesHex, supplyHex] = await Promise.all([
-      ethCall(AMM_ADDRESS, '0x0902f1ac'),  // getReserves()
-      ethCall(AMM_ADDRESS, '0x18160ddd'),  // totalSupply()
-    ]);
-
-    const reserveA   = decUint256(reservesHex as string, 0);
-    const reserveB   = decUint256(reservesHex as string, 1);
-    const totalSupply = decUint256(supplyHex as string, 0);
-
-    poolCache = { reserveA, reserveB, totalSupply, lastUpdated: now, ttl: 15_000 };
-    return { reserveA, reserveB, totalSupply };
-  } catch (err) {
-    console.warn('[SWAP] fetchAMMReserves failed, using cache:', (err as Error).message);
-    // Return cache if available, else fallback values
-    if (poolCache.lastUpdated > 0) {
-      return { reserveA: poolCache.reserveA, reserveB: poolCache.reserveB, totalSupply: poolCache.totalSupply };
-    }
-    // Last resort: reasonable fallback
-    return { reserveA: BigInt(460_000 * 1e6), reserveB: BigInt(500_000 * 1e6), totalSupply: 0n };
-  }
-}
 
 // ─── AMM x*y=k formula (mirrors Solidity: fee = 0.3%) ────────────────────────
 //  amountOut = (rOut * amIn * 997) / (rIn * 1000 + amIn * 997)
@@ -123,9 +85,11 @@ function ammGetAmountOut(amountIn: bigint, rIn: bigint, rOut: bigint): bigint {
   return (rOut * amInWith) / (rIn * 1000n + amInWith);
 }
 
-// ─── Calcular quote a partir das reservas on-chain ────────────────────────────
+// ─── Calcular quote a partir das reservas verificadas ─────────────────────────
+// Lança erro com code='RPC_UNAVAILABLE' se não houver dados verificados.
 async function calcSwap(amountIn: number, fromToken: 'USDC' | 'EURC') {
-  const { reserveA, reserveB } = await fetchAMMReserves();
+  const snapshot = await reserveCache.getReserves();
+  const { reserveA, reserveB } = snapshot;
 
   // tokenA = EURC, tokenB = USDC in SimpleAMM
   const rIn  = fromToken === 'EURC' ? reserveA : reserveB;
@@ -141,27 +105,40 @@ async function calcSwap(amountIn: number, fromToken: 'USDC' | 'EURC') {
   const minReceived  = amOutHuman * (1 - AMM_FEE);
 
   return {
-    amountOut:       parseFloat(amOutHuman.toFixed(6)),
-    rate:            parseFloat(rate.toFixed(6)),
-    fee:             parseFloat(feeHuman.toFixed(6)),
-    feePercent:      AMM_FEE * 100,
-    priceImpact:     parseFloat(priceImpact.toFixed(4)),
-    minimumReceived: parseFloat(minReceived.toFixed(6)),
-    reserveIn:       (Number(rIn) / 1e6).toFixed(2),
-    reserveOut:      (Number(rOut) / 1e6).toFixed(2),
-    source:          'on-chain',
+    quote: {
+      amountOut:       parseFloat(amOutHuman.toFixed(6)),
+      rate:            parseFloat(rate.toFixed(6)),
+      fee:             parseFloat(feeHuman.toFixed(6)),
+      feePercent:      AMM_FEE * 100,
+      priceImpact:     parseFloat(priceImpact.toFixed(4)),
+      minimumReceived: parseFloat(minReceived.toFixed(6)),
+      reserveIn:       (Number(rIn) / 1e6).toFixed(2),
+      reserveOut:      (Number(rOut) / 1e6).toFixed(2),
+      source:          snapshot.source,          // 'on-chain' | 'cache' — nunca fabricado
+      cacheAge:        snapshot.cacheAge,
+      blockNumber:     snapshot.blockNumber,
+    },
+    snapshot,
   };
 }
 
-// ─── Verificar se txHash é real ───────────────────────────────────────────────
-function isRealTxHash(txHash?: string): boolean {
-  if (!txHash) return false;
-  const h = txHash.toLowerCase().replace(/^0x/, '');
-  return h.length === 64 && !/^0+$/.test(h) && /^[0-9a-f]+$/.test(h);
+function isRpcUnavailable(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { code?: string }).code === 'RPC_UNAVAILABLE';
+}
+
+function rpcUnavailableResponse() {
+  return {
+    success: false as const,
+    code:    'RPC_UNAVAILABLE',
+    message: 'Unable to fetch on-chain reserves.',
+    error:   'Unable to fetch on-chain reserves.', // compat: frontend lê .error
+    source:  'error' as const,
+  };
 }
 
 // ─── GET /api/swap/quote ──────────────────────────────────────────────────────
 swapRouter.get('/quote', async (c) => {
+  const started   = Date.now();
   const fromToken = (c.req.query('from') || 'USDC').toUpperCase() as 'USDC' | 'EURC';
   const toToken   = (c.req.query('to')   || 'EURC').toUpperCase() as 'USDC' | 'EURC';
   const amount    = parseFloat(c.req.query('amount') || '0');
@@ -174,8 +151,15 @@ swapRouter.get('/quote', async (c) => {
     return c.json({ success: false, error: 'amount inválido' }, 400);
 
   try {
-    const quote = await calcSwap(amount, fromToken as 'USDC' | 'EURC');
-    const { reserveA, reserveB } = await fetchAMMReserves();
+    const { quote, snapshot } = await calcSwap(amount, fromToken);
+
+    slog({
+      evt: 'quote', fromToken, toToken, amount,
+      source: snapshot.source, cacheAge: snapshot.cacheAge,
+      blockNumber: snapshot.blockNumber,
+      reserveA: snapshot.reserveA, reserveB: snapshot.reserveB,
+      latencyMs: Date.now() - started,
+    });
 
     return c.json({
       success: true,
@@ -183,41 +167,53 @@ swapRouter.get('/quote', async (c) => {
         fromToken, toToken, amountIn: amount,
         ...quote,
         pool: {
-          usdcReserve: (Number(reserveB) / 1e6).toFixed(2),
-          eurcReserve: (Number(reserveA) / 1e6).toFixed(2),
+          usdcReserve: (Number(snapshot.reserveB) / 1e6).toFixed(2),
+          eurcReserve: (Number(snapshot.reserveA) / 1e6).toFixed(2),
           fee:         `${AMM_FEE * 100}%`,
           ammAddress:  AMM_ADDRESS,
-          dataSource:  'on-chain (Arc Testnet RPC)',
+          dataSource:  snapshot.source === 'on-chain'
+            ? 'on-chain (Arc Testnet RPC)'
+            : `cache (verified on-chain ${Math.round(snapshot.cacheAge / 1000)}s ago)`,
+          blockNumber: snapshot.blockNumber,
+          cacheAge:    snapshot.cacheAge,
         },
         network:   'Arc Testnet',
         chainId:   CHAIN_ID,
         updatedAt: new Date().toISOString(),
+        // Phase 3 Part 2 — deadline protection at the quote layer
+        // (deployed AMM v1 has no on-chain deadline support)
+        deadline: makeDeadlineGuidance(Date.now(), null),
       },
     });
   } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
+    slog({ evt: 'quote', ok: false, error: String(err), latencyMs: Date.now() - started });
+    if (isRpcUnavailable(err)) return c.json(rpcUnavailableResponse(), 503);
+    return c.json({ success: false, error: String(err), source: 'error' }, 500);
   }
 });
 
 // ─── GET /api/swap/rates ──────────────────────────────────────────────────────
 swapRouter.get('/rates', async (c) => {
   try {
-    const { reserveA, reserveB } = await fetchAMMReserves();
+    const snapshot = await reserveCache.getReserves();
+    const { reserveA, reserveB } = snapshot;
 
-    // Spot rate = reserveOut / reserveIn (before fee)
-    const usdcToEurc = reserveA > 0n
+    // Spot rate = reserveOut / reserveIn (before fee) — só de dados verificados
+    const usdcToEurc = reserveB > 0n
       ? parseFloat((Number(reserveA) / Number(reserveB)).toFixed(6))
-      : 0.9185;
-    const eurcToUsdc = reserveB > 0n
+      : 0;
+    const eurcToUsdc = reserveA > 0n
       ? parseFloat((Number(reserveB) / Number(reserveA)).toFixed(6))
-      : 1.0885;
+      : 0;
 
     return c.json({
       success: true,
       rates: {
         USDC_TO_EURC: usdcToEurc,
         EURC_TO_USDC: eurcToUsdc,
-        source:       'on-chain AMM reserves (SimpleAMM)',
+        source:       snapshot.source,
+        cacheAge:     snapshot.cacheAge,
+        blockNumber:  snapshot.blockNumber,
         ammAddress:   AMM_ADDRESS,
         updatedAt:    new Date().toISOString(),
       },
@@ -231,94 +227,161 @@ swapRouter.get('/rates', async (c) => {
       network: { name: 'Arc Testnet', chainId: CHAIN_ID, explorer: EXPLORER_URL },
     });
   } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
+    if (isRpcUnavailable(err)) return c.json(rpcUnavailableResponse(), 503);
+    return c.json({ success: false, error: String(err), source: 'error' }, 500);
   }
 });
 
 // ─── POST /api/swap/execute ───────────────────────────────────────────────────
-// Registra um swap já executado on-chain.
+// Registra um swap SOMENTE após verificação criptográfica do receipt on-chain.
+// Nada do payload do frontend é confiado: wallet, tokens e amounts são
+// reconstruídos a partir dos logs da transação.
 swapRouter.post('/execute', async (c) => {
+  const started = Date.now();
   try {
     const body = await c.req.json();
-    const {
-      fromToken,
-      toToken,
-      amountIn,
-      walletAddress,
-      slippageTolerance = 0.5,
-      txHash,
-    } = body;
+    const { fromToken, toToken, amountIn, walletAddress, txHash } = body;
 
     if (!fromToken || !toToken || !amountIn || !walletAddress)
       return c.json({ success: false, error: 'Campos obrigatórios: fromToken, toToken, amountIn, walletAddress' }, 400);
-    if (!['USDC','EURC'].includes(fromToken.toUpperCase()))
+    if (!['USDC','EURC'].includes(String(fromToken).toUpperCase()))
       return c.json({ success: false, error: 'fromToken deve ser USDC ou EURC' }, 400);
-    // Validate wallet address format
     if (!isValidEthAddress(walletAddress))
       return c.json({ success: false, error: 'Invalid walletAddress format' }, 400);
-    // Validate txHash if provided
-    if (txHash && !isValidTxHash(txHash))
-      return c.json({ success: false, error: 'Invalid txHash format' }, 400);
-
-    const amount = parseFloat(amountIn);
-    if (isNaN(amount) || amount <= 0)
+    const payloadAmount = parseFloat(amountIn);
+    if (isNaN(payloadAmount) || payloadAmount <= 0)
       return c.json({ success: false, error: 'amountIn inválido' }, 400);
-    if (amount > 100_000)
+    if (payloadAmount > 100_000)
       return c.json({ success: false, error: 'Limite máximo: 100,000 por swap' }, 400);
-
-    const from = fromToken.toUpperCase() as 'USDC' | 'EURC';
-    let calc;
-    try {
-      calc = await calcSwap(amount, from);
-    } catch (_) {
-      // fallback se RPC falhar
-      calc = { amountOut: amount * 0.9185, rate: 0.9185, fee: amount * AMM_FEE, feePercent: AMM_FEE * 100, priceImpact: 0, minimumReceived: amount * 0.9155, source: 'fallback' };
-    }
-
-    if (calc.priceImpact > slippageTolerance * 2) {
+    if (!txHash)
       return c.json({
         success: false,
-        error:   `Price impact alto: ${calc.priceImpact.toFixed(2)}%. Reduza o valor ou aumente slippage.`,
-        calc,
+        code:    'INVALID_TRANSACTION',
+        error:   'txHash é obrigatório: apenas swaps executados on-chain podem ser registrados',
       }, 400);
+
+    // Idempotência: mesma tx não entra duas vezes no histórico
+    const existing = swapHistory.find((s) => s.txHash === String(txHash).toLowerCase());
+    if (existing) {
+      return c.json({
+        success: true,
+        swap:    existing,
+        onChain: true,
+        duplicate: true,
+        explorer: `${EXPLORER_URL}/tx/${existing.txHash}`,
+        message:  `✅ Swap já registrado: ${existing.amountIn} ${existing.type === 'USDC_TO_EURC' ? 'USDC' : 'EURC'}`,
+      });
     }
 
-    const onChain    = isRealTxHash(txHash);
-    const finalTxHash = txHash || null;
-    const swapId     = `swap-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    // ── Verificação on-chain do receipt ────────────────────────────────────
+    // 1º: swap direto no SimpleAMM (evento Swap decodificado dos logs)
+    // 2º: fluxo custodial do Swap UI (transfer nativo/ERC-20 → FxEscrow)
+    let verification = await verifySwapTransaction({
+      rpcClient, txHash, ammAddress: AMM_ADDRESS, expectedChainId: CHAIN_ID, log: slog,
+    });
+    if (!verification.valid && verification.code === 'INVALID_CONTRACT') {
+      verification = await verifyEscrowSwapTransaction({
+        rpcClient, txHash,
+        escrowAddress: ESCROW_ADDRESS,
+        eurcAddress:   EURC_ADDRESS,
+        usdcAddress:   USDC_ADDRESS,
+        expectedChainId: CHAIN_ID,
+        log: slog,
+      });
+    }
+
+    if (!verification.valid) {
+      slog({
+        evt: 'execute', ok: false, txHash,
+        code: verification.code, reason: verification.message,
+        verificationMs: Date.now() - started,
+      });
+      const httpStatus = verification.code === 'RPC_UNAVAILABLE' ? 503 : 400;
+      return c.json({
+        success: false,
+        code:    verification.code,
+        error:   verification.message,
+      }, httpStatus);
+    }
+
+    const v: VerifiedSwap = verification.swap;
+
+    // ── Reconstruir o registro a partir dos dados verificados ──────────────
+    const verifiedFrom: 'USDC' | 'EURC' =
+      v.tokenIn.toLowerCase() === USDC_ADDRESS.toLowerCase() ? 'USDC' : 'EURC';
+    const verifiedTo: 'USDC' | 'EURC' = verifiedFrom === 'USDC' ? 'EURC' : 'USDC';
+    const amountInHuman = Number(v.amountIn) / 1e6;
+
+    let amountOutHuman: number;
+    let amountOutSource: 'on-chain-event' | 'quote-estimate';
+    let priceImpact = 0;
+    if (v.amountOut !== null && v.amountOut !== undefined) {
+      // Swap direto no AMM: amountOut vem do evento Swap (on-chain)
+      amountOutHuman  = Number(v.amountOut) / 1e6;
+      amountOutSource = 'on-chain-event';
+    } else {
+      // Fluxo escrow: liquidação ocorre em tx separada → estimar via reservas
+      // verificadas (RPC está comprovadamente disponível neste ponto)
+      const { quote } = await calcSwap(amountInHuman, verifiedFrom);
+      amountOutHuman  = quote.amountOut;
+      priceImpact     = quote.priceImpact;
+      amountOutSource = 'quote-estimate';
+    }
+
+    const rate = amountInHuman > 0 ? amountOutHuman / amountInHuman : 0;
+    const swapId = `swap-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
 
     const record: SwapRecord = {
       id:            swapId,
-      type:          from === 'USDC' ? 'USDC_TO_EURC' : 'EURC_TO_USDC',
-      amountIn:      amount,
-      amountOut:     calc.amountOut,
-      rate:          calc.rate,
-      fee:           calc.fee,
-      slippage:      calc.priceImpact,
-      walletAddress: walletAddress.toLowerCase(),
-      txHash:        finalTxHash || '',
-      onChain,
-      timestamp:     new Date().toISOString(),
+      type:          verifiedFrom === 'USDC' ? 'USDC_TO_EURC' : 'EURC_TO_USDC',
+      amountIn:      parseFloat(amountInHuman.toFixed(6)),
+      amountOut:     parseFloat(amountOutHuman.toFixed(6)),
+      rate:          parseFloat(rate.toFixed(6)),
+      fee:           parseFloat((amountInHuman * AMM_FEE).toFixed(6)),
+      slippage:      priceImpact,
+      walletAddress: v.sender.toLowerCase(),
+      txHash:        v.txHash,
+      onChain:       true,
+      timestamp:     v.blockTimestamp ? new Date(v.blockTimestamp).toISOString() : new Date().toISOString(),
       status:        'completed',
+      verified:         true,
+      verificationKind: v.kind,
+      tokenIn:          v.tokenIn,
+      tokenOut:         v.tokenOut,
+      blockNumber:      v.blockNumber,
+      gasUsed:          v.gasUsed,
+      amountOutSource,
     };
 
     // Invalidar cache para forçar re-leitura das reservas
-    poolCache.lastUpdated = 0;
+    reserveCache.invalidate();
 
-    totalVolume += amount;
+    totalVolume += record.amountIn;
     totalSwaps  += 1;
     swapHistory.unshift(record);
     if (swapHistory.length > 200) swapHistory.pop();
 
+    slog({
+      evt: 'execute', ok: true, txHash: v.txHash,
+      kind: v.kind, blockNumber: v.blockNumber, gasUsed: v.gasUsed,
+      tokenIn: v.tokenIn, tokenOut: v.tokenOut,
+      amountIn: v.amountIn, amountOut: v.amountOut,
+      payloadWalletMatches: String(walletAddress).toLowerCase() === v.sender.toLowerCase(),
+      verificationMs: Date.now() - started,
+    });
+
     return c.json({
       success: true,
       swap:    record,
-      onChain,
-      explorer: finalTxHash ? `${EXPLORER_URL}/tx/${finalTxHash}` : EXPLORER_URL,
-      message:  `${onChain ? '✅ Swap on-chain confirmado' : '📝 Swap registrado'}: ${amount} ${from} → ${calc.amountOut.toFixed(4)} ${toToken}`,
+      onChain: true,
+      verified: true,
+      explorer: `${EXPLORER_URL}/tx/${v.txHash}`,
+      message:  `✅ Swap on-chain verificado: ${record.amountIn} ${verifiedFrom} → ${record.amountOut.toFixed(4)} ${verifiedTo}`,
     });
 
   } catch (err) {
+    slog({ evt: 'execute', ok: false, error: String(err), verificationMs: Date.now() - started });
+    if (isRpcUnavailable(err)) return c.json(rpcUnavailableResponse(), 503);
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
@@ -336,6 +399,8 @@ swapRouter.get('/history', (c) => {
   let swaps = swapHistory;
   if (wallet) swaps = swaps.filter(s => s.walletAddress === wallet);
 
+  const cached = reserveCache.peek();
+
   return c.json({
     success: true,
     swaps:   swaps.slice(0, limit),
@@ -344,9 +409,10 @@ swapRouter.get('/history', (c) => {
       totalSwaps,
       totalVolume,
       pool: {
-        usdcReserve: (Number(poolCache.reserveB) / 1e6).toFixed(2),
-        eurcReserve: (Number(poolCache.reserveA) / 1e6).toFixed(2),
-        lastUpdated: poolCache.lastUpdated > 0 ? new Date(poolCache.lastUpdated).toISOString() : null,
+        usdcReserve: cached ? (Number(cached.reserveB) / 1e6).toFixed(2) : null,
+        eurcReserve: cached ? (Number(cached.reserveA) / 1e6).toFixed(2) : null,
+        blockNumber: cached ? cached.blockNumber : null,
+        lastUpdated: cached ? new Date(cached.lastSuccessfulFetch).toISOString() : null,
       },
     },
   });
@@ -355,7 +421,8 @@ swapRouter.get('/history', (c) => {
 // ─── GET /api/swap/pool ────────────────────────────────────────────────────────
 swapRouter.get('/pool', async (c) => {
   try {
-    const { reserveA, reserveB, totalSupply } = await fetchAMMReserves();
+    const snapshot = await reserveCache.getReserves();
+    const { reserveA, reserveB, totalSupply } = snapshot;
     return c.json({
       success: true,
       pool: {
@@ -364,13 +431,19 @@ swapRouter.get('/pool', async (c) => {
         tokenB:       { symbol: 'USDC', address: USDC_ADDRESS, reserve: (Number(reserveB) / 1e6).toFixed(6) },
         totalSupplyLP: (Number(totalSupply) / 1e6).toFixed(6),
         fee:          `${AMM_FEE * 100}%`,
-        dataSource:   'on-chain (Arc Testnet RPC)',
+        source:       snapshot.source,
+        cacheAge:     snapshot.cacheAge,
+        blockNumber:  snapshot.blockNumber,
+        dataSource:   snapshot.source === 'on-chain'
+          ? 'on-chain (Arc Testnet RPC)'
+          : `cache (verified on-chain ${Math.round(snapshot.cacheAge / 1000)}s ago)`,
         chainId:      CHAIN_ID,
         explorer:     `${EXPLORER_URL}/address/${AMM_ADDRESS}`,
       },
     });
   } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
+    if (isRpcUnavailable(err)) return c.json(rpcUnavailableResponse(), 503);
+    return c.json({ success: false, error: String(err), source: 'error' }, 500);
   }
 });
 
@@ -382,7 +455,8 @@ swapRouter.get('/network', (c) => {
       name:     'Arc Testnet',
       chainId:  CHAIN_ID,
       chainHex: '0x4cef52',
-      rpc:      RPC_URL,
+      rpc:      rpcClient.endpoints()[0],
+      rpcFallbacks: rpcClient.endpoints().slice(1),
       explorer: EXPLORER_URL,
       contracts: {
         AMM:  AMM_ADDRESS,

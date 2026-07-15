@@ -21,7 +21,9 @@
   const TRS_EXPLORER = 'https://testnet.arcscan.app';
   const TRS_NETWORK  = 'Arc Testnet';
   const TRS_CHAIN_ID = 5042002;
-  const TRS_RPC      = 'https://rpc.testnet.arc.network';
+  const TRS_RPC      = (typeof window !== 'undefined' && window.location && window.location.origin.indexOf('http') === 0)
+    ? window.location.origin + '/api/rpc' // same-origin failover proxy
+    : 'https://rpc.testnet.arc.network';
   const TRS_REFRESH_MS = 25000;
   const TRS_VERSION  = '20260709t-mint';
   const ARC_KEY = 'arc', ARC_DOMAIN = 26;

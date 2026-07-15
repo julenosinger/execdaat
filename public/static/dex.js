@@ -185,7 +185,7 @@ async function ammEnsureNetwork() {
             chainId: AMM_CHAIN_HEX,
             chainName: 'Arc Testnet',
             nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
-            rpcUrls: [AMM_RPC],
+            rpcUrls: [AMM_RPC, 'https://rpc.blockdaemon.testnet.arc.network', 'https://rpc.drpc.testnet.arc.network', 'https://rpc.quicknode.testnet.arc.network'],
             blockExplorerUrls: [AMM_EXPLORER],
           }],
         });

@@ -277,9 +277,39 @@
 
   // ── 10. Secure Fetch Wrapper (adds security headers to all API calls) ─────────
   const _origFetch = window.fetch.bind(window)
+
+  // Public Arc RPC hosts are rate-limited per client IP (HTTP 429
+  // "request limit reached"). ALL direct browser calls to them are
+  // transparently rerouted to the same-origin failover proxy /api/rpc,
+  // which distributes across every Arc RPC server-side.
+  const ARC_RPC_HOSTS = [
+    'rpc.testnet.arc.network',
+    'rpc.blockdaemon.testnet.arc.network',
+    'rpc.drpc.testnet.arc.network',
+    'rpc.quicknode.testnet.arc.network',
+  ]
+  function _isArcRpcUrl(url) {
+    try {
+      const host = new URL(url, window.location.origin).hostname
+      return ARC_RPC_HOSTS.indexOf(host) !== -1
+    } catch (_) { return false }
+  }
+
   window.fetch = function(input, init) {
     // Only add headers to same-origin API calls
-    const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input))
+    let url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input))
+
+    // Transparent Arc RPC reroute → same-origin failover proxy
+    if (_isArcRpcUrl(url)) {
+      const proxied = window.location.origin + '/api/rpc'
+      if (typeof input === 'string' || !(input instanceof Request)) {
+        input = proxied
+      } else {
+        input = new Request(proxied, input)
+      }
+      url = proxied
+    }
+
     const isSameOrigin = !url.startsWith('http') || url.startsWith(window.location.origin)
     const isAPI = url.includes('/api/')
 

@@ -17,6 +17,11 @@ const ACC_CHAINS = {
     chainId: 5042002, chainHex: '0x4cef52',
     domain: 26, icon: '🟣', color: '#a78bfa',
     rpc: 'https://rpc.testnet.arc.network',
+    rpcAlternatives: [
+      'https://rpc.blockdaemon.testnet.arc.network',
+      'https://rpc.drpc.testnet.arc.network',
+      'https://rpc.quicknode.testnet.arc.network',
+    ],
     explorer: 'https://testnet.arcscan.app',
     usdc: '0x3600000000000000000000000000000000000000',
     tokenMessenger: '0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA',
@@ -262,7 +267,7 @@ async function _accSwitchChain(chainKey) {
           chainId: chain.chainHex,
           chainName: chain.label,
           nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-          rpcUrls: [chain.rpc],
+          rpcUrls: [chain.rpc].concat(chain.rpcAlternatives || []),
           blockExplorerUrls: [chain.explorer],
         }],
       });

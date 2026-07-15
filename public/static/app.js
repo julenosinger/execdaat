@@ -730,7 +730,7 @@ async function loadAgentsDetails() {
     // ── Contract agent — fetch real on-chain count ──
     let onChainCount = '—';
     try {
-      const res  = await fetch('https://rpc.testnet.arc.network', {
+      const res  = await fetch('/api/rpc', {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ jsonrpc:'2.0', id:1, method:'eth_call', params:[{ to:'0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A', data:'0xdae90d8d' },'latest'] }),
       });

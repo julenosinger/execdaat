@@ -40,6 +40,11 @@
       key: 'arc', name: 'Arc Testnet', short: 'Arc', icon: '🟣',
       chainId: 5042002, chainHex: '0x4cef52', domain: 26,
       rpc: 'https://rpc.testnet.arc.network', explorer: 'https://testnet.arcscan.app',
+      rpcAlternatives: [
+        'https://rpc.blockdaemon.testnet.arc.network',
+        'https://rpc.drpc.testnet.arc.network',
+        'https://rpc.quicknode.testnet.arc.network',
+      ],
       usdc: '0x3600000000000000000000000000000000000000',
       tokenMessenger: TOKEN_MESSENGER_V2, messageTransmitter: MSG_TRANSMITTER_V2,
       nativeSymbol: 'USDC', nativeDecimals: 18, isNative: true,
@@ -118,6 +123,12 @@
   }
 
   function _readProvider(chain) {
+    // Arc reads go through the same-origin failover proxy (/api/rpc):
+    // the public Arc RPC rate-limits per client IP ("request limit reached"),
+    // which broke source-balance reads. The proxy fails over across 4 RPCs.
+    if (chain.chainId === 5042002 && typeof window !== 'undefined' && window.location && window.location.origin.indexOf('http') === 0) {
+      return new (_E().JsonRpcProvider)(window.location.origin + '/api/rpc');
+    }
     return new (_E().JsonRpcProvider)(chain.rpc);
   }
 
@@ -148,7 +159,8 @@
         await raw.request({
           method: 'wallet_addEthereumChain',
           params: [{
-            chainId: chain.chainHex, chainName: chain.name, rpcUrls: [chain.rpc],
+            chainId: chain.chainHex, chainName: chain.name,
+            rpcUrls: [chain.rpc].concat(chain.rpcAlternatives || []),
             nativeCurrency: chain.isNative
               ? { name: 'USDC', symbol: 'USDC', decimals: 18 }
               : { name: chain.nativeSymbol || 'ETH', symbol: chain.nativeSymbol || 'ETH', decimals: 18 },

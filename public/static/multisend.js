@@ -463,7 +463,7 @@ async function msSwitchToArc() {
         await window.ethereum.request({ method:'wallet_addEthereumChain', params:[{
           chainId: MS_CHAIN_HEX, chainName:'Arc Testnet',
           nativeCurrency:{name:'USDC',symbol:'USDC',decimals:6},
-          rpcUrls:['https://rpc.testnet.arc.network'],
+          rpcUrls:['https://rpc.testnet.arc.network', 'https://rpc.blockdaemon.testnet.arc.network', 'https://rpc.drpc.testnet.arc.network', 'https://rpc.quicknode.testnet.arc.network'],
           blockExplorerUrls:['https://testnet.arcscan.app'],
         }] });
         return true;

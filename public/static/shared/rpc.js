@@ -8,12 +8,19 @@
   'use strict';
   var D = window.ExecDaat = window.ExecDaat || {};
 
-  var RPCS = D.CHAIN ? D.CHAIN.RPCS : [
+  var RPCS = D.CHAIN ? D.CHAIN.RPCS.slice() : [
     'https://rpc.testnet.arc.network',
     'https://rpc.blockdaemon.testnet.arc.network',
     'https://rpc.drpc.testnet.arc.network',
     'https://rpc.quicknode.testnet.arc.network',
   ];
+
+  // Same-origin failover proxy first: /api/rpc distributes reads across all
+  // public Arc RPCs server-side, immune to the per-client-IP rate limit
+  // ("request limit reached"). Direct public RPCs remain as fallback.
+  if (typeof window !== 'undefined' && window.location && String(window.location.origin).indexOf('http') === 0) {
+    RPCS.unshift(window.location.origin + '/api/rpc');
+  }
 
   // ─── State ─────────────────────────────────────────────────────────────
   var currentIndex  = 0;

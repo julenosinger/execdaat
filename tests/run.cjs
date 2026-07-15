@@ -13,18 +13,29 @@ const FILTER = (() => {
 })();
 
 let passed = 0, failed = 0, skipped = 0;
+const pendingAsync = [];
 
 function it(name, fn) {
   if (FILTER && !name.toLowerCase().includes(FILTER)) { skipped++; return; }
+  let result;
   try {
-    fn();
-    passed++;
-    if (VERBOSE) console.log(`  \u2713 ${name}`);
+    result = fn();
   } catch (e) {
     failed++;
     console.log(`  \u2717 ${name}`);
     console.log(`    ${e.message}`);
+    return;
   }
+  if (result && typeof result.then === 'function') {
+    // Async test: resolution is awaited before the summary is printed
+    pendingAsync.push(result.then(
+      () => { passed++; if (VERBOSE) console.log(`  \u2713 ${name}`); },
+      (e) => { failed++; console.log(`  \u2717 ${name}`); console.log(`    ${e.message}`); },
+    ));
+    return;
+  }
+  passed++;
+  if (VERBOSE) console.log(`  \u2713 ${name}`);
 }
 
 function describe(name, fn) {
@@ -127,12 +138,15 @@ const intDir = path.join(__dirname, '..', 'tests', 'integration');
 if (fs.existsSync(intDir)) loadTests(intDir);
 
 const total = passed + failed;
-console.log(`\n${'='.repeat(50)}`);
-console.log(`Results: ${passed} passed, ${failed} failed, ${skipped} skipped (${total} total)`);
-console.log(`${'='.repeat(50)}`);
+Promise.allSettled(pendingAsync).then(() => {
+  const finalTotal = passed + failed;
+  console.log(`\n${'='.repeat(50)}`);
+  console.log(`Results: ${passed} passed, ${failed} failed, ${skipped} skipped (${finalTotal} total)`);
+  console.log(`${'='.repeat(50)}`);
 
-// Write results to file for CI
-const results = { passed, failed, skipped, total, timestamp: new Date().toISOString() };
-try { fs.writeFileSync(path.join(__dirname, '..', 'test-results.json'), JSON.stringify(results, null, 2)); } catch(e) {}
+  // Write results to file for CI
+  const results = { passed, failed, skipped, total: finalTotal, timestamp: new Date().toISOString() };
+  try { fs.writeFileSync(path.join(__dirname, '..', 'test-results.json'), JSON.stringify(results, null, 2)); } catch(e) {}
 
-process.exit(failed > 0 ? 1 : 0);
+  process.exit(failed > 0 ? 1 : 0);
+});

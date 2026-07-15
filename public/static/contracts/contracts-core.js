@@ -365,7 +365,7 @@ async function cfSwitchNetwork() {
       try {
         await rawProv.request({ method: 'wallet_addEthereumChain', params: [{
           chainId: CF_CHAIN_HEX, chainName: CF_NETWORK_NAME,
-          rpcUrls: [CF_RPC],
+          rpcUrls: [CF_RPC, 'https://rpc.blockdaemon.testnet.arc.network', 'https://rpc.drpc.testnet.arc.network', 'https://rpc.quicknode.testnet.arc.network'],
           nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
           blockExplorerUrls: [CF_EXPLORER],
         }]});

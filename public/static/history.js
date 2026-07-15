@@ -6,7 +6,9 @@
 'use strict';
 
 const HIST_EXPLORER   = 'https://testnet.arcscan.app';
-const HIST_RPC        = 'https://rpc.testnet.arc.network';
+const HIST_RPC        = (typeof window !== 'undefined' && window.location && window.location.origin.indexOf('http') === 0)
+  ? window.location.origin + '/api/rpc'   // same-origin failover proxy
+  : 'https://rpc.testnet.arc.network';
 const HIST_CHAIN_ID   = 5042002;
 const HIST_USDC_ADDR  = '0x3600000000000000000000000000000000000000';
 const HIST_EURC_ADDR  = '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a';

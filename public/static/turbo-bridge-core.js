@@ -68,7 +68,7 @@ function isTurboOperator(addr) {
 async function fetchTurboFeeBps() {
   try {
     if (!window.ethers) return TURBO_FEE_BPS;
-    const rpc = 'https://rpc.testnet.arc.network';
+    const rpc = (typeof window !== 'undefined' && window.location && window.location.origin.indexOf('http') === 0) ? window.location.origin + '/api/rpc' : 'https://rpc.testnet.arc.network';
     const p = new window.ethers.JsonRpcProvider(rpc);
     const vc = new window.ethers.Contract(TREASURY_VAULT_ADDRESS, TREASURY_VAULT_ABI, p);
     const bps = await vc.turboFeeBps();
@@ -189,7 +189,7 @@ const VaultAccounting = (() => {
     try {
       if (!window.ethers) return null;
       await _ensureTreasuryDiscovered();
-      const rpc = 'https://rpc.testnet.arc.network';
+      const rpc = (typeof window !== 'undefined' && window.location && window.location.origin.indexOf('http') === 0) ? window.location.origin + '/api/rpc' : 'https://rpc.testnet.arc.network';
       const p = new window.ethers.JsonRpcProvider(rpc);
       const vc = new window.ethers.Contract(TREASURY_VAULT_ADDRESS, TREASURY_VAULT_ABI, p);
       const availableRaw = await vc.getAvailableLiquidity(TREASURY_ASSETS.usdc);
@@ -511,7 +511,7 @@ const FulfillerEngine = (() => {
       if (i) { i.lastPollAt = Date.now(); i.pollCount = 0; i.lastError = null; }
     });
 
-    const ARC_READ_PROVIDER = new window.ethers.JsonRpcProvider('https://rpc.testnet.arc.network');
+    const ARC_READ_PROVIDER = new window.ethers.JsonRpcProvider((typeof window !== 'undefined' && window.location && window.location.origin.indexOf('http') === 0) ? window.location.origin + '/api/rpc' : 'https://rpc.testnet.arc.network');
 
     const timer = setInterval(async () => {
       pollCount++;
