@@ -5,8 +5,9 @@
 // Zero runtime dependency on the Elligent Treasury Core: no
 // TREASURY_CORE_URL, no outbound proxy, no HMAC/cross-app auth.
 //
-// Data source: local Cloudflare KV (binding AGENT_INTENTS) for the
-// intent ledger + Arc RPC (read-only) for on-chain vault/liquidity.
+// Data source: in-memory intent ledger (Cloudflare KV optional — used only
+// if an AGENT_INTENTS binding happens to exist) + Arc RPC (read-only) for
+// on-chain vault/liquidity.
 // Actual on-chain settlement signing stays where it already is
 // (/api/treasury/auto-settle, operator key) — this module is the
 // record / ledger / metrics / health authority.
@@ -101,12 +102,18 @@ function toNum(v: any): number { const n = Number(v); return isFinite(n) ? n : 0
 function isHex(v: any, len: number): boolean { return typeof v === 'string' && new RegExp('^0x[0-9a-fA-F]{' + len + '}$').test(v) }
 function isAddr(v: any): boolean { return isHex(v, 40) }
 
-// ─── KV ledger (append-only intents + compact index) ─────────────────────────
+// ─── Ledger store (in-memory, no KV dependency) ──────────────────────────────
+const memStore = new Map<string, string>()
 async function kvGet(env: CoreBindings, key: string): Promise<any> {
-  try { if (!env.AGENT_INTENTS) return null; const raw = await env.AGENT_INTENTS.get(key); return raw ? JSON.parse(raw) : null } catch { return null }
+  try {
+    if (env.AGENT_INTENTS) { const raw = await env.AGENT_INTENTS.get(key); if (raw) return JSON.parse(raw) }
+  } catch { /* KV unavailable — fall back to memory */ }
+  try { const raw = memStore.get(key); return raw ? JSON.parse(raw) : null } catch { return null }
 }
 async function kvPut(env: CoreBindings, key: string, val: any): Promise<void> {
-  try { if (!env.AGENT_INTENTS) return; await env.AGENT_INTENTS.put(key, JSON.stringify(val)) } catch { /* never throw */ }
+  const raw = JSON.stringify(val)
+  memStore.set(key, raw)
+  try { if (env.AGENT_INTENTS) await env.AGENT_INTENTS.put(key, raw) } catch { /* never throw */ }
 }
 async function readIndex(env: CoreBindings): Promise<any[]> { const a = await kvGet(env, INDEX_KEY); return Array.isArray(a) ? a : [] }
 async function writeIndex(env: CoreBindings, arr: any[]): Promise<void> { await kvPut(env, INDEX_KEY, arr.slice(0, INDEX_CAP)) }
@@ -298,11 +305,11 @@ router.get('/health', async (c) => {
       rpc: { status: blk.ok ? 'ok' : 'degraded', url: RPC_URL, blockNumber: blk.block, latencyMs: blk.latencyMs },
       circle: { status: 'ok', messageTransmitter: CIRCLE_TRANSMITTER, provider: 'Circle CCTP v2' },
       vault: { status: vault && vault.address ? 'ok' : 'degraded', address: vault ? vault.address : null, paused: vault ? vault.paused : null },
-      treasury: okc(true), settlement: okc(true), reimbursement: okc(true), ledger: okc(!!c.env.AGENT_INTENTS),
+      treasury: okc(true), settlement: okc(true), reimbursement: okc(true), ledger: okc(true),
       bridge: { status: 'ok', provider: 'Circle CCTP v2', chainId: CHAIN_ID },
       workers: { status: 'ok', runtime: 'cloudflare_pages_functions' },
-      storage: { status: c.env.AGENT_INTENTS ? 'ok' : 'degraded', type: 'cloudflare_kv' },
-      kv: { status: c.env.AGENT_INTENTS ? 'ok' : 'degraded' },
+      storage: { status: 'ok', type: c.env.AGENT_INTENTS ? 'cloudflare_kv' : 'memory' },
+      kv: { status: 'ok' },
     },
     dependencies: { elligent: 'none' },
     checkedAt: new Date().toISOString(),

@@ -138,6 +138,7 @@ const cfState = {
   networkOk:    false,
   _provider:    null,
   _factory:     null,
+  _readFactory: null,   // read-only factory via /api/rpc failover proxy (list/detail reads)
   _usdc:        null,
   loadingIds:   false,   // prevent concurrent fetches
   lastWallet:   null,    // track wallet changes
@@ -377,6 +378,27 @@ async function cfSwitchNetwork() {
 }
 
 // ─── RPC helpers ──────────────────────────────────────────────────────────────
+// Read-only factory bound to the same-origin /api/rpc failover proxy.
+// The wallet provider (MetaMask) sends eth_call to the public Arc RPC from the
+// user's IP, which is rate-limited (429 "request limit reached") — so ALL list
+// reads (getContract/getMilestones/contractCount) go through the proxy instead.
+// Writes keep using the signer-bound factory from cfInitProvider.
+function cfReadFactory() {
+  try {
+    if (cfState._readFactory) return cfState._readFactory;
+    if (!window.ethers) return null;
+    const url = (window.location && window.location.origin.indexOf('http') === 0)
+      ? window.location.origin + '/api/rpc'
+      : CF_RPC;
+    const provider = new window.ethers.JsonRpcProvider(url, CF_CHAIN_ID, { staticNetwork: true, batchMaxCount: 20 });
+    cfState._readFactory = new window.ethers.Contract(CF_FACTORY_ADDR, CF_ABI, provider);
+    return cfState._readFactory;
+  } catch (e) {
+    cfWarn('cfReadFactory init failed:', e.message);
+    return null;
+  }
+}
+
 async function cfRpcCall(to, data) {
   const body = JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method: 'eth_call', params: [{ to, data }, 'latest'] });
   const res  = await fetch(CF_RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
@@ -450,8 +472,9 @@ async function cfReadAllowance(owner, spender) {
 // ─── Read deposited balance directly from chain ───────────────────────────────
 async function cfReadDepositedBalance(contractId) {
   try {
-    if (!cfState._factory) return null;
-    const r = await cfState._factory.getContract(contractId);
+    const f = cfReadFactory() || cfState._factory;
+    if (!f) return null;
+    const r = await f.getContract(contractId);
     // r is a named tuple — use .depositedValue (not r[5])
     const deposited = BigInt(r.depositedValue);
     cfLog(`Contract #${contractId} depositedValue on-chain: $${cfFmtUsdc(deposited)}`);
@@ -636,11 +659,13 @@ async function cfLoadContracts(opts = {}) {
     }
     cfUpdateNetworkBanner(true);
     const { factory, address } = init;
+    // Read path: /api/rpc failover proxy (wallet RPC is rate-limited per IP)
+    const readFactory = cfReadFactory() || factory;
 
     // ── 2. Sanity check: read contractCount ───────────────────────────────────
     let totalOnChain = 0;
     try {
-      totalOnChain = Number(await factory.contractCount());
+      totalOnChain = Number(await readFactory.contractCount());
       cfLog(`contractCount on-chain: ${totalOnChain} contracts exist`);
     } catch (e) {
       cfWarn('contractCount read failed:', e.message);
@@ -681,7 +706,7 @@ async function cfLoadContracts(opts = {}) {
 
     // ── 5. Fetch contract details (tuple ABI) ─────────────────────────────────
     cfLog(`Fetching ${ids.length} contracts…`);
-    const settled = await Promise.allSettled(ids.map(id => cfFetchContract(factory, id)));
+    const settled = await Promise.allSettled(ids.map(id => cfFetchContract(readFactory, id)));
     const contracts = settled.map((r, i) => {
       if (r.status === 'rejected') {
         cfErr(`Contract #${ids[i]} failed:`, r.reason?.message);
@@ -695,7 +720,7 @@ async function cfLoadContracts(opts = {}) {
     const milestones = {};
     await Promise.allSettled(contracts.map(async c => {
       try {
-        milestones[c.id] = await cfFetchMilestones(factory, c.id);
+        milestones[c.id] = await cfFetchMilestones(readFactory, c.id);
         c.milestones = milestones[c.id];
       } catch (e) {
         cfWarn(`Milestones #${c.id}:`, e.message);
