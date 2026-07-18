@@ -419,7 +419,6 @@
           multisend:           ['fa-paper-plane',  'MultiSend',           'Batch payments in one flow'],
           dex:                 ['fa-exchange-alt', 'Swap',                'Swap tokens via on-chain AMM'],
           xbridge:             ['fa-bridge',       'Bridge',              'Bridge assets via Circle CCTP V2'],
-          treasury:            ['fa-landmark',     'Treasury',            'Turbo Bridge control center'],
           'advanced-crosschain':['fa-satellite-dish','Advanced Cross-Chain','Move value across chains'],
           unifiedbalance:      ['fa-coins',        'Unified Balance',     'All your assets, one view'],
           autonoma:            ['fa-robot',        'Autonomous',          'Autonomous execution'],
@@ -1034,27 +1033,6 @@
       <button onclick="switchTab('dashboard');sidebarClose();" id="tab-dashboard" class="tab-btn sidebar-item" data-label="Information">
         <span class="sidebar-item-icon"><i class="fas fa-info-circle"></i></span>
         <span class="sidebar-item-label">Information</span>
-        <span class="sidebar-item-active-bar"></span>
-      </button>
-
-      <!-- Treasury — Turbo Bridge Control Center (moved to end of menu) -->
-      <button onclick="switchTab('treasury');sidebarClose();" id="tab-treasury" class="tab-btn sidebar-item" data-label="Treasury">
-        <span class="sidebar-item-icon"><i class="fas fa-landmark"></i></span>
-        <span class="sidebar-item-label">Treasury</span>
-        <span class="sidebar-item-active-bar"></span>
-      </button>
-
-      <!-- Reimbursements — now inside Treasury tab -->
-      <button onclick="switchTab('treasury');sidebarClose();" id="tab-reimbursements" class="tab-btn sidebar-item hidden" data-label="Reimbursements">
-        <span class="sidebar-item-icon"><i class="fas fa-arrow-rotate-left"></i></span>
-        <span class="sidebar-item-label">Reimbursements</span>
-        <span class="sidebar-item-active-bar"></span>
-      </button>
-
-      <!-- Treasury Operations Center — now inside Treasury tab -->
-      <button onclick="switchTab('treasury');sidebarClose();" id="tab-toc" class="tab-btn sidebar-item hidden" data-label="Operations Center">
-        <span class="sidebar-item-icon"><i class="fas fa-satellite-dish"></i></span>
-        <span class="sidebar-item-label">Operations Center</span>
         <span class="sidebar-item-active-bar"></span>
       </button>
     </nav>
@@ -1701,6 +1679,9 @@
                     rows="2"></textarea>
                   <div class="pay-note-counter"><span id="pay-note-count">0</span>/300</div>
                 </div>
+
+                <!-- Arc Transaction Memo (optional plug-in — renders via MemoUI, auto-hides off Arc) -->
+                <div data-memo-mount="pay"></div>
 
                 <!-- Schedule Payment -->
                 <div class="pay-sched-panel">
@@ -3042,6 +3023,9 @@
             </div>
 
             <div id="ms-final-result" class="hidden rounded-xl p-4 mb-4"></div>
+
+            <!-- Arc Transaction Memo (optional plug-in — renders via MemoUI, auto-hides off Arc) -->
+            <div data-memo-mount="ms" class="mb-4"></div>
 
             <div class="flex gap-3">
               <button onclick="msGoBack()" id="ms-step3-back"
@@ -4640,55 +4624,6 @@
           <p style="font-size:13px;">Loading Bridge…</p>
         </div>
       </div>
-    </div>
-
-    <!-- ══════════════════════════ TREASURY TAB — Turbo Bridge Control Center ══════════════════════════ -->
-    <div id="tab-content-treasury" class="tab-content hidden">
-      <!-- Treasury sub-navigation — sticky -->
-      <div style="position:sticky;top:var(--topbar-h,60px);z-index:40;background:rgba(3,7,18,0.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,0.06);padding:8px 16px;">
-        <div style="max-width:1400px;margin:0 auto;display:flex;gap:4px;overflow-x:auto;">
-          <button onclick="document.getElementById('trs-root').scrollIntoView({behavior:'smooth',block:'start'})" class="trs-sub-tab" style="padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:rgba(245,158,11,0.12);color:#fbbf24;white-space:nowrap;transition:all 0.15s;flex-shrink:0;">
-            <i class="fas fa-landmark mr-1.5"></i>Overview
-          </button>
-          <button onclick="document.getElementById('trs-mint-section').scrollIntoView({behavior:'smooth',block:'start'})" class="trs-sub-tab" style="padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#9ca3af;white-space:nowrap;transition:all 0.15s;flex-shrink:0;">
-            <i class="fas fa-coins mr-1.5"></i>Mint
-          </button>
-          <button onclick="document.getElementById('reim-root').scrollIntoView({behavior:'smooth',block:'start'})" class="trs-sub-tab" style="padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#9ca3af;white-space:nowrap;transition:all 0.15s;flex-shrink:0;">
-            <i class="fas fa-arrow-rotate-left mr-1.5"></i>Reimbursements
-          </button>
-          <button onclick="document.getElementById('toc-root').scrollIntoView({behavior:'smooth',block:'start'})" class="trs-sub-tab" style="padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#9ca3af;white-space:nowrap;transition:all 0.15s;flex-shrink:0;">
-            <i class="fas fa-satellite-dish mr-1.5"></i>Operations Center
-          </button>
-        </div>
-      </div>
-      <!-- Treasury Overview (default view) -->
-      <div id="trs-root" class="max-w-7xl mx-auto" role="region" aria-label="Treasury — Turbo Bridge Control Center">
-        <div style="padding:64px 0;text-align:center;color:#8aaac8;">
-          <div style="width:56px;height:56px;border-radius:16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-            <i class="fas fa-landmark" style="color:#f59e0b;font-size:22px;"></i>
-          </div>
-        </div>
-      </div>
-      <!-- Mint section (part of treasury.js) -->
-      <div id="trs-mint-section" style="border-top:1px solid rgba(255,255,255,0.04);padding-top:16px;"></div>
-      <!-- Reimbursements section -->
-      <div id="tab-content-reimbursements"><div id="reim-root" class="max-w-7xl mx-auto" role="region" aria-label="Reimbursements" style="border-top:1px solid rgba(255,255,255,0.04);padding-top:16px;">
-        <div style="padding:64px 0;text-align:center;color:#8aaac8;">
-          <div style="width:56px;height:56px;border-radius:16px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-            <i class="fas fa-arrow-rotate-left" style="color:#10b981;font-size:22px;"></i>
-          </div>
-          <p style="font-size:13px;">Loading Reimbursements monitor…</p>
-        </div>
-      </div></div>
-      <!-- Operations Center section -->
-      <div id="tab-content-toc"><div id="toc-root" class="max-w-7xl mx-auto" role="region" aria-label="Treasury Operations Center" style="border-top:1px solid rgba(255,255,255,0.04);padding-top:16px;">
-        <div style="padding:64px 0;text-align:center;color:#8aaac8;">
-          <div style="width:56px;height:56px;border-radius:16px;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-            <i class="fas fa-satellite-dish" style="color:#06b6d4;font-size:22px;"></i>
-          </div>
-          <p style="font-size:13px;">Loading Operations Center…</p>
-        </div>
-      </div></div>
     </div>
 
     <!-- ═════════ UNIFIED BALANCE TAB (restored from 5ed8378a) ═════════ -->
@@ -6329,42 +6264,39 @@
   <!-- ══ ExecDaat Shared Infrastructure (Phase 2) — loaded first ══ -->
   <script src="/static/shared/constants.js?v=20260712p2"></script>
   <script src="/static/shared/token-registry.js?v=20260712p2"></script>
-  <script src="/static/shared/contracts.js?v=20260712p2"></script>
+  <script src="/static/shared/contracts.js?v=20260718notr1"></script>
   <script src="/static/shared/address.js?v=20260712p2"></script>
   <script src="/static/shared/format.js?v=20260712p2"></script>
   <script src="/static/shared/token.js?v=20260712p2"></script>
   <script src="/static/shared/rpc.js?v=20260717opt1"></script>
-  <script src="/static/shared/config.js?v=20260712p2"></script>
-  <script src="/static/shared/errors.js?v=20260712p2"></script>
+  <script src="/static/shared/config.js?v=20260718notr1"></script>
+  <script src="/static/shared/errors.js?v=20260718notr1"></script>
   <script src="/static/shared/ui.js?v=20260712p2"></script>
   <!-- ══ Phase 4 Reliability Modules ══ -->
   <script src="/static/shared/cache.js?v=20260712p4"></script>
-  <script src="/static/shared/health.js?v=20260717opt1"></script>
+  <script src="/static/shared/health.js?v=20260718notr1"></script>
   <script src="/static/shared/telemetry.js?v=20260712p4"></script>
-  <script src="/static/shared/debug.js?v=20260712p4"></script>
+  <script src="/static/shared/debug.js?v=20260718notr1"></script>
   <!-- ══ Phase 8 Operations Modules ══ -->
-  <script src="/static/shared/contract-monitor.js?v=20260712p8"></script>
+  <script src="/static/shared/contract-monitor.js?v=20260718notr1"></script>
 
-  <script src="/static/wallet.js?v=20260717opt1"></script>
+  <!-- ══ Arc Transaction Memo — optional plug-in layer (official Memo contract wrap) ══ -->
+  <script src="/static/memo/memo-engine.js?v=20260718memo1"></script>
+  <script src="/static/memo/memo-ui.js?v=20260718memo1"></script>
+
+  <script src="/static/wallet.js?v=20260718en1"></script>
   <script src="/static/wallet-create.js?v=20260715rpc1"></script>
-  <script src="/static/router.js?v=20260709toc1"></script>
+  <script src="/static/router.js?v=20260718notr1"></script>
   <script src="/static/unifiedbalance.js?v=20260717opt1"></script>
-  <script src="/static/cross-chain-service.js?v=20260715rpc1"></script>
-  <script src="/static/turbo-bridge-core.js?v=20260715rpc1"></script>
-  <script src="/static/turbo-bridge-integration.js?v=20260704b"></script>
-  <!-- Treasury Core API (Elligent) — Phase 3/4 integration layer (config → client → integration → ui-sync) -->
-  <script src="/static/treasury-config.js?v=20260705b"></script>
-  <script src="/static/treasury-core-client.js?v=20260705b"></script>
-  <script src="/static/treasury-core-integration.js?v=20260717opt1"></script>
-  <script src="/static/treasury-ui-sync.js?v=20260717opt1"></script>
-  <script src="/static/advanced-crosschain.js?v=20260717opt1"></script>
-  <script src="/static/ub-bridge.js?v=20260707in"></script>
+  <script src="/static/cross-chain-service.js?v=20260718arcin1"></script>
+  <script src="/static/advanced-crosschain.js?v=20260718notr1"></script>
+  <script src="/static/ub-bridge.js?v=20260718notr1"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
-  <script src="/static/app.js?v=20260717opt1"></script>
-  <script src="/static/payments.js?v=20260717opt1"></script>
-  <script src="/static/smart-payments.js?v=20260704b"></script>
+  <script src="/static/app.js?v=20260718notr1"></script>
+  <script src="/static/payments.js?v=20260718memo1"></script>
+  <script src="/static/smart-payments.js?v=20260718notr1"></script>
   <!-- ══ Contracts Module (Phase 3 — split from contracts.js) ══ -->
   <script src="/static/contracts/contracts-core.js?v=20260716read1"></script>
   <script src="/static/contracts/contracts-ui.js?v=20260712p3"></script>
@@ -6376,18 +6308,11 @@
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20260717opt1"></script>
-  <script src="/static/treasury.js?v=20260717opt1"></script>
-  <script src="/static/reimbursements.js?v=20260717opt1"></script>
-  <script src="/static/treasury-sync.js?v=20260717opt1"></script>
-  <script src="/static/treasury-event-bus.js?v=20260709e1"></script>
-  <script src="/static/treasury-job-engine.js?v=20260717opt1"></script>
-  <script src="/static/toc.js?v=20260717opt1"></script>
-  <script src="/static/treasury-bridge-link.js?v=20260707l1"></script>
-  <script src="/static/xbridge.js?v=20260717opt1"></script>
+  <script src="/static/xbridge.js?v=20260718notr1"></script>
   <script src="/static/bridge.js?v=20260715rpc1"></script>
   <!-- ══ MultiSend Module (Phase 3 — split from multisend.js) ══ -->
-  <script src="/static/multisend/multisend-core.js?v=20260715rpc1"></script>
-  <script src="/static/multisend/multisend-execute.js?v=20260712p3"></script>
+  <script src="/static/multisend/multisend-core.js?v=20260718msfix1"></script>
+  <script src="/static/multisend/multisend-execute.js?v=20260718msfix1"></script>
   <script src="/static/multisend/multisend-receipt.js?v=20260712p3"></script>
   <script src="/static/multisend/multisend-index.js?v=20260712p3"></script>
   <script src="/static/guardian.js?v=20250322"></script>
@@ -6464,7 +6389,7 @@
        ═══════════════════════════════════════════════════════════════════════════ -->
   <!-- CRITICAL: Load initializer FIRST (before core) -->
   <script src="/static/daat-agent-core-init.js?v=20260408j"></script>
-  <script src="/static/daat-agent-core.js?v=20260408j"></script>
+  <script src="/static/daat-agent-core.js?v=20260718memo1"></script>
   <script src="/static/payments-core-integration.js?v=20260408c"></script>
   <script src="/static/daat-agent-transactional.js?v=20260408i"></script>
   <!-- Chatbot integration DISABLED to preserve original intelligence -->

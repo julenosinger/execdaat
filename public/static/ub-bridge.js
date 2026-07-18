@@ -151,11 +151,7 @@
     S.quoting = true;
     el('ubx-status').innerHTML = '<i class="fas fa-circle-notch fa-spin text-cyan-400"></i> Finding best route…';
     try {
-      let turbo = false;
-      if (window.TurboBridge && typeof window.TurboBridge.decide === 'function') {
-        const d = await window.TurboBridge.decide(S.fromKey, S.toKey, amount);
-        turbo = d && d.mode === 'turbo';
-      }
+      const turbo = false;
       const q = await window.ArcBridge.getQuote({ from: S.fromKey, to: S.toKey, amount: amount, mode: 'fast' });
       S.quote = q; S.turbo = turbo;
       setBadge();
@@ -271,10 +267,7 @@
     const startTs = Date.now();
 
     try {
-      const smart = (window.TurboBridge && window.TurboBridge.smartExecute)
-        ? window.TurboBridge.smartExecute
-        : function (o) { return window.ArcBridge.execute(o); };
-      const result = await smart({ from: S.fromKey, to: S.toKey, amount: amount, recipient: addr, mode: 'fast', onEvent: onEvent });
+      const result = await window.ArcBridge.execute({ from: S.fromKey, to: S.toKey, amount: amount, recipient: addr, mode: 'fast', onEvent: onEvent });
 
       S._steps.forEach(s => s.status = 'done'); tlRender();
       const burnHash = result.burnTxHash || result.txHash || S._burnHash || null;

@@ -588,7 +588,24 @@ async function msSimulateOneTransferFrom(provider, senderAddr, toAddr, amountBig
 // FIX: approveAmount includes a 10% buffer to handle rounding edge cases
 async function msEnsureAllowance(usdc, senderAddr, spenderAddr, requiredBig, onStatus) {
   onStatus(`Checking USDC allowance…`);
-  const currentAllowance = await usdc.allowance(senderAddr, spenderAddr);
+  // Resilient allowance read: wallet RPC → /api/rpc proxy → public RPC.
+  // Worst case (all reads fail) assumes 0 and simply re-approves — safe.
+  let currentAllowance;
+  try { currentAllowance = await usdc.allowance(senderAddr, spenderAddr); }
+  catch (readErr) {
+    msWarn('Allowance read via wallet RPC failed — using read-RPC fallback:', readErr && readErr.message);
+    currentAllowance = null;
+    const roUrls = [];
+    try { if (typeof window !== 'undefined' && window.location && window.location.origin.indexOf('http') === 0) roUrls.push(window.location.origin + '/api/rpc'); } catch (_) {}
+    roUrls.push(MS_RPC);
+    for (const u of roUrls) {
+      try {
+        currentAllowance = await new window.ethers.Contract(MS_USDC_ADDR, MS_ERC20_ABI, new window.ethers.JsonRpcProvider(u)).allowance(senderAddr, spenderAddr);
+        break;
+      } catch (_) {}
+    }
+    if (currentAllowance === null) currentAllowance = 0n;
+  }
   const humanRequired = msMicroToUsdc(Number(requiredBig));
   msLog(`Allowance check: current=${window.ethers.formatUnits(currentAllowance, 6)} USDC required=${msFmt6(humanRequired)} USDC`);
 

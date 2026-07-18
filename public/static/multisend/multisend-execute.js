@@ -2,6 +2,29 @@
 // CRITICAL: Uses transferFrom(senderAddr, recipient, amount)
 // User must have approved Multicall3 for at least totalAmount BEFORE calling this.
 // The approval happens in Step 1 of msExecute(), BEFORE the fee payment.
+
+// Resilient USDC read: tries the wallet RPC first, then the same-origin
+// /api/rpc failover proxy, then the public Arc RPC. Fixes "missing revert
+// data" (BAD_DATA) when MetaMask's built-in Arc RPC rate-limits eth_call.
+// Read-only — transaction signing paths are untouched.
+async function msReadUsdc(ethers, walletContract, fnName, args) {
+  try { return await walletContract[fnName](...args); }
+  catch (e1) {
+    msWarn(`${fnName} via wallet RPC failed (${(e1 && (e1.code || e1.message)) || 'error'}) — falling back to read RPC`);
+    const urls = [];
+    try { if (typeof window !== 'undefined' && window.location && window.location.origin.indexOf('http') === 0) urls.push(window.location.origin + '/api/rpc'); } catch (_) {}
+    urls.push(MS_RPC);
+    let lastErr = e1;
+    for (const u of urls) {
+      try {
+        const ro = new ethers.Contract(MS_USDC_ADDR, MS_ERC20_ABI, new ethers.JsonRpcProvider(u));
+        return await ro[fnName](...args);
+      } catch (e2) { lastErr = e2; }
+    }
+    throw lastErr;
+  }
+}
+
 async function msExecuteMulticall3(ethers, signer, provider, senderAddr, recipients, amounts, gasPrice, onStatus) {
   const iface = new ethers.Interface(MS_ERC20_ABI);
   const mc3   = new ethers.Contract(MS_MULTICALL3_ADDR, MS_MULTICALL3_ABI, signer);
@@ -55,9 +78,36 @@ async function msExecuteMulticall3(ethers, signer, provider, senderAddr, recipie
   onStatus(`Confirm batch in wallet — ${recipients.length} transfers in 1 transaction…`);
   msLog(`Sending mc3.aggregate3 gasLimit=${gasLimit}`, { gasPrice });
 
+  // ── Optional Arc transaction memo (additive plug-in — never blocks the batch) ──
+  // Wraps the single aggregate3 call through the Arc Memo contract when the
+  // user explicitly enabled the memo toggle. Allowances are unaffected: the
+  // EOA is preserved as msg.sender for Multicall3 via the CallFrom precompile.
+  let msMemoTx = null;
+  try {
+    const memoText = (typeof window !== 'undefined' && window.MemoUI && typeof window.MemoUI.getActiveMemo === 'function') ? window.MemoUI.getActiveMemo('ms') : '';
+    if (memoText && window.MemoEngine) {
+      const memoInner = mc3.interface.encodeFunctionData('aggregate3', [calls]);
+      msMemoTx = await window.MemoEngine.buildTx({ target: MS_MULTICALL3_ADDR, data: memoInner, memoText });
+      if (msMemoTx) msLog('Arc transaction memo attached (Memo contract wrap)');
+      else onStatus('Memo could not be attached. Batch will continue normally.');
+    }
+  } catch (_) { msMemoTx = null; }
+
   let batchTx;
   try {
-    batchTx = await mc3.aggregate3(calls, { gasLimit, ...gasPrice });
+    if (msMemoTx) {
+      try {
+        batchTx = await signer.sendTransaction({ to: msMemoTx.to, data: msMemoTx.data, ...gasPrice });
+      } catch (memoErr) {
+        const md = msDecodeRevert(memoErr);
+        if (md.userRejected) throw memoErr; // user declined the tx itself — do not resend
+        msWarn('Memo wrap failed — sending plain batch:', memoErr && memoErr.message);
+        onStatus('Memo could not be attached. Batch will continue normally.');
+        batchTx = await mc3.aggregate3(calls, { gasLimit, ...gasPrice });
+      }
+    } else {
+      batchTx = await mc3.aggregate3(calls, { gasLimit, ...gasPrice });
+    }
   } catch (e) {
     const decoded = msDecodeRevert(e);
     if (decoded.userRejected) throw new Error('Batch transaction rejected by user.');
@@ -65,6 +115,8 @@ async function msExecuteMulticall3(ethers, signer, provider, senderAddr, recipie
     msError('aggregate3 send error:', e);
     throw new Error(decoded.msg || 'Multicall3 transaction submission failed.');
   }
+
+  try { if (msMemoTx && typeof window !== 'undefined' && window.MemoUI) window.MemoUI.reset('ms'); } catch (_) {}
 
   msLog('Multicall3 tx submitted:', batchTx.hash);
   onStatus(`Confirming batch… <a href="${MS_EXPLORER}/tx/${batchTx.hash}" target="_blank" class="underline text-blue-400 font-mono text-[10px]">${batchTx.hash.slice(0,14)}…</a>`);
@@ -260,8 +312,8 @@ async function msExecute() {
     msLog(`feeBig=${feeBig} (${ethers.formatUnits(feeBig, decs)} USDC)`);
     msLog(`grandBig=${grandBig} (${ethers.formatUnits(grandBig, decs)} USDC)`);
 
-    // Balance check
-    const balBig   = await usdc.balanceOf(senderAddr);
+    // Balance check (resilient read — wallet RPC → /api/rpc proxy → public RPC)
+    const balBig   = await msReadUsdc(ethers, usdc, 'balanceOf', [senderAddr]);
     const balHuman = Number(ethers.formatUnits(balBig, decs)).toFixed(2);
     msLog(`Balance: $${balHuman} USDC | Need: $${ethers.formatUnits(grandBig, decs)} USDC`);
 

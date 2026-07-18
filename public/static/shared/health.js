@@ -13,7 +13,6 @@
     wallet:     { status: 'unknown', message: '', lastCheck: 0, uptime: 0 },
     rpc:        { status: 'unknown', message: '', lastCheck: 0, uptime: 0 },
     guardian:   { status: 'unknown', message: '', lastCheck: 0, uptime: 0 },
-    treasury:   { status: 'unknown', message: '', lastCheck: 0, uptime: 0 },
     bridge:     { status: 'unknown', message: '', lastCheck: 0, uptime: 0 },
     circleApi:  { status: 'unknown', message: '', lastCheck: 0, uptime: 0 },
     factory:    { status: 'unknown', message: '', lastCheck: 0, uptime: 0 },
@@ -89,17 +88,6 @@
     });
   }
 
-  function checkTreasury() {
-    fetch('/api/core/v1/health').then(function(r) {
-      return r.json().catch(function(){ return null; });
-    }).then(function(j) {
-      if (j && j.success) setComponent('treasury', 'ok', 'Engine: ' + (j.data.engine || 'Native'));
-      else setComponent('treasury', 'degraded', 'API error');
-    }).catch(function() {
-      setComponent('treasury', 'degraded', 'Unreachable');
-    });
-  }
-
   function checkBridge() {
     // Check CCTP bridge via Circle API liveness
     setComponent('bridge', 'ok', D.CONTRACTS ? 'CCTP V2 configured' : 'Bridge configured');
@@ -138,7 +126,6 @@
       checkWallet();
       checkRPC();
       checkGuardian();
-      checkTreasury();
       checkBridge();
       checkFactory();
       D.health.overall = computeOverall();
@@ -156,7 +143,7 @@
 
     /** Check a single component */
     check: function(name) {
-      var checks = { wallet: checkWallet, rpc: checkRPC, guardian: checkGuardian, treasury: checkTreasury, bridge: checkBridge, circleApi: checkBridge, factory: checkFactory };
+      var checks = { wallet: checkWallet, rpc: checkRPC, guardian: checkGuardian, bridge: checkBridge, circleApi: checkBridge, factory: checkFactory };
       if (checks[name]) { checks[name](); D.health.overall = computeOverall(); }
     },
 

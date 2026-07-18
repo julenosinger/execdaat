@@ -49,7 +49,6 @@
       kv('Wallet', ws.connected ? 'Connected' : 'Disconnected'),
       kv('Network', ws.onArcNetwork ? 'Arc Testnet' : (ws.connected ? 'Wrong' : 'N/A')),
       kv('Health', health.overall || '?'),
-      kv('Treasury', (health.components && health.components.treasury) ? health.components.treasury.status : '?'),
       kv('Guardian', (health.components && health.components.guardian) ? health.components.guardian.status : '?'),
       kv('Bridge', (health.components && health.components.bridge) ? health.components.bridge.status : '?'),
       kv('Telemetry', telemetry ? telemetry.count() + ' events' : 'N/A'),

@@ -93,9 +93,6 @@ function switchTab(tab) {
         contracts: ['border-blue-500',   'text-blue-400'],
         otc:       ['border-indigo-500', 'text-indigo-400'],
         dex:       ['border-yellow-500', 'text-yellow-400'],
-        treasury:  ['border-amber-500',  'text-amber-400'],
-        reimbursements: ['border-emerald-500', 'text-emerald-400'],
-        toc:       ['border-cyan-500',   'text-cyan-400'],
         xbridge:   ['border-cyan-500',   'text-cyan-400'],
         bridge:    ['border-cyan-500',   'text-cyan-400'],
         multisend: ['border-cyan-500',   'text-cyan-400'],
@@ -164,34 +161,6 @@ function switchTab(tab) {
       } else if (window.ammRefreshAll) {
         window.ammRefreshAll();
       }
-    }
-    if (tab === 'treasury') {
-      if (window.treasuryInit && !window._treasuryInitialized) {
-        window._treasuryInitialized = true;
-        window.treasuryInit();
-      } else if (window.treasuryRefresh) {
-        window.treasuryRefresh();
-      }
-      // Pre-load Reimbursements + Operations Center (now live inside Treasury tab)
-      setTimeout(function() {
-        if (window.reimbursementsInit && !window._reimbursementsInitialized) {
-          window._reimbursementsInitialized = true;
-          window.reimbursementsInit();
-        }
-        if (window.tocInit && !window._tocInitialized) {
-          window._tocInitialized = true;
-          window.tocInit();
-        }
-      }, 600);
-    }
-    if (tab === 'reimbursements' || tab === 'toc') {
-      // Redirect old links to Treasury tab + scroll to section
-      switchTab('treasury');
-      var targetId = tab === 'reimbursements' ? 'reim-root' : 'toc-root';
-      setTimeout(function() {
-        var el = document.getElementById(targetId);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 800);
     }
     if (tab === 'xbridge') {
       if (window.xbridgeInit && !window._xbridgeInitialized) {

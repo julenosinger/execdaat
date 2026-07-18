@@ -32,11 +32,6 @@
     BRIDGE_ATTEST_FAILED: { code: 4002, msg: 'Bridge attestation failed.' },
     BRIDGE_MINT_FAILED:   { code: 4003, msg: 'Bridge mint transaction failed.' },
 
-    // Treasury (5xxx)
-    TREASURY_UNAVAILABLE:    { code: 5000, msg: 'Treasury Core API unavailable.' },
-    TREASURY_INTENT_FAILED:  { code: 5001, msg: 'Intent creation failed.' },
-    TREASURY_SETTLE_FAILED:  { code: 5002, msg: 'Settlement failed.' },
-
     // Transaction (6xxx)
     TX_INSUFFICIENT_BALANCE: { code: 6000, msg: 'Insufficient balance for this transaction.' },
     TX_INSUFFICIENT_ALLOWANCE: { code: 6001, msg: 'Insufficient token allowance. Approve first.' },

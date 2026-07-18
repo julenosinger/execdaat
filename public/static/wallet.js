@@ -318,7 +318,7 @@ function updateWalletUI() {
         netEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-400 inline-block mr-1"></span>Arc Testnet';
         netEl.className = 'text-xs text-green-400';
       } else {
-        netEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-yellow-400 inline-block mr-1 animate-pulse"></span>Rede errada';
+        netEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-yellow-400 inline-block mr-1 animate-pulse"></span>Wrong network';
         netEl.className = 'text-xs text-yellow-400 cursor-pointer hover:text-yellow-300';
         netEl.onclick = () => switchNetworkFromUI();
       }
@@ -372,7 +372,7 @@ function updateWalletPanel(connected) {
         <button onclick="openWalletModal()" class="wallet-connect-pulse bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-5 py-2.5 text-sm font-semibold transition-all flex items-center gap-2">
           <i class="fas fa-plug mr-1"></i>${t('btn_connect_wallet')}
         </button>
-        <p class="text-xs text-gray-600">MetaMask, Coinbase, Rabby e outros</p>
+        <p class="text-xs text-gray-600">MetaMask, Coinbase, Rabby and others</p>
       </div>
     `;
     return;
@@ -414,12 +414,12 @@ function updateWalletPanel(connected) {
         <div class="flex items-center gap-2">
           <div class="w-2 h-2 rounded-full ${state.onArcNetwork ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}"></div>
           <span class="text-sm ${state.onArcNetwork ? 'text-green-400' : 'text-yellow-400'}">
-            ${state.onArcNetwork ? 'Arc Testnet' : 'Rede incorreta'}
+            ${state.onArcNetwork ? 'Arc Testnet' : 'Wrong network'}
           </span>
         </div>
         ${!state.onArcNetwork ? `
           <button onclick="switchNetworkFromUI()" class="text-xs bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg px-3 py-1.5 transition-colors font-medium">
-            <i class="fas fa-exchange-alt mr-1"></i>Trocar rede
+            <i class="fas fa-exchange-alt mr-1"></i>Switch network
           </button>
         ` : `
           <span class="text-xs text-gray-500">Chain 5042002</span>
@@ -440,7 +440,7 @@ function updateWalletPanel(connected) {
 
       <!-- Desconectar -->
       <button onclick="disconnectWallet()" class="w-full text-xs text-gray-500 hover:text-red-400 transition-colors py-1.5 flex items-center justify-center gap-1">
-        <i class="fas fa-sign-out-alt"></i>Desconectar
+        <i class="fas fa-sign-out-alt"></i>Disconnect
       </button>
     </div>
   `;
@@ -497,7 +497,7 @@ async function switchNetworkFromUI() {
   if (ok) {
     state.chainId = 5042002;
     state.onArcNetwork = true;
-    showWalletToast('✅ Arc Testnet conectada!', 'success');
+      showWalletToast('✅ Arc Testnet connected!', 'success');
     updateWalletUI();
     // Buscar saldo após trocar rede
     const bal = await fetchUSDCBalance(state.address, state.provider);
@@ -1348,7 +1348,7 @@ async function connectWithProvider(index) {
 
     // Se não estiver na rede Arc, pedir para trocar
     if (!onArc) {
-      showWalletToast('Wallet conectada! Adicionando Arc Testnet...', 'info');
+      showWalletToast('Wallet connected! Adding Arc Testnet...', 'info');
       await new Promise(r => setTimeout(r, 800));
       const switched = await switchToArcTestnet(provider);
       if (switched) {
@@ -1365,7 +1365,7 @@ async function connectWithProvider(index) {
 
     // Atualizar UI
     updateWalletUI();
-    showWalletToast(`✅ ${selected.name} conectada! ${shortenAddress(address)}`, 'success');
+    showWalletToast(`✅ ${selected.name} connected! ${shortenAddress(address)}`, 'success');
     addWalletLog(`[WALLET] ${selected.name} conectada: ${address}`, 'success');
 
     // Salvar preferência no localStorage (com logoKey e ícone oficial EIP-6963 para o modal conectado)
@@ -1468,7 +1468,7 @@ function disconnectWallet() {
 
   localStorage.removeItem('arc_wallet_last');
   updateWalletUI();
-  showWalletToast('Wallet desconectada', 'info');
+  showWalletToast('Wallet disconnected', 'info');
   addWalletLog('[WALLET] Desconectado', 'info');
 
   window.dispatchEvent(new CustomEvent('walletDisconnected'));

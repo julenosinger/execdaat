@@ -384,35 +384,6 @@ async function accGetQuote() {
   _accRenderComparisonLoading();
   _accRenderPreview();
 
-  // ── Turbo Bridge priority (Other Chains → Arc only) ──────────────────────
-  // When the destination is Arc and Treasury/Vault liquidity is available,
-  // prioritise the Turbo Bridge. Any unavailability silently continues to the
-  // Standard Bridge quote below (no error, no interruption).
-  try {
-    if (window.TurboBridge && window.TurboBridge.isTurboRoute(_accState.fromChain, _accState.toChain)) {
-      const avail = await window.TurboBridge.isAvailable(_accState.fromChain, amount);
-      if (avail.available) {
-        const tq = window.TurboBridge.getQuote({ from: _accState.fromChain, to: _accState.toChain, amount: amount, reserves: avail.reserves });
-        _accState.bridgeMode = 'turbo';
-        _accState.turboInfo = avail.info || (tq && tq._turbo) || null;
-        _accState.quote = tq;
-        _accState.selectedProvider = tq.provider.id;
-        _accState.quoting = false;
-        _accRenderBestRoute(tq);
-        _accRenderComparison([tq]);
-        _accRenderPreview();
-        _accStartQuoteTimer(tq.expiry);
-        _accSetLayoutMode('exec');
-        return;
-      }
-      console.log('[ACC] Turbo unavailable (' + (avail.reason || 'n/a') + ') — using Standard Bridge');
-    }
-  } catch (turboQErr) {
-    console.warn('[ACC] Turbo quote check failed, using Standard Bridge:', turboQErr && turboQErr.message);
-    _accState.bridgeMode = 'standard';
-    _accState.turboInfo = null;
-  }
-
   try {
     // Official Arc/Circle CCTP quote (single native route)
     const raw = await window.ArcBridge.getQuote({
@@ -492,18 +463,6 @@ async function accExecuteBridge() {
   const toChain   = ACC_CHAINS[toKey];
   const addr      = ws.address;
   const mode      = _accState.fastRoute ? 'fast' : 'standard';
-
-  // ── Turbo Bridge execution path (Other Chains → Arc) ─────────────────────
-  // If the current quote resolved to Turbo, run the Treasury/Vault flow. On
-  // any turbo failure we fall through to the Standard Bridge below so the user
-  // never loses the operation.
-  if (_accState.bridgeMode === 'turbo' && window.TurboBridge) {
-    const ok = await _accRunTurbo(amount, fromKey, toKey, addr);
-    if (ok) return;
-    _accState.bridgeMode = 'standard';
-    _accShowToast('Turbo Bridge unavailable — switching to Standard Bridge', 'warning');
-    _accRenderPreview();
-  }
 
   _accState.executing    = true;
   _accState.execError    = null;
@@ -603,120 +562,6 @@ async function accExecuteBridge() {
     _accRenderPreview();
     _accShowToast('Bridge failed: ' + _accState.execError, 'error');
     _accSetLayoutMode('plan');   // visual-only: bridge failed → back to original layout
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════
-   TURBO BRIDGE EXECUTION (Treasury/Vault — Other Chains → Arc)
-   Runs the Elligentt Turbo flow via window.TurboBridge. Returns true on
-   success, false to signal the caller should fall back to the Standard
-   Bridge. Never throws.
-   ═══════════════════════════════════════════════════════════ */
-async function _accRunTurbo(amount, fromKey, toKey, addr) {
-  const fromChain = ACC_CHAINS[fromKey];
-  const toChain   = ACC_CHAINS[toKey];
-  const tInfo     = _accState.turboInfo || {};
-
-  _accState.executing    = true;
-  _accState.execError    = null;
-  _accState.activeTxHash = null;
-  _accClearQuoteTimer();
-  _accSetLayoutMode('exec', true);
-  _accRenderPreview();
-
-  // Turbo timeline (real states, driven by TurboExecutor progress below)
-  _accState.execSteps = [
-    { id: 'prepare',    label: 'Preparing',              status: 'active',  time: _accNow(), txHash: null },
-    { id: 'treasury',   label: 'Treasury Validation',    status: 'pending', time: null,      txHash: null },
-    { id: 'vault',      label: 'Vault Allocation',       status: 'pending', time: null,      txHash: null },
-    { id: 'sign',       label: 'Signing',                status: 'pending', time: null,      txHash: null },
-    { id: 'sent',       label: 'Sending',                status: 'pending', time: null,      txHash: null },
-    { id: 'treasproc',  label: 'Treasury Processing',    status: 'pending', time: null,      txHash: null },
-    { id: 'vaultproc',  label: 'Vault Processing',       status: 'pending', time: null,      txHash: null },
-    { id: 'settle',     label: 'Destination Settlement', status: 'pending', time: null,      txHash: null },
-    { id: 'completed',  label: 'Completed',              status: 'pending', time: null,      txHash: null },
-  ];
-  _accRenderTimeline();
-
-  // Map turbo-core onProgress(stepNum, message) → visual timeline
-  function onStep(stepNum, message) {
-    switch (stepNum) {
-      case 0: // switching to source
-        _accStepDone('prepare'); _accStepDone('treasury'); _accStepActive('sign');
-        break;
-      case 1: // approving USDC
-        _accStepActive('sign');
-        break;
-      case 2: // burning via CCTP on source
-        _accStepDone('sign'); _accStepDone('vault'); _accStepActive('sent');
-        break;
-      case 3: // switching to Arc + locking Treasury liquidity
-        _accStepDone('sent'); _accStepActive('treasproc');
-        break;
-      case 4: // turbo complete / queued — settlement continues async
-        _accStepDone('treasproc'); _accStepDone('vaultproc'); _accStepActive('settle');
-        break;
-      default:
-        break;
-    }
-    _accRenderTimeline();
-  }
-
-  try {
-    const result = await window.TurboBridge.execute({
-      from: fromKey, to: toKey, amount: amount, recipient: addr, onStep: onStep,
-    });
-
-    // Burn confirmed + Treasury intent created → mark settlement/complete
-    _accState.activeTxHash = result.txHash || null;
-    _accStepDone('treasproc'); _accStepDone('vaultproc'); _accStepDone('settle'); _accStepDone('completed');
-    if (result.txHash) {
-      const s = _accState.execSteps.find(x => x.id === 'sent');
-      if (s) s.txHash = result.txHash;
-    }
-    _accRenderTimeline();
-    _accState.executing = false;
-
-    // History entry — Turbo metadata (bridge type, treasury, vault, contract)
-    _accState.history.unshift({
-      id:         result.txHash || ('turbo_' + Date.now()),
-      token:      'USDC',
-      from:       fromChain.label,
-      to:         toChain.label,
-      amount:     amount,
-      received:   _accState.quote?.output ?? amount,
-      status:     'completed',
-      provider:   'Turbo Bridge',
-      txHash:     result.txHash || null,
-      mintTxHash: null,
-      ts:         Date.now(),
-      bridgeType: 'Turbo',
-      treasury:   result.treasury || tInfo.treasury || null,
-      vault:      result.vault    || tInfo.vault    || null,
-      contract:   result.contract || tInfo.contract || null,
-      intentId:   result.intentId || null,
-    });
-    _accSaveHistory();
-    _accRenderHistory();
-
-    setTimeout(accLoadBalances, 2500);
-    setTimeout(() => { if (window.ubRefresh) window.ubRefresh(); }, 3000);
-
-    _accRenderPreview();
-    _accShowToast('Turbo Bridge submitted — settling to Arc ⚡', 'success');
-    _accSetLayoutMode('plan');
-    return true;
-
-  } catch (err) {
-    console.warn('[ACC] Turbo execution failed — will fall back:', err && err.message);
-    _accState.executing = false;
-    _accMarkCurrentFailed();
-    _accRenderTimeline();
-    // Reset timeline so the Standard path can rebuild cleanly
-    _accState.execSteps = [];
-    _accRenderTimeline();
-    _accSetLayoutMode('plan');
-    return false;
   }
 }
 

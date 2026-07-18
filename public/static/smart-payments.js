@@ -106,12 +106,7 @@
     spState.quoting = true;
     if (box) box.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="color:#60a5fa;"></i> Finding best route…';
     try {
-      // Decide Turbo vs Standard through the shared decision engine.
-      let turbo = false;
-      if (window.TurboBridge && typeof window.TurboBridge.decide === 'function') {
-        const d = await window.TurboBridge.decide(ARC_KEY, spState.toNetwork, amount);
-        turbo = d && d.mode === 'turbo';
-      }
+      const turbo = false;
       const raw = await window.ArcBridge.getQuote({ from: ARC_KEY, to: spState.toNetwork, amount: amount, mode: 'fast' });
       spState.quote = { raw, turbo, amount };
       _renderBadge(turbo);
@@ -195,8 +190,8 @@
     { id: 'quote',    label: 'Quote Received' },
     { id: 'sign',     label: 'Signing' },
     { id: 'bridge',   label: 'Bridge Started' },
-    { id: 'treasury', label: 'Treasury Processing' },
-    { id: 'vault',    label: 'Vault Processing' },
+    { id: 'treasury', label: 'Waiting Circle Attestation' },
+    { id: 'vault',    label: 'Attestation Received' },
     { id: 'settle',   label: 'Destination Settlement' },
     { id: 'sending',  label: 'Payment Sending' },
     { id: 'confirm',  label: 'Recipient Confirmation' },
@@ -250,7 +245,6 @@
       case 'minting':       _xcDone('settle'); _xcActive('sending'); break;
       case 'mint_sent':     _xcActive('sending'); spState._mintHash = data.txHash; break;
       case 'mint_confirmed': _xcDone('sending'); _xcActive('confirm'); spState._mintHash = data.txHash || spState._mintHash; break;
-      case 'turbo_progress': _xcDone('quote'); _xcDone('sign'); _xcActive('treasury'); break;
       case 'completed':     ['prepare','route','quote','sign','bridge','treasury','vault','settle','sending','confirm','done'].forEach(_xcDone); break;
       case 'failed':        _xcFailCurrent(); break;
     }
@@ -285,11 +279,7 @@
 
     const startTs = Date.now();
     try {
-      const smart = (window.TurboBridge && window.TurboBridge.smartExecute)
-        ? window.TurboBridge.smartExecute
-        : function (o) { return window.ArcBridge.execute(o); };
-
-      const result = await smart({
+      const result = await window.ArcBridge.execute({
         from: ARC_KEY, to: toKey, amount: amount, recipient: recipient, mode: 'fast',
         onEvent: _onEngineEvent,
       });

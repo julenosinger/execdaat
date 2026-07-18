@@ -144,8 +144,6 @@
       var CONTRACTS = D.CONTRACTS || {};
       if (CONTRACTS.AMM)    D.contractMonitor.watch('SimpleAMM', CONTRACTS.AMM);
       if (CONTRACTS.FACTORY) D.contractMonitor.watch('ContractFactory', CONTRACTS.FACTORY);
-      if (CONTRACTS.EXECDAAT_VAULT) D.contractMonitor.watch('ArcVault', CONTRACTS.EXECDAAT_VAULT);
-      if (CONTRACTS.TREASURY_GOV) D.contractMonitor.watch('ArcTreasury', CONTRACTS.TREASURY_GOV);
       D.safeLogInfo && D.safeLogInfo('monitor', 'Contract monitoring started');
     },
 

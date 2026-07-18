@@ -690,10 +690,32 @@ const ExecutionEngine = {
     const ERC20_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
     const signer = await getSigner();
     const contract = new window.ethers.Contract(tokenAddr, ERC20_ABI, signer);
-    
+
+    // Optional Arc transaction memo (additive optional parameter — never blocks the transfer)
+    let memoTx = null;
+    try {
+      const memoText = (typeof intent.memo === 'string' && intent.memo.trim()) ? intent.memo : '';
+      if (memoText && window.MemoEngine) {
+        const memoInner = contract.interface.encodeFunctionData('transfer', [recipient, amountRaw]);
+        memoTx = await window.MemoEngine.buildTx({ target: tokenAddr, data: memoInner, memoText });
+        if (!memoTx) _log('warn', 'Memo could not be attached. Transaction will continue normally.');
+      }
+    } catch (_) { memoTx = null; }
+
     updateStatus(EXEC_STATUS.AWAITING_SIG);
-    
-    const tx = await contract.transfer(recipient, amountRaw);
+
+    let tx = null;
+    if (memoTx) {
+      try {
+        tx = await signer.sendTransaction({ to: memoTx.to, data: memoTx.data });
+      } catch (memoErr) {
+        const mm = String((memoErr && (memoErr.message || memoErr.code)) || '');
+        if (/reject|denied|ACTION_REJECTED|4001/i.test(mm)) throw memoErr;
+        _log('warn', 'Memo could not be attached. Transaction will continue normally.');
+        tx = null;
+      }
+    }
+    if (!tx) tx = await contract.transfer(recipient, amountRaw);
     
     updateStatus(EXEC_STATUS.SENDING);
     

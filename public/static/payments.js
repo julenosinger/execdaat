@@ -1036,10 +1036,37 @@ async function executePaymentCore({ fullname, email, recipient, recipientName, r
   // Use tiered gas price
   const tieredGasPrice = await payGetTieredGasPrice();
 
+  // ── Optional Arc transaction memo (additive plug-in — never blocks the transfer) ──
+  // Built ONLY when the user explicitly enabled the memo toggle. Any failure
+  // (unsupported network, invalid text, encoding error) falls back to the
+  // original, unmodified transfer below.
+  let memoTx = null;
+  try {
+    const memoText = (window.MemoUI && typeof window.MemoUI.getActiveMemo === 'function') ? window.MemoUI.getActiveMemo('pay') : '';
+    if (memoText && window.MemoEngine) {
+      const memoTokenAddr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
+      const memoInner     = PAY_SELECTORS.transfer + encAddr(recipient) + BigInt(amount).toString(16).padStart(64, '0');
+      memoTx = await window.MemoEngine.buildTx({ target: memoTokenAddr, data: memoInner, memoText });
+      if (!memoTx) showToast('Memo could not be attached. Transaction will continue normally.', 'warning');
+    }
+  } catch (_) { memoTx = null; }
+
   if (window.ethers?.Contract) {
     const contract = await payGetContract(token);
     showToast('📝 Confirm ' + token + ' transfer in your wallet…', 'info');
-    const tx = await contract.transfer(recipient, amount);
+    let tx = null;
+    if (memoTx) {
+      try {
+        const memoSigner = await payGetSigner();
+        tx = await memoSigner.sendTransaction({ to: memoTx.to, data: memoTx.data });
+      } catch (memoErr) {
+        const mm = String((memoErr && (memoErr.message || memoErr.code)) || '');
+        if (/reject|denied|ACTION_REJECTED|4001/i.test(mm)) throw memoErr; // user declined the tx itself — do not resend
+        showToast('Memo could not be attached. Transaction will continue normally.', 'warning');
+        tx = null;
+      }
+    }
+    if (!tx) tx = await contract.transfer(recipient, amount);
     txHash   = tx.hash;
     gasPrice = tieredGasPrice;
     showToast('⏳ Transaction submitted: ' + txHash.slice(0,14) + '…', 'info');
@@ -1050,17 +1077,31 @@ async function executePaymentCore({ fullname, email, recipient, recipientName, r
     const contractAddr = token === 'EURC' ? PAY_EURC() : PAY_USDC();
     const data    = PAY_SELECTORS.transfer + encAddr(recipient) + BigInt(amount).toString(16).padStart(64, '0');
     gasPrice      = tieredGasPrice;
-    const txBase  = { from, to: contractAddr, data, value: '0x0' };
-    const gas     = await payEstimateGas(txBase);
+    let txTo = contractAddr, txData = data;
+    if (memoTx) { txTo = memoTx.to; txData = memoTx.data; }
+    let txBase = { from, to: txTo, data: txData, value: '0x0' };
+    let gas;
+    try {
+      gas = await payEstimateGas(txBase);
+    } catch (ge) {
+      if (!memoTx) throw ge;
+      // Memo wrap not estimable — fall back to the plain transfer untouched.
+      showToast('Memo could not be attached. Transaction will continue normally.', 'warning');
+      txTo = contractAddr; txData = data;
+      txBase = { from, to: txTo, data: txData, value: '0x0' };
+      gas = await payEstimateGas(txBase);
+    }
     const nonce   = await payGetNonce(from);
     txHash        = await window.walletState.provider.request({
       method: 'eth_sendTransaction',
-      params: [{ from, to: contractAddr, data, value: '0x0', gas, gasPrice: tieredGasPrice, nonce }],
+      params: [{ from, to: txTo, data: txData, value: '0x0', gas, gasPrice: tieredGasPrice, nonce }],
     });
     const rxReceipt = await payWaitReceipt(txHash);
     if (rxReceipt.status !== '0x1' && rxReceipt.status !== 1) throw new Error('Transaction reverted on-chain.');
     gasUsed = rxReceipt.gasUsed ? parseInt(rxReceipt.gasUsed, 16).toString() : '~65000';
   }
+
+  try { if (window.MemoUI && typeof window.MemoUI.reset === 'function') window.MemoUI.reset('pay'); } catch (_) {}
 
   const durationMs = Date.now() - startTime;
   const gpNum      = Number(BigInt(gasPrice));

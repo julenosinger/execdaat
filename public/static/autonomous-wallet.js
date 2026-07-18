@@ -603,7 +603,11 @@
     const panel = $('aw-sign-panel');
     const det   = $('aw-sign-details');
     if (det) det.innerHTML = preview.replace(/\n/g, '<br>');
-    if (panel) panel.classList.remove('hidden');
+    if (panel) {
+      panel.classList.remove('hidden');
+      // Optional Arc transaction memo mount (additive — no-op if MemoUI absent)
+      try { if (window.MemoUI && typeof window.MemoUI.ensureMount === 'function') window.MemoUI.ensureMount('aw', panel); } catch (_) {}
+    }
   }
 
   window.awCancelSign = function () {
@@ -671,8 +675,20 @@
       if (unsignedTx.gas)      txParams.gas      = unsignedTx.gas;
       if (unsignedTx.gasPrice) txParams.gasPrice  = unsignedTx.gasPrice;
 
+      // Optional Arc transaction memo (additive — never blocks the agent tx)
+      let sendParams = txParams;
+      try {
+        const memoText = (window.MemoUI && typeof window.MemoUI.getActiveMemo === 'function') ? window.MemoUI.getActiveMemo('aw') : '';
+        if (memoText && window.MemoEngine) {
+          const wrapped = await window.MemoEngine.wrapEthSendParams(txParams, memoText);
+          if (wrapped) sendParams = wrapped;
+          else awToast('Memo could not be attached. Transaction will continue normally.', 'warning');
+        }
+      } catch (_) { sendParams = txParams; }
+
       awToast('Aguardando assinatura no MetaMask…', 'info');
-      txHash = await provider.request({ method: 'eth_sendTransaction', params: [txParams] });
+      txHash = await provider.request({ method: 'eth_sendTransaction', params: [sendParams] });
+      try { if (sendParams !== txParams && window.MemoUI) window.MemoUI.reset('aw'); } catch (_) {}
 
       awAddChatMessage('agent', `🚀 **Transação enviada!**\nHash: ${txHash}\n\n<a href="${EXPLORER}/tx/${txHash}" target="_blank" style="color:#4ade80;">Ver no ArcScan ↗</a>`);
       awToast('✅ Transação enviada! Aguardando confirmação…', 'success');
@@ -778,7 +794,19 @@
         gasPrice: unsig.gasPrice,
       };
 
-      const txHash = await window.walletState.provider.request({ method: 'eth_sendTransaction', params: [txParams] });
+      // Optional Arc transaction memo (additive — never blocks the agent tx)
+      let sendParams = txParams;
+      try {
+        const memoText = (window.MemoUI && typeof window.MemoUI.getActiveMemo === 'function') ? window.MemoUI.getActiveMemo('aw') : '';
+        if (memoText && window.MemoEngine) {
+          const wrapped = await window.MemoEngine.wrapEthSendParams(txParams, memoText);
+          if (wrapped) sendParams = wrapped;
+          else awToast('Memo could not be attached. Transaction will continue normally.', 'warning');
+        }
+      } catch (_) { sendParams = txParams; }
+
+      const txHash = await window.walletState.provider.request({ method: 'eth_sendTransaction', params: [sendParams] });
+      try { if (sendParams !== txParams && window.MemoUI) window.MemoUI.reset('aw'); } catch (_) {}
       awToast(`✅ Enviado! Hash: ${shortAddr(txHash)}`, 'success');
 
       // Log

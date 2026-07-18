@@ -17,9 +17,8 @@
 
   const S = {
     from: null, to: null, token: 'USDC', amount: '', recipient: '', balance: null,
-    quote: null, quoting: false, executing: false, done: false, error: null, mode: 'standard', turboInfo: null,
+    quote: null, quoting: false, executing: false, done: false, error: null, mode: 'standard',
     steps: [], log: [], txs: {}, health: {}, quoteTimer: null, healthTimer: null, built: false,
-    turboLive: null, turboMonitor: null,
   };
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -82,19 +81,7 @@
     { key: 'mint',     icon: 'fa-coins',          title: 'Mint on Destination',      desc: 'Receive & mint USDC on the destination chain' },
     { key: 'complete', icon: 'fa-flag-checkered', title: 'Completed',                desc: 'Funds delivered on the destination chain' },
   ];
-  // Turbo Bridge (Other Networks → Arc) real lifecycle — 6 steps + completion
-  const TURBO_STEP_DEFS = [
-    { key: 'connect',  icon: 'fa-wallet',         title: 'Wallet Connected',         desc: 'Wallet connected & source network selected' },
-    { key: 'approve',  icon: 'fa-file-signature', title: 'Approval Confirmed',       desc: 'USDC authorized for the CCTP TokenMessenger' },
-    { key: 'intent',   icon: 'fa-bolt',           title: 'Turbo Intent Created',     desc: 'USDC burned → Turbo intent registered with Treasury' },
-    { key: 'accept',   icon: 'fa-handshake',      title: 'Intent Accepted',          desc: 'Treasury Vault accepts & fronts liquidity on Arc' },
-    { key: 'settle',   icon: 'fa-shield-halved',  title: 'Settlement Executed',      desc: 'Treasury settlement executed on Arc' },
-    { key: 'credit',   icon: 'fa-coins',          title: 'Assets Credited on Arc',   desc: 'USDC delivered to the recipient on Arc Testnet' },
-    { key: 'complete', icon: 'fa-flag-checkered', title: 'Completed',                desc: 'Turbo Bridge complete — funds available on Arc' },
-  ];
   function initSteps() {
-    const turbo = S.mode === 'turbo';
-    if (turbo) { S.steps = TURBO_STEP_DEFS.map((d) => ({ ...d, status: 'pending', ts: null, detail: '' })); return; }
     S.steps = STEP_DEFS.map((d) => ({ ...d, status: 'pending', ts: null, detail: '' }));
   }
   function setStep(key, status, detail) { const st = S.steps.find((s) => s.key === key); if (st) { st.status = status; if (status === 'done' || status === 'failed') st.ts = Date.now(); if (detail != null) st.detail = detail; } renderExec(); }
@@ -321,7 +308,6 @@
                 <div id="xb-steps"></div>
                 <p class="xb-sec-t" style="margin-top:16px;"><i class="fas fa-receipt" style="color:#a78bfa;"></i>Transaction Details</p>
                 <div id="xb-txdetails"></div>
-                <div id="xb-turbo-status" style="display:none;"></div>
                 <p class="xb-sec-t" style="margin-top:16px;"><i class="fas fa-terminal" style="color:#34d399;"></i>Live Activity Log</p>
                 <div id="xb-log" class="xb-log"></div>
                 <div id="xb-exec-actions"></div>
@@ -339,7 +325,6 @@
         </div>
       </div>`;
     S.built = true;
-    reconcileTurboHistory();
     renderRoute(); renderSummary(); renderSupportedChains(); renderRecent(); renderStats(); renderHealth();
     loadBalance(); scheduleQuote();
   }
@@ -348,12 +333,8 @@
   function renderRoute() {
     const el = q('xb-route'); if (!el) return; const tc = chain(S.to);
     const eta = S.quote ? S.quote.estTime : (tc && tc.domain === 26 ? '~15+ min' : '~1–2 min');
-    const modeChip = S.mode === 'turbo'
-      ? '<span class="xb-chip" style="color:#fbbf24;background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.25);"><i class="fas fa-bolt" style="font-size:8px;"></i>Turbo Route</span>'
-      : '<span class="xb-chip">Standard</span>';
-    const bottomLabel = S.mode === 'turbo'
-      ? '<span class="xb-route-cctp" style="color:#fbbf24;background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.24);"><i class="fas fa-bolt" style="font-size:8px;"></i> Turbo Bridge · Treasury-fronted · CCTP V2</span>'
-      : '<span class="xb-route-cctp"><i class="fas fa-shield-halved" style="font-size:8px;"></i> Powered by Circle CCTP V2</span>';
+    const modeChip = '<span class="xb-chip">Standard</span>';
+    const bottomLabel = '<span class="xb-route-cctp"><i class="fas fa-shield-halved" style="font-size:8px;"></i> Powered by Circle CCTP V2</span>';
     el.innerHTML = `
       <svg class="xb-route-canvas" viewBox="0 0 600 168" preserveAspectRatio="none" aria-hidden="true">
         <defs>
@@ -440,7 +421,7 @@
   function renderHealth() {
     const el = q('xb-health'); if (!el) return; const h = S.health || {};
     const item = (label, st) => { const c = { green: '#34d399', yellow: '#fbbf24', red: '#f87171', gray: '#5f7ba0' }[st || 'gray']; const lbl = { green: 'Healthy', yellow: 'Slow', red: 'Offline', gray: '—' }[st || 'gray']; return `<div class="xb-h-row"><span class="xb-dot" style="background:${c};box-shadow:0 0 8px ${c}66;"></span><span class="xb-h-lbl">${esc(label)}</span><span class="xb-h-val" style="color:${c};">${lbl}${h[label + '_ms'] != null && st !== 'red' ? ' · ' + h[label + '_ms'] + 'ms' : ''}</span></div>`; };
-    el.innerHTML = item('Circle API', h.circle) + item('RPC', h.rpc) + item('Relayer', h.relayer) + item('Attestation Service', h.attest);
+    el.innerHTML = item('Circle API', h.circle) + item('RPC', h.rpc) + item('Attestation Service', h.attest);
   }
 
   function renderRecent() {
@@ -483,38 +464,8 @@
         <div class="xb-txrow"><span class="k">Source Network</span><span class="v">${esc(chainName(S.from))}</span></div>
         <div class="xb-txrow"><span class="k">Destination Network</span><span class="v">${esc(chainName(S.to))}</span></div>
       </div>`; }
-    renderTurboStatus();
   }
   function renderLog() { const el = q('xb-log'); if (!el) return; el.innerHTML = S.log.map((l) => `<div class="xb-log-line"><span class="t">${esc(l.t)}</span><span class="m">${esc(l.msg)}</span></div>`).join('') || '<div style="color:#3a6090;">Waiting for activity…</div>'; el.scrollTop = el.scrollHeight; }
-
-  // Live Turbo status — real values sourced from the intent record + reserves.
-  function renderTurboStatus() {
-    const el = q('xb-turbo-status'); if (!el) return;
-    if (S.mode !== 'turbo' || !S.turboLive) { el.style.display = 'none'; el.innerHTML = ''; return; }
-    el.style.display = 'block';
-    const L = S.turboLive;
-    const info = S.turboInfo || {};
-    const statusColor = { Submitting: '#67e8f9', Created: '#67e8f9', 'Awaiting Operator': '#fbbf24', Fulfilled: '#34d399', Settled: '#34d399', Failed: '#f87171' }[L.status] || '#9db8d8';
-    const arrival = L.status === 'Settled' ? 'Delivered' : (L.status === 'Fulfilled' ? 'Credited · finalizing' : '~8–15 sec');
-    const settlement = L.status === 'Settled' ? 'Confirmed' : (L.status === 'Fulfilled' ? 'Fronted · settling' : (L.status === 'Failed' ? 'Failed' : 'In progress'));
-    const srcTx = L.srcTxHash || S.txs.burnTxHash;
-    const dstTx = L.arcTxHash || S.txs.mintTxHash;
-    const row = (k, v, extra) => `<div class="xb-txrow"><span class="k">${esc(k)}</span><span class="v xb-mono" title="${esc(String(v == null ? '' : v))}">${v != null && v !== '' ? v : '—'}</span>${extra || ''}</div>`;
-    el.innerHTML = `
-      <p class="xb-sec-t" style="margin-top:16px;"><i class="fas fa-bolt" style="color:#fbbf24;"></i>Turbo Bridge · Live Status</p>
-      <div class="xb-txcard" style="border-color:rgba(251,191,36,.18);">
-        ${row('Turbo Intent ID', L.intentId ? esc(shortHash(L.intentId)) : '—', L.intentId ? copyBtn(L.intentId, 'intent id') : '')}
-        <div class="xb-txrow"><span class="k">Current Status</span><span class="v" style="color:${statusColor};font-weight:800;">${esc(L.status || '—')}</span></div>
-        <div class="xb-txrow"><span class="k">Settlement Status</span><span class="v" style="color:${statusColor};">${esc(settlement)}</span></div>
-        ${row('Source Tx Hash', srcTx ? esc(shortHash(srcTx)) : '—', srcTx ? (copyBtn(srcTx, 'source tx') + exLink('burn', srcTx, S.from)) : '')}
-        ${row('Destination Tx Hash', dstTx ? esc(shortHash(dstTx)) : '—', dstTx ? (copyBtn(dstTx, 'arc tx') + exLink('mint', dstTx, S.to)) : '')}
-        <div class="xb-txrow"><span class="k">Estimated Arrival</span><span class="v">${esc(arrival)}</span></div>
-        <div class="xb-txrow"><span class="k">Net Received</span><span class="v">${L.netAmount != null ? fmt(L.netAmount) + ' USDC' : '—'}</span></div>
-        <div class="xb-txrow"><span class="k">Turbo Fee</span><span class="v">${L.feeAmount != null ? fmt(L.feeAmount, 2) + ' USDC' : '—'}</span></div>
-        <div class="xb-txrow"><span class="k">Treasury Vault</span><span class="v xb-mono" title="${esc(info.vault || '')}">${info.vault ? esc(shortAddr(info.vault)) : '—'}</span>${info.vault ? copyBtn(info.vault, 'vault') : ''}</div>
-        <div class="xb-txrow"><span class="k">Liquidity Reserves</span><span class="v">${info.reserves != null ? fmt(info.reserves) + ' USDC' : '—'}</span></div>
-      </div>`;
-  }
 
   function setProgress(pct) { const f = q('xb-prog-fill'); if (f) f.style.width = Math.max(0, Math.min(100, pct)) + '%'; }
 
@@ -524,42 +475,26 @@
     if (!raw) return null;
     return {
       mode: mode,
-      provider: (raw.provider && raw.provider.name) || (mode === 'turbo' ? 'Turbo Bridge' : 'Circle CCTP V2'),
+      provider: (raw.provider && raw.provider.name) || 'Circle CCTP V2',
       routeType: raw.routeType || 'Native Burn & Mint',
       output: raw.output != null ? raw.output : (raw.minReceived != null ? raw.minReceived : (parseFloat(S.amount) || 0)),
       bridgeFee: raw.bridgeFee != null ? raw.bridgeFee : 0,
       protocolFee: raw.protocolFee != null ? raw.protocolFee : (raw.protFee != null ? raw.protFee : 0),
       gasFeeEst: raw.gasFeeEst != null ? raw.gasFeeEst : (raw.gasFee != null ? raw.gasFee : 0.02),
-      estTime: raw.estTime || raw.time || (mode === 'turbo' ? '~8–15 sec' : '~15+ min'),
+      estTime: raw.estTime || raw.time || '~15+ min',
     };
   }
   async function doQuote() {
     const amt = parseFloat(S.amount) || 0;
     const note = q('xb-note'); const btn = q('xb-action');
     const sup = AB() ? AB().isRouteSupported(S.from, S.to) : { ok: false, reason: 'Bridge unavailable' };
-    if (!sup.ok) { S.quote = null; S.mode = 'standard'; S.turboInfo = null; renderSummary(); renderStatusPanel(); renderRoute(); if (note) note.textContent = sup.reason; if (btn && !S.executing) btn.disabled = true; return; }
-    if (amt <= 0) { S.quote = null; S.mode = 'standard'; S.turboInfo = null; renderSummary(); renderStatusPanel(); renderRoute(); if (note) note.textContent = ''; if (btn && !S.executing) btn.disabled = true; return; }
+    if (!sup.ok) { S.quote = null; S.mode = 'standard'; renderSummary(); renderStatusPanel(); renderRoute(); if (note) note.textContent = sup.reason; if (btn && !S.executing) btn.disabled = true; return; }
+    if (amt <= 0) { S.quote = null; S.mode = 'standard'; renderSummary(); renderStatusPanel(); renderRoute(); if (note) note.textContent = ''; if (btn && !S.executing) btn.disabled = true; return; }
     S.quoting = true; renderSummary();
-    S.mode = 'standard'; S.turboInfo = null;
+    S.mode = 'standard';
     try {
-      // ── Turbo Bridge auto-selection (Other Networks → Arc Testnet ONLY) ──
-      // Turbo is chosen automatically whenever the destination is Arc AND the
-      // Treasury Vault has enough on-chain liquidity to front the transfer.
-      // The outbound Arc→* route (and any non-Arc destination) always stays on
-      // the Standard CCTP bridge. Availability failures fall back silently.
-      const TB = window.TurboBridge; let usedTurbo = false;
-      if (TB && typeof TB.isTurboRoute === 'function' && TB.isTurboRoute(S.from, S.to)) {
-        try {
-          const avail = await TB.isAvailable(S.from, amt);
-          if (avail && avail.available) {
-            const tq = TB.getQuote({ from: S.from, to: S.to, amount: amt, reserves: avail.reserves });
-            S.quote = normalizeQuote(tq, 'turbo'); S.mode = 'turbo'; S.turboInfo = avail.info || (tq && tq._turbo) || null; usedTurbo = true;
-          } else if (note && avail && avail.reason) {
-            // Route is Turbo-eligible but unavailable → Standard fallback (informational only)
-          }
-        } catch (_) {}
-      }
-      if (!usedTurbo) { const qo = await AB().getQuote({ from: S.from, to: S.to, amount: amt }); S.quote = normalizeQuote(qo, 'standard'); }
+      // Standard Circle CCTP quote (burn & mint) — the only supported route.
+      const qo = await AB().getQuote({ from: S.from, to: S.to, amount: amt }); S.quote = normalizeQuote(qo, 'standard');
       if (note) note.textContent = '';
     } catch (e) { S.quote = null; if (note) note.textContent = (e && e.message) || 'Quote unavailable'; }
     S.quoting = false; renderSummary(); renderStatusPanel(); renderRoute(); updateActionState();
@@ -615,8 +550,6 @@
     try { const t0 = performance.now(); const r = await fetch(ARC_RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }) }); const lat = Math.round(performance.now() - t0); const j = await r.json().catch(() => null); if (j && j.result) { S.health.RPC = lat < 1200 ? 'green' : 'yellow'; S.health['RPC_ms'] = lat; } else S.health.RPC = 'red'; } catch (_) { S.health.RPC = 'red'; }
     // Circle API + Attestation (Iris)
     try { const t0 = performance.now(); const r = await fetch(IRIS_PING, { method: 'GET' }); const lat = Math.round(performance.now() - t0); const ok = r.status < 500; S.health['Circle API'] = ok ? (lat < 1500 ? 'green' : 'yellow') : 'red'; S.health['Circle API_ms'] = lat; S.health['Attestation Service'] = S.health['Circle API']; S.health['Attestation Service_ms'] = lat; } catch (_) { S.health['Circle API'] = 'red'; S.health['Attestation Service'] = 'red'; }
-    // Relayer (ExecDaat/Elligent treasury health)
-    try { const r = await fetch('/api/treasury/health', { headers: { Accept: 'application/json' } }); const j = await r.json().catch(() => null); S.health.Relayer = j && j.ok ? 'green' : (r.status < 500 ? 'yellow' : 'red'); } catch (_) { S.health.Relayer = 'yellow'; }
     renderHealth();
   }
 
@@ -644,160 +577,11 @@
       case 'failed': break;
     }
   }
-  // Turbo (Treasury Vault) core progress mapping → 6-step lifecycle model.
-  // turbo-bridge-core emits onStep(n): 0=switch/connect, 1=approve, 2=burn/intent,
-  // 3=switch-to-Arc/reserve, 4=intent created & settling.
-  function _turboOnStep(stepNum, msg) {
-    switch (stepNum) {
-      case 0:
-        setStep('connect', 'done');
-        setStep('approve', 'active');
-        logAdd('Wallet connected — switching to ' + chainName(S.from) + '…');
-        setProgress(8);
-        break;
-      case 1:
-        setStep('approve', 'active');
-        logAdd('Requesting USDC approval for CCTP TokenMessenger…');
-        setProgress(16);
-        break;
-      case 2:
-        setStep('approve', 'done');
-        setStep('intent', 'active');
-        logAdd('Burning USDC on ' + chainShort(S.from) + ' → registering Turbo intent…');
-        setProgress(34);
-        break;
-      case 3:
-        setStep('intent', 'done');
-        setStep('accept', 'active');
-        logAdd('Switching to Arc — Treasury Vault reserving liquidity…');
-        setProgress(52);
-        break;
-      case 4:
-        setStep('accept', 'done');
-        setStep('settle', 'active', 'Settlement executing on Arc');
-        logAdd('Turbo intent accepted — settlement executing on Arc…');
-        setProgress(70);
-        break;
-      default: break;
-    }
-    if (msg) logAdd(String(msg));
-    renderTurboStatus();
-  }
-
-  // ── Real-time Turbo intent lifecycle monitor ──
-  // After the burn + intent creation returns, poll the RepaymentContract store
-  // (updated by turbo-core's on-chain operator + settlement pollers) until the
-  // intent reaches Fulfilled → Settled (or Failed). No simulated progress: every
-  // status transition is driven by the real intent record.
-  function _turboFindIntent(intentId) {
-    try {
-      if (window.RepaymentContract && typeof window.RepaymentContract.getAll === 'function') {
-        return window.RepaymentContract.getAll().find((i) => i.id === intentId || i.intentId === intentId) || null;
-      }
-    } catch (_) {}
-    return null;
-  }
-  // ── Derived completion — the UI must NOT depend on a single event/status. ──
-  // A Turbo bridge is finalized when ANY real-state signal confirms delivery:
-  // destination tx confirmed (arcTxHash), assets credited (Fulfilled/Credited),
-  // settlement completed, or intent status Settled/Completed. Any one finalizes.
-  function _turboIsComplete(it) {
-    if (!it) return false;
-    const st = String(it.status || '').toLowerCase();
-    const settle = String(it.settlementStatus || it.settlement || '').toLowerCase();
-    return (
-      !!it.arcTxHash ||                                             // destination tx / assets credited
-      it.completed === true ||
-      /^(settled|completed|complete|fulfilled|credited|delivered)$/.test(st) ||
-      /^(settled|completed|complete|done)$/.test(settle)
-    );
-  }
-  function _turboStopMonitor() { if (S.turboMonitor) { clearInterval(S.turboMonitor); S.turboMonitor = null; } }
-  function _turboMonitorIntent(intentId, amt, feeAtExec, started, onDone) {
-    _turboStopMonitor();
-    let ticks = 0;
-    const MAX_TICKS = 300; // ~15 min at 3s
-    const tick = () => {
-      ticks++;
-      const it = _turboFindIntent(intentId);
-      if (it) {
-        S.turboLive = Object.assign({}, S.turboLive, {
-          intentId: it.id, status: it.status,
-          arcTxHash: it.arcTxHash || null,
-          settlementTxHash: it.settlementTxHash || null,
-          cctpMsgHash: it.cctpMsgHash || null,
-          netAmount: it.netAmount, feeAmount: it.feeAmount,
-          updatedAt: it.updatedAt,
-        });
-        // Map REAL intent state → completion (derived, not event-only).
-        const st = String(it.status || '');
-        const arcTx = it.arcTxHash || S.txs.mintTxHash || null;
-        if (arcTx) S.txs.mintTxHash = arcTx;
-
-        if (_turboIsComplete(it)) {
-          setStep('intent', 'done');
-          setStep('accept', 'done');
-          setStep('settle', 'done');
-          setStep('credit', 'done', arcTx ? 'Credited · ' + shortHash(arcTx) : 'Assets credited on ' + chainShort(S.to));
-          setStep('complete', 'done', 'Funds available on ' + chainShort(S.to));
-          setProgress(100);
-          logAdd('Turbo Bridge complete — funds available on ' + chainShort(S.to) + (arcTx ? ' (' + shortHash(arcTx) + ')' : ''));
-          _turboStopMonitor();
-          onSuccess();
-          if (typeof onDone === 'function') onDone(true, it);
-          renderExec(); renderTurboStatus();
-          return;
-        }
-        if (st === 'Failed') {
-          _turboStopMonitor();
-          logAdd('Turbo settlement failed: ' + (it.settlementError || 'unknown'));
-          if (typeof onDone === 'function') onDone(false, it);
-          renderTurboStatus();
-          return;
-        }
-        renderExec(); renderTurboStatus();
-      }
-      if (ticks >= MAX_TICKS) {
-        _turboStopMonitor();
-        // Timeout: intent remains queued (operator will still fulfil). Treat as
-        // submitted-success so the user is not blocked; recent list shows pending.
-        if (typeof onDone === 'function') onDone(true, it, true);
-      }
-    };
-    tick();
-    S.turboMonitor = setInterval(tick, 3000);
-  }
   function _finishSuccess(amt, feeAtExec, started, res) {
     S.done = true; S.executing = false;
-    saveHist({ from: S.from, to: S.to, amount: amt, burnTxHash: res.burnTxHash, mintTxHash: res.mintTxHash, ts: Date.now(), status: 'completed', durationMs: Date.now() - started, fee: feeAtExec, mode: S.mode, intentId: res.intentId || null });
+    saveHist({ from: S.from, to: S.to, amount: amt, burnTxHash: res.burnTxHash, mintTxHash: res.mintTxHash, ts: Date.now(), status: 'completed', durationMs: Date.now() - started, fee: feeAtExec, mode: 'standard' });
     renderExec(); renderRecent(); renderStats(); onSuccess();
-    toast(S.mode === 'turbo' ? 'Turbo Bridge submitted — settling to Arc ⚡' : 'Bridge completed', 'success');
-  }
-  // Turbo submitted — burn + intent confirmed. Unblocks the UI while the real
-  // settlement lifecycle keeps updating the panel/status via the monitor.
-  function _finishTurboSubmitted() {
-    S.done = true; S.executing = false;
-    setInputsDisabled(false);
-    const btn = q('xb-action'); if (btn) { btn.disabled = false; btn.classList.add('ok'); btn.innerHTML = '<i class="fas fa-bolt"></i>Turbo Submitted — Settling…'; btn.onclick = window.xbAgain; }
-    const a = q('xb-exec-actions'); if (a) a.innerHTML = `<div class="xb-actions2">
-      ${S.txs.burnTxHash ? `<a class="xb-btn" href="${chainExplorer(S.from)}/tx/${S.txs.burnTxHash}" target="_blank" rel="noopener"><i class="fas fa-receipt"></i>View Source Tx</a>` : ''}
-      <button class="xb-btn" onclick="xbAgain()"><i class="fas fa-rotate"></i>Bridge Again</button>
-    </div>`;
-    renderExec();
-  }
-  // Update the persisted history entry for a Turbo intent once its real status is known.
-  function _turboUpdateHistory(intentId, ok, it) {
-    try {
-      const all = loadHist();
-      const idx = all.findIndex((h) => h.intentId && h.intentId === intentId);
-      if (idx === -1) return;
-      const settled = ok && _turboIsComplete(it);
-      all[idx].status = settled ? 'completed' : (ok ? 'processing' : 'failed');
-      if (it && it.arcTxHash) all[idx].mintTxHash = it.arcTxHash;
-      if (settled) all[idx].durationMs = Date.now() - (all[idx].ts || Date.now());
-      localStorage.setItem(HIST_KEY, JSON.stringify(all.slice(0, 60)));
-      renderRecent(); renderStats();
-    } catch (_) {}
+    toast('Bridge completed', 'success');
   }
   function _finishError(amt, feeAtExec, started, e) {
     S.executing = false; S.error = (e && (e.message || String(e))) || 'Bridge failed';
@@ -827,68 +611,7 @@
     const started = Date.now();
     const feeAtExec = S.quote ? (S.quote.bridgeFee || 0) : 0;
     S.txs.bridgeId = 'brg-' + Date.now().toString(36) + '-' + Math.random().toString(16).slice(2, 6);
-    logAdd('Bridge initiated: ' + fmt(amt) + ' USDC ' + chainShort(S.from) + ' → ' + chainShort(S.to) + ' · ' + (S.mode === 'turbo' ? 'Turbo ⚡' : 'Standard'));
-
-    // ── Turbo Bridge path (Other Networks → Arc) — falls back to Standard on any failure ──
-    if (S.mode === 'turbo' && window.TurboBridge) {
-      // Re-verify availability at execution time (reserves may have changed)
-      let stillAvailable = true;
-      try {
-        const av = await window.TurboBridge.isAvailable(S.from, amt);
-        stillAvailable = !!(av && av.available);
-        if (!stillAvailable) logAdd('Turbo route unavailable (' + ((av && av.reason) || 'no liquidity') + ').');
-      } catch (_) { stillAvailable = false; }
-
-      if (stillAvailable) {
-        try {
-          logAdd('Route: Turbo Bridge ⚡ (Treasury Vault fronts liquidity on Arc)');
-          setStep('connect', 'done');
-          S.turboLive = { intentId: null, status: 'Submitting', feeAmount: feeAtExec, netAmount: Math.max(0, amt - feeAtExec) };
-          renderTurboStatus();
-
-          const result = await window.TurboBridge.execute({ from: S.from, to: S.to, amount: amt, recipient: S.recipient, onStep: _turboOnStep });
-          S.txs.burnTxHash = result.txHash || S.txs.burnTxHash;
-          S.txs.intentId = result.intentId || null;
-          S.turboLive = Object.assign({}, S.turboLive, { intentId: result.intentId || null, status: 'Created', srcTxHash: result.txHash || null });
-
-          setStep('intent', 'done');
-          setStep('accept', 'active');
-          setProgress(58);
-          logAdd('Turbo intent created' + (result.intentId ? ' (' + shortHash(result.intentId) + ')' : '') + ' — monitoring settlement…');
-          renderExec(); renderTurboStatus();
-
-          // Persist as processing; monitor updates it to completed on real settlement.
-          saveHist({ from: S.from, to: S.to, amount: amt, burnTxHash: result.txHash, mintTxHash: null, ts: Date.now(), status: 'processing', durationMs: null, fee: feeAtExec, mode: 'turbo', intentId: result.intentId || null });
-          renderRecent(); renderStats();
-
-          // Submitted successfully — unblock the UI immediately while the real
-          // intent lifecycle continues to update the panel via the monitor.
-          _finishTurboSubmitted();
-
-          _turboMonitorIntent(result.intentId, amt, feeAtExec, started, (ok, it, timedOut) => {
-            _turboUpdateHistory(result.intentId, ok, it);
-            if (ok && _turboIsComplete(it)) {
-              toast('Turbo Bridge complete — assets credited on ' + chainShort(S.to) + ' ⚡', 'success');
-            } else if (timedOut) {
-              logAdd('Settlement still processing — operator will complete fulfillment. Track it in Recent Bridges.');
-            } else if (!ok) {
-              toast('Turbo settlement failed', 'error');
-            }
-          });
-          return;
-        } catch (e) {
-          _turboStopMonitor();
-          logAdd('Turbo execution failed — switching to Standard Bridge (' + ((e && e.message) || 'error') + ')');
-          toast('Turbo route unavailable. Switching to Standard Bridge.', 'warning');
-          S.mode = 'standard'; S.turboLive = null; initSteps(); renderRoute(); renderExec(); renderTurboStatus(); setProgress(2);
-        }
-      } else {
-        // Turbo eligible but not available now → automatic Standard fallback.
-        logAdd('Turbo route unavailable. Switching to Standard Bridge.');
-        toast('Turbo route unavailable. Switching to Standard Bridge.', 'warning');
-        S.mode = 'standard'; S.turboLive = null; initSteps(); renderRoute(); renderExec(); renderTurboStatus(); setProgress(2);
-      }
-    }
+    logAdd('Bridge initiated: ' + fmt(amt) + ' USDC ' + chainShort(S.from) + ' → ' + chainShort(S.to) + ' · Standard');
 
     // ── Standard CCTP path (burn → attestation → mint) ──
     try {
@@ -940,40 +663,16 @@
   window.xbToggleTech = function () { const t = q('xb-tech'); if (t) t.style.display = t.style.display === 'none' ? 'block' : 'none'; };
   window.xbRetry = function () { if (S.executing) return; window.xbBridge(); };
   window.xbAgain = function () {
-    _turboStopMonitor();
-    S.done = false; S.error = null; S.txs = {}; S.log = []; S.turboLive = null; initSteps();
-    const ts = q('xb-turbo-status'); if (ts) { ts.style.display = 'none'; ts.innerHTML = ''; }
+    S.done = false; S.error = null; S.txs = {}; S.log = []; initSteps();
     const exec = q('xb-exec'); if (exec) { exec.classList.remove('in'); setTimeout(() => { if (!readyForPreview()) exec.classList.add('hidden'); }, 280); }
     const btn = q('xb-action'); if (btn) { btn.classList.remove('ok'); btn.innerHTML = '<i class="fas fa-bolt"></i>Bridge Assets'; btn.onclick = window.xbBridge; }
     setInputsDisabled(false); updateActionState();
   };
 
-  // Reconcile any 'processing' Turbo history entries against the real intent
-  // store (turbo-core's independent on-chain pollers keep it fresh). Ensures the
-  // Recent Bridges list finalizes even if the user left the panel mid-settlement.
-  function reconcileTurboHistory() {
-    try {
-      const all = loadHist();
-      let changed = false;
-      all.forEach((h) => {
-        if (h.mode === 'turbo' && h.status === 'processing' && h.intentId) {
-          const it = _turboFindIntent(h.intentId);
-          if (it) {
-            const st = String(it.status || '');
-            if (it.arcTxHash && !h.mintTxHash) { h.mintTxHash = it.arcTxHash; changed = true; }
-            if (_turboIsComplete(it)) { h.status = 'completed'; if (!h.durationMs) h.durationMs = Date.now() - (h.ts || Date.now()); changed = true; }
-            else if (st === 'Failed') { h.status = 'failed'; changed = true; }
-          }
-        }
-      });
-      if (changed) localStorage.setItem(HIST_KEY, JSON.stringify(all.slice(0, 60)));
-    } catch (_) {}
-  }
-
   // ─── Entry points ────────────────────────────────────────────────────────────
   function startHealth() { if (S.healthTimer) clearInterval(S.healthTimer); pingHealth(); S.healthTimer = setInterval(() => { const el = q('tab-content-xbridge'); if (el && !el.classList.contains('hidden') && !document.hidden) pingHealth(); }, 120000); /* request-optimization: 30s → 120s */ }
   window.xbridgeInit = function () { try { build(); startHealth(); try { window.addEventListener('walletConnected', () => { S.recipient = S.recipient || wallet() || ''; const r = q('xb-recipient'); if (r && !r.value) r.value = S.recipient; loadBalance(); }); } catch (_) {} } catch (e) { console.error('[xbridge] init failed', e); } };
-  window.xbridgeRefresh = function () { if (!S.built) { window.xbridgeInit(); return; } reconcileTurboHistory(); loadBalance(); pingHealth(); renderRecent(); renderStats(); };
+  window.xbridgeRefresh = function () { if (!S.built) { window.xbridgeInit(); return; } loadBalance(); pingHealth(); renderRecent(); renderStats(); };
 
   console.log('%c[xBridge] Premium Bridge page loaded', 'color:#06b6d4;font-weight:bold', '| v' + VERSION + ' | reuses ArcBridge CCTP V2 | real-data only');
 })();

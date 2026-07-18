@@ -45,7 +45,6 @@
     // ─── Intervals (ms) ──────────────────────────────────────────────────
     INTERVALS: {
       POLL_AGENT_STATUS:  5000,
-      POLL_TREASURY:     15000,
       POLL_HISTORY:      30000,
       POLL_BALANCE:      30000,
       CACHE_TTL_RATES:   15000,
