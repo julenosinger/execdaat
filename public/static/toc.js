@@ -23,7 +23,7 @@
   const TOC_VERSION = '20260709toc1';
   const ARC_EXPLORER = 'https://testnet.arcscan.app';
   const CORE = '/api/core/v1';
-  const REFRESH_MS = 4000;
+  const REFRESH_MS = 30000; // request-optimization: 4s → 30s (event bus + operation hooks trigger immediate refreshes)
   const EVT_CAP = 500;
 
   const S = {
@@ -92,6 +92,9 @@
       S.evtTimes.push(ts); pruneTimes(S.evtTimes);
       if (ev === 'JobCompleted') { S.jobTimes.push(ts); pruneTimes(S.jobTimes); }
       if (!S.evtPaused && tabActive()) renderEventStream();
+      // Smart refresh (request-optimization): operation events trigger an
+      // immediate reload so the slower 30s cadence never delays real activity.
+      if (tabActive() && !document.hidden && /Intent|Settlement|Reimbursement|Executed|Payment|Vault/i.test(String(ev || '')) && (Date.now() - (S.lastSync || 0) > 3000)) load();
     } catch (_) {}
   }
   function pruneTimes(arr) { const cut = Date.now() - 60000; while (arr.length && arr[0] < cut) arr.shift(); }
@@ -120,7 +123,11 @@
   }
 
   function tabActive() { const el = q('tab-content-toc'); return el && !el.classList.contains('hidden'); }
-  function startAuto() { if (S.timer) clearInterval(S.timer); S.timer = setInterval(() => { if (tabActive() && !document.hidden) load(); }, REFRESH_MS); }
+  function startAuto() {
+    if (S.timer) clearInterval(S.timer);
+    S.timer = setInterval(() => { if (tabActive() && !document.hidden) load(); }, REFRESH_MS);
+    if (window.PollingManager) window.PollingManager.register('toc-refresh', S.timer, { ms: REFRESH_MS, scope: 'tab' });
+  }
 
   // ── Health scoring ──────────────────────────────────────────────────────────────
   function components() {

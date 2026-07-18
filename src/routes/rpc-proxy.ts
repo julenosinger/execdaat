@@ -23,6 +23,22 @@ const rpcProxyRouter = new Hono();
 const UPSTREAM_TIMEOUT_MS = 10_000;
 const BACKOFF_MS = 150;
 
+// ── Micro-cache (request-optimization) ──────────────────────
+// Coalesces identical cheap idempotent reads across concurrent
+// clients. ONLY slow-moving, non-account-specific methods are
+// cached — never eth_call / balances / receipts / broadcasts.
+const MICRO_CACHE_TTL: Record<string, number> = {
+  eth_blockNumber: 4_000,
+  eth_gasPrice: 10_000,
+  eth_chainId: 600_000,
+  net_version: 600_000,
+};
+const _microCache = new Map<string, { result: unknown; at: number }>();
+
+function microKey(method: string, params: unknown): string {
+  return method + ':' + JSON.stringify(params ?? []);
+}
+
 function slog(fields: Record<string, unknown>): void {
   try {
     console.log(JSON.stringify(
@@ -68,6 +84,17 @@ rpcProxyRouter.post('/', async (c) => {
   const raw = JSON.stringify(body);
   let lastError = 'unknown';
 
+  // Micro-cache hit (single, whitelisted method only)
+  if (!isBatch && methods.length === 1 && MICRO_CACHE_TTL[methods[0]]) {
+    const req0 = items[0] as { id?: unknown; params?: unknown };
+    const key = microKey(methods[0], req0.params);
+    const hit = _microCache.get(key);
+    if (hit && (Date.now() - hit.at) < MICRO_CACHE_TTL[methods[0]]) {
+      slog({ evt: 'rpc_proxy_cache_hit', method: methods[0], ageMs: Date.now() - hit.at });
+      return c.json({ jsonrpc: '2.0', id: req0.id ?? null, result: hit.result });
+    }
+  }
+
   for (let i = 0; i < ARC_RPC_URLS.length; i++) {
     const rpc = ARC_RPC_URLS[i];
     const attemptStarted = Date.now();
@@ -78,6 +105,15 @@ rpcProxyRouter.post('/', async (c) => {
 
       // Rate-limited at the JSON-RPC layer → try the next endpoint
       if (isRateLimitError(json)) throw new Error('upstream rate limit');
+
+      // Populate micro-cache (single whitelisted method, successful result only)
+      if (!isBatch && methods.length === 1 && MICRO_CACHE_TTL[methods[0]]) {
+        const j0 = json as { result?: unknown; error?: unknown };
+        if (j0 && j0.result !== undefined && !j0.error) {
+          if (_microCache.size > 100) _microCache.clear();
+          _microCache.set(microKey(methods[0], (items[0] as { params?: unknown }).params), { result: j0.result, at: Date.now() });
+        }
+      }
 
       slog({
         evt: 'rpc_proxy_forwarded', ok: true, rpc, batch: isBatch,

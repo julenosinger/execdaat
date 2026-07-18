@@ -15,11 +15,14 @@
     'https://rpc.quicknode.testnet.arc.network',
   ];
 
-  // Same-origin failover proxy first: /api/rpc distributes reads across all
-  // public Arc RPCs server-side, immune to the per-client-IP rate limit
-  // ("request limit reached"). Direct public RPCs remain as fallback.
+  // Request-optimization (Phase 4): public read RPC stays FIRST so plain
+  // blockchain reads go straight to the network (0 Cloudflare requests).
+  // The same-origin /api/rpc proxy is inserted as the SECOND endpoint: the
+  // moment a public endpoint rate-limits ("request limit reached") or fails,
+  // the reliability stack (retry/rotate/circuit-breaker) fails over to the
+  // proxy, which distributes reads across all Arc RPCs server-side.
   if (typeof window !== 'undefined' && window.location && String(window.location.origin).indexOf('http') === 0) {
-    RPCS.unshift(window.location.origin + '/api/rpc');
+    RPCS.splice(1, 0, window.location.origin + '/api/rpc');
   }
 
   // ─── State ─────────────────────────────────────────────────────────────
@@ -221,18 +224,26 @@
 
   /** Periodic background health check (caller provides interval) */
   D.startRPCHealthMonitor = function(intervalMs) {
-    intervalMs = intervalMs || 30000;
+    intervalMs = intervalMs || 300000;
     if (D._rpcHealthTimer) clearInterval(D._rpcHealthTimer);
-    D.rpcHealthCheckAll();
-    D._rpcHealthTimer = setInterval(D.rpcHealthCheckAll, intervalMs);
+    // Initial probe only when the tab is visible AND elected leader
+    if (!window.PollingManager || window.PollingManager.shouldPoll('ambient')) D.rpcHealthCheckAll();
+    D._rpcHealthTimer = setInterval(function() {
+      if (window.PollingManager && !window.PollingManager.shouldPoll('ambient')) return;
+      D.rpcHealthCheckAll();
+    }, intervalMs);
+    if (window.PollingManager) window.PollingManager.register('rpc-health-monitor', D._rpcHealthTimer, { ms: intervalMs, scope: 'ambient' });
     return D._rpcHealthTimer;
   };
 
   /** Stop background health monitor */
   D.stopRPCHealthMonitor = function() {
     if (D._rpcHealthTimer) { clearInterval(D._rpcHealthTimer); D._rpcHealthTimer = null; }
+    if (window.PollingManager) window.PollingManager.unregister('rpc-health-monitor');
   };
 
   // Auto-start health monitor after script loads
-  setTimeout(function() { D.startRPCHealthMonitor(30000); }, 2000);
+  // Request-optimization: 30s → 300s (health is re-validated on demand by
+  // rpcFetch failures + circuit breaker; a 5-min ambient sweep is enough).
+  setTimeout(function() { D.startRPCHealthMonitor(300000); }, 2000);
 })();

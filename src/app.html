@@ -128,6 +128,8 @@
   <!-- ── Stylesheets & Libraries ──────────────────────────────────────── -->
   <script src="https://cdn.tailwindcss.com"></script>
 
+  <!-- Polling Manager — global request governor (loaded before all app scripts) -->
+  <script src="/static/shared/polling-manager.js?v=20260717pm1"></script>
   <!-- ARC Security Layer (loaded first, before all app scripts) -->
   <script src="/static/security.js?v=20260715rpc1"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
@@ -6331,57 +6333,57 @@
   <script src="/static/shared/address.js?v=20260712p2"></script>
   <script src="/static/shared/format.js?v=20260712p2"></script>
   <script src="/static/shared/token.js?v=20260712p2"></script>
-  <script src="/static/shared/rpc.js?v=20260715rpc1"></script>
+  <script src="/static/shared/rpc.js?v=20260717opt1"></script>
   <script src="/static/shared/config.js?v=20260712p2"></script>
   <script src="/static/shared/errors.js?v=20260712p2"></script>
   <script src="/static/shared/ui.js?v=20260712p2"></script>
   <!-- ══ Phase 4 Reliability Modules ══ -->
   <script src="/static/shared/cache.js?v=20260712p4"></script>
-  <script src="/static/shared/health.js?v=20260712p4"></script>
+  <script src="/static/shared/health.js?v=20260717opt1"></script>
   <script src="/static/shared/telemetry.js?v=20260712p4"></script>
   <script src="/static/shared/debug.js?v=20260712p4"></script>
   <!-- ══ Phase 8 Operations Modules ══ -->
   <script src="/static/shared/contract-monitor.js?v=20260712p8"></script>
 
-  <script src="/static/wallet.js?v=20260327a"></script>
+  <script src="/static/wallet.js?v=20260717opt1"></script>
   <script src="/static/wallet-create.js?v=20260715rpc1"></script>
   <script src="/static/router.js?v=20260709toc1"></script>
-  <script src="/static/unifiedbalance.js?v=20260715rpc1"></script>
+  <script src="/static/unifiedbalance.js?v=20260717opt1"></script>
   <script src="/static/cross-chain-service.js?v=20260715rpc1"></script>
   <script src="/static/turbo-bridge-core.js?v=20260715rpc1"></script>
   <script src="/static/turbo-bridge-integration.js?v=20260704b"></script>
   <!-- Treasury Core API (Elligent) — Phase 3/4 integration layer (config → client → integration → ui-sync) -->
   <script src="/static/treasury-config.js?v=20260705b"></script>
   <script src="/static/treasury-core-client.js?v=20260705b"></script>
-  <script src="/static/treasury-core-integration.js?v=20260705b"></script>
-  <script src="/static/treasury-ui-sync.js?v=20260705b"></script>
-  <script src="/static/advanced-crosschain.js?v=20260715rpc1"></script>
+  <script src="/static/treasury-core-integration.js?v=20260717opt1"></script>
+  <script src="/static/treasury-ui-sync.js?v=20260717opt1"></script>
+  <script src="/static/advanced-crosschain.js?v=20260717opt1"></script>
   <script src="/static/ub-bridge.js?v=20260707in"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
-  <script src="/static/app.js?v=20260715rpc1"></script>
-  <script src="/static/payments.js?v=20260704b"></script>
+  <script src="/static/app.js?v=20260717opt1"></script>
+  <script src="/static/payments.js?v=20260717opt1"></script>
   <script src="/static/smart-payments.js?v=20260704b"></script>
   <!-- ══ Contracts Module (Phase 3 — split from contracts.js) ══ -->
   <script src="/static/contracts/contracts-core.js?v=20260716read1"></script>
   <script src="/static/contracts/contracts-ui.js?v=20260712p3"></script>
   <script src="/static/contracts/contracts-execute.js?v=20260712p3"></script>
-  <script src="/static/contracts/contracts-index.js?v=20260712p3"></script>
+  <script src="/static/contracts/contracts-index.js?v=20260717opt1"></script>
   <!-- legacy contracts.js preserved as fallback — loaded conditionally below -->
   <script src="/static/dispute-center.js?v=20260706c"></script>
   <script src="/static/verified-contracts.js?v=20260411a"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
-  <script src="/static/dex.js?v=20260715rpc1"></script>
-  <script src="/static/treasury.js?v=20260715rpc1"></script>
-  <script src="/static/reimbursements.js?v=20260709r3"></script>
-  <script src="/static/treasury-sync.js?v=20260709c1"></script>
+  <script src="/static/dex.js?v=20260717opt1"></script>
+  <script src="/static/treasury.js?v=20260717opt1"></script>
+  <script src="/static/reimbursements.js?v=20260717opt1"></script>
+  <script src="/static/treasury-sync.js?v=20260717opt1"></script>
   <script src="/static/treasury-event-bus.js?v=20260709e1"></script>
-  <script src="/static/treasury-job-engine.js?v=20260709j1"></script>
-  <script src="/static/toc.js?v=20260709toc1"></script>
+  <script src="/static/treasury-job-engine.js?v=20260717opt1"></script>
+  <script src="/static/toc.js?v=20260717opt1"></script>
   <script src="/static/treasury-bridge-link.js?v=20260707l1"></script>
-  <script src="/static/xbridge.js?v=20260708x-complete-fix"></script>
+  <script src="/static/xbridge.js?v=20260717opt1"></script>
   <script src="/static/bridge.js?v=20260715rpc1"></script>
   <!-- ══ MultiSend Module (Phase 3 — split from multisend.js) ══ -->
   <script src="/static/multisend/multisend-core.js?v=20260715rpc1"></script>
@@ -6390,8 +6392,8 @@
   <script src="/static/multisend/multisend-index.js?v=20260712p3"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
-  <script src="/static/history.js?v=20260715rpc1"></script>
-  <script src="/static/dashboard.js?v=20260715rpc1"></script>
+  <script src="/static/history.js?v=20260717opt1"></script>
+  <script src="/static/dashboard.js?v=20260717opt1"></script>
   <script src="/static/hide-history.js?v=20250326a"></script>
   <script src="/static/user-profile.js?v=20250326d"></script>
   <script src="/static/smart-autofill.js?v=20260327a"></script>
@@ -6480,7 +6482,7 @@
          getIntents, startPolling, statusBadge)
        ADDITIVE ONLY — does not modify any existing files or logic.
   ══════════════════════════════════════════════════════════════ -->
-  <script src="/static/circle-skills-agent.js?v=20260409a"></script>
+  <script src="/static/circle-skills-agent.js?v=20260717opt1"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
     The query-string approach (?v=) does NOT invalidate browser cache when
@@ -6497,7 +6499,7 @@
   <script src="/static/otc.c619b754.js"></script>
   <script src="/static/otc-agreements.js?v=20260704b"></script>
   <script src="/static/da-dispute-center.js?v=20260706c"></script>
-  <script src="/static/autonoma.js?v=20260404l"></script>
+  <script src="/static/autonoma.js?v=20260717opt1"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner

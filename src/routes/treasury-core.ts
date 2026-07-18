@@ -214,7 +214,7 @@ async function ethersMod() { if (!_ethers) { try { _ethers = await import('ether
 const VAULT_ABI = ['function getAvailableLiquidity(address asset) view returns (uint256)', 'function turboFeeBps() view returns (uint256)', 'function paused() view returns (bool)']
 const ERC20_ABI = ['function balanceOf(address) view returns (uint256)']
 
-async function readVault(env: CoreBindings) {
+async function readVaultFresh(env: CoreBindings) {
   const vaultAddr = (env.EXECDAAT_VAULT_ADDRESS && isAddr(env.EXECDAAT_VAULT_ADDRESS)) ? env.EXECDAAT_VAULT_ADDRESS : DEFAULT_VAULT
   const out: any = { address: vaultAddr, network: NETWORK, chainId: CHAIN_ID, paused: null, assets: {} as Record<string, any> }
   const E = await ethersMod(); if (!E) return out
@@ -231,13 +231,45 @@ async function readVault(env: CoreBindings) {
   } catch { /* RPC unavailable — return partial */ }
   return out
 }
-async function rpcBlock(): Promise<{ ok: boolean; block: number | null; latencyMs: number }> {
+
+// ─── TTL cache + in-flight coalescing for on-chain reads ─────────────────────
+// Cuts RPC subrequests drastically: /health, /metrics, /vault and /liquidity
+// all share ONE readVault per TTL window instead of 4-5 eth_calls per hit.
+// Values are read-only vault state; a 30s window does not change semantics.
+const VAULT_CACHE_TTL_MS = 30_000
+const BLOCK_CACHE_TTL_MS = 12_000
+let _vaultCache: { value: any; at: number } | null = null
+let _vaultInflight: Promise<any> | null = null
+let _blockCache: { value: { ok: boolean; block: number | null; latencyMs: number }; at: number } | null = null
+let _blockInflight: Promise<{ ok: boolean; block: number | null; latencyMs: number }> | null = null
+
+async function readVault(env: CoreBindings) {
+  const t = Date.now()
+  if (_vaultCache && (t - _vaultCache.at) < VAULT_CACHE_TTL_MS) return _vaultCache.value
+  if (_vaultInflight) return _vaultInflight
+  _vaultInflight = readVaultFresh(env)
+    .then((v) => { _vaultCache = { value: v, at: Date.now() }; _vaultInflight = null; return v })
+    .catch(() => { _vaultInflight = null; return _vaultCache ? _vaultCache.value : readVaultFresh(env) })
+  return _vaultInflight
+}
+
+async function rpcBlockFresh(): Promise<{ ok: boolean; block: number | null; latencyMs: number }> {
   const t0 = Date.now()
   try {
     const r = await fetch(RPC_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }) })
     const j: any = await r.json()
     return { ok: !!(j && j.result), block: j && j.result ? parseInt(j.result, 16) : null, latencyMs: Date.now() - t0 }
   } catch { return { ok: false, block: null, latencyMs: Date.now() - t0 } }
+}
+
+async function rpcBlock(): Promise<{ ok: boolean; block: number | null; latencyMs: number }> {
+  const t = Date.now()
+  if (_blockCache && (t - _blockCache.at) < BLOCK_CACHE_TTL_MS) return _blockCache.value
+  if (_blockInflight) return _blockInflight
+  _blockInflight = rpcBlockFresh()
+    .then((v) => { if (v.ok) _blockCache = { value: v, at: Date.now() }; _blockInflight = null; return v })
+    .catch(() => { _blockInflight = null; return _blockCache ? _blockCache.value : { ok: false, block: null, latencyMs: 0 } })
+  return _blockInflight
 }
 
 // ─── Metrics engine (from local ledger) ──────────────────────────────────────

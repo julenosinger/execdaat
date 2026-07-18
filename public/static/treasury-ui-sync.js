@@ -131,7 +131,10 @@
     cfgP.then(function () {
       if (_remote()) {
         syncMetrics();
-        if (!_metricsTimer) _metricsTimer = setInterval(function () { if (_remote()) syncMetrics(); }, 30000);
+        if (!_metricsTimer) _metricsTimer = setInterval(function () {
+          if (document.hidden) return; // request-optimization: no background polls
+          if (_remote()) syncMetrics();
+        }, 120000); // request-optimization: 30s → 120s
       }
     });
   }

@@ -404,7 +404,11 @@
   function awStartNetworkPoller() {
     if (awState.networkRefreshTimer) return; // already running
     awLoadNetworkStatus();
-    awState.networkRefreshTimer = setInterval(awLoadNetworkStatus, 15000);
+    awState.networkRefreshTimer = setInterval(function () {
+      if (document.hidden) return; // request-optimization: no background polling
+      awLoadNetworkStatus();
+    }, 120000); // request-optimization: 15s → 120s (network gas/block info is slow-moving)
+    if (window.PollingManager) window.PollingManager.register('aw-network-poller', awState.networkRefreshTimer, { ms: 120000, scope: 'tab' });
   }
 
   // ═══════════════════════════════════════════════════════════

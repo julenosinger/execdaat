@@ -86,6 +86,8 @@ export function getMainHTML(): string {
   <!-- ── Stylesheets & Libraries ──────────────────────────────────────── -->
   <script src="https://cdn.tailwindcss.com"></script>
 
+  <!-- Polling Manager — global request governor (loaded before all app scripts) -->
+  <script src="/static/shared/polling-manager.js?v=20260717pm1"></script>
   <!-- ARC Security Layer (loaded first, before all app scripts) -->
   <script src="/static/security.js?v=20260715rpc1"></script>
   <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
@@ -4668,23 +4670,23 @@ export function getMainHTML(): string {
     </div>
   </footer>
 
-  <script src="/static/wallet.js?v=20260327a"></script>
+  <script src="/static/wallet.js?v=20260717opt1"></script>
   <script src="/static/wallet-create.js?v=20260715rpc1"></script>
   <script src="/static/router.js?v=20260407a"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
   <script src="/static/receipt-viewer.js?v=20260327b"></script>
-  <script src="/static/app.js?v=20260715rpc1"></script>
-  <script src="/static/payments.js?v=20260330a"></script>
+  <script src="/static/app.js?v=20260717opt1"></script>
+  <script src="/static/payments.js?v=20260717opt1"></script>
   <script src="/static/contracts.js?v=20260715rpc1"></script>
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
-  <script src="/static/dex.js?v=20260715rpc1"></script>
+  <script src="/static/dex.js?v=20260717opt1"></script>
   <script src="/static/multisend.js?v=20260715rpc1"></script>
   <script src="/static/guardian.js?v=20250322"></script>
   <script src="/static/yield-optimizer.js?v=20250322"></script>
-  <script src="/static/history.js?v=20260715rpc1"></script>
-  <script src="/static/dashboard.js?v=20260715rpc1"></script>
+  <script src="/static/history.js?v=20260717opt1"></script>
+  <script src="/static/dashboard.js?v=20260717opt1"></script>
   <script src="/static/hide-history.js?v=20250326a"></script>
   <script src="/static/user-profile.js?v=20250326d"></script>
   <script src="/static/smart-autofill.js?v=20260327a"></script>
@@ -4769,7 +4771,7 @@ export function getMainHTML(): string {
          getIntents, startPolling, statusBadge)
        ADDITIVE ONLY — does not modify any existing files or logic.
   ══════════════════════════════════════════════════════════════ -->
-  <script src="/static/circle-skills-agent.js?v=20260409a"></script>
+  <script src="/static/circle-skills-agent.js?v=20260717opt1"></script>
   <!--
     OTC MODULE — Cache-busted filenames (hash in name, not query string)
     The query-string approach (?v=) does NOT invalidate browser cache when
@@ -4784,7 +4786,7 @@ export function getMainHTML(): string {
   -->
   <script src="/static/otc-escrow-abi.72e5bfc4.js"></script>
   <script src="/static/otc.c619b754.js"></script>
-  <script src="/static/autonoma.js?v=20260404l"></script>
+  <script src="/static/autonoma.js?v=20260717opt1"></script>
   <script>
     // ── Queue Banner auto-update ───────────────────────────────────────────────
     // Polls chatCSVState and queue to show/hide the quick-execute banner

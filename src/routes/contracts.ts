@@ -33,7 +33,14 @@ const SEL = {
 };
 
 // ─── RPC helper ───────────────────────────────────────────────────────────────
-async function rpcCall(method: string, params: unknown[] = []): Promise<unknown> {
+// Read-cache + in-flight coalescing (request-optimization): identical eth_call
+// reads within a short TTL share one upstream RPC subrequest. Read-only data;
+// never caches errors; writes happen client-side and are unaffected.
+const RPC_READ_TTL_MS = 15_000;
+const _rpcReadCache = new Map<string, { value: unknown; at: number }>();
+const _rpcInflight = new Map<string, Promise<unknown>>();
+
+async function rpcCallFresh(method: string, params: unknown[] = []): Promise<unknown> {
   const res = await fetch(RPC_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -42,6 +49,26 @@ async function rpcCall(method: string, params: unknown[] = []): Promise<unknown>
   const json = await res.json() as { result?: unknown; error?: { message?: string } };
   if (json.error) throw new Error(json.error.message || JSON.stringify(json.error));
   return json.result;
+}
+
+async function rpcCall(method: string, params: unknown[] = []): Promise<unknown> {
+  const cacheable = method === 'eth_call';
+  if (!cacheable) return rpcCallFresh(method, params);
+  const key = method + ':' + JSON.stringify(params);
+  const hit = _rpcReadCache.get(key);
+  if (hit && (Date.now() - hit.at) < RPC_READ_TTL_MS) return hit.value;
+  const inflight = _rpcInflight.get(key);
+  if (inflight) return inflight;
+  const p = rpcCallFresh(method, params)
+    .then((v) => {
+      if (_rpcReadCache.size > 500) _rpcReadCache.clear();
+      _rpcReadCache.set(key, { value: v, at: Date.now() });
+      _rpcInflight.delete(key);
+      return v;
+    })
+    .catch((e) => { _rpcInflight.delete(key); throw e; });
+  _rpcInflight.set(key, p);
+  return p;
 }
 
 async function ethCall(to: string, data: string): Promise<string> {

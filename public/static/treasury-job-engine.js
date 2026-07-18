@@ -109,11 +109,11 @@
   // ── Define jobs (recurring, read-only, non-financial) ──────────────────────
   function defineJobs() {
     var defs = [
-      { id: 'health',        label: 'Health Check',    type: 'Recurring', priority: PRIORITY.CRITICAL, intervalMs: 45000,  fastIntervalMs: 15000,  worker: jobHealth },
-      { id: 'metrics',       label: 'Metrics Refresh', type: 'Recurring', priority: PRIORITY.HIGH,     intervalMs: 30000,  fastIntervalMs: 12000,  worker: jobMetrics },
-      { id: 'vault',         label: 'Vault Refresh',   type: 'Recurring', priority: PRIORITY.NORMAL,   intervalMs: 60000,  fastIntervalMs: 20000,  worker: jobVault },
-      { id: 'liquidity',     label: 'Liquidity Check', type: 'Recurring', priority: PRIORITY.LOW,      intervalMs: 90000,  fastIntervalMs: 35000,  worker: jobLiquidity },
-      { id: 'sync-detect',   label: 'Sync & Detect',   type: 'Recurring', priority: PRIORITY.NORMAL,   intervalMs: 12000,  fastIntervalMs: 5000,   worker: jobSyncAndDetect },
+      { id: 'health',        label: 'Health Check',    type: 'Recurring', priority: PRIORITY.CRITICAL, intervalMs: 60000,  fastIntervalMs: 30000,  worker: jobHealth },
+      { id: 'metrics',       label: 'Metrics Refresh', type: 'Recurring', priority: PRIORITY.HIGH,     intervalMs: 60000,  fastIntervalMs: 20000,  worker: jobMetrics },
+      { id: 'vault',         label: 'Vault Refresh',   type: 'Recurring', priority: PRIORITY.NORMAL,   intervalMs: 120000, fastIntervalMs: 30000,  worker: jobVault },
+      { id: 'liquidity',     label: 'Liquidity Check', type: 'Recurring', priority: PRIORITY.LOW,      intervalMs: 180000, fastIntervalMs: 60000,  worker: jobLiquidity },
+      { id: 'sync-detect',   label: 'Sync & Detect',   type: 'Recurring', priority: PRIORITY.NORMAL,   intervalMs: 60000,  fastIntervalMs: 15000,  worker: jobSyncAndDetect },
       { id: 'cleanup',       label: 'Cache Cleanup',   type: 'Recurring', priority: PRIORITY.BACKGROUND, intervalMs: 300000, fastIntervalMs: 300000, worker: jobCleanup },
     ];
     defs.forEach(function (d) {
@@ -132,10 +132,40 @@
   }
 
   // ── Scheduler loop ─────────────────────────────────────────────────────────
+  // Request-optimization: jobs only run at full cadence while a treasury
+  // surface (Treasury / TOC / Reimbursements / XBridge) is in use OR there is
+  // pending work. Otherwise a single slow "metrics" heartbeat (5 min) keeps
+  // pending-operation detection alive. Multi-tab: only the leader tab polls.
+  var HEARTBEAT_MS_IDLE = 300000;
+  function _treasuryContextActive() {
+    try {
+      var ids = ['tab-content-treasury', 'tab-content-toc', 'tab-content-reimbursements', 'tab-content-xbridge'];
+      for (var i = 0; i < ids.length; i++) {
+        var el = document.getElementById(ids[i]);
+        if (el && !el.classList.contains('hidden')) return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
   function tick() {
     var now = Date.now();
     var hidden = document.hidden;
     if (hidden) return; // pause when hidden
+    if (window.PollingManager && !window.PollingManager.shouldPoll('ambient')) return; // leader tab only
+
+    if (!_treasuryContextActive() && !_hasPending) {
+      // Ambient heartbeat: metrics only, every 5 minutes
+      for (var k = 0; k < _jobs.length; k++) {
+        var mj = _jobs[k];
+        if (mj.id !== 'metrics') continue;
+        if (!mj.enabled || mj.nextRun > now || mj.state.status === 'running') break;
+        mj.nextRun = now + HEARTBEAT_MS_IDLE;
+        runJob(mj, now).then(function (r) { r.job.nextRun = Date.now() + HEARTBEAT_MS_IDLE; });
+        break;
+      }
+      return;
+    }
 
     for (var i = 0; i < _jobs.length; i++) {
       var j = _jobs[i];
@@ -250,6 +280,7 @@
     injectCard();
     // tick every second
     _scheduler = setInterval(function () { checkIdle(); tick(); }, TICK_MS);
+    if (window.PollingManager) window.PollingManager.register('treasury-job-engine', _scheduler, { ms: TICK_MS, scope: 'ambient' });
     // pause on hide
     try { document.addEventListener('visibilitychange', function () { if (!document.hidden) { _idle = true; checkIdle(); } }); } catch (_) {}
     // resume on page show
@@ -261,7 +292,7 @@
     __ready: true,
     VERSION: VERSION,
     start: start,
-    stop: function () { if (_scheduler) { clearInterval(_scheduler); _scheduler = null; } _started = false; },
+    stop: function () { if (_scheduler) { clearInterval(_scheduler); _scheduler = null; } if (window.PollingManager) window.PollingManager.unregister('treasury-job-engine'); _started = false; },
     status: function () { return Object.assign({}, _stats, { jobs: _jobs.map(function (j) { var s = Object.assign({}, j.state); s.priority = j.priority; s.id = j.id; s.label = j.label; s.type = j.type; return s; }) }); },
     runNow: function (id) { var j = _jobs.find(function (x) { return x.id === id; }); if (j) { j.nextRun = Date.now() + 100; } },
     setLogging: function (v) { LOG = !!v; }

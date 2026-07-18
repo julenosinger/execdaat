@@ -24,7 +24,7 @@
   const TRS_RPC      = (typeof window !== 'undefined' && window.location && window.location.origin.indexOf('http') === 0)
     ? window.location.origin + '/api/rpc' // same-origin failover proxy
     : 'https://rpc.testnet.arc.network';
-  const TRS_REFRESH_MS = 25000;
+  const TRS_REFRESH_MS = 60000; // request-optimization: 25s → 60s (operation events still trigger instant refresh)
   const TRS_VERSION  = '20260709t-mint';
   const ARC_KEY = 'arc', ARC_DOMAIN = 26;
 

@@ -1092,8 +1092,15 @@ async function ammInit() {
   // Default tab — swap mode (centred, pool col hidden)
   ammSwitchTab('swap');
 
-  // Auto-refresh every 15s
-  setInterval(ammRefreshAll, 15_000);
+  // Auto-refresh (request-optimization: 15s → 60s; only when the DEX tab is
+  // visible and the page is in the foreground — idle consumption drops to zero)
+  var _ammRefreshInterval = setInterval(function () {
+    if (document.hidden) return;
+    var tabEl = document.getElementById('tab-content-dex');
+    if (tabEl && tabEl.classList.contains('hidden')) return;
+    ammRefreshAll();
+  }, 60_000);
+  if (window.PollingManager) window.PollingManager.register('dex-pool-refresh', _ammRefreshInterval, { ms: 60000, scope: 'tab' });
 
   console.log('[AMM] Ready · AMM:', ammState.ammAddress, '· Deployed:', ammState.deployed);
 }

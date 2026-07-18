@@ -610,7 +610,10 @@
       _wrapTurboBridge();
       if (_remoteConfigured()) {
         _checkHealth();
-        if (!_healthTimer) _healthTimer = setInterval(_checkHealth, 30000);
+        if (!_healthTimer) _healthTimer = setInterval(function () {
+          if (document.hidden) return; // request-optimization: no background polls
+          _checkHealth();
+        }, 120000); // request-optimization: 30s → 120s (health is slow-moving)
       } else {
         _renderHealth(); // stays hidden in LOCAL mode
         _log('LOCAL mode (or remote not configured) — legacy path active, wrappers are pass-through');

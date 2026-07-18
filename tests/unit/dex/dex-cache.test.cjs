@@ -87,7 +87,7 @@ describe('lib/dex-cache.mjs — verified DEX cache engine', () => {
     const cache = createDexCache({ rpcClient: rpc, ammAddress: AMM, eurcAddress: EURC, usdcAddress: USDC, now: () => t, log: () => {} });
     await cache.getSnapshot();
     const after = rpc.stats();
-    t += 15_001;
+    t += 60_001; // TTL expired (request-optimization: TTL raised 15s → 60s)
     const s = await cache.getSnapshot();
     assert.equal(s.source, 'on-chain');
     assert.gt(rpc.stats(), after);

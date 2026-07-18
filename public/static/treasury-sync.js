@@ -15,7 +15,7 @@
 
 (function () {
   var BASE = '/api/core/v1';
-  var SYNC_MS = 15000;
+  var SYNC_MS = 60000; // request-optimization: 15s → 60s (event hooks still sync instantly after operations)
   var _sig = {};            // intentId -> last synced signature (dedupe)
   var _timer = null;
 
@@ -90,7 +90,11 @@
     if (_timer) return;
     // small initial delay so the bridge store is ready
     setTimeout(syncOnce, 4000);
-    _timer = setInterval(syncOnce, SYNC_MS);
+    _timer = setInterval(function () {
+      if (document.hidden) return; // request-optimization: no background sync
+      syncOnce();
+    }, SYNC_MS);
+    if (window.PollingManager) window.PollingManager.register('treasury-sync', _timer, { ms: SYNC_MS, scope: 'ambient' });
     // opportunistic sync on known bridge lifecycle events
     ['ub:bridge:completed', 'ub:cctp:completed', 'treasury:completed', 'treasurybridge:event', 'reimbursement:completed'].forEach(function (ev) {
       try { window.addEventListener(ev, function () { setTimeout(syncOnce, 800); }); } catch (e) {}

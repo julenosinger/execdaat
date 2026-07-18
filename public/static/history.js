@@ -23,7 +23,7 @@ const HIST_BLOCK_RANGE = 10000;   // ~10k blocks per query
 const HIST_MAX_BLOCKS  = 50000;   // total lookback window
 
 // Polling interval in ms (0 = no polling)
-const HIST_POLL_MS = 30000; // 30 seconds
+const HIST_POLL_MS = 60000; // request-optimization: 30s → 60s (manual refresh + tab switch reload preserved)
 
 let histState = {
   items:       [],
@@ -642,10 +642,12 @@ function histStartPolling() {
   const badge = document.getElementById('history-poll-badge');
   if (badge) badge.classList.remove('hidden');
   histState.pollTimer = setInterval(() => {
+    if (document.hidden) return; // request-optimization: no background polling
     if (document.getElementById('tab-content-history')?.classList.contains('hidden') === false) {
       histRefreshNew();
     }
   }, HIST_POLL_MS);
+  if (window.PollingManager) window.PollingManager.register('history-poll', histState.pollTimer, { ms: HIST_POLL_MS, scope: 'tab' });
 }
 
 function histStopPolling() {

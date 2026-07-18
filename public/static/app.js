@@ -917,12 +917,14 @@ function openCreateAccount() {
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
   // Don't auto-load dashboard — wait until user enters the app
-  // Auto-refresh a cada 30 segundos
-  setInterval(() => {
-    if (currentTab === 'dashboard') loadDashboard();
+  // Auto-refresh a cada 60 segundos (request-optimization: 30s → 60s;
+  // dashboard.js já cuida do refresh da aba dashboard — evita chamada dupla)
+  const _appRouterRefresh = setInterval(() => {
+    if (document.hidden) return; // request-optimization: no background refreshes
     if (currentTab === 'agents') loadAgentsDetails();
     if (currentTab === 'history' && window.historyRefresh) window.historyRefresh();
-  }, 30000);
+  }, 60000);
+  if (window.PollingManager) window.PollingManager.register('app-router-refresh', _appRouterRefresh, { ms: 60000, scope: 'tab' });
   
   addLog('[SYSTEM] ExecDaat interface loaded', 'system');
   addLog('[NETWORK] Arc Testnet - Chain ID: 5042002 - USDC Gas', 'info');

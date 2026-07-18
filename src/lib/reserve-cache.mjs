@@ -11,7 +11,7 @@
 //     Reserves are NEVER fabricated.
 // ============================================================
 
-export const RESERVE_CACHE_TTL_MS = 15_000;
+export const RESERVE_CACHE_TTL_MS = 30_000; // reserve TTL (request-optimization: 15s → 30s; quotes keep own validity)
 
 const GET_RESERVES_SELECTOR = '0x0902f1ac'; // getReserves()
 const TOTAL_SUPPLY_SELECTOR = '0x18160ddd'; // totalSupply()

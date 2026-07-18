@@ -605,9 +605,10 @@
   // CORE: startPolling — refreshes intent UI periodically
   // Called by: index.tsx "Start poll" button, app.js
   // ════════════════════════════════════════════════════════════════════════════
-  function startPolling(intervalMs = 8000) {
+  function startPolling(intervalMs = 30000) {
     if (global._aePollTimer) clearInterval(global._aePollTimer);
     global._aePollTimer = setInterval(async () => {
+      if (document.hidden) return; // request-optimization: no background polling
       try {
         const intents = await getIntents();
         if (typeof global.aeRenderIntents === 'function') {
@@ -615,6 +616,7 @@
         }
       } catch {}
     }, intervalMs);
+    if (global.PollingManager) global.PollingManager.register('circle-skills-poll', global._aePollTimer, { ms: intervalMs, scope: 'tab' });
     console.log('[CS-AE] Polling started, interval:', intervalMs, 'ms');
   }
 
@@ -805,8 +807,8 @@
     // Small delay to ensure chat.js and chat-bridge.js are fully loaded
     setTimeout(_installIntentHook, 1500);
 
-    // Auto-start polling (UI refresh every 8s)
-    startPolling(8000);
+    // Auto-start polling (UI refresh; request-optimization: 8s → 30s)
+    startPolling(30000);
 
     // Emit ready event so other modules can detect us
     global.dispatchEvent(new CustomEvent('circleSkills:ready', {

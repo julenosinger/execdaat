@@ -59,9 +59,9 @@ const UPSTREAM_TIMEOUT_MS = 25000
 // Cache ONLY idempotent, non-financial reads. NEVER cache intents, execute,
 // settlement or history (single source of truth must always be live).
 const CACHE_TTL_MS: Record<string, number> = {
-  '/health': 10_000,
-  '/metrics': 15_000,
-  '/applications': 60_000,
+  '/health': 30_000,
+  '/metrics': 60_000,
+  '/applications': 300_000,
 }
 function cacheTtlFor(cleanSub: string): number {
   return CACHE_TTL_MS[cleanSub] || 0

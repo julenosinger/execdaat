@@ -993,7 +993,7 @@ function payStartSchedulePoller() {
       }
     }
     if (changed) { paySaveScheduled(list); payState.scheduled = list; renderPaymentHistory(); }
-  }, 15_000); // check every 15s
+  }, 30_000); // request-optimization: check every 15s → 30s (localStorage scan; RPC only when a job is due)
 }
 
 async function executeScheduledJob(job) {

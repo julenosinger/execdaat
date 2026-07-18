@@ -971,7 +971,7 @@
   }
 
   // ─── Entry points ────────────────────────────────────────────────────────────
-  function startHealth() { if (S.healthTimer) clearInterval(S.healthTimer); pingHealth(); S.healthTimer = setInterval(() => { const el = q('tab-content-xbridge'); if (el && !el.classList.contains('hidden') && !document.hidden) pingHealth(); }, 30000); }
+  function startHealth() { if (S.healthTimer) clearInterval(S.healthTimer); pingHealth(); S.healthTimer = setInterval(() => { const el = q('tab-content-xbridge'); if (el && !el.classList.contains('hidden') && !document.hidden) pingHealth(); }, 120000); /* request-optimization: 30s → 120s */ }
   window.xbridgeInit = function () { try { build(); startHealth(); try { window.addEventListener('walletConnected', () => { S.recipient = S.recipient || wallet() || ''; const r = q('xb-recipient'); if (r && !r.value) r.value = S.recipient; loadBalance(); }); } catch (_) {} } catch (e) { console.error('[xbridge] init failed', e); } };
   window.xbridgeRefresh = function () { if (!S.built) { window.xbridgeInit(); return; } reconcileTurboHistory(); loadBalance(); pingHealth(); renderRecent(); renderStats(); };
 

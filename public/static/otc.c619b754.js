@@ -3887,8 +3887,8 @@ function _otcInit() {
     }
   }, 30000);
 
-  // Periodic alert check
-  setInterval(_otcCheckAlerts, 10000);
+  // Periodic alert check (request-optimization: 10s → 60s; foreground only)
+  setInterval(function () { if (!document.hidden) _otcCheckAlerts(); }, 60000);
   _otcCheckAlerts();
 
   // Expose globals

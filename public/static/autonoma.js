@@ -1005,13 +1005,16 @@
       _autonomaWelcome();
     }
 
-    // Poll every 3s
+    // Poll every 30s (request-optimization: 3s → 30s; user actions refresh the
+    // panel directly, this timer only keeps ambient state in sync)
     _autonomaPollTimer = setInterval(() => {
       if (!autonomaActive) return;
+      if (document.hidden) return;
       autonomaRefreshIntentsPanel();
       _updateAutonomaAgentStatus();
       _autonomaUpdateCsvBanner();
-    }, 3000);
+    }, 30000);
+    if (window.PollingManager) window.PollingManager.register('autonoma-poll', _autonomaPollTimer, { ms: 30000, scope: 'tab' });
 
     console.log('[Autonoma] Initialized v20260404l · Permanent context patch · Full response parity');
   }

@@ -38,8 +38,8 @@
   // still carry the old Elligent vault — normalize to the ExecDaat vault for display.
   const EXECDAAT_VAULT = '0x1e039fF538Ed84Ad54610D644ca36D4b03167B87';
   const LEGACY_ELLIGENT_VAULT = '0xbfc9e8f79bd30b912081ae88f9ad0a515f08c2f1';
-  const REFRESH_ACTIVE_MS = 4000;    // in-flight operations present (3–5s window)
-  const REFRESH_IDLE_MS = 20000;     // everything terminal
+  const REFRESH_ACTIVE_MS = 15000;   // request-optimization: 4s → 15s (event bus still triggers instant refreshes)
+  const REFRESH_IDLE_MS = 60000;     // request-optimization: 20s → 60s (everything terminal)
   const CACHE_TTL_MS = 30000;        // metrics/applications ONLY (never status/history)
 
   const S = {

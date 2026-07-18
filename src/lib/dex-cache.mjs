@@ -15,7 +15,7 @@
 
 import { calcPriceRatio, calcTvl, calcReserveRatio, detectDonations } from './dex-metrics.mjs';
 
-export const DEX_CACHE_TTL_MS = 15_000;
+export const DEX_CACHE_TTL_MS = 60_000; // pool data TTL (request-optimization: 15s → 60s)
 
 const SEL_GET_RESERVES = '0x0902f1ac'; // getReserves()
 const SEL_TOTAL_SUPPLY = '0x18160ddd'; // totalSupply()

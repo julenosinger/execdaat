@@ -1557,11 +1557,12 @@ async function tryAutoReconnect() {
 // AUTO-REFRESH DE SALDO (polling)
 // ============================================================
 let _walletBalanceTimer = null;
-const WALLET_BALANCE_INTERVAL = 30_000; // 30 segundos
+const WALLET_BALANCE_INTERVAL = 60_000; // request-optimization: 30s → 60s (tx flows refresh balance directly)
 
 function walletStartBalancePolling() {
   walletStopBalancePolling();
   _walletBalanceTimer = setInterval(async () => {
+    if (document.hidden) return; // request-optimization: no background polling
     const state = window.walletState;
     if (!state.connected || !state.provider || !state.onArcNetwork) return;
     try {

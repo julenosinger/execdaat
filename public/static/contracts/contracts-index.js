@@ -60,18 +60,19 @@ window.addEventListener('walletChanged', () => {
   }
 });
 
-// ─── Auto-refresh every 60s when contracts tab is active (on-chain only) ─────
+// ─── Auto-refresh every 120s when contracts tab is active (on-chain only) ────
 setInterval(() => {
+  if (document.hidden) return; // request-optimization: no background refreshes
   if (document.getElementById('tab-content-contracts')?.classList.contains('hidden')) return;
   // Never auto-refresh local tabs — data is already in localStorage.
   if ((window._cfViewMode || 'onchain') !== 'onchain') return;
   if (!window.walletState?.address) return;
   const age = Date.now() - cfState.lastRefresh;
-  if (age > 60000) {
-    cfLog('Auto-refresh contracts (60s interval)');
+  if (age > 120000) { // request-optimization: 60s → 120s
+    cfLog('Auto-refresh contracts (120s interval)');
     cfLoadContracts();
   }
-}, 15000);
+}, 30000); // request-optimization: check 15s → 30s
 
 // ─── Global exports ────────────────────────────────────────────────────────────
 

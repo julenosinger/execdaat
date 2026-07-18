@@ -1384,6 +1384,10 @@ let _accLiveInterval = null;
 function _accStartLivePolling() {
   if (_accLiveInterval) return;
   _accLiveInterval = setInterval(async () => {
+    // Request-optimization: only poll when the crosschain tab is visible
+    if (document.hidden) return;
+    const tabEl = document.getElementById('tab-content-advanced-crosschain');
+    if (tabEl && tabEl.classList.contains('hidden')) return;
     // Check Arc RPC responsiveness
     try {
       const t0 = Date.now();
@@ -1399,7 +1403,8 @@ function _accStartLivePolling() {
       _accState.bridgeStatus      = 'Check Connection';
     }
     _accRenderLiveActivity();
-  }, 15000); // every 15s
+  }, 60000); // request-optimization: 15s → 60s
+  if (window.PollingManager) window.PollingManager.register('acc-live-polling', _accLiveInterval, { ms: 60000, scope: 'tab' });
 }
 
 function _accStopLivePolling() {

@@ -19,7 +19,7 @@
     factory:    { status: 'unknown', message: '', lastCheck: 0, uptime: 0 },
   };
 
-  var CHECK_INTERVAL = 15000; // 15 seconds
+  var CHECK_INTERVAL = 60000; // request-optimization: 15s → 60s
   var _timer = null;
   var _listeners = [];
 
@@ -169,13 +169,19 @@
     start: function(intervalMs) {
       intervalMs = intervalMs || CHECK_INTERVAL;
       D.health.stop();
-      D.health.checkAll();
-      _timer = setInterval(D.health.checkAll, intervalMs);
+      // First sweep only when visible + leader tab (Polling Manager gate)
+      if (!window.PollingManager || window.PollingManager.shouldPoll('ambient')) D.health.checkAll();
+      _timer = setInterval(function() {
+        if (window.PollingManager && !window.PollingManager.shouldPoll('ambient')) return;
+        D.health.checkAll();
+      }, intervalMs);
+      if (window.PollingManager) window.PollingManager.register('app-health-monitor', _timer, { ms: intervalMs, scope: 'ambient' });
     },
 
     /** Stop periodic checks */
     stop: function() {
       if (_timer) { clearInterval(_timer); _timer = null; }
+      if (window.PollingManager) window.PollingManager.unregister('app-health-monitor');
     },
   };
 

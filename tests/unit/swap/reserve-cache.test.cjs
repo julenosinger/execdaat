@@ -74,7 +74,7 @@ describe('lib/reserve-cache.mjs — verified reserve cache', () => {
     const cache = createReserveCache({ rpcClient: rpc, ammAddress: AMM, now: () => t, log: () => {} });
     await cache.getReserves();
     const callsAfterFirst = rpc.stats();
-    t += 15_001; // TTL expired
+    t += 30_001; // TTL expired (request-optimization: TTL raised 15s → 30s)
     const snap = await cache.getReserves();
     assert.equal(snap.source, 'on-chain');
     assert.equal(snap.cacheAge, 0);

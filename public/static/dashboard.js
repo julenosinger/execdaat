@@ -551,15 +551,17 @@ let _dbLastRefresh = 0;
 function dbStartAutoRefresh() {
   if (_dbInterval) return;
   _dbInterval = setInterval(() => {
+    if (document.hidden) return; // request-optimization: no background refreshes
     const dashEl = document.getElementById('tab-content-dashboard');
     if (dashEl && !dashEl.classList.contains('hidden')) {
       const now = Date.now();
-      if (now - _dbLastRefresh > 25000) { // min 25s between refreshes
+      if (now - _dbLastRefresh > 60000) { // request-optimization: min 25s → 60s between refreshes
         _dbLastRefresh = now;
         loadDashboard();
       }
     }
-  }, 5000); // check every 5s
+  }, 15000); // request-optimization: check every 5s → 15s
+  if (window.PollingManager) window.PollingManager.register('dashboard-auto-refresh', _dbInterval, { ms: 15000, scope: 'tab' });
 }
 
 // ── Event-driven refresh ─────────────────────────────────────────────────────
