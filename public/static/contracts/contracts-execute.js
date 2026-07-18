@@ -869,7 +869,20 @@ async function cfSubmitDispute(contractId) {
     showToast('⚖️ Dispute opened! Escrowed funds are now locked.', 'error');
     document.getElementById('cf-dispute-open-modal')?.remove();
     window._cfDisputeFiles = [];
-    cfLoadContracts({ force: true });
+    // Re-render immediately from cache so the disputed card (chip + Resolve +
+    // Resolution Center buttons) appears at once — dispute data is local and
+    // needs no on-chain call to display.
+    try {
+      const cached = (cfState._allContracts && cfState._allContracts.length) ? cfState._allContracts : cfState.contracts;
+      if (cached && cached.length) cfRenderContracts(cached, wallet || null);
+    } catch (_) {}
+    // Chain refresh only when the wallet is on Arc. On the wrong network the
+    // forced reload replaced the whole list with the "switch network" panel,
+    // hiding the newly created dispute (reported bug: created but nothing shows).
+    if (cfState.networkOk) cfLoadContracts({ force: true });
+    else showToast('Dispute saved. Switch to Arc Testnet to sync on-chain data.', 'info');
+    // Open the Resolution Center directly so the user lands in the dispute.
+    try { if (typeof window.drcOpen === 'function') setTimeout(() => window.drcOpen(contractId), 350); } catch (_) {}
   } catch(e) {
     cfErr('cfSubmitDispute:', e);
     showToast('Error opening dispute: ' + e.message, 'error');

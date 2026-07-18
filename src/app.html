@@ -105,6 +105,13 @@
       50%{ transform:scale(1.05); filter:drop-shadow(0 0 12px rgba(120,150,255,.7)); }
     }
     @media (prefers-reduced-motion: reduce){ #chat-fab .fa-robot{ animation:none !important; } }
+
+    /* ── Arc brand attribution (official logo — never modified) ─────────────
+       Dark mode uses the official on-dark SVG; light mode swaps the <img>
+       source to the official light asset via a CSS content swap. */
+    body.light-mode .arc-attribution img[src*="arc-logo-ondark"]{
+      content: url('/static/arc-logo-light.webp');
+    }
   </style>
 
   <!-- ── Canonical ────────────────────────────────────────────────────── -->
@@ -716,6 +723,11 @@
             <i class="fas fa-robot text-white text-[10px]"></i>
           </div>
           <span style="font-weight:700;letter-spacing:.04em">ExecDaat</span><span style="color:#6b7280"> — Open Source Testnet dApp</span>
+          <!-- Arc brand attribution (official logo, unmodified — smaller than primary brand) -->
+          <span class="arc-attribution" style="display:inline-flex;align-items:center;gap:7px;margin-left:14px;padding-left:14px;border-left:1px solid rgba(107,114,128,.35);">
+            <span style="color:#6b7280;">Built on</span>
+            <img src="/static/arc-logo-ondark.svg" alt="Arc" style="height:13px;width:auto;display:block;" loading="lazy">
+          </span>
         </div>
         <div class="flex items-center gap-4">
           <a href="/about" class="hover:text-gray-400 transition-colors">About</a>
@@ -1052,6 +1064,11 @@
         <span class="sidebar-footer-dot"></span>
         <span class="sidebar-footer-netname">Arc Testnet</span>
       </div>
+      <!-- Arc brand attribution (official logo, unmodified) -->
+      <div class="arc-attribution" style="display:flex;align-items:center;gap:6px;padding:6px 12px 2px;justify-content:center;">
+        <span style="font-size:9.5px;color:#5f7ba0;letter-spacing:.03em;">Powered by</span>
+        <img src="/static/arc-logo-ondark.svg" alt="Arc" style="height:11px;width:auto;display:block;opacity:.85;" loading="lazy">
+      </div>
     </div>
   </aside>
 
@@ -1113,6 +1130,16 @@
           <div id="stat-pending" class="text-3xl font-bold text-white">--</div>
           <div class="text-xs text-orange-400 mt-1" data-i18n="stat_pending_sub">awaiting agents</div>
         </div>
+      </div>
+
+      <!-- Arc brand attribution — official logo, descriptive context (Information/About) -->
+      <div class="arc-attribution flex flex-col sm:flex-row items-center justify-between gap-3 bg-gray-900/40 border border-gray-800/60 rounded-xl px-5 py-3.5 mb-6">
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-gray-400">Powered by</span>
+          <img src="/static/arc-logo-ondark.svg" alt="Arc Network" style="height:16px;width:auto;display:block;" loading="lazy">
+          <span class="text-sm text-gray-400">Network</span>
+        </div>
+        <span class="text-[10px] text-gray-600">Arc is a trademark of Circle Internet Group, Inc. and/or its affiliates.</span>
       </div>
 
       <!-- Network Info -->
@@ -1562,16 +1589,45 @@
                   <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:end;">
                     <div>
                       <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;"><i class="fas fa-circle-dot" style="color:#a78bfa;"></i> FROM NETWORK</label>
-                      <div class="pay-cf-input px-3 py-2.5 text-sm" style="display:flex;align-items:center;gap:6px;opacity:0.9;cursor:default;">🟣 Arc Testnet</div>
+                      <div class="pay-cf-input px-3 py-2.5 text-sm" style="display:flex;align-items:center;gap:8px;opacity:0.9;cursor:default;"><img src="/static/arc-mark-256.png" alt="Arc" style="width:18px;height:18px;border-radius:50%;display:block;" loading="lazy">Arc Testnet</div>
                     </div>
                     <div style="padding-bottom:11px;color:#4a6490;"><i class="fas fa-arrow-right"></i></div>
                     <div>
                       <label class="pay-cf-label" style="font-size:9px;margin-bottom:4px;"><i class="fas fa-bullseye" style="color:#1D9E75;"></i> TO NETWORK</label>
-                      <select id="pay-to-network" class="pay-cf-input px-3 py-2.5 text-sm" onchange="if(window.smartPayOnNetworkChange)smartPayOnNetworkChange(this.value)">
-                        <option value="arc" selected>🟣 Arc Testnet (Local)</option>
-                      </select>
+                      <div style="position:relative;">
+                        <span id="pay-to-net-logo" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);width:18px;height:18px;pointer-events:none;display:flex;align-items:center;justify-content:center;z-index:1;"><img src="/static/arc-mark-256.png" alt="" style="width:18px;height:18px;border-radius:50%;display:block;"></span>
+                        <select id="pay-to-network" class="pay-cf-input px-3 py-2.5 text-sm" style="padding-left:36px;" onchange="if(window.smartPayOnNetworkChange)smartPayOnNetworkChange(this.value);if(window.payNetLogoUpdate)payNetLogoUpdate(this.value)">
+                          <option value="arc" selected>Arc Testnet (Local)</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
+                  <!-- Chain logo preview for the TO NETWORK selector (presentation only).
+                       Native <option> can't render images; this shows the selected
+                       chain's mark (official Arc asset + standard chain marks). -->
+                  <script>
+                    (function(){
+                      var SVGS = {
+                        sepolia: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;border-radius:50%;display:block;"><g fill="none" fill-rule="evenodd"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF" fill-rule="nonzero"><path fill-opacity=".602" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/><path fill-opacity=".602" d="M16.498 21.968v6.027L24 17.616z"/><path d="M16.498 27.995v-6.028L9 17.616z"/><path fill-opacity=".2" d="M16.498 20.573l7.497-4.353-7.497-3.348z"/><path fill-opacity=".602" d="M9 16.22l7.498 4.353v-7.701z"/></g></g></svg>',
+                        basesepolia: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;border-radius:50%;display:block;"><circle cx="16" cy="16" r="16" fill="#0052FF"/><path d="M15.96 26c5.523 0 10-4.477 10-10s-4.477-10-10-10c-5.24 0-9.538 4.03-9.965 9.16h13.23v1.68H5.995C6.422 21.97 10.72 26 15.96 26z" fill="#FFF"/></svg>',
+                        arbsepolia: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;border-radius:50%;display:block;"><circle cx="16" cy="16" r="16" fill="#213147"/><path fill="#12AAFF" d="M9 22l3.4-9 3.4 9h-2.1l-1.3-3.7L11.1 22z"/><path fill="#9DCCED" d="M16.9 9.5 22 22h-2.2l-3.9-10.2z"/><path fill="#FFF" d="M16.6 12.6 20 22h-2.1l-2.4-6.4z"/></svg>',
+                        optsepolia: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;border-radius:50%;display:block;"><circle cx="16" cy="16" r="16" fill="#FF0420"/><path fill="#FFF" d="M11.7 20.6c-1.9 0-3.1-1-3.1-2.7 0-.3 0-.6.1-.9.4-1.9.9-3 3.2-3 1.9 0 3.1 1 3.1 2.7 0 .3 0 .6-.1.9-.4 1.9-1 3-3.2 3zm.2-4.9c-.7 0-1.1.4-1.3 1.2-.1.3-.1.5-.1.7 0 .6.3.9 1 .9.7 0 1.1-.4 1.3-1.2.1-.3.1-.5.1-.7 0-.6-.4-.9-1-.9zm4.2 4.8 1.3-6.3h2.5c1.4 0 2.2.6 2.2 1.7 0 .2 0 .4-.1.6-.3 1.3-1.2 1.9-2.7 1.9h-1.1l-.4 2.1zm2-3.6h.9c.6 0 1-.2 1.1-.8v-.3c0-.4-.3-.5-.8-.5h-.9z"/></svg>',
+                        polygonAmoy: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;border-radius:50%;display:block;"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path fill="#FFF" d="M20.7 13.4c-.3-.2-.7-.2-1 0l-2.3 1.3-1.6.9-2.3 1.3c-.3.2-.7.2-1 0l-1.8-1c-.3-.2-.5-.5-.5-.9v-2c0-.4.2-.7.5-.9l1.8-1c.3-.2.7-.2 1 0l1.8 1c.3.2.5.5.5.9v1.3l1.6-.9v-1.4c0-.4-.2-.7-.5-.9l-3.3-1.9c-.3-.2-.7-.2-1 0l-3.4 1.9c-.3.2-.5.5-.5.9v3.8c0 .4.2.7.5.9l3.4 1.9c.3.2.7.2 1 0l2.3-1.3 1.6-.9 2.3-1.3c.3-.2.7-.2 1 0l1.8 1c.3.2.5.5.5.9v2c0 .4-.2.7-.5.9l-1.8 1.1c-.3.2-.7.2-1 0l-1.8-1c-.3-.2-.5-.5-.5-.9v-1.3l-1.6.9v1.4c0 .4.2.7.5.9l3.4 1.9c.3.2.7.2 1 0l3.4-1.9c.3-.2.5-.5.5-.9v-3.9c0-.4-.2-.7-.5-.9z"/></svg>',
+                      };
+                      var ARC_IMG = '<img src="/static/arc-mark-256.png" alt="" style="width:18px;height:18px;border-radius:50%;display:block;">';
+                      var last = null;
+                      window.payNetLogoUpdate = function (key) {
+                        try {
+                          var el = document.getElementById('pay-to-net-logo'); if (!el) return;
+                          var k = key || (document.getElementById('pay-to-network') || {}).value || 'arc';
+                          if (k === last) return; last = k;
+                          el.innerHTML = (k === 'arc') ? ARC_IMG : (SVGS[k] || ARC_IMG);
+                        } catch (_) {}
+                      };
+                      // Light watcher: covers programmatic value changes (agent flows)
+                      setInterval(function () { try { window.payNetLogoUpdate(); } catch (_) {} }, 2000);
+                    })();
+                  </script>
                   <!-- Cross-chain route preview (token is defined by the USDC/EURC selector above) -->
                   <div id="pay-xchain-panel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(55,138,221,0.15);">
                     <div id="pay-xchain-quote" style="font-size:11px;color:#8aaac8;line-height:1.7;">
@@ -1993,6 +2049,10 @@
         #tab-content-contracts.cf-focus-mode #cf-list-header { display:none !important; }
         #tab-content-contracts.cf-focus-mode #cf-list-col { grid-column:1 / -1 !important; }
 
+        /* Full-width summary bar above the columns (replaces the old factory bar);
+           only takes space when populated */
+        #cf-summary:not(:empty) { margin-bottom:16px; }
+
         /* ─── Contract Details — enterprise section layout (v6 UI refresh) ─── */
         .cf-card2 { background:rgba(8,11,24,0.96); border:1px solid rgba(55,138,221,0.14); border-radius:16px; overflow:hidden; transition:border-color 0.2s; }
         .cf-card2:hover { border-color:rgba(55,138,221,0.28); }
@@ -2089,18 +2149,8 @@
       <!-- ── Network warning banner (shown on wrong chain) ── -->
       <div id="cf-network-banner" style="display:none;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:12px;padding:10px 14px;margin-bottom:12px;flex-direction:row;align-items:center;gap:8px;"></div>
 
-      <!-- ── Factory info bar ── -->
-      <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:10px 16px;">
-        <div class="flex items-center gap-2">
-          <div class="w-2 h-2 rounded-full bg-green-400" style="animation:pulse 2s infinite;box-shadow:0 0 6px #4ade80;"></div>
-          <span style="color:#90bce0;font-weight:700;">ContractFactory</span>
-        </div>
-        <span style="font-family:monospace;color:#8aaac8;">0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A</span>
-        <a href="https://testnet.arcscan.app/address/0xbbC9d9d6Dd1eA066c922897e4952b4639BBbaF2A" target="_blank" rel="noopener" style="color:#378ADD;">
-          <i class="fas fa-external-link-alt mr-1"></i>ArcScan
-        </a>
-        <span class="ml-auto" style="color:#6a90b8;">Arc Testnet · Chain 5042002 · 0.2% Platform Fee</span>
-      </div>
+      <!-- ── Summary stats (Total Value · Funded · Active · Completed · Total · Factory link) ── -->
+      <div id="cf-summary"></div>
 
       <div class="grid grid-cols-1 xl:grid-cols-5 gap-5">
 
@@ -2305,9 +2355,6 @@
 
         <!-- ══ RIGHT: Contracts list ══ -->
         <div id="cf-list-col" class="xl:col-span-3">
-          <!-- Summary stats -->
-          <div id="cf-summary" class="mb-4"></div>
-
           <!-- View Mode Tabs -->
           <div style="display:flex;gap:6px;margin-bottom:14px;background:rgba(8,11,24,0.7);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:6px;" id="cf-view-mode-tabs">
             <button id="cf-view-tab-onchain" onclick="cfSetViewMode('onchain')"
@@ -5271,6 +5318,10 @@
               <div>
                 <div class="acc-stat-chip-val" id="acc-hero-chains">7</div>
                 <div class="acc-stat-chip-lbl">Supported Chains</div>
+                <div style="display:flex;align-items:center;gap:5px;margin-top:3px;">
+                  <span style="font-size:9px;color:#8b93b8;">Available on</span>
+                  <img src="/static/arc-logo-ondark.svg" alt="Arc" style="height:10px;width:auto;display:block;opacity:.85;" loading="lazy">
+                </div>
               </div>
             </div>
             <div class="acc-stat-chip">
@@ -6289,7 +6340,7 @@
   <script src="/static/router.js?v=20260718notr1"></script>
   <script src="/static/unifiedbalance.js?v=20260717opt1"></script>
   <script src="/static/cross-chain-service.js?v=20260718arcin1"></script>
-  <script src="/static/advanced-crosschain.js?v=20260718notr1"></script>
+  <script src="/static/advanced-crosschain.js?v=20260718arc2"></script>
   <script src="/static/ub-bridge.js?v=20260718notr1"></script>
   <script src="/static/csv-upload.js?v=20250322"></script>
   <script src="/static/persistence.11b9066e.js"></script>
@@ -6300,7 +6351,7 @@
   <!-- ══ Contracts Module (Phase 3 — split from contracts.js) ══ -->
   <script src="/static/contracts/contracts-core.js?v=20260716read1"></script>
   <script src="/static/contracts/contracts-ui.js?v=20260712p3"></script>
-  <script src="/static/contracts/contracts-execute.js?v=20260712p3"></script>
+  <script src="/static/contracts/contracts-execute.js?v=20260718dispfix1"></script>
   <script src="/static/contracts/contracts-index.js?v=20260717opt1"></script>
   <!-- legacy contracts.js preserved as fallback — loaded conditionally below -->
   <script src="/static/dispute-center.js?v=20260706c"></script>
@@ -6308,7 +6359,7 @@
   <script src="/static/settings.js?v=20250322"></script>
   <script src="/static/swap.js?v=20250322"></script>
   <script src="/static/dex.js?v=20260717opt1"></script>
-  <script src="/static/xbridge.js?v=20260718notr1"></script>
+  <script src="/static/xbridge.js?v=20260718arc2"></script>
   <script src="/static/bridge.js?v=20260715rpc1"></script>
   <!-- ══ MultiSend Module (Phase 3 — split from multisend.js) ══ -->
   <script src="/static/multisend/multisend-core.js?v=20260718msfix1"></script>
