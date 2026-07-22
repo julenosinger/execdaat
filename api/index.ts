@@ -25,6 +25,7 @@ import guardianRouter  from '../src/routes/guardian'
 import yieldRouter     from '../src/routes/yield-optimizer'
 import dexRouter       from '../src/routes/dex'
 import rpcProxyRouter  from '../src/routes/rpc-proxy'
+import agentWalletRouter from '../src/routes/agent-wallet'
 import treasuryCoreRouter from '../src/routes/treasury-core'
 import { metaRouter as treasuryMetaRouter } from '../src/routes/treasury'
 
@@ -114,6 +115,7 @@ app.route('/api/guardian',  guardianRouter)
 app.route('/api/yield',     yieldRouter)
 app.route('/api/dex',       dexRouter)
 app.route('/api/rpc',       rpcProxyRouter)
+app.route('/api/agent-wallet', agentWalletRouter)
 
 // ─── Treasury Core API (Elligent) — Phase 3 integration boundary ─────────────
 // Same-origin proxy: injects Application Secret + standardized headers

@@ -10,6 +10,7 @@ import guardianRouter from './routes/guardian'
 import yieldRouter from './routes/yield-optimizer'
 import dexRouter from './routes/dex'
 import rpcProxyRouter from './routes/rpc-proxy'
+import agentWalletRouter from './routes/agent-wallet'
 import { ARC_TESTNET } from './types/arc'
 import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 // @ts-ignore - Vite raw import: full SPA HTML shell served at "/"
@@ -161,6 +162,7 @@ app.route('/api/guardian', guardianRouter)
 app.route('/api/yield', yieldRouter)
 app.route('/api/dex', dexRouter)
 app.route('/api/rpc', rpcProxyRouter)
+app.route('/api/agent-wallet', agentWalletRouter)
 
 // ── CSV Validation API ────────────────────────────────────────────────────────
 // POST /api/csv/validate — validates a parsed CSV payload server-side

@@ -1,0 +1,12 @@
+
+ ⛅️ wrangler 4.72.0 (update available 4.111.0)
+──────────────────────────────────────────────
+Connected to deployment b0dcf59e-959e-403a-a3f3-67f11e6c5cdf, waiting for logs...
+This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+TypeError: fetch failed
+    at C:\Users\Juleno\execdaat 1\execdaat\node_modules\wrangler\wrangler-dist\cli.js:35017:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async performApiFetch (C:\Users\Juleno\execdaat 1\execdaat\node_modules\wrangler\wrangler-dist\cli.js:122191:10)
+    at async fetchInternal (C:\Users\Juleno\execdaat 1\execdaat\node_modules\wrangler\wrangler-dist\cli.js:122211:20)
+    at async fetchResult (C:\Users\Juleno\execdaat 1\execdaat\node_modules\wrangler\wrangler-dist\cli.js:122402:47)
+    at async _WebSocket.<anonymous> (C:\Users\Juleno\execdaat 1\execdaat\node_modules\wrangler\wrangler-dist\cli.js:228440:13)
