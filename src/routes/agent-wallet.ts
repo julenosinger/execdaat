@@ -1694,6 +1694,7 @@ const CACHE_TTL = 7 * 86400 // 7 days — refreshed on every write
 
 async function cacheGet(key: string): Promise<any> {
   try {
+    if (typeof caches === 'undefined' || !caches.default) return null  // Vercel/Node.js — no Cache API
     const cache = caches.default
     const url = 'https://execdaat-worker.local/' + key
     const match = await cache.match(url)
@@ -1707,6 +1708,7 @@ async function cacheGet(key: string): Promise<any> {
 
 async function cachePut(key: string, data: any, ttlSeconds: number = CACHE_TTL) {
   try {
+    if (typeof caches === 'undefined' || !caches.default) return  // Vercel/Node.js — silently skip
     const cache = caches.default
     const url = 'https://execdaat-worker.local/' + key
     const res = new Response(JSON.stringify(data), {
@@ -1718,6 +1720,7 @@ async function cachePut(key: string, data: any, ttlSeconds: number = CACHE_TTL) 
 
 async function cacheDelete(key: string) {
   try {
+    if (typeof caches === 'undefined' || !caches.default) return
     const cache = caches.default
     const url = 'https://execdaat-worker.local/' + key
     await cache.delete(url)

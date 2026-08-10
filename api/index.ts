@@ -8,12 +8,26 @@
  *   - serveStatic from @hono/node-server/serve-static (not hono/cloudflare-workers)
  *   - No Cloudflare Bindings (KVNamespace, D1Database, etc.)
  *   - Exports app.fetch as default (Vercel's fetch handler interface)
- *   - HTML served from src/html-template.ts (no dynamic CF import)
+ *   - HTML served from src/app.html read at runtime (no Vite ?raw import)
  */
 
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from '@hono/node-server/serve-static'
+import { readFileSync } from 'fs'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// Read app HTML at runtime (works on Vercel without Vite raw imports)
+let _appHtml: string | null = null
+function getAppHtml(): string {
+  if (!_appHtml) {
+    _appHtml = readFileSync(join(__dirname, '..', 'src', 'app.html'), 'utf8')
+  }
+  return _appHtml
+}
 
 // Route imports (all pure Hono, no CF-specific APIs)
 import paymentsRouter  from '../src/routes/payments'
@@ -29,9 +43,6 @@ import agentWalletRouter from '../src/routes/agent-wallet'
 import treasuryCoreRouter from '../src/routes/treasury-core'
 import { metaRouter as treasuryMetaRouter } from '../src/routes/treasury'
 
-// HTML template (no Cloudflare deps)
-import { getMainHTML } from '../src/html-template'
-
 // ─── App ──────────────────────────────────────────────────────────────────────
 const app = new Hono()
 
@@ -40,8 +51,10 @@ app.use('*', cors({
   origin: (origin) => {
     if (!origin) return origin
     const allowed = [
+      'https://execdaat.xyz',
+      'https://www.execdaat.xyz',
+      'https://execdaatapp-v2.pages.dev',
       'https://execdaatplataform.vercel.app',
-      'https://execdaatplataform.pages.dev',
       'http://localhost:3000',
       'http://localhost:5173',
     ]
@@ -127,7 +140,7 @@ app.route('/api/treasury', treasuryMetaRouter)
 // ─── Main dApp HTML ───────────────────────────────────────────────────────────
 // Serve the main app HTML for all non-API routes (SPA fallback)
 app.get('*', (c) => {
-  return c.html(getMainHTML())
+  return c.html(getAppHtml())
 })
 
 // ─── Export for Vercel ────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@
     "build:vercel": "node scripts/build-vercel.mjs",
     "preview": "wrangler pages dev",
     "deploy": "npm run build && wrangler pages deploy dist --project-name execdaatapp-v2 --branch main",
-    "deploy:vercel": "vercel --prod",
+    "deploy:vercel": "npm run build:vercel && vercel --prod",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "security:scan": "node scripts/security-scan.cjs",
     "test": "node tests/run.cjs",
