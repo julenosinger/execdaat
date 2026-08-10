@@ -44,7 +44,7 @@ function downloadExcelTemplate() {
 
   // Estilo de cabeçalho (só funciona em xlsx Pro, mas não quebra no padrão)
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Payments');
+  XLSX.utils.book_append_sheet(wb, ws, 'Send');
 
   // Segunda aba de instruções
   const instr = XLSX.utils.aoa_to_sheet([

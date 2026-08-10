@@ -254,7 +254,7 @@ function _arcBuildPaymentReceiptHTML(r, jsonDataStr) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Payment Receipt — ARC Testnet</title>
+  <title>Send Receipt — ARC Testnet</title>
   <style>${_arcReceiptCSS()}</style>
 </head>
 <body>
@@ -265,7 +265,7 @@ function _arcBuildPaymentReceiptHTML(r, jsonDataStr) {
   </div>
 
   <div class="arc-rcpt-header">
-    <h1>💸 Payment Receipt</h1>
+    <h1>💸 Send Receipt</h1>
     <p>ExecDaat · Arc Testnet · ${_arcEsc(dateStr)}</p>
     ${_arcBadge(r.status)}
   </div>

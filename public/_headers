@@ -14,7 +14,7 @@
   # Declares this as a Web3 dApp — helps GoPlus and wallet security APIs
   # distinguish it from phishing sites that typically omit this header
   X-Dapp-Name: ExecDaat Platform
-  X-Dapp-Category: compliance-payments
+  X-Dapp-Category: compliance-send
   X-Dapp-Chain: arc-testnet-5042002
 
   # ── TRANSPORT SECURITY ───────────────────────────────────────────────────────

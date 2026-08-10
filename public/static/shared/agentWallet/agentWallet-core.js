@@ -129,31 +129,46 @@
       if (_state.initialized) return _state;
       _state.initialized = true;
 
-      // Restore persisted wallet reference
+      // Restore persisted wallet reference from localStorage (cache only, NOT authoritative)
       _restoreWalletRef();
 
       var owner = window.walletState ? window.walletState.address : null;
       if (!owner) { console.log('[AgentWallet] No wallet — skipping init'); return _state; }
 
-      // Reconnect agent wallet if we have a stored reference
+      // Attempt to restore agent wallet via backend
+      var restored = false;
       if (_state.agentWalletId) {
+        // Primary: restore by walletId (fast in-session cache hit)
         try {
           var restore = await _api('/restore', {
             method: 'POST',
-            body: JSON.stringify({ walletId: _state.agentWalletId }),
+            body: JSON.stringify({ walletId: _state.agentWalletId, ownerAddress: owner }),
           });
           if (restore.success && restore.wallet) {
             _state.agentAddress = restore.wallet.address;
+            _state.agentWalletId = restore.wallet.walletId;
             _state.agentLabel = restore.wallet.label;
-            console.log('[AgentWallet] Restored:', _state.agentAddress);
-          } else {
+            _saveWalletRef();
+            restored = true;
+            console.log('[AgentWallet] restored:', _state.agentAddress);
+          } else if (restore.success === false && restore.message && restore.message.indexOf('not found') >= 0) {
+            // Confirmed wallet does not exist — clear reference
+            console.log('[AgentWallet] wallet not found — clearing ref');
             _state.agentWalletId = null;
             _state.agentAddress = null;
+            _state.agentLabel = null;
             _saveWalletRef();
           }
-        } catch (e) { /* wallet lost on cold start */ }
-      } else {
-        // Try to discover existing wallet by owner
+          // For any other response (transient error, 500, network failure):
+          // DO NOT clear the reference. Keep it for next retry.
+        } catch (e) {
+          // Network/backend transient error — keep reference, retry later
+          console.log('[AgentWallet] restore transient error — keeping ref:', e.message);
+        }
+      }
+
+      // If restore by walletId didn't work, try owner-based recovery (cold start)
+      if (!restored) {
         try {
           var w = await _api('/wallet/' + encodeURIComponent(owner));
           if (w.success && w.wallet) {
@@ -161,9 +176,16 @@
             _state.agentAddress = w.wallet.address;
             _state.agentLabel = w.wallet.label;
             _saveWalletRef();
-            console.log('[AgentWallet] Discovered:', _state.agentAddress);
+            console.log('[AgentWallet] owner recovery:', _state.agentAddress);
+            restored = true;
           }
-        } catch (e) { /* no wallet yet */ }
+        } catch (e) {
+          console.log('[AgentWallet] owner lookup error — will retry:', e.message);
+        }
+      }
+
+      if (!restored) {
+        console.log('[AgentWallet] no existing wallet for owner:', owner.slice(0, 10) + '...');
       }
 
       if (D.ERC8004 && D.ERC8004.IdentityManager) {

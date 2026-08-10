@@ -575,7 +575,7 @@
 
     // For multisend: queue through arcPayQueue:addBatch (existing execution engine)
     // This is the non-destructive approach — uses existing queue-engine.js
-    // User explicitly clicks "Execute Payments" to approve each tx
+    // User explicitly clicks "Execute Send" to approve each tx
     const payload = {
       type:       'batch',
       token:      tok,
@@ -755,7 +755,7 @@
     // Fallback: switch to payments tab
     if (typeof global.switchTab === 'function') {
       global.switchTab('payments');
-      _toast('Opened Payments tab — fill in the details and click Send.', 'info');
+      _toast('Opened Send tab — fill in the details and click Send.', 'info');
     }
     return false;
   }

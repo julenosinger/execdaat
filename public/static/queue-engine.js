@@ -234,7 +234,7 @@ function qeRenderPanel() {
           <i class="fas fa-inbox text-gray-500 text-xl"></i>
         </div>
         <div>
-          <p class="text-white font-semibold text-sm">No payments in queue</p>
+          <p class="text-white font-semibold text-sm">No sends in queue</p>
           <p class="text-gray-500 text-xs mt-1">Your automated payments will appear here</p>
         </div>
         <button onclick="qeSyncFromChatCSV(); qeRenderPanel();"
@@ -602,7 +602,7 @@ function qeInjectPanel() {
             <i class="fas fa-inbox text-gray-500 text-xl"></i>
           </div>
           <div>
-            <p class="text-white font-semibold text-sm">No payments in queue</p>
+            <p class="text-white font-semibold text-sm">No sends in queue</p>
             <p class="text-gray-500 text-xs mt-1">Your automated payments will appear here</p>
           </div>
           <button onclick="qeSyncFromChatCSV()"
@@ -763,7 +763,7 @@ if (document.readyState === 'loading') {
 // CHAT → EXECUTION BRIDGE
 // Escuta eventos disparados pelo chatbot (Brain) e adiciona itens à fila.
 // A wallet NUNCA é aberta aqui — apenas a fila é atualizada e o botão
-// "Execute Payments" é exibido no chat para que o usuário clique.
+// "Execute Send" é exibido no chat para que o usuário clique.
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ─── Evento: transfer único adicionado pelo chatbot ───────────────────────────
@@ -789,7 +789,7 @@ window.addEventListener('arcPayQueue:add', function(e) {
   const panel = document.getElementById('qe-panel');
   if (panel) { qeRenderPanel(); _qeUpdateExecBtn(); }
 
-  // Mostra botão flutuante "Execute Payments" no chat
+  // Mostra botão flutuante "Execute Send" no chat
   _qeShowChatExecuteButton();
 
   _qeLog(`Chat → fila: ${entry.amount} ${entry.token} → ${entry.address.slice(0,10)}…`);
@@ -829,7 +829,7 @@ window.addEventListener('arcPayQueue:addBatch', function(e) {
   }
 });
 
-// ─── Botão flutuante "Execute Payments" no chat ───────────────────────────────
+// ─── Botão flutuante "Execute Send" no chat ───────────────────────────────
 // Aparece dentro da janela do chat quando há itens na fila.
 // Single item  → routes to Payments tab (fills form)
 // Multiple items → routes to Multisend tab (queue panel)
@@ -847,7 +847,7 @@ function _qeShowChatExecuteButton() {
   // Context-aware label
   const isSingle   = pending === 1;
   const btnIcon    = isSingle ? 'fa-credit-card' : 'fa-rocket';
-  const btnLabel   = isSingle ? '💳 Ir para Payments' : '⚡ Execute Payments';
+  const btnLabel   = isSingle ? '💳 Ir para Send' : '⚡ Execute Send';
   const btnTooltip = isSingle
     ? 'Abre o formulário de Payments com dados preenchidos'
     : `Executa ${pending} pagamentos em lote via Multisend`;
@@ -873,7 +873,7 @@ function _qeShowChatExecuteButton() {
   wrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-// ─── Handler: clique no botão Execute Payments dentro do chat ─────────────────
+// ─── Handler: clique no botão Execute Send dentro do chat ─────────────────
 window._qeHandleChatExecute = function() {
   // Remove o botão do chat (ação única)
   const btn = document.getElementById('chat-exec-queue-btn');

@@ -106,7 +106,7 @@ function payUpdateSendButton() {
   const amount = parseFloat(_el('pay-amount-single')?.value || '0');
   const token  = _el('pay-token-select')?.value || 'USDC';
 
-  let disabled = false, label = '<i class="fas fa-paper-plane mr-2"></i>Send Payment', hint = '';
+  let disabled = false, label = '<i class="fas fa-paper-plane mr-2"></i>Send', hint = '';
 
   if (!wallet?.connected) {
     disabled = true; label = '<i class="fas fa-wallet mr-2"></i>Connect Wallet'; hint = 'Connect your EVM wallet';
@@ -397,7 +397,7 @@ async function paySendSingle() {
   } finally {
     window.payEVM.isSending = false;
     setTimeout(() => {
-      setBtn('<i class="fas fa-paper-plane mr-2"></i>Send Payment', false);
+      setBtn('<i class="fas fa-paper-plane mr-2"></i>Send', false);
       payUpdateSendButton();
     }, 1000);
   }
@@ -886,7 +886,7 @@ function payDownloadReceiptPDF(rec) {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>ARC Payment Receipt</title>
+  <title>ARC Send Receipt</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; background:#fff; color:#1a1a2e; padding:40px; }

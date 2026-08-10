@@ -23,6 +23,7 @@ const app = new Hono<{
     CIRCLE_API_KEY?: string;
     CIRCLE_ENVIRONMENT?: string;
     CIRCLE_WEBHOOK_SECRET?: string;
+    AGENT_WALLET_SEED?: string;
   }
 }>()
 
@@ -36,6 +37,8 @@ const ALLOWED_ORIGINS = [
   'https://arc-ai-agents-618-3v1.pages.dev',
   'https://arc-ai-agents-v2.pages.dev',
   'https://arc-ai-agents.com',
+  'https://execdaatapp-v2.pages.dev',
+  'https://execdaatplataform.pages.dev',
   'http://localhost:3000',
   'http://localhost:5173',
 ]
@@ -61,7 +64,7 @@ app.get('/manifest.json', (c) => {
   return c.json({
     name: 'ExecDaat Platform',
     short_name: 'ExecDaat',
-    description: 'Secure payments, token swaps, escrow contracts and multi-send on Arc Testnet — Permit2 supported',
+     description: 'Secure send, token swaps, escrow contracts and multi-send on Arc Testnet — Permit2 supported',
     start_url: '/',
     display: 'standalone',
     background_color: '#0f172a',
@@ -268,7 +271,7 @@ ${LEGAL_NAV}
 
   <h2>What This App Does</h2>
   <ul>
-    <li><strong style="color:#e5e7eb">Payments</strong> — Send USDC and EURC tokens on Arc Testnet using ERC-20 transfers via MetaMask or compatible wallets.</li>
+    <li><strong style="color:#e5e7eb">Send</strong> — Send USDC and EURC tokens on Arc Testnet using ERC-20 transfers via MetaMask or compatible wallets.</li>
     <li><strong style="color:#e5e7eb">ARC Swap</strong> — Swap EURC ↔ USDC using a real on-chain Automated Market Maker (AMM) with the x·y=k constant-product formula.</li>
     <li><strong style="color:#e5e7eb">Liquidity</strong> — Add or remove liquidity from the EURC/USDC pool and earn LP tokens representing your share.</li>
     <li><strong style="color:#e5e7eb">Contracts</strong> — Deploy and interact with smart contracts on Arc Testnet.</li>
@@ -474,7 +477,7 @@ function copyIt(){
 app.get('/api/status', (c) => {
   return c.json({
     status: 'online',
-    app: 'ExecDaat - Secure Payments & Smart Contracts',
+    app: 'ExecDaat - Secure Send & Smart Contracts',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     network: {
@@ -513,11 +516,11 @@ app.get('/api/status', (c) => {
 })
 
 // ─── SPA Route Aliases — redirect clean URLs to the hash-based SPA router ──
-// e.g. /payments → /#/payments ; router.js matches the hash against DAAT_ROUTES.
+// e.g. /send → /#/send ; router.js matches the hash against DAAT_ROUTES.
 // The hash MUST equal the clean path (not the tab name) so routes whose tab
 // differs from the path — /swap(dex) and /unified-balance(unified) — resolve.
 const SPA_ROUTES: string[] = [
-  '/home', '/dashboard', '/payments', '/contracts', '/autonoma', '/agents',
+  '/home', '/dashboard', '/send', '/contracts', '/autonoma', '/agents',
   '/settings', '/otc', '/swap', '/multisend', '/history',
   '/unified-balance', '/advanced-crosschain',
 ]

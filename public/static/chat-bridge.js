@@ -196,7 +196,7 @@
     } catch (err) {
       console.error('[CHAT-BRIDGE] unifiedAgentTransfer error:', err);
       _msg('assistant',
-        `⚠️ **Agent issue:** ${err.message}\n\nTransfer added to manual queue instead. Click **Execute Payments** to proceed.`,
+        `⚠️ **Agent issue:** ${err.message}\n\nTransfer added to manual queue instead. Click **Execute Send** to proceed.`,
         'error'
       );
       window.dispatchEvent(new CustomEvent('arcPayQueue:add', {
@@ -251,7 +251,7 @@
     } catch (err) {
       console.error('[CHAT-BRIDGE] unifiedAgentMultisend error:', err);
       _msg('assistant',
-        `⚠️ **Batch agent issue:** ${err.message}\n\nBatch added to manual queue. Click **Execute Payments** to proceed.`,
+        `⚠️ **Batch agent issue:** ${err.message}\n\nBatch added to manual queue. Click **Execute Send** to proceed.`,
         'error'
       );
       window.dispatchEvent(new CustomEvent('arcPayQueue:addBatch', {

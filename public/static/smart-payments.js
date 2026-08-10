@@ -76,7 +76,7 @@
     const panel = _el('pay-xchain-panel');
     if (panel) panel.style.display = on ? '' : 'none';
     document.querySelectorAll('.pay-xc-row').forEach(r => { r.style.display = on ? '' : 'none'; });
-    // Network row in the Payment Summary reflects the destination
+    // Network row in the Send Summary reflects the destination
     const netRow = _el('pay-info-network');
     if (netRow) netRow.textContent = on ? (_chain(spState.toNetwork)?.name || spState.toNetwork) : 'Arc Testnet';
   }

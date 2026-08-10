@@ -1,6 +1,6 @@
 # ExecDaat — Cloudflare Pages
 # SPA clean-URL routing is handled entirely by the Hono worker (_worker.js),
-# which 302-redirects clean paths (e.g. /payments) to the hash router
-# (/#/payments). No static _redirects rules are needed here; keeping them
+# which 302-redirects clean paths (e.g. /send) to the hash router
+# (/#/send). No static _redirects rules are needed here; keeping them
 # empty avoids conflicts with the worker for routes whose tab name differs
 # from the path (e.g. /swap → dex, /unified-balance → unified).

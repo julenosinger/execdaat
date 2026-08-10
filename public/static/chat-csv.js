@@ -628,7 +628,7 @@ window.csvExecuteBatch = async function() {
     (totalFailed > 0 ? '| Failed | **' + totalFailed + '** |\n' : '') +
     (batchIds.length ? '| Batch ID | `' + batchIds[0] + '` |\n' : '') +
     '\n' +
-    (success ? '*Payments are processing on Arc Testnet.*' : '*Some payments failed — check the log.*'),
+    (success ? '*Sends are processing on Arc Testnet.*' : '*Some sends failed — check the log.*'),
     'payments'
   );
 

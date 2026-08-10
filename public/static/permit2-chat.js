@@ -46,7 +46,7 @@ var TOKEN_MAP = {
 // Action scope labels
 var SCOPE_LABELS = {
   all:       'All platform operations',
-  payments:  'Payments only',
+  payments:  'Send only',
   swap:      'Swaps only',
   multisend: 'Multisend only',
   contracts: 'Contract operations only',

@@ -83,7 +83,7 @@ waitForCore(function() {
       if (result.status === 'completed') {
         // Success
         if (typeof arcAddNotif === 'function') {
-          arcAddNotif(`✅ Payment sent! TX: ${shortHash(result.txHash)}`, 'success', 5000);
+          arcAddNotif(`✅ Send sent! TX: ${shortHash(result.txHash)}`, 'success', 5000);
         }
         
         // Update UI receipt history
@@ -128,7 +128,7 @@ waitForCore(function() {
       console.error('[PAY-CORE] Payment execution error:', err);
       
       if (typeof arcAddNotif === 'function') {
-        arcAddNotif(`❌ Payment failed: ${err.message}`, 'error', 5000);
+        arcAddNotif(`❌ Send failed: ${err.message}`, 'error', 5000);
       }
       
       return { success: false, error: err.message };

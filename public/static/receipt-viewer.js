@@ -99,7 +99,7 @@ function arcBuildPaymentReceiptHTML(r) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Payment Receipt — ARC Testnet</title>
+<title>Send Receipt — ARC Testnet</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:40px;max-width:660px;margin:auto}
@@ -120,7 +120,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:
 </head>
 <body>
 <div class="header">
-  <h1>💳 Payment Receipt</h1>
+  <h1>💳 Send Receipt</h1>
   <div class="sub">ExecDaat · Arc Testnet · ${ts}</div>
   <span class="badge">${statusLabel}</span>
 </div>
@@ -404,7 +404,7 @@ async function arcViewPaymentReceipt(idOrData) {
   let r = typeof idOrData === 'object' ? idOrData : (await arcReceiptLoad(idOrData));
   if (!r) { if (typeof showToast==='function') showToast('Receipt not found', 'error'); return; }
   const html = arcBuildPaymentReceiptHTML(r);
-  arcOpenReceiptTab(html, 'Payment Receipt');
+  arcOpenReceiptTab(html, 'Send Receipt');
 }
 
 /**

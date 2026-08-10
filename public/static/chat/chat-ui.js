@@ -130,7 +130,7 @@ function renderBlockchainActionCard(action, walletConnected) {
     const safeTok   = JSON.stringify(String(d.token || 'USDC'));
     const safeTo    = JSON.stringify(String(d.to));
     ctaHtml = `<button onclick="_chatQueueTransfer(${safeAmt},${safeTok},${safeTo})" class="arc-action-cta arc-action-cta-execute">
-      📥 Adicionar à Fila → Payments
+      📥 Adicionar à Fila → Send
     </button>`;
   } else if (action.type === 'multisend' && Array.isArray(d.receivers) && d.receivers.length) {
     // Batch → queue to Multisend
@@ -193,7 +193,7 @@ function arcExecuteAction(actionId) {
 
     case 'transfer': {
       // Single recipient → Payments tab (NEVER Multisend)
-      // Queue the transfer so "Execute Payments" button appears in chat
+      // Queue the transfer so "Execute Send" button appears in chat
       if (d.to && d.amount) {
         const token = d.token || 'USDC';
         _chatQueueTransfer(String(d.amount), token, String(d.to));
@@ -232,7 +232,7 @@ function arcExecuteAction(actionId) {
 
     case 'multisend': {
       // Multiple recipients → Multisend tab
-      // Queue the batch so "Execute Payments" button appears
+      // Queue the batch so "Execute Send" button appears
       if (Array.isArray(d.receivers) && d.receivers.length >= 1) {
         _chatQueueBatch(
           d.receivers.map(r => ({ address: r.address || r.to || '', amount: r.amount || 0 })),
@@ -448,7 +448,7 @@ function _chatQueueBatch(recipients, token) {
     `| Token | **${token || 'USDC'}** |\n` +
     `| Total | **${total.toFixed(2)} ${token || 'USDC'}** |\n` +
     `| Destinatários | **${recipients.length}** |\n\n` +
-    `👆 Clique em **Execute Payments** para assinar e enviar.`,
+    `👆 Clique em **Execute Send** para assinar e enviar.`,
     'payments'
   );
 }
@@ -547,7 +547,7 @@ async function handleLocalCommandWithCSV(msg) {
   if (/^(csv help|help csv|csv format|csv usage|como usar csv|batch help)$/i.test(lower)) {
     hideTypingIndicator();
     appendChatMessage('assistant',
-      '📊 **CSV Batch Payments — Guide**\n\n' +
+      '📊 **CSV Batch Send — Guide**\n\n' +
       '**How to use:**\n' +
       '1. Click the **📎** button (or drag & drop a `.csv` file)\n' +
       '2. The agent parses and validates your file\n' +

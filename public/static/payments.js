@@ -464,7 +464,7 @@ function payDecodeError(err) {
     return { msg: 'Network error: ' + err.message, canRetry: true };
   if (/revert/i.test(err.message))
     return { msg: 'Transaction reverted by contract: ' + err.message.slice(0, 100), canRetry: false };
-  return { msg: 'Payment failed: ' + (err.message || String(err)).slice(0, 120), canRetry: true };
+  return { msg: 'Send failed: ' + (err.message || String(err)).slice(0, 120), canRetry: true };
 }
 
 function payShowRetryBtn(show) {
@@ -761,7 +761,7 @@ function updatePayPreview() {
     if (noteRow) noteRow.style.display = 'none';
   }
 
-  // Update Payment Summary info card (right column)
+  // Update Send Summary info card (right column)
   const sumToken = document.getElementById('pay-info-token');
   const sumAmount = document.getElementById('pay-info-amount');
   const sumRecipient = document.getElementById('pay-info-recipient');
@@ -826,7 +826,7 @@ function payValidateForm() {
   const noteLen    = (payEl('pay-note')?.value || '').length;
 
   let ok = true;
-  let reason = payState.scheduleMode === 'later' ? 'Schedule Payment' : 'Sign & Send';
+  let reason = payState.scheduleMode === 'later' ? 'Schedule Send' : 'Sign & Send';
 
   if (!connected)                                        { ok = false; reason = 'Connect wallet to send'; }
   else if (!isValidAddress(recipient))                   { ok = false; reason = 'Invalid recipient address'; }
@@ -841,9 +841,9 @@ function payValidateForm() {
     if (payState.pending) {
       btnText.textContent = 'Processing…';
     } else if (payState.scheduleMode === 'later' && ok) {
-      btnText.textContent = 'Schedule Payment';
+      btnText.textContent = 'Schedule Send';
     } else {
-      btnText.textContent = ok ? (payState.scheduleMode === 'later' ? 'Schedule Payment' : 'Sign & Send') : reason;
+      btnText.textContent = ok ? (payState.scheduleMode === 'later' ? 'Schedule Send' : 'Sign & Send') : reason;
     }
   }
 
@@ -961,7 +961,7 @@ function payEditScheduled(id) {
   updatePayPreview();
   payValidateForm();
 
-  showToast('✏️ Edit your changes and click Schedule Payment', 'info');
+  showToast('✏️ Edit your changes and click Schedule Send', 'info');
   payEl('pay-fullname')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -1177,7 +1177,7 @@ async function executePaymentCore({ fullname, email, recipient, recipientName, r
     }).catch(() => {});
   }
 
-  showToast('✅ Payment confirmed! <a href="' + receiptData.explorerUrl + '" target="_blank" class="underline">View on ArcScan ↗</a>', 'success');
+  showToast('✅ Confirmed! <a href="' + receiptData.explorerUrl + '" target="_blank" class="underline">View on ArcScan ↗</a>', 'success');
   if (typeof showTXConfirmationBadge === 'function')
     showTXConfirmationBadge(txHash, amountHuman + ' ' + token + ' → ' + shortAddr(recipient));
 
@@ -1205,7 +1205,7 @@ async function executePayment() {
   if (recipientEmail && !isValidEmail(recipientEmail)) { showPayError('Recipient email format is invalid.'); return; }
   if (!amountStr || Number(amountStr) <= 0)       { showPayError('Enter a valid amount greater than 0.'); return; }
   if (!window.walletState?.address)               { showPayError('Please connect your EVM wallet first.'); return; }
-  if (note.length > PAY_NOTE_MAX)                 { showPayError('Payment note exceeds 300 characters.'); return; }
+  if (note.length > PAY_NOTE_MAX)                 { showPayError('Send note exceeds 300 characters.'); return; }
 
   const from = window.walletState.address;
   if (recipient.toLowerCase() === from.toLowerCase()) { showPayError('Cannot send to yourself.'); return; }
@@ -1233,7 +1233,7 @@ async function executePayment() {
     renderPaymentHistory();
     payStartSchedulePoller();
 
-    showToast('📅 Payment scheduled for ' + target.toLocaleString(), 'success');
+    showToast('📅 Send scheduled for ' + target.toLocaleString(), 'success');
 
     // ── Capture data for smart autofill ───────────────────────────────────────
     if (typeof arcCapturePayData === 'function') arcCapturePayData();
@@ -1435,7 +1435,7 @@ function generatePayReceiptPDF(r, autoDownload) {
       doc.setFillColor(245, 245, 255);
       doc.rect(0, 0, W, 40, 'F');
       doc.setFontSize(20); doc.setTextColor(50, 50, 180); doc.setFont('helvetica', 'bold');
-      doc.text('Payment Receipt', W / 2, 18, { align: 'center' });
+      doc.text('Send Receipt', W / 2, 18, { align: 'center' });
       doc.setFontSize(9); doc.setTextColor(120, 120, 140); doc.setFont('helvetica', 'normal');
       doc.text('ExecDaat · Arc Testnet · ' + new Date(r.timestamp || r.createdAt).toLocaleString(), W / 2, 26, { align: 'center' });
 
@@ -1470,7 +1470,7 @@ function generatePayReceiptPDF(r, autoDownload) {
       addRow('From Wallet', r.sender  || r.from || '—');
       y += 4;
 
-      addSection('Payment Details');
+      addSection('Transaction Details');
       addRow('Token',       r.token, [34, 100, 200]);
       addRow('Amount',      Number(r.amount).toFixed(6) + ' ' + r.token + (r.amountUSD ? ' (≈$' + r.amountUSD + ')' : ''));
       addRow('Recipient',   r.recipient);
@@ -1498,7 +1498,7 @@ function generatePayReceiptPDF(r, autoDownload) {
         ? arcBuildPaymentReceiptHTML(r)
         : null;
       if (html && typeof arcOpenReceiptTab === 'function') {
-        arcOpenReceiptTab(html, 'Payment Receipt');
+        arcOpenReceiptTab(html, 'Send Receipt');
         showToast('✅ Receipt opened in new tab', 'success');
         return;
       }
@@ -1519,15 +1519,15 @@ function generatePayReceiptPDF(r, autoDownload) {
     <div class="row"><span class="lbl">Transaction Hash</span><span class="val" style="font-family:monospace;font-size:10px;">${r.txHash}</span></div>
     <div class="row"><span class="lbl">Explorer</span><span class="val"><a href="${r.explorerUrl}" style="color:#2563eb;">${r.explorerUrl}</a></span></div>` : '';
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Payment Receipt — ARC Testnet</title>
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Send Receipt — ARC Testnet</title>
   <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;padding:40px;max-width:640px;margin:auto;}.header{background:linear-gradient(135deg,#f0f0ff,#e8f4ff);border-radius:12px;padding:24px;text-align:center;margin-bottom:28px;}.header h1{font-size:22px;color:#3730a3;margin-bottom:6px;}.header p{font-size:12px;color:#6b7280;}.badge{display:inline-block;background:#d1fae5;color:#065f46;padding:4px 14px;border-radius:20px;font-size:11px;font-weight:700;margin-top:10px;}.section-title{font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6366f1;font-weight:700;background:#f5f5ff;padding:6px 12px;border-radius:6px;margin:20px 0 8px;}.row{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;}.row .lbl{color:#6b7280;flex-shrink:0;margin-right:16px;}.row .val{font-weight:600;word-break:break-all;text-align:right;}.footer{margin-top:32px;font-size:10px;color:#9ca3af;text-align:center;border-top:1px solid #e5e7eb;padding-top:14px;}@media print{body{padding:20px;}}</style>
   </head><body>
-  <div class="header"><h1>Payment Receipt</h1><p>ExecDaat · Arc Testnet · ${new Date(r.timestamp || r.createdAt).toLocaleString()}</p><span class="badge">${r.status === 'scheduled' ? '⏰ SCHEDULED' : '✓ CONFIRMED'}</span></div>
+  <div class="header"><h1>Send Receipt</h1><p>ExecDaat · Arc Testnet · ${new Date(r.timestamp || r.createdAt).toLocaleString()}</p><span class="badge">${r.status === 'scheduled' ? '⏰ SCHEDULED' : '✓ CONFIRMED'}</span></div>
   <div class="section-title">Sender Information</div>
   <div class="row"><span class="lbl">Full Name</span><span class="val">${r.fullname || '—'}</span></div>
   <div class="row"><span class="lbl">Email</span><span class="val">${r.email || '—'}</span></div>
   <div class="row"><span class="lbl">From Wallet</span><span class="val" style="font-family:monospace;font-size:11px;">${r.sender || r.from || '—'}</span></div>
-  <div class="section-title">Payment Details</div>
+  <div class="section-title">Transaction Details</div>
   <div class="row"><span class="lbl">Token</span><span class="val" style="color:#2563eb;">${r.token}</span></div>
   <div class="row"><span class="lbl">Amount</span><span class="val">${Number(r.amount).toFixed(6)} ${r.token}</span></div>
   <div class="row"><span class="lbl">Recipient</span><span class="val" style="font-family:monospace;font-size:11px;">${r.recipient}</span></div>
@@ -1540,7 +1540,7 @@ function generatePayReceiptPDF(r, autoDownload) {
   </body></html>`;
 
   if (typeof arcOpenReceiptTab === 'function') {
-    arcOpenReceiptTab(html, 'Payment Receipt');
+    arcOpenReceiptTab(html, 'Send Receipt');
   } else {
     const blob = new Blob([html], { type: 'text/html' });
     const url  = URL.createObjectURL(blob);
@@ -1726,7 +1726,7 @@ function _payHistoryCardHtml(r) {
   const typeIcon = isScheduled ? 'fa-calendar' : 'fa-paper-plane';
   const typeBg   = isScheduled ? 'bg-purple-900/30 border-purple-700/30' : (isFailed ? 'bg-red-900/30 border-red-700/30' : 'bg-blue-900/30 border-blue-700/30');
   const typeColor= isScheduled ? 'text-purple-400' : (isFailed ? 'text-red-400' : 'text-blue-400');
-  const typeLabel= isScheduled ? 'Scheduled' : 'Payment';
+  const typeLabel= isScheduled ? 'Scheduled' : 'Send';
 
   return `
   <div id="pay-tx-${safeid}" class="bg-gray-900/60 border border-gray-700/40 rounded-xl px-4 py-3 hover:bg-gray-900/80 transition-colors" style="border-left:3px solid ${accentColor};">
@@ -2032,7 +2032,7 @@ let _payInitialized = false;
 
 async function initPayments() {
   const initWallet = window.walletState?.address;
-  console.log('[PAY:init] Initialising Payments module. Wallet:', initWallet || 'not connected');
+  console.log('[PAY:init] Initialising Send module. Wallet:', initWallet || 'not connected');
 
   // Only do full init once — subsequent calls just refresh
   if (_payInitialized) {
@@ -2146,7 +2146,7 @@ function _payExportCSV() {
   link.download = `execdaat-payments-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(url);
-  showToast('Payment history exported as CSV', 'success');
+  showToast('Send history exported as CSV', 'success');
 }
 window._payExportCSV = _payExportCSV;
 

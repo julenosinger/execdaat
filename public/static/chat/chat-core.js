@@ -15,7 +15,7 @@
 // ║  ⚡ EXECUTION (queue-engine.js — UI):                   ║
 // ║    • Escuta eventos arcPayQueue:add / addBatch           ║
 // ║    • Armazena fila de pagamentos                         ║
-// ║    • Mostra botão "Execute Payments"                     ║
+// ║    • Mostra botão "Execute Send"                     ║
 // ║    • Executa signPermit2() + executeBatch() SOMENTE      ║
 // ║      após clique explícito do usuário                    ║
 // ╚══════════════════════════════════════════════════════════╝

@@ -1,6 +1,6 @@
 // ============================================================
 // ExecDaat — SPA Router
-// Clean URL routing: /payments, /contracts, etc.
+// Clean URL routing: /send, /contracts, etc.
 // Build: 20260626-clean-urls
 // ============================================================
 'use strict';
@@ -8,7 +8,7 @@
 /* ─── Route definition ────────────────────────────────────── */
 const DAAT_ROUTES = [
   { path: '/dashboard',  tab: 'dashboard',  label: 'Dashboard',  icon: 'fas fa-info-circle',   color: '#6366f1' },
-  { path: '/payments',   tab: 'payments',   label: 'Payments',   icon: 'fas fa-dollar-sign',   color: '#22c55e' },
+  { path: '/send',       tab: 'payments',   label: 'Send',       icon: 'fas fa-paper-plane',   color: '#22c55e' },
   { path: '/contracts',  tab: 'contracts',  label: 'Contracts',  icon: 'fas fa-file-contract', color: '#3b82f6' },
   { path: '/autonoma',   tab: 'autonoma',   label: 'Autonoma',   icon: 'fas fa-robot',         color: '#22c55e' },
   { path: '/agents',     tab: 'agents',     label: 'AI Agents',  icon: 'fas fa-brain',         color: '#a855f7' },
@@ -29,11 +29,11 @@ let _currentRoute  = null;
 let _popStateBound = false;
 
 function _getPath() {
-  // Support clean URLs (/payments) and legacy hash (#/payments)
+  // Support clean URLs (/send) and legacy hash (#/payments)
   var hash = location.hash.replace(/^#/, '');
   if (hash.startsWith('/')) return hash.split('?')[0];
   var path = location.pathname.replace(/\/$/, '');
-  return path || '/payments';
+  return path || '/send';
 }
 
 // Legacy/alias hash paths → canonical tab (covers cached #/unified links)
@@ -50,7 +50,7 @@ function _tabForPath(path) {
 }
 
 function daatNavigate(tab, replace) {
-  var path = TAB_TO_PATH[tab] || '/payments';
+  var path = TAB_TO_PATH[tab] || '/send';
   var state = { tab: tab, path: path };
 
   if (replace) {

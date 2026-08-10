@@ -54,7 +54,7 @@
       batch:'text-indigo-400',
     };
     const modIcons = {
-      payments:'fa-dollar-sign', swap:'fa-exchange-alt', contracts:'fa-file-contract',
+      payments:'fa-paper-plane', swap:'fa-exchange-alt', contracts:'fa-file-contract',
       agents:'fa-robot', permit2:'fa-key', error:'fa-exclamation-circle',
       general:'fa-comment', intents:'fa-bolt', csv:'fa-file-csv', batch:'fa-layer-group',
     };
@@ -267,8 +267,73 @@
             window.renderBlockchainActionCard(action, res.walletConnected);
           } else {
             _autonomaRenderActionCard(action, res.walletConnected);
-          }
-        }
+    }
+  }
+
+  // ── Render Agent Wallet card into chat ──────────────────────────────────────
+  function _renderAgentWalletToChat() {
+    var AC = window.ExecDaat && window.ExecDaat.AgentContext;
+    if (!AC) { autonomaAppendMessage('assistant', 'Agent context not loaded. Please wait...', 'error'); return; }
+
+    var ctx = AC.getContext();
+    if (!ctx.wallet) {
+      autonomaAppendMessage('assistant',
+        '**No agent wallet yet.**\n\nType `create agent wallet` to generate one. Your agent needs a wallet to execute on-chain operations.',
+        'agentWallet');
+      return;
+    }
+
+    var card = AC.renderWalletCard();
+    autonomaAppendMessage('assistant', card, 'agentWallet');
+  }
+
+  // ── Render intents as cards into chat ───────────────────────────────────────
+  function _renderIntentsToChat() {
+    var AC = window.ExecDaat && window.ExecDaat.AgentContext;
+    var intents = [];
+    if (AC) { intents = AC.getContext().intents; }
+    if (!AC || intents.length === 0) {
+      autonomaAppendMessage('assistant', '📋 **No intents found.**\n\nCreate one with: `send 10 USDC to 0x...`', 'intents');
+      return;
+    }
+    var pending = intents.filter(function(i) { return i.status === 'pending' || i.status === 'approved' || i.status === 'executing'; });
+    var completed = intents.filter(function(i) { return i.status === 'completed'; });
+    var failed = intents.filter(function(i) { return i.status === 'failed'; });
+
+    var html = '📋 **Your Intents** (' + intents.length + ' total, ' + pending.length + ' pending)\n\n';
+    var display = pending.concat(completed, failed).slice(0, 5);
+    display.forEach(function(i) {
+      html += (AC.renderIntentCard(i) || _buildSimpleIntentCard(i));
+    });
+    autonomaAppendMessage('assistant', html, 'intents');
+  }
+
+  function _buildSimpleIntentCard(i) {
+    var sc = { pending:'#f59e0b', approved:'#3b82f6', executing:'#8b5cf6', completed:'#22c55e', failed:'#ef4444', cancelled:'#6b7280', draft:'#6b7280' };
+    var amt = (i.params && i.params.amount) || i.amount || '';
+    var tok = (i.params && i.params.token) || i.token || '';
+    var to = (i.params && i.params.to) || i.to || '';
+    var toShort = to.length > 12 ? to.slice(0,6)+'...'+to.slice(-4) : to;
+    return '<div style="background:rgba(31,41,55,0.6);border:1px solid rgba(55,65,81,0.5);border-radius:10px;padding:10px;margin-bottom:8px;">' +
+      '<span style="color:'+(sc[i.status]||'#6b7280')+';font-weight:700;font-size:11px;">'+(i.status||'').toUpperCase()+'</span>' +
+      ' <span style="color:#e5e7eb;font-size:12px;">'+(i.type||'intent')+' '+(amt||'')+' '+(tok||'')+'</span>' +
+      (toShort?' <span style="color:#6b7280;font-size:11px;">→ '+toShort+'</span>':'') +
+      (i.execution&&i.execution.txHash?' <a href="https://testnet.arcscan.app/tx/'+i.execution.txHash+'" target="_blank" style="color:#a78bfa;font-size:10px;">TX</a>':'') +
+      '</div>';
+  }
+
+  // ── Render recent activity into chat ────────────────────────────────────────
+  function _renderRecentActivityToChat() {
+    var AC = window.ExecDaat && window.ExecDaat.AgentContext;
+    if (!AC) { autonomaAppendMessage('assistant', 'Agent context not loaded.', 'error'); return; }
+
+    var html = AC.renderRecentActivity();
+    if (html.indexOf('No recent') >= 0) {
+      autonomaAppendMessage('assistant', '📊 **No recent agent activity.**\n\nExecute an operation to see it here.', 'general');
+      return;
+    }
+    autonomaAppendMessage('assistant', html, 'general');
+  }
       } else {
         autonomaAppendMessage('assistant', '❌ ' + (res.error || 'Something went wrong.'), 'error');
         console.warn('[AUTONOMA] AI returned error:', res.error);
@@ -296,6 +361,33 @@
   // ── Handle intent-specific commands (fallback only — bridge handles these now) ──
   async function _handleAutonomaIntentCommand(msg) {
     const lower = msg.toLowerCase().trim();
+
+    // ── Agent Context commands (NEW — real data from AgentWallet + AgentContext) ──
+    if (/what( is|'s)? my agent( wallet)?|show (my )?(agent|wallet)( wallet)?|agent wallet$/i.test(lower)) {
+      autonomaHideTyping();
+      _renderAgentWalletToChat();
+      return true;
+    }
+    if (/agent wallet (balance|info|details)/i.test(lower) || /(how much|show|check).*(usdc|eurc|balance).*(agent|wallet|have)/i.test(lower)) {
+      autonomaHideTyping();
+      _renderAgentWalletToChat();
+      return true;
+    }
+    if (/show (my )?(pending )?intents$|(what|show)( are)? my intents/i.test(lower)) {
+      autonomaHideTyping();
+      _renderIntentsToChat();
+      return true;
+    }
+    if (/(show|what|recent|latest).*(operations|activity|did the agent do|history)/i.test(lower) || /agent (activity|operations|history)/i.test(lower)) {
+      autonomaHideTyping();
+      _renderRecentActivityToChat();
+      return true;
+    }
+    if (/show.*(pending|my) intent/i.test(lower)) {
+      autonomaHideTyping();
+      _renderIntentsToChat();
+      return true;
+    }
 
     if (/show.*intent|my intent|list.*intent/i.test(lower)) {
       autonomaHideTyping();
@@ -499,7 +591,24 @@
     }
   };
 
-  // ── Clear chat ────────────────────────────────────────────────────────────────
+  // ── Agent Context Header ──────────────────────────────────────────────────────
+  function _updateAgentContextHeader() {
+    var el = document.getElementById('autonoma-agent-ctx');
+    var content = document.getElementById('autonoma-agent-ctx-content');
+    if (!el || !content) return;
+
+    var AC = window.ExecDaat && window.ExecDaat.AgentContext;
+    if (!AC) { el.classList.add('hidden'); return; }
+
+    var ctx = AC.getContext();
+    if (!ctx.wallet) {
+      el.classList.add('hidden');
+      return;
+    }
+
+    content.innerHTML = AC.renderCompactHeader();
+    el.classList.remove('hidden');
+  }
   window.autonomaClearChat = function() {
     const container = document.getElementById('autonoma-chat-messages');
     if (container) container.innerHTML = '';
@@ -511,6 +620,24 @@
   function _autonomaWelcome() {
     const wallet = window.walletState?.address;
     const active = typeof isAgentActive === 'function' ? isAgentActive() : false;
+
+    // Agent wallet info
+    var agentLine = '';
+    var AC = window.ExecDaat && window.ExecDaat.AgentContext;
+    if (AC) {
+      var ctx = AC.getContext();
+      if (ctx.wallet) {
+        var aw = ctx.wallet;
+        var shortAddr = aw.address.slice(0, 6) + '...' + aw.address.slice(-4);
+        agentLine = '🤖 **Agent Wallet**: `' + shortAddr + '`\n';
+        if (ctx.balances) {
+          var usdc = ctx.balances.USDC ? ctx.balances.USDC.human : '0';
+          var eurc = ctx.balances.EURC ? ctx.balances.EURC.human : '0';
+          agentLine += '   USDC: ' + usdc + ' · EURC: ' + eurc + '\n';
+        }
+        agentLine += '   Pending intents: ' + ctx.pendingCount + ' · Today: ' + ctx.todayOpsCount + ' ops\n\n';
+      }
+    }
 
     let permitLine = '';
     try {
@@ -531,6 +658,7 @@
       `🤖 **Autonoma — Autonomous Execution Assistant**\n\n` +
       (wallet
         ? `Wallet: \`${wallet.slice(0,10)}…\`\n` +
+          agentLine +
           `Daat Agent: ${active ? '✅ Authorized' : '⚠️ Not authorized — type `authorize arcpay`'}\n` +
           permitLine + '\n'
         : `⚠️ *Connect your wallet to use all features.*\n\n`) +
@@ -538,10 +666,10 @@
       `**I can help with:**\n` +
       `• ⚡ *"send 10 USDC to 0x…"* — create intent, executor processes automatically\n` +
       `• 🔄 *"swap 5 USDC to EURC"* — token swap\n` +
-      `• 📤 *"pay 0x…:10, 0x…:20"* — batch payments\n` +
+      `• 📤 *"pay 0x…:10, 0x…:20"* — batch send\n` +
       `• 🔐 *"allow agent to spend 100 USDC for 24 hours"* — create Permit2\n` +
       `• 📋 *"show my intents"* — view active intents\n` +
-      `• ➕ *Click + button* — upload CSV for batch payments\n` +
+      `• ➕ *Click + button* — upload CSV for batch send\n` +
       `• 💳 *"my wallet"* · *"check balance"* · *"my transactions"*\n` +
       `• 🛡️ *"guardian"* · *"network status"* · *"show contracts"*\n` +
       `• 🚀 *"deploy contract"* — deploy AgentExecutor for full gasless mode`,
@@ -996,6 +1124,14 @@
     _updateAutonomaPermitStatus();
     autonomaRefreshIntentsPanel();
     _autonomaUpdateCsvBanner();
+    _updateAgentContextHeader();
+
+    // Trigger AgentContext refresh if available
+    if (window.ExecDaat && window.ExecDaat.AgentContext) {
+      window.ExecDaat.AgentContext.refresh().then(function() {
+        _updateAgentContextHeader();
+      });
+    }
 
     setTimeout(_attachAutonomaCsvDragDrop, 200);
 
@@ -1047,6 +1183,7 @@
       autonomaRefreshIntentsPanel();
       _updateAutonomaAgentStatus();
       _updateAutonomaPermitStatus();
+      _updateAgentContextHeader();
     }
   });
   window.addEventListener('walletDisconnected', () => {
@@ -1054,7 +1191,23 @@
       autonomaRefreshIntentsPanel();
       _updateAutonomaAgentStatus();
       _updateAutonomaPermitStatus();
+      _updateAgentContextHeader();
     }
+  });
+  window.addEventListener('agentContext:updated', () => {
+    if (autonomaActive) _updateAgentContextHeader();
+  });
+  window.addEventListener('agentIntent:created', () => {
+    if (autonomaActive) _updateAgentContextHeader();
+  });
+  window.addEventListener('agentIntent:completed', () => {
+    if (autonomaActive) { _updateAgentContextHeader(); autonomaRefreshIntentsPanel(); }
+  });
+  window.addEventListener('agentIntent:failed', () => {
+    if (autonomaActive) { _updateAgentContextHeader(); autonomaRefreshIntentsPanel(); }
+  });
+  window.addEventListener('agentExecution:completed', () => {
+    if (autonomaActive) _updateAgentContextHeader();
   });
   window.addEventListener('permit2Updated', () => {
     if (autonomaActive) {

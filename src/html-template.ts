@@ -7,10 +7,10 @@ export function getMainHTML(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-  <title>ExecDaat — Autonomous Payments & Smart Contracts on Arc Network</title>
+  <title>ExecDaat — Autonomous Send & Smart Contracts on Arc Network</title>
 
   <!-- ── SEO & Trust Meta Tags ─────────────────────────────────────────── -->
-  <meta name="description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
+  <meta name="description" content="Decentralized application for autonomous send and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
   <meta name="keywords" content="ARC Network, testnet, no real funds, web3 testing, dApp testing, USDC testnet, blockchain testing, smart contracts testing, DeFi testnet, development environment, open source dapp">
   <meta name="author" content="ExecDaat — Open Source Project">
   <meta name="robots" content="index, follow">
@@ -22,7 +22,7 @@ export function getMainHTML(): string {
   <!-- ── Open Graph (Facebook/LinkedIn/Discord/WhatsApp) ──────────────── -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://execdaatplataform.pages.dev/">
-  <meta property="og:title" content="ExecDaat – Autonomous Payments & Smart Contracts">
+  <meta property="og:title" content="ExecDaat – Autonomous Send & Smart Contracts">
   <meta property="og:description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
   <meta property="og:image" content="https://execdaatplataform.pages.dev/static/og-preview.jpg">
   <meta property="og:image:width" content="1200">
@@ -32,7 +32,7 @@ export function getMainHTML(): string {
 
   <!-- ── Twitter Card ─────────────────────────────────────────────────── -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="ExecDaat – Autonomous Payments & Smart Contracts">
+  <meta name="twitter:title" content="ExecDaat – Autonomous Send & Smart Contracts">
   <meta name="twitter:description" content="Decentralized application for autonomous payments and smart contract execution on Arc Testnet. Built for innovation and testing in a secure environment.">
   <meta name="twitter:image" content="https://execdaatplataform.pages.dev/static/og-preview.jpg">
 
@@ -48,7 +48,7 @@ export function getMainHTML(): string {
 
   <!-- dApp identity — read by GoPlus Security API and OKX Wallet scanner -->
   <meta name="dapp-name" content="ExecDaat Platform">
-  <meta name="dapp-category" content="compliance-payments">
+  <meta name="dapp-category" content="compliance-send">
   <meta name="dapp-chain" content="arc-testnet-5042002">
   <meta name="dapp-url" content="https://execdaatplataform.pages.dev">
   <meta name="dapp-contracts" content="Permit2:0x000000000022D473030F116dDEE9F6B43aC78BA3">
@@ -74,7 +74,7 @@ export function getMainHTML(): string {
     "@context": "https://schema.org",
     "@type": "WebApplication",
     "name": "ExecDaat",
-    "description": "Open-source testnet dApp on Arc Network for autonomous payments, token swaps and smart contracts.",
+    "description": "Open-source testnet dApp on Arc Network for autonomous send, token swaps and smart contracts.",
     "url": "https://execdaatplataform.pages.dev",
     "applicationCategory": "FinanceApplication",
     "operatingSystem": "Web Browser",
@@ -322,7 +322,7 @@ export function getMainHTML(): string {
 
         <!-- Subtitle -->
         <p class="text-lg sm:text-xl text-gray-300 font-medium mb-3">
-          Autonomous Payments &amp; Smart Contracts on Arc Network (Testnet)
+          Autonomous Send &amp; Smart Contracts on Arc Network (Testnet)
         </p>
 
         <!-- Description -->
@@ -369,7 +369,7 @@ export function getMainHTML(): string {
             <p class="text-gray-400 leading-relaxed mb-4">
               ExecDaat is a decentralized testnet application that lets you explore autonomous financial operations
               on the Arc Network. Connect your EVM wallet to interact with smart contracts,
-              send batch payments, swap tokens, and manage on-chain escrow — all without custodians.
+              send batch send, swap tokens, and manage on-chain escrow — all without custodians.
             </p>
             <p class="text-gray-500 text-sm leading-relaxed">
               This is a <strong class="text-amber-400">testnet-only</strong> application. All tokens are test tokens with no real value.
@@ -430,8 +430,8 @@ export function getMainHTML(): string {
             <div class="w-10 h-10 rounded-xl bg-purple-900/40 border border-purple-700/30 flex items-center justify-center mb-3">
               <i class="fas fa-dollar-sign text-purple-400"></i>
             </div>
-            <h3 class="text-white font-semibold mb-1.5 text-sm">Automated Payments</h3>
-            <p class="text-gray-500 text-xs leading-relaxed">P2P, corporate, or batch payments in USDC/EURC. AI agents analyze and execute on-chain transfers with full transaction history.</p>
+            <h3 class="text-white font-semibold mb-1.5 text-sm">Automated Send</h3>
+            <p class="text-gray-500 text-xs leading-relaxed">P2P, corporate, or batch send in USDC/EURC. AI agents analyze and execute on-chain transfers with full transaction history.</p>
           </div>
 
           <div class="bg-gray-900/60 border border-gray-700/40 rounded-2xl p-5 hover:border-cyan-600/40 transition-colors">
@@ -571,7 +571,7 @@ export function getMainHTML(): string {
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div class="stat-card bg-gradient-to-br from-purple-900/60 to-purple-800/30 border border-purple-700/40 rounded-xl p-5">
           <div class="flex items-center justify-between mb-3">
-            <span class="text-purple-300 text-sm" data-i18n="stat_payments_label">Payments Processed</span>
+            <span class="text-purple-300 text-sm" data-i18n="stat_payments_label">Send Processed</span>
             <i class="fas fa-exchange-alt text-purple-400 text-xl"></i>
           </div>
           <div id="stat-payments" class="text-3xl font-bold text-white">--</div>
@@ -969,7 +969,7 @@ export function getMainHTML(): string {
       <div class="mb-5 flex flex-wrap items-center gap-3 text-xs" style="background:rgba(8,11,24,0.8);border:1px solid rgba(55,138,221,0.12);border-radius:14px;padding:10px 16px;">
         <div class="flex items-center gap-2">
           <div class="w-2 h-2 rounded-full" style="background:#4ade80;animation:pulse 2s infinite;box-shadow:0 0 6px #4ade80;"></div>
-          <span style="color:#90bce0;font-weight:700;">Daat Payments</span>
+          <span style="color:#90bce0;font-weight:700;">Daat Send</span>
         </div>
         <span style="color:#7aaad0;">Single on-chain ERC-20 transfer</span>
         <span class="ml-auto" style="color:#6a90b8;">Arc Testnet · Chain 5042002 · No real funds</span>
@@ -1181,7 +1181,7 @@ export function getMainHTML(): string {
                       </select>
                     </div>
                     <div id="pay-sched-hint" class="pay-sched-hint" style="grid-column:1/-1;"></div>
-                    <!-- Future cost warning for scheduled payments -->
+                    <!-- Future cost warning for scheduled sends -->
                     <div id="pay-future-cost-warn" style="display:none;grid-column:1/-1;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:7px 10px;margin-top:4px;"></div>
                   </div>
                 </div>
@@ -1320,7 +1320,7 @@ export function getMainHTML(): string {
             <div id="payments-list" style="padding:12px;">
               <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
                 <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#5a7898;"></i>
-                No payments in queue
+                No sends in queue
               </div>
             </div>
           </div>
@@ -2091,7 +2091,7 @@ export function getMainHTML(): string {
               <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-600 flex items-center justify-center">
                 <i class="fas fa-paper-plane text-white text-base"></i>
               </div>
-              MultiSend — Batch Payments
+              MultiSend — Batch Send
             </h2>
             <p class="text-gray-400 text-sm mt-1">Send USDC to multiple recipients with a single fee payment on Arc Testnet</p>
           </div>
@@ -2465,7 +2465,7 @@ export function getMainHTML(): string {
               </div>
               <div class="bg-purple-900/30 border border-purple-700/30 rounded-lg p-3 text-center">
                 <i class="fas fa-layer-group text-yellow-400 text-lg mb-1 block"></i>
-                <span class="text-xs text-gray-300" data-i18n="cap_batch_payments">Batch Payments</span>
+                <span class="text-xs text-gray-300" data-i18n="cap_batch_payments">Batch Send</span>
               </div>
             </div>
           </div>
@@ -2849,10 +2849,10 @@ export function getMainHTML(): string {
               <div class="text-xs text-yellow-400 font-medium mb-0.5">Swap Permit (EURC)</div>
               <div class="text-[11px] text-gray-500 font-mono">swap 50 EURC for 3 days</div>
             </button>
-            <button onclick="sendQuickMessage('authorize payments of 200 USDC for 7 days'); toggleChat();"
+            <button onclick="sendQuickMessage('authorize send of 200 USDC for 7 days'); toggleChat();"
               class="text-left bg-yellow-900/20 border border-yellow-700/20 rounded-lg p-2.5 hover:border-yellow-500/40 transition-colors">
               <div class="text-xs text-yellow-400 font-medium mb-0.5">Payment Limit (7 days)</div>
-              <div class="text-[11px] text-gray-500 font-mono">200 USDC payments, 7 days</div>
+              <div class="text-[11px] text-gray-500 font-mono">200 USDC send, 7 days</div>
             </button>
             <button onclick="sendQuickMessage('revoke all permits'); toggleChat();"
               class="text-left bg-red-900/20 border border-red-700/20 rounded-lg p-2.5 hover:border-red-500/40 transition-colors">
@@ -3188,7 +3188,7 @@ export function getMainHTML(): string {
           </button>
           <button onclick="window.historyFilter('payment')" data-filter="payment"
             class="history-filter-btn text-xs px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/40 text-gray-400 hover:text-purple-300 hover:border-purple-700/40 transition">
-            <i class="fas fa-dollar-sign mr-1"></i>Payments
+            <i class="fas fa-paper-plane mr-1"></i>Send
           </button>
           <button onclick="window.historyFilter('multisend')" data-filter="multisend"
             class="history-filter-btn text-xs px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-700/40 text-gray-400 hover:text-cyan-300 hover:border-cyan-700/40 transition">
@@ -4423,7 +4423,7 @@ export function getMainHTML(): string {
             </div>
             <p class="text-xs text-gray-500">Transaction history, payment records, and contracts are stored locally in IndexedDB for offline access. On-chain data remains the source of truth.</p>
             <div id="arc-persist-stats" class="bg-gray-800/50 rounded-lg p-3 text-xs text-gray-400 space-y-1">
-              <div class="flex justify-between"><span>Payments cached:</span><span id="ps-payments" class="text-blue-400">—</span></div>
+              <div class="flex justify-between"><span>Sends cached:</span><span id="ps-payments" class="text-blue-400">—</span></div>
               <div class="flex justify-between"><span>Contracts cached:</span><span id="ps-contracts" class="text-blue-400">—</span></div>
               <div class="flex justify-between"><span>History cached:</span><span id="ps-history" class="text-blue-400">—</span></div>
               <div class="flex justify-between"><span>Storage engine:</span><span id="ps-db" class="text-green-400">—</span></div>
@@ -4565,7 +4565,7 @@ export function getMainHTML(): string {
           <span class="text-sm" style="background:linear-gradient(135deg,#06b6d4,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:900;letter-spacing:.06em">ExecDaat</span>
         </div>
         <p class="text-xs text-gray-500 leading-relaxed">
-          Open-source testnet dApp built on Arc Network. Explore autonomous payments, AMM swaps, and smart contracts — safely, on testnet.
+          Open-source testnet dApp built on Arc Network. Explore autonomous send, AMM swaps, and smart contracts — safely, on testnet.
         </p>
         <div class="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded-lg w-fit">
           <i class="fas fa-flask text-amber-400 text-xs"></i>
@@ -4715,14 +4715,14 @@ export function getMainHTML(): string {
        Loading Order (CRITICAL):
          1. daat-agent-core-init.js — Global initializer & safe loader
          2. daat-agent-core.js — Core engine
-         3. payments-core-integration.js — Payments integration
+          3. payments-core-integration.js — Send integration
          4. daat-agent-transactional.js — Transactional AI agent
          5. chatbot-transactional-integration.js — Chatbot integration
        
        Capabilities:
          • Contract Creation (escrow, OTC, custom contracts)
          • Token Swaps (with slippage control)
-         • Payments Tab Control (auto-fill + execute)
+          • Send Tab Control (auto-fill + execute)
          • Multi-step Orchestration (swap + pay, create + deposit)
          • Smart Field Inference (ask only missing fields)
          • Context Memory (remember last actions)
@@ -4735,7 +4735,7 @@ export function getMainHTML(): string {
          1. Intent Engine — parse natural language to structured intent
          2. Contract Creator — escrow, OTC, custom contracts
          3. Swap Executor — token swaps with balance checks
-         4. Payment Controller — Payments tab automation
+          4. Payment Controller — Send tab automation
          5. Multi-step Orchestrator — sequential actions
          6. Validation Engine — wallet, balance, input checks
          7. Query Handler — balance, history, context, status
@@ -4743,7 +4743,7 @@ export function getMainHTML(): string {
        Integration:
          - Main chatbot: chat.js → DaatAgentTransactional (preserves original NLU)
          - Autonoma chatbot: autonoma.js → DaatAgentTransactional (preserves original NLU)
-         - Payments tab: payments-core-integration.js → DaatAgentCore
+          - Send tab: payments-core-integration.js → DaatAgentCore
        
        IMPORTANT: Original chat intelligence is PRESERVED.
        DaatAgentTransactional only handles executable commands.

@@ -1,5 +1,5 @@
 // ExecDaat - Frontend Application
-// Pagamentos e Contratos Autônomos na Arc Testnet
+// Send e Contratos Autônomos na Arc Testnet
 
 const API = {
   base: '',
@@ -370,7 +370,7 @@ async function loadPayments() {
   list.innerHTML = `
     <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
       <i class="fas fa-spinner fa-spin" style="font-size:18px;display:block;margin-bottom:8px;color:#5a7898;"></i>
-      Loading payment queue…
+      Loading send queue…
     </div>`;
 
   try {
@@ -413,7 +413,7 @@ function renderPaymentsList(data) {
     list.innerHTML = `
       <div style="color:#8aaac8;font-size:11px;text-align:center;padding:24px 0;">
         <i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:8px;color:#5a7898;"></i>
-        ${t ? t('no_payments') : 'No payments in queue'}
+        ${t ? t('no_payments') : '        No sends in queue'}
       </div>
     `;
     return;

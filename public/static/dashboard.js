@@ -180,7 +180,7 @@ function dbRenderActivity(items) {
         <p class="text-gray-600 text-xs mt-1">Connect your wallet and start transacting on Arc Testnet.</p>
         <div class="flex gap-2 justify-center mt-4">
           <button onclick="switchTab('payments')" class="text-xs px-3 py-1.5 bg-purple-800/30 text-purple-300 border border-purple-700/30 rounded-lg hover:bg-purple-700/30 transition-all">
-            <i class="fas fa-dollar-sign mr-1"></i>Send Payment
+            <i class="fas fa-paper-plane mr-1"></i>Send
           </button>
           <button onclick="switchTab('contracts')" class="text-xs px-3 py-1.5 bg-blue-800/30 text-blue-300 border border-blue-700/30 rounded-lg hover:bg-blue-700/30 transition-all">
             <i class="fas fa-file-contract mr-1"></i>Create Contract
@@ -329,7 +329,7 @@ function dbRenderMetricsBar(stats, payHistory, cfMeta, msHistory) {
         <div class="text-xs text-gray-600">${activeCts} active · ${completedCts} completed</div>
       </div>
       <div class="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
-        <div class="text-xs text-gray-500 mb-1">💳 Payments (session)</div>
+        <div class="text-xs text-gray-500 mb-1">💳 Send (session)</div>
         <div class="text-xl font-bold text-white">${totalPayments}</div>
         <div class="text-xs text-gray-600">$${totalVolume.toFixed(2)} USDC total</div>
       </div>
@@ -381,7 +381,7 @@ function dbResetDashboard() {
         <div class="text-xs text-gray-700">connect wallet to view</div>
       </div>
       <div class="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
-        <div class="text-xs text-gray-500 mb-1">💳 Payments (session)</div>
+        <div class="text-xs text-gray-500 mb-1">💳 Send (session)</div>
         <div class="text-xl font-bold text-gray-600">--</div>
         <div class="text-xs text-gray-700">--</div>
       </div>

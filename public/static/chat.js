@@ -15,7 +15,7 @@
 // ║  ⚡ EXECUTION (queue-engine.js — UI):                   ║
 // ║    • Escuta eventos arcPayQueue:add / addBatch           ║
 // ║    • Armazena fila de pagamentos                         ║
-// ║    • Mostra botão "Execute Payments"                     ║
+// ║    • Mostra botão "Execute Send"                     ║
 // ║    • Executa signPermit2() + executeBatch() SOMENTE      ║
 // ║      após clique explícito do usuário                    ║
 // ╚══════════════════════════════════════════════════════════╝
@@ -1326,12 +1326,12 @@ async function handleLocalCommand(msg) {
       appendChatMessage('assistant',
         `🔐 **ERC-20 Approval**\n\n` +
         `Para aprovar **${amount} ${token}** para \`${spender.slice(0,10)}…\`, ` +
-        `vá até a aba **Payments** e use o botão de aprovação.\n\n` +
+        `vá até a aba **Send** e use o botão de aprovação.\n\n` +
         `Aprovações abrem a wallet apenas com interação explícita do usuário.`,
         'payments'
       );
       appendActionCard([
-        { label: '💳 Ir para Payments', action: `switchTab('payments');toggleChat()`, primary: true },
+        { label: '💳 Ir para Send', action: `switchTab('payments');toggleChat()`, primary: true },
       ]);
       return true;
     }
@@ -1428,7 +1428,7 @@ async function handleLocalCommand(msg) {
   // ── Open tab shortcuts ────────────────────────────────────────────────────
   if (/^(open payments|ir para pagamentos|pagamentos)$/i.test(lower)) {
     hideTypingIndicator();
-    appendChatMessage('assistant', `💳 Opening Payments tab…`, 'payments');
+    appendChatMessage('assistant', `💳 Opening Send tab…`, 'payments');
     switchTab('payments'); toggleChat(); return true;
   }
   if (/^(open swap|open dex|ir para swap|swap tab)$/i.test(lower)) {
@@ -1511,9 +1511,9 @@ async function cmdUseMyEmail() {
   const emailEl = document.getElementById('pay-email');
   if (emailEl) { emailEl.value = profile.email; emailEl.dispatchEvent(new Event('input')); }
   appendChatMessage('assistant',
-    `✅ Email **${profile.email}** applied to the Payments form.`,
+    `✅ Email **${profile.email}** applied to the Send form.`,
     'payments');
-  createActionCard([{ label: '💳 Go to Payments', onclick: "switchTab('payments');toggleChat()" }]);
+  createActionCard([{ label: '💳 Go to Send', onclick: "switchTab('payments');toggleChat()" }]);
 }
 
 async function cmdUseLastAddress() {
@@ -1534,7 +1534,7 @@ async function cmdUseLastAddress() {
   appendChatMessage('assistant',
     `✅ Last used address **${last.label || short}** applied to Recipient field.`,
     'payments');
-  createActionCard([{ label: '💳 Go to Payments', onclick: "switchTab('payments');toggleChat()" }]);
+  createActionCard([{ label: '💳 Go to Send', onclick: "switchTab('payments');toggleChat()" }]);
 }
 
 async function cmdShowRecentAmounts() {
@@ -1548,7 +1548,7 @@ async function cmdShowRecentAmounts() {
   amounts.forEach((a, i) => {
     msg += `${i+1}. **${a.value} ${a.token}** _(${a.count}x used)_\n`;
   });
-  msg += `\n_Click a chip in the Payments form to auto-fill._`;
+  msg += `\n_Click a chip in the Send form to auto-fill._`;
   appendChatMessage('assistant', msg, 'payments');
 }
 
@@ -1569,7 +1569,7 @@ async function cmdHelp() {
     `🤖 **ARC AI Assistant — Commands**\n\n` +
     `${active ? '✅ Daat Agent Active' : '⚠️ Daat not authorized — some commands need authorization'}\n` +
     `${hasP2E ? '⚡ Permit2Engine: Loaded' : ''}\n\n` +
-    `**💳 Payments**\n` +
+    `**💳 Send**\n` +
     `- \`send 10 USDC to 0x...\` — single transfer with preflight\n` +
     `- \`send 10 USDC to last\` — use last recipient\n` +
     `- \`pay 0xA:10, 0xB:20\` — inline batch payment\n` +
@@ -1753,7 +1753,7 @@ async function cmdShowDashboard() {
     `**Network:** Arc Testnet 🟢\n` +
     `**Block:** ${blockNum} · **Latency:** ${latency}\n\n` +
     `**Your Activity:**\n` +
-    `- 💳 Payments: ${payments.length} recorded\n` +
+    `- 💳 Send: ${payments.length} recorded\n` +
     `- 📋 Contracts: ${Object.keys(contracts).length} in memory\n` +
     `- 💰 Wallet: ${wallet ? `\`${wallet.slice(0,10)}…\`` : 'Not connected'}\n\n` +
     `**Agents:**\n` +
@@ -1764,7 +1764,7 @@ async function cmdShowDashboard() {
   appendActionCard([
     { label: '📊 Full Dashboard', action: `switchTab('dashboard');toggleChat();`, primary: true },
     { label: '📋 Contracts',      action: `switchTab('contracts');toggleChat();`,  primary: false },
-    { label: '💳 Payments',       action: `switchTab('payments');toggleChat();`,   primary: false },
+    { label: '💳 Send',       action: `switchTab('payments');toggleChat();`,   primary: false },
   ]);
 }
 
@@ -1841,7 +1841,7 @@ async function cmdSendPayment(amount, token, recipient) {
     `| Platform Fee | 0.2% of amount |\n` +
     `| 🛡️ Guardian | ✅ Approved |` +
     balanceNote + reuseNote +
-    `\n\n💡 *Full fee breakdown shown in the Payments form. Confirm to proceed.*`,
+    `\n\n💡 *Full fee breakdown shown in the Send form. Confirm to proceed.*`,
     'payments'
   );
   // BRAIN → UI: route to AgentExecutor (if active) or manual queue
@@ -2168,7 +2168,7 @@ async function _chatAgentTransfer(amount, token, recipient) {
 function _aeWarnFallback(err) {
   const msg = err?.message || 'unknown error';
   // Give specific guidance based on error type
-  let guidance = 'Your transfer was added to the manual queue instead. Click **Execute Payments** to proceed.';
+  let guidance = 'Your transfer was added to the manual queue instead. Click **Execute Send** to proceed.';
   if (/session expired|not authorized|re-authorize/i.test(msg)) {
     guidance = 'Please **Authorize Daat Agent** in the chat first (click the status bar above).';
   } else if (/wallet not connected/i.test(msg)) {
@@ -2201,7 +2201,7 @@ function _chatQueueTransfer(amount, token, recipient) {
     `| Token | **${payload.token}** |\n` +
     `| Valor | **${payload.amount} ${payload.token}** |\n` +
     `| Para | \`${recipient.slice(0,10)}…${recipient.slice(-8)}\` |\n\n` +
-    `👆 Clique em **Execute Payments** para assinar e enviar.`,
+    `👆 Clique em **Execute Send** para assinar e enviar.`,
     'payments'
   );
 }
@@ -2231,7 +2231,7 @@ async function _chatPrefillPaymentForm(amount, token, recipient) {
     `Fee breakdown is being calculated. Review and click **Sign & Send** to execute.`,
     'payments'
   );
-  appendActionCard([{ label: '💳 Go to Payments Tab', action: `switchTab('payments')`, primary: true }]);
+  appendActionCard([{ label: '💳 Go to Send Tab', action: `switchTab('payments')`, primary: true }]);
 }
 window._chatPrefillPaymentForm = _chatPrefillPaymentForm;
 
@@ -2437,7 +2437,7 @@ function renderBlockchainActionCard(action, walletConnected) {
     const safeTok   = JSON.stringify(String(d.token || 'USDC'));
     const safeTo    = JSON.stringify(String(d.to));
     ctaHtml = `<button onclick="_chatQueueTransfer(${safeAmt},${safeTok},${safeTo})" class="arc-action-cta arc-action-cta-execute">
-      📥 Adicionar à Fila → Payments
+      📥 Adicionar à Fila → Send
     </button>`;
   } else if (action.type === 'multisend' && Array.isArray(d.receivers) && d.receivers.length) {
     // Batch → queue to Multisend
@@ -2500,7 +2500,7 @@ function arcExecuteAction(actionId) {
 
     case 'transfer': {
       // Single recipient → Payments tab (NEVER Multisend)
-      // Queue the transfer so "Execute Payments" button appears in chat
+      // Queue the transfer so "Execute Send" button appears in chat
       if (d.to && d.amount) {
         const token = d.token || 'USDC';
         _chatQueueTransfer(String(d.amount), token, String(d.to));
@@ -2539,7 +2539,7 @@ function arcExecuteAction(actionId) {
 
     case 'multisend': {
       // Multiple recipients → Multisend tab
-      // Queue the batch so "Execute Payments" button appears
+      // Queue the batch so "Execute Send" button appears
       if (Array.isArray(d.receivers) && d.receivers.length >= 1) {
         _chatQueueBatch(
           d.receivers.map(r => ({ address: r.address || r.to || '', amount: r.amount || 0 })),
@@ -2755,7 +2755,7 @@ function _chatQueueBatch(recipients, token) {
     `| Token | **${token || 'USDC'}** |\n` +
     `| Total | **${total.toFixed(2)} ${token || 'USDC'}** |\n` +
     `| Destinatários | **${recipients.length}** |\n\n` +
-    `👆 Clique em **Execute Payments** para assinar e enviar.`,
+    `👆 Clique em **Execute Send** para assinar e enviar.`,
     'payments'
   );
 }
@@ -2909,7 +2909,7 @@ async function handleLocalCommandWithCSV(msg) {
   if (/^(csv help|help csv|csv format|csv usage|como usar csv|batch help)$/i.test(lower)) {
     hideTypingIndicator();
     appendChatMessage('assistant',
-      '📊 **CSV Batch Payments — Guide**\n\n' +
+      '📊 **CSV Batch Send — Guide**\n\n' +
       '**How to use:**\n' +
       '1. Click the **📎** button (or drag & drop a `.csv` file)\n' +
       '2. The agent parses and validates your file\n' +

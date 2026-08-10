@@ -179,7 +179,7 @@
       payStore,
       function (id) { return id; },
       function () { if (typeof renderPaymentHistory === 'function') renderPaymentHistory(); },
-      'Hidden Payments'
+      'Hidden Send'
     );
   };
 

@@ -1256,20 +1256,21 @@ function interpretStringResult(hex: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  AGENT WALLET — Separate wallet for the AI agent
-//  Generates an independent EVM wallet on Arc Testnet.
-//  The user wallet REMAINS the owner/permission granter.
-//  The agent wallet is a secondary execution layer.
+//  AGENT WALLET — Deterministic derivation from Cloudflare Secret
 //
-//  SECURITY: Private keys stored ONLY in server memory
-//  (per-session). Never exposed to the client. Never in
-//  localStorage. Lost on cold start — regenerate if needed.
+//  The agent wallet is derived via HMAC-SHA256(AGENT_WALLET_SEED, ownerAddress).
+//  Same owner ALWAYS gets the same wallet — survives cold starts,
+//  deployments, Worker restarts, and browser refreshes.
+//
+//  No private keys stored in localStorage, Maps, or any cache.
+//  The seed is a Cloudflare Secret — never exposed to clients.
+//
+//  One connected owner address → ONE Agent Wallet (by construction).
 // ═══════════════════════════════════════════════════════════════
 
 interface AgentWalletRecord {
   walletId: string
   address: string
-  encryptedKey: string
   ownerAddress: string
   agentId: string | null
   label: string
@@ -1277,10 +1278,64 @@ interface AgentWalletRecord {
   chainId: number
 }
 
-const agentWallets = new Map<string, AgentWalletRecord>()
+// In-memory cache ONLY — authoritative source is deterministic derivation.
+// Keyed by ownerAddress. Repopulated on demand from derivation.
+const walletCacheByOwner = new Map<string, AgentWalletRecord>()
+const walletCacheById   = new Map<string, AgentWalletRecord>()
+
+function getSeed(): string {
+  return (globalThis as any).__AGENT_WALLET_SEED__ || ''
+}
+
+function setSeedRuntime(seed: string) {
+  (globalThis as any).__AGENT_WALLET_SEED__ = seed
+}
+
+// Helper to read seed from Hono context
+function readSeedFromEnv(c: any): string {
+  return c?.env?.AGENT_WALLET_SEED || process?.env?.AGENT_WALLET_SEED || ''
+}
+
+async function deriveWallet(ownerAddress: string): Promise<ethers.HDNodeWallet> {
+  const seed = getSeed()
+  if (!seed) throw new Error('AGENT_WALLET_SEED not configured on Cloudflare')
+
+  const encoder = new TextEncoder()
+  const keyData = encoder.encode(seed)
+  const msgData = encoder.encode('agent-wallet:' + ownerAddress.toLowerCase())
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false, ['sign']
+  )
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgData)
+  const privateKeyHex = Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+
+  return new ethers.Wallet('0x' + privateKeyHex,
+    new ethers.JsonRpcProvider(ARC_RPC, CHAIN_ID))
+}
+
+function resolveWalletByOwner(owner: string): AgentWalletRecord | null {
+  return walletCacheByOwner.get(owner.toLowerCase()) || null
+}
+
+function cacheWallet(owner: string, record: AgentWalletRecord) {
+  const key = owner.toLowerCase()
+  walletCacheByOwner.set(key, record)
+  walletCacheById.set(record.walletId, record)
+}
+
+// ─── POST /create — Idempotent. Deterministic derivation. ──────────────────
 
 agentWalletRouter.post('/create', async (c) => {
   try {
+    // Initialize seed from Cloudflare environment (first call on each isolate)
+    const envSeed = c.env?.AGENT_WALLET_SEED || process?.env?.AGENT_WALLET_SEED || ''
+    if (envSeed && envSeed.length >= 64) setSeedRuntime(envSeed)
+
     const body = await c.req.json()
     const { ownerAddress, label } = body
 
@@ -1288,95 +1343,160 @@ agentWalletRouter.post('/create', async (c) => {
       return c.json({ success: false, error: 'Valid ownerAddress (user wallet) required' }, 400)
     }
 
-    // Check if owner already has an agent wallet
-    for (const [, w] of agentWallets) {
-      if (w.ownerAddress.toLowerCase() === ownerAddress.toLowerCase()) {
-        return c.json({
-          success: true,
-          wallet: { address: w.address, label: w.label, createdAt: w.createdAt, agentId: w.agentId },
-          existing: true,
-        })
-      }
+    const owner = ownerAddress.toLowerCase()
+
+    // Check cache first (same-worker reuse)
+    const cached = resolveWalletByOwner(owner)
+    if (cached) {
+      console.log('[AgentWallet] existing wallet found (cached):', cached.address)
+      return c.json({
+        success: true,
+        existing: true,
+        wallet: {
+          walletId: cached.walletId,
+          address: cached.address,
+          label: cached.label,
+          createdAt: cached.createdAt,
+          agentId: cached.agentId,
+          chainId: cached.chainId,
+        },
+      })
     }
 
-    // Generate new wallet using ethers
-    const wallet = ethers.Wallet.createRandom()
+    // Deterministically derive wallet from seed + owner
+    const wallet = await deriveWallet(owner)
     const address = wallet.address
-    const privateKey = wallet.privateKey
 
-    // Encrypt private key with AES-256-GCM (32-byte key)
-    const rawKey = new TextEncoder().encode('execdaat-agent-wallet-v1-secret!!');
-    const keyBytes = new Uint8Array(32);
-    for (let i = 0; i < 32; i++) keyBytes[i] = rawKey[i % rawKey.length];
-    const encKey = await crypto.subtle.importKey(
-      'raw',
-      keyBytes,
-      { name: 'AES-GCM' },
-      false,
-      ['encrypt']
-    )
-    const iv = crypto.getRandomValues(new Uint8Array(12))
-    const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      encKey,
-      new TextEncoder().encode(privateKey)
-    )
-    const encryptedHex = Array.from(new Uint8Array(encrypted)).map(b => b.toString(16).padStart(2, '0')).join('')
-    const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('')
+    const walletId = 'aw-' + owner.slice(2, 10) + '-' + Date.now().toString(36)
 
-    const walletId = 'aw-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
     const record: AgentWalletRecord = {
       walletId,
       address,
-      encryptedKey: encryptedHex,
-      ownerAddress: ownerAddress.toLowerCase(),
+      ownerAddress: owner,
       agentId: null,
       label: label || 'Agent Wallet',
       createdAt: new Date().toISOString(),
       chainId: CHAIN_ID,
     }
-    agentWallets.set(walletId, record)
+    cacheWallet(owner, record)
 
-    console.log('[AgentWallet] Created:', address, 'owner:', ownerAddress)
+    console.log('[AgentWallet] create:', address, 'owner:', owner)
 
     return c.json({
       success: true,
       wallet: { walletId, address, label: record.label, createdAt: record.createdAt, chainId: CHAIN_ID },
     }, 201)
   } catch (e: any) {
+    console.error('[AgentWallet] create error:', e.message)
     return c.json({ success: false, error: e.message }, 500)
   }
 })
 
-agentWalletRouter.get('/wallet/:owner', (c) => {
-  const owner = c.req.param('owner').toLowerCase()
-  for (const [, w] of agentWallets) {
-    if (w.ownerAddress === owner) {
+// ─── GET /wallet/:owner — Canonical recovery endpoint ──────────────────────
+
+agentWalletRouter.get('/wallet/:owner', async (c) => {
+  try {
+    const envSeed = c.env?.AGENT_WALLET_SEED || process?.env?.AGENT_WALLET_SEED || ''
+    if (envSeed && envSeed.length >= 64) setSeedRuntime(envSeed)
+
+    const owner = c.req.param('owner').toLowerCase()
+    if (!isValidAddr(owner)) return c.json({ success: false, error: 'Invalid address' }, 400)
+
+    // Check cache
+    const cached = resolveWalletByOwner(owner)
+    if (cached) {
       return c.json({
         success: true,
-        wallet: { walletId: w.walletId, address: w.address, label: w.label, createdAt: w.createdAt, agentId: w.agentId },
+        wallet: { walletId: cached.walletId, address: cached.address, label: cached.label, createdAt: cached.createdAt, agentId: cached.agentId },
       })
     }
-  }
-  return c.json({ success: true, wallet: null })
-})
 
-// Restore agent wallet by walletId (survives page refresh within same worker)
-agentWalletRouter.post('/restore', async (c) => {
-  try {
-    const body = await c.req.json()
-    const { walletId } = body
-    if (!walletId) return c.json({ success: false, error: 'walletId required' }, 400)
+    // Derive from seed
+    const wallet = await deriveWallet(owner)
+    const walletId = 'aw-' + owner.slice(2, 10) + '-' + Date.now().toString(36)
+    const record: AgentWalletRecord = {
+      walletId,
+      address: wallet.address,
+      ownerAddress: owner,
+      agentId: null,
+      label: 'Agent Wallet',
+      createdAt: new Date().toISOString(),
+      chainId: CHAIN_ID,
+    }
+    cacheWallet(owner, record)
 
-    const w = agentWallets.get(walletId)
-    if (!w) return c.json({ success: false, wallet: null, message: 'Wallet not found in memory. Cold start may have cleared it.' })
+    console.log('[AgentWallet] owner recovery:', record.address)
 
     return c.json({
       success: true,
-      wallet: { walletId: w.walletId, address: w.address, label: w.label, createdAt: w.createdAt, agentId: w.agentId, chainId: w.chainId },
+      wallet: { walletId, address: record.address, label: record.label, createdAt: record.createdAt, agentId: null },
     })
   } catch (e: any) {
-    return c.json({ success: false, error: e.message }, 500)
+    console.error('[AgentWallet] wallet lookup error:', e.message)
+    return c.json({ success: true, wallet: null })
+  }
+})
+
+// ─── POST /restore — Restore by walletId + ownerAddress ────────────────────
+
+agentWalletRouter.post('/restore', async (c) => {
+  try {
+    const envSeed = c.env?.AGENT_WALLET_SEED || process?.env?.AGENT_WALLET_SEED || ''
+    if (envSeed && envSeed.length >= 64) setSeedRuntime(envSeed)
+
+    const body = await c.req.json()
+    const { walletId, ownerAddress } = body
+
+    // Primary: restore by walletId (fast cache lookup)
+    if (walletId) {
+      const cached = walletCacheById.get(walletId)
+      if (cached) {
+        console.log('[AgentWallet] restored by walletId:', cached.address)
+        return c.json({
+          success: true,
+          wallet: { walletId: cached.walletId, address: cached.address, label: cached.label, createdAt: cached.createdAt, agentId: cached.agentId, chainId: cached.chainId },
+        })
+      }
+    }
+
+    // Secondary: owner-based recovery (cold start / first invocation)
+    if (ownerAddress && isValidAddr(ownerAddress)) {
+      const owner = ownerAddress.toLowerCase()
+
+      const cached = resolveWalletByOwner(owner)
+      if (cached) {
+        console.log('[AgentWallet] restored by owner:', cached.address)
+        return c.json({
+          success: true,
+          wallet: { walletId: cached.walletId, address: cached.address, label: cached.label, createdAt: cached.createdAt, agentId: cached.agentId, chainId: cached.chainId },
+        })
+      }
+
+      // Derive from seed — cold-start recovery
+      const wallet = await deriveWallet(owner)
+      const newId = 'aw-' + owner.slice(2, 10) + '-' + Date.now().toString(36)
+      const record: AgentWalletRecord = {
+        walletId: newId,
+        address: wallet.address,
+        ownerAddress: owner,
+        agentId: null,
+        label: 'Agent Wallet',
+        createdAt: new Date().toISOString(),
+        chainId: CHAIN_ID,
+      }
+      cacheWallet(owner, record)
+
+      console.log('[AgentWallet] owner recovery (cold start):', record.address)
+      return c.json({
+        success: true,
+        wallet: { walletId: record.walletId, address: record.address, label: record.label, createdAt: record.createdAt, agentId: null, chainId: CHAIN_ID },
+      })
+    }
+
+    return c.json({ success: false, wallet: null, message: 'Wallet not found — provide ownerAddress for recovery' })
+  } catch (e: any) {
+    console.error('[AgentWallet] restore error:', e.message)
+    return c.json({ success: false, error: 'Temporary backend error — retry' }, 500)
   }
 })
 
@@ -1412,32 +1532,38 @@ agentWalletRouter.post('/link-agent', async (c) => {
     const { ownerAddress, agentId } = body
     if (!ownerAddress || !agentId) return c.json({ success: false, error: 'ownerAddress and agentId required' }, 400)
 
-    for (const [id, w] of agentWallets) {
-      if (w.ownerAddress.toLowerCase() === ownerAddress.toLowerCase()) {
-        w.agentId = agentId
-        agentWallets.set(id, w)
-        return c.json({ success: true, wallet: { address: w.address, agentId, linked: true } })
+    const owner = ownerAddress.toLowerCase()
+    let w = resolveWalletByOwner(owner)
+    if (!w) {
+      // Derive wallet if not yet cached
+      const wallet = await deriveWallet(owner)
+      const walletId = 'aw-' + owner.slice(2, 10) + '-' + Date.now().toString(36)
+      w = {
+        walletId,
+        address: wallet.address,
+        ownerAddress: owner,
+        agentId: null,
+        label: 'Agent Wallet',
+        createdAt: new Date().toISOString(),
+        chainId: CHAIN_ID,
       }
+      cacheWallet(owner, w)
     }
-    return c.json({ success: false, error: 'No agent wallet found for this owner' }, 404)
+    w.agentId = agentId
+    cacheWallet(owner, w)
+
+    return c.json({ success: true, wallet: { address: w.address, agentId, linked: true } })
   } catch (e: any) {
     return c.json({ success: false, error: e.message }, 500)
   }
 })
 
 // Decrypt and get signer for agent wallet (internal use)
-function getAgentWalletSigner(ownerAddress: string): ethers.Wallet | null {
-  for (const [, w] of agentWallets) {
-    if (w.ownerAddress.toLowerCase() === ownerAddress.toLowerCase()) {
-      try {
-        return new ethers.Wallet(
-          '0x' + Buffer.from(w.encryptedKey, 'hex').toString(),
-          new ethers.JsonRpcProvider(ARC_RPC, CHAIN_ID)
-        )
-      } catch { return null }
-    }
-  }
-  return null
+async function getAgentWalletSigner(ownerAddress: string): Promise<ethers.Wallet | null> {
+  try {
+    const owner = ownerAddress.toLowerCase()
+    return await deriveWallet(owner)
+  } catch { return null }
 }
 
 export default agentWalletRouter

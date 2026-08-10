@@ -850,7 +850,7 @@ const DATPaymentModule = {
       return {
         status: DAT_STATUS.COMPLETED,
         action: 'payment',
-        message: `✅ Payment sent to ${intent.name}!`,
+        message: `✅ Send sent to ${intent.name}!`,
         txHash: result.txHash,
         data: {
           recipient: intent.name,
@@ -861,7 +861,7 @@ const DATPaymentModule = {
         nextStep: null,
       };
     } catch (err) {
-      throw new Error(`❌ Payment failed: ${err.message}`);
+      throw new Error(`❌ Send failed: ${err.message}`);
     }
   },
 };

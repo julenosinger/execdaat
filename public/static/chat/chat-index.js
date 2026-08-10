@@ -80,7 +80,7 @@ function _chatQueueBatch(recipients, token) {
     `| Token | **${token || 'USDC'}** |\n` +
     `| Total | **${total.toFixed(2)} ${token || 'USDC'}** |\n` +
     `| Destinatários | **${recipients.length}** |\n\n` +
-    `👆 Clique em **Execute Payments** para assinar e enviar.`,
+    `👆 Clique em **Execute Send** para assinar e enviar.`,
     'payments'
   );
 }

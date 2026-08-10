@@ -71,7 +71,7 @@ app.use('/static/*', serveStatic({ root: './public' }))
 app.get('/manifest.json', (c) => c.json({
   name: 'ExecDaat Platform',
   short_name: 'ExecDaat',
-  description: 'Compliance and payment platform for Arc Testnet — AI-powered agent transfers with Permit2',
+  description: 'Compliance and send platform for Arc Testnet — AI-powered agent transfers with Permit2',
   start_url: '/',
   display: 'standalone',
   background_color: '#0f172a',
