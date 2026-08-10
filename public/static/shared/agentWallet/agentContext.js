@@ -160,23 +160,20 @@
       window.addEventListener(evt, function() { refreshIntents(); refreshRecentOps(); _notify(); });
     });
 
-    // Listen for wallet connection
+    // Listen for wallet connection — initiate wallet init, context refreshes via events
     window.addEventListener('walletConnected', function() {
-      setTimeout(function() { refreshAll(); }, 500);
+      if (D.AgentWallet && typeof D.AgentWallet.init === 'function') {
+        D.AgentWallet.init().then(function() {
+          refreshAll();
+        });
+      }
     });
 
-    // Periodic refresh after connected
-    if (D.AgentWallet && D.AgentWallet.state && D.AgentWallet.state.agentAddress) {
-      setTimeout(function() { refreshAll(); }, 800);
-    } else {
-      // Wait for agent wallet init
-      var check = setInterval(function() {
-        if (D.AgentWallet && D.AgentWallet.state && D.AgentWallet.state.initialized) {
-          clearInterval(check);
-          refreshAll();
-        }
-      }, 300);
-      setTimeout(function() { clearInterval(check); }, 10000);
+    // If AgentWallet is already initialized, refresh immediately
+    if (D.AgentWallet && D.AgentWallet.state && D.AgentWallet.state.initialized && D.AgentWallet.state.agentAddress) {
+      refreshAll();
+    } else if (D.AgentWallet && D.AgentWallet.state && D.AgentWallet.state.initialized) {
+      refreshAll();
     }
   }
 
@@ -337,11 +334,18 @@
   };
 
   // Auto-init after modules load
-  setTimeout(function() {
-    if (D.AgentWallet && D.AgentWallet.state) {
-      init();
-    }
-  }, 1200);
+  if (D.AgentWallet && D.AgentWallet.state) {
+    init();
+  } else {
+    // If AgentWallet hasn't loaded yet, init on first event
+    var _ctxInitCheck = setInterval(function() {
+      if (D.AgentWallet && D.AgentWallet.state) {
+        clearInterval(_ctxInitCheck);
+        init();
+      }
+    }, 100);
+    setTimeout(function() { clearInterval(_ctxInitCheck); }, 5000);
+  }
 
   console.log('[AgentContext] Bridge loaded — consuming AgentWallet + AgentIntents');
 })();

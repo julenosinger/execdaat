@@ -798,7 +798,7 @@
 
   // ── Auto-init + chat interceptor ──────────────────────────────────────────
   window.addEventListener('walletConnected', function() {
-    setTimeout(function() { D.AgentWallet.init(); }, 800);
+    D.AgentWallet.init();
   });
   setTimeout(_installChatInterceptor, 1000);
   if (document.readyState !== 'loading') { setTimeout(_installChatInterceptor, 1000); }

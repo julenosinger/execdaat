@@ -1413,7 +1413,7 @@ agentWalletRouter.get('/wallet/:owner', async (c) => {
 
     // Derive from seed
     const wallet = await deriveWallet(owner)
-    const walletId = 'aw-' + owner.slice(2, 10) + '-' + Date.now().toString(36)
+    const walletId = 'aw-' + owner.slice(2, 10) + '-' + wallet.address.slice(2, 10).toLowerCase()
     const record: AgentWalletRecord = {
       walletId,
       address: wallet.address,
@@ -1474,7 +1474,7 @@ agentWalletRouter.post('/restore', async (c) => {
 
       // Derive from seed — cold-start recovery
       const wallet = await deriveWallet(owner)
-      const newId = 'aw-' + owner.slice(2, 10) + '-' + Date.now().toString(36)
+      const newId = 'aw-' + owner.slice(2, 10) + '-' + wallet.address.slice(2, 10).toLowerCase()
       const record: AgentWalletRecord = {
         walletId: newId,
         address: wallet.address,
@@ -1537,7 +1537,7 @@ agentWalletRouter.post('/link-agent', async (c) => {
     if (!w) {
       // Derive wallet if not yet cached
       const wallet = await deriveWallet(owner)
-      const walletId = 'aw-' + owner.slice(2, 10) + '-' + Date.now().toString(36)
+    const walletId = 'aw-' + owner.slice(2, 10) + '-' + address.slice(2, 10).toLowerCase()
       w = {
         walletId,
         address: wallet.address,
