@@ -496,6 +496,22 @@
     return null;
   }
 
+  // ── Intent creation helper — attaches Agent Wallet metadata ────────────────
+  function _agentIntentMeta() {
+    return {
+      agentAddress: _state.agentAddress || '',
+      walletId: _state.agentWalletId || '',
+      ownerAddress: window.walletState ? window.walletState.address : '',
+    };
+  }
+
+  function _emitAgentIntent(intentId, type, params) {
+    var meta = _agentIntentMeta();
+    window.dispatchEvent(new CustomEvent('agentIntent:created', {
+      detail: Object.assign({ id: intentId, type: type, params: params, source: 'autonoma' }, meta)
+    }));
+  }
+
   async function _cmdCreateWallet() {
     var r = await D.AgentWallet.createWallet();
     if (r.success) {
@@ -511,8 +527,15 @@
   }
 
   async function _cmdWalletStatus() {
-    var summary = await D.AgentWallet.getSummary();
-    _appendChat('assistant', summary, 'agentWallet');
+    var AC = window.ExecDaat && window.ExecDaat.AgentContext;
+    if (AC) {
+      await AC.refresh();
+      var card = AC.renderWalletCard();
+      _appendChat('assistant', card, 'agentWallet');
+    } else {
+      var summary = await D.AgentWallet.getSummary();
+      _appendChat('assistant', summary, 'agentWallet');
+    }
     return true;
   }
 
@@ -549,8 +572,7 @@
     }
     var intentId = 'swp-' + Date.now().toString(36);
     var payload = { type: 'swap', amount: amount, token: fromToken, targetToken: toToken };
-    // Emit intent for execution engine
-    window.dispatchEvent(new CustomEvent('agentIntent:created', { detail: { id: intentId, type: 'swap', params: payload, source: 'autonoma' } }));
+    _emitAgentIntent(intentId, 'swap', payload);
 
     _appendChat('assistant',
       '**Swap Intent Created**\n\n' +
@@ -578,7 +600,7 @@
     }
     var intentId = 'brg-' + Date.now().toString(36);
     var payload = { type: 'bridge', amount: amount, token: token, destination: destination };
-    window.dispatchEvent(new CustomEvent('agentIntent:created', { detail: { id: intentId, type: 'bridge', params: payload, source: 'autonoma' } }));
+    _emitAgentIntent(intentId, 'bridge', payload);
 
     _appendChat('assistant',
       '**Bridge Intent Created**\n\n' +
@@ -600,7 +622,7 @@
     }
     var intentId = 'pay-' + Date.now().toString(36);
     var payload = { type: 'transfer', amount: amount, token: token, to: recipient };
-    window.dispatchEvent(new CustomEvent('agentIntent:created', { detail: { id: intentId, type: 'transfer', params: payload, source: 'autonoma' } }));
+    _emitAgentIntent(intentId, 'transfer', payload);
 
     _appendChat('assistant',
       '**Payment Intent Created**\n\n' +
@@ -615,12 +637,39 @@
 
   // ── Intent Management ─────────────────────────────────────────────────────
   async function _cmdShowIntents() {
-    _appendChat('assistant',
-      '**Pending Agent Intents**\n\n' +
-      'Intents from this session are listed below. Use `approve intent <id>` to execute.\n\n' +
-      '_Note: Full intent history is managed by the Intent Manager module._',
-      'intents');
+    // Use AgentContext to render real intents from the canonical data source
+    var AC = window.ExecDaat && window.ExecDaat.AgentContext;
+    if (!AC) {
+      _appendChat('assistant', 'Agent context not yet loaded. Please wait...', 'intents');
+      return true;
+    }
+    await AC.refreshIntents();
+    var ctx = AC.getContext();
+    var intents = ctx.intents || [];
+    if (intents.length === 0) {
+      _appendChat('assistant', '**No intents found.**\n\nCreate one by asking:\n`send 10 USDC to 0x...`', 'intents');
+      return true;
+    }
+    var html = '**Agent Intents** (' + intents.length + ')\n\n';
+    intents.slice(0, 8).forEach(function(i) {
+      html += (AC.renderIntentCard(i) || _simpleIntentCard(i));
+    });
+    _appendChat('assistant', html, 'intents');
     return true;
+  }
+
+  function _simpleIntentCard(i) {
+    var sc = { pending:'#f59e0b', approved:'#3b82f6', executing:'#8b5cf6', completed:'#22c55e', failed:'#ef4444', cancelled:'#6b7280', draft:'#6b7280' };
+    var amt = (i.params && i.params.amount) || i.amount || '';
+    var tok = (i.params && i.params.token) || i.token || '';
+    var to = (i.params && i.params.to) || i.to || '';
+    var toShort = to.length > 12 ? to.slice(0,6)+'...'+to.slice(-4) : to;
+    return '<div style="background:rgba(31,41,55,0.6);border:1px solid rgba(55,65,81,0.5);border-radius:10px;padding:10px;margin-bottom:8px;">' +
+      '<span style="color:'+(sc[i.status]||'#6b7280')+';font-weight:700;font-size:11px;">'+(i.status||'').toUpperCase()+'</span>' +
+      ' <span style="color:#e5e7eb;font-size:12px;">'+(i.type||'intent')+' '+(amt||'')+' '+(tok||'')+'</span>' +
+      (toShort?' <span style="color:#6b7280;font-size:11px;">→ '+toShort+'</span>':'') +
+      (i.execution&&i.execution.txHash?' <a href="https://testnet.arcscan.app/tx/'+i.execution.txHash+'" target="_blank" style="color:#a78bfa;font-size:10px;">TX</a>':'') +
+      '</div>';
   }
 
   async function _cmdApproveIntent(intentId) {
@@ -653,7 +702,7 @@
     var estimatedTotal = (parseFloat(amount) * addresses.length).toFixed(2);
     var intentId = 'mul-' + Date.now().toString(36);
     var payload = { type: 'multisend', amount: amount, token: token, recipients: addresses };
-    window.dispatchEvent(new CustomEvent('agentIntent:created', { detail: { id: intentId, type: 'multisend', params: payload, source: 'autonoma' } }));
+    _emitAgentIntent(intentId, 'multisend', payload);
 
     _appendChat('assistant',
       '**Multisend Intent Created**\n\n' +
@@ -682,7 +731,7 @@
     }
     var intentId = 'xch-' + Date.now().toString(36);
     var payload = { type: 'crosschain-transfer', amount: amount, token: token, to: recipient, destination: chain };
-    window.dispatchEvent(new CustomEvent('agentIntent:created', { detail: { id: intentId, type: 'crosschain-transfer', params: payload, source: 'autonoma' } }));
+    _emitAgentIntent(intentId, 'crosschain-transfer', payload);
 
     _appendChat('assistant',
       '**Cross-Chain Payment Intent Created**\n\n' +

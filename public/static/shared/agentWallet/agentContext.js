@@ -69,14 +69,25 @@
   // ── Refresh intents ────────────────────────────────────────────────────────
   function refreshIntents() {
     try {
+      var allIntents = [];
       if (D.AgentIntents && typeof D.AgentIntents.getIntents === 'function') {
-        _ctx.intents = D.AgentIntents.getIntents() || [];
+        allIntents = D.AgentIntents.getIntents() || [];
       } else if (D.AgentIntents && Array.isArray(D.AgentIntents.state && D.AgentIntents.state.intents)) {
-        _ctx.intents = D.AgentIntents.state.intents || [];
+        allIntents = D.AgentIntents.state.intents || [];
       } else if (window.AgentExecutor && typeof window.AgentExecutor.getIntents === 'function') {
-        _ctx.intents = window.AgentExecutor.getIntents() || [];
+        allIntents = window.AgentExecutor.getIntents() || [];
+      }
+
+      // Filter by agent wallet address (new intents have agentAddress metadata)
+      var agentAddr = (_ctx.wallet && _ctx.wallet.address) ? _ctx.wallet.address.toLowerCase() : null;
+      if (agentAddr) {
+        _ctx.intents = allIntents.filter(function(i) {
+          var intentAgent = (i.agentAddress || (i.params && i.params.agentAddress) || '').toLowerCase();
+          // Include if intent belongs to current agent wallet, or if it has no agentAddress (legacy)
+          return !intentAgent || intentAgent === agentAddr;
+        });
       } else {
-        _ctx.intents = [];
+        _ctx.intents = allIntents;
       }
     } catch(e) { _ctx.intents = []; }
 

@@ -1367,7 +1367,7 @@ agentWalletRouter.post('/create', async (c) => {
     const wallet = await deriveWallet(owner)
     const address = wallet.address
 
-    const walletId = 'aw-' + owner.slice(2, 10) + '-' + Date.now().toString(36)
+    const walletId = 'aw-' + owner.slice(2, 10) + '-' + address.slice(2, 10).toLowerCase()
 
     const record: AgentWalletRecord = {
       walletId,

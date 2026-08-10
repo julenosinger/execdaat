@@ -174,6 +174,10 @@
         type: type,
         status: 'draft',
         summary: '',
+        // Agent wallet ownership metadata (set by agentWallet-core chat commands)
+        agentAddress: params.agentAddress || '',
+        walletId: params.walletId || '',
+        ownerAddress: params.ownerAddress || '',
         params: {
           amount: _formatAmount(params.amount || 0),
           token: params.token || 'USDC',
