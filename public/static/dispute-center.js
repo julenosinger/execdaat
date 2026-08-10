@@ -1109,7 +1109,7 @@
     ov.style.cssText = 'position:fixed;inset:0;z-index:9995;background:rgba(0,0,0,0.92);backdrop-filter:blur(4px);display:flex;flex-direction:column;';
     let content;
     if (f.kind === 'image') content = `<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto;"><img src="${f.url}" style="max-width:100%;max-height:calc(100vh - 90px);object-fit:contain;border-radius:10px;"></div>`;
-    else if (f.kind === 'pdf') content = `<div style="flex:1;padding:8px 16px;"><iframe src="${f.url}" style="width:100%;height:calc(100vh - 90px);border:none;border-radius:10px;background:#fff;"></iframe></div>`;
+    else if (f.kind === 'pdf') content = `<div style="flex:1;padding:8px 16px;"><iframe src="${f.url}" sandbox="allow-scripts" style="width:100%;height:calc(100vh - 90px);border:none;border-radius:10px;background:#fff;"></iframe></div>`;
     else if (f.kind === 'video') content = `<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:16px;"><video src="${f.url}" controls style="max-width:100%;max-height:calc(100vh - 90px);border-radius:10px;"></video></div>`;
     else content = `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#c9d3e7;">
       <i class="fas ${kindIcon(f.kind)}" style="font-size:52px;color:#60b4ff;"></i><div style="font-weight:700;">${esc(f.name)}</div>

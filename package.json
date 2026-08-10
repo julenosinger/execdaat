@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npx @tailwindcss/cli -i ./src/tailwind.css -o ./public/static/tailwind.css --minify && vite build",
     "build:vercel": "node scripts/build-vercel.mjs",
     "preview": "wrangler pages dev",
     "deploy": "npm run build && wrangler pages deploy dist --project-name execdaatapp-v2 --branch main",
@@ -31,7 +31,10 @@
   "devDependencies": {
     "@hono/vite-build": "^1.2.0",
     "@hono/vite-dev-server": "^0.18.2",
+    "@tailwindcss/cli": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.3",
     "solc": "^0.8.34",
+    "tailwindcss": "^4.3.3",
     "typescript": "^6.0.2",
     "vite": "^6.3.5",
     "wrangler": "^4.4.0"

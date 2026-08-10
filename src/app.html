@@ -133,19 +133,19 @@
   </script>
 
   <!-- ── Stylesheets & Libraries ──────────────────────────────────────── -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="/static/tailwind.css" rel="stylesheet">
 
   <!-- Polling Manager — global request governor (loaded before all app scripts) -->
   <script src="/static/shared/polling-manager.js?v=20260717pm1"></script>
   <!-- ARC Security Layer (loaded first, before all app scripts) -->
   <script src="/static/security.js?v=20260715rpc1"></script>
-  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
   <!-- axios CDN — primary. The shim below provides fallback if CDN fails. -->
-  <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js" integrity="sha384-VekiXfVDZuqx75T/YaGfn7/p6+e+D0f/G8UoZ5GBOCMZ89kMW4wTo8PSn6GSzOEl" crossorigin="anonymous"></script>
   <!-- axios-shim: drop-in fetch() fallback, only activates when CDN axios is undefined -->
   <script src="/static/axios-shim.js?v=20260328a"></script>
   <!-- jsPDF — PDF receipt generation (loads before ethers to pre-populate prototypes) -->
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXnqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
   <!-- ── ethers.js v6.16.0 (ARC-patched) ────────────────────────────────────────
        Uses a locally-hosted build of ethers v6.16.0 with a one-line patch applied
        to the internal defineProperties() helper: wraps Object.defineProperty in
@@ -6343,7 +6343,7 @@
   <script src="/static/memo/memo-ui.js?v=20260718memo1"></script>
 
   <script src="/static/wallet.js?v=20260718en1"></script>
-  <script src="/static/wallet-create.js?v=20260715rpc1"></script>
+  <script src="/static/wallet-create.js?v=20260810sec1"></script>
   <script src="/static/router.js?v=20260718notr1"></script>
   <script src="/static/unifiedbalance.js?v=20260717opt1"></script>
   <script src="/static/cross-chain-service.js?v=20260718arcin1"></script>

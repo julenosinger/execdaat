@@ -1076,7 +1076,7 @@ function cfViewDisputeEvidence(contractId, evidenceIndex) {
     </div>`;
   } else if (isPdf) {
     content = `<div style="flex:1;width:100%;padding:8px 16px;">
-        <iframe src="${ev.url}" style="width:100%;height:calc(100vh - 100px);border:none;border-radius:10px;background:#fff;" title="${cfEsc(ev.name)}"></iframe>
+        <iframe src="${ev.url}" sandbox="allow-scripts" style="width:100%;height:calc(100vh - 100px);border:none;border-radius:10px;background:#fff;" title="${cfEsc(ev.name)}"></iframe>
     </div>`;
   } else {
     content = `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">
@@ -1453,7 +1453,7 @@ function cfMsViewProof(contractId, idx) {
   if (d.proofUrl && (d.proofMime || '').startsWith('image/')) {
     body = `<img src="${d.proofUrl}" alt="${cfEsc(d.proofName || 'proof')}" style="max-width:100%;border-radius:10px;">`;
   } else if (d.proofUrl && d.proofMime === 'application/pdf') {
-    body = `<iframe src="${d.proofUrl}" style="width:100%;height:60vh;border:none;border-radius:10px;background:#fff;" title="proof"></iframe>`;
+    body = `<iframe src="${d.proofUrl}" sandbox="allow-scripts" style="width:100%;height:60vh;border:none;border-radius:10px;background:#fff;" title="proof"></iframe>`;
   } else if (d.proofUrl) {
     body = `<a href="${d.proofUrl}" download="${cfEsc(d.proofName || 'proof')}" style="color:#a78bfa;">Download ${cfEsc(d.proofName || 'file')}</a>`;
   } else {

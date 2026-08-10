@@ -134,10 +134,10 @@ function wcClearKeystore() {
 
 /* ── Session (in-memory, cleared on tab close) ──────────────  */
 function wcSaveSession(walletData) {
-  // Only store address + a masked PK in session; never log PK
+  // Only store address in session; privateKey is in-memory (ethers Wallet object).
+  // Session restore will prompt for password via the Unlock dialog.
   sessionStorage.setItem(WC_SESSION_KEY, JSON.stringify({
     address:    walletData.address,
-    privateKey: walletData.privateKey,   // needed for signing
     hasMnemonic: !!walletData.mnemonic,
     ts: Date.now(),
   }));
@@ -864,13 +864,17 @@ async function wcDownloadKeystore(password) {
 async function wcTryRestoreSession() {
   const sess = wcGetSession();
   if (!sess) return;
-  // Session exists but wallet not connected yet (e.g. page refresh)
-  if (!window.walletState?.connected && sess.privateKey) {
-    console.log('[WC] Restoring soft-wallet session:', sess.address);
-    try {
-      await wcActivateWallet(sess);
-    } catch(e) {
-      console.warn('[WC] Session restore failed:', e.message);
+  // Session exists but wallet not connected (e.g. page refresh).
+  // privateKey was removed from sessionStorage — redirect to Unlock dialog.
+  if (!window.walletState?.connected && sess.address) {
+    console.log('[WC] Soft-wallet session found — prompting unlock:', sess.address.slice(0,10)+'...');
+    if (wcHasKeystore()) {
+      // Auto-open modal — user enters password to unlock
+      if (typeof openCreateWalletModal === 'function') {
+        openCreateWalletModal();
+      }
+    } else {
+      // Keystore missing — clear stale session
       wcClearSession();
     }
   }

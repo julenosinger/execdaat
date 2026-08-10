@@ -65,7 +65,7 @@
   # - Frames:  self only (wallet providers)
   # - Objects: none (no Flash/Java)
   # - Workers: self + blob (service workers)
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.arcscan.app; connect-src 'self' https://rpc.testnet.arc.network https://rpc.blockdaemon.testnet.arc.network https://rpc.drpc.testnet.arc.network https://rpc.quicknode.testnet.arc.network wss://rpc.testnet.arc.network https://testnet.arcscan.app https://api.coingecko.com https://ethereum-sepolia-rpc.publicnode.com https://sepolia-rollup.arbitrum.io https://sepolia.base.org https://sepolia.optimism.io https://iris-api-sandbox.circle.com https://api.circle.com https://sepolia.arbiscan.io https://sepolia.basescan.org https://sepolia-optimism.etherscan.io https://sepolia.etherscan.io; media-src 'none'; object-src 'none'; frame-src 'self'; worker-src 'self' blob:; form-action 'self'; base-uri 'self'; manifest-src 'self'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/axios@1.6.0/ https://cdn.jsdelivr.net/npm/jspdf@2.5.2/; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/ https://fonts.googleapis.com; font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.arcscan.app; connect-src 'self' https://rpc.testnet.arc.network https://rpc.blockdaemon.testnet.arc.network https://rpc.drpc.testnet.arc.network https://rpc.quicknode.testnet.arc.network wss://rpc.testnet.arc.network https://testnet.arcscan.app https://api.coingecko.com https://ethereum-sepolia-rpc.publicnode.com https://sepolia-rollup.arbitrum.io https://sepolia.base.org https://sepolia.optimism.io https://iris-api-sandbox.circle.com https://api.circle.com https://sepolia.arbiscan.io https://sepolia.basescan.org https://sepolia-optimism.etherscan.io https://sepolia.etherscan.io; media-src 'none'; object-src 'none'; frame-src 'self'; worker-src 'self' blob:; form-action 'self'; base-uri 'self'; manifest-src 'self'; upgrade-insecure-requests
 
 # API endpoints — no-cache, tight CORS
 /api/*
@@ -79,36 +79,8 @@
   Access-Control-Max-Age: 600
   Vary: Origin
 
-# Static assets — long cache with immutable flag (versioned filenames)
-/static/*
-  Cache-Control: public, max-age=31536000, immutable
-  X-Content-Type-Options: nosniff
-
-# ── OTC MODULE FILES — no-cache (critical security fix deployment) ────────────
-# These files use content-hash in filename for versioning (e.g. otc.28392e1f.js)
-# We override to no-cache so fixes propagate immediately to all users.
-# Background: the ?v= query-string approach does NOT bust browser cache when
-# Cache-Control: immutable is set. Hash-in-name + no-cache is the correct fix.
-/static/otc*.js
-  Cache-Control: no-store, no-cache, must-revalidate
-  Pragma: no-cache
-  X-Content-Type-Options: nosniff
-
-# Security JS — no-cache so security fixes propagate immediately to all users
-# (immutable from /static/* rule was preventing updates)
-/static/security.js
-  Cache-Control: no-store, no-cache, must-revalidate
-  Pragma: no-cache
-  X-Content-Type-Options: nosniff
-
-# Multisend JS — no-cache so fixes propagate immediately to all users.
-# The immutable /static/* rule was serving a stale copy (missing msEditAll and
-# other v7 functions) under an old ?v= URL. Revalidate on every load instead.
-/static/multisend.js
-  Cache-Control: no-store, no-cache, must-revalidate
-  Pragma: no-cache
-  X-Content-Type-Options: nosniff
-
+# Static caching is handled by the Worker middleware.
+# Security-sensitive files get no-cache; all others get immutable.
 # HTML pages — no caching (always fresh)
 /*.html
   Cache-Control: no-store

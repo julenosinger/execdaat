@@ -15,6 +15,12 @@ import { ARC_TESTNET } from './types/arc'
 import { securityMiddleware, logSecurityEvent, getClientIP } from './middleware/security'
 // @ts-ignore - Vite raw import: full SPA HTML shell served at "/"
 import appHtml from './app.html?raw'
+// @ts-ignore - Vite raw import: security-sensitive JS served with no-cache headers
+import walletCreateJs from '../public/static/wallet-create.js?raw'
+// @ts-ignore
+import securityJs from '../public/static/security.js?raw'
+// @ts-ignore
+import multisendJs from '../public/static/multisend.js?raw'
 
 const app = new Hono<{
   Bindings: {
@@ -51,6 +57,29 @@ app.use('*', cors({
   credentials:   false,
   maxAge:        600,
 }))
+
+// ── Security-sensitive static files: explicit no-cache routes ──────────────────
+app.get('/static/wallet-create.js', (c) => {
+  return new Response(walletCreateJs, { headers: {
+    'Content-Type': 'application/javascript',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+  }})
+})
+app.get('/static/security.js', (c) => {
+  return new Response(securityJs, { headers: {
+    'Content-Type': 'application/javascript',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+  }})
+})
+app.get('/static/multisend.js', (c) => {
+  return new Response(multisendJs, { headers: {
+    'Content-Type': 'application/javascript',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+  }})
+})
 
 // Servir arquivos estáticos
 app.use('/static/*', serveStatic({ root: './public' }))

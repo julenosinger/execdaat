@@ -731,8 +731,8 @@ function cfViewProof(contractId, proofIndex) {
 
     if (isPdf) {
       return `<div style="flex:1;width:100%;padding:8px 16px 0;">
-        <iframe src="${p.url}" style="width:100%;height:calc(100vh - 140px);border:none;border-radius:10px;background:#fff;"
-               title="${cfEsc(p.name)}" onerror="">
+<iframe src="${p.url}" sandbox="allow-scripts" style="width:100%;height:calc(100vh - 140px);border:none;border-radius:10px;background:#fff;"
+       title="${cfEsc(p.name)}" onerror="">
 
         </iframe>
         <div style="text-align:center;padding:8px;font-size:11px;color:#4a6490;">

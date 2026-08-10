@@ -255,25 +255,25 @@ function applySecureHeaders(c: Context): void {
   h.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
 
   // Content Security Policy — tight allowlist
-  // Allows only self + specific CDN hosts needed by the app
+  // Only allows self + specific CDN paths needed by the app
   const csp = [
     "default-src 'self'",
-    // Scripts: self + Tailwind CDN + FontAwesome + Chart.js + known libs
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
-    // Styles: self + CDN
-    "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+    // Scripts: self + exact jsDelivr paths for axios + jsPDF (Tailwind is build-time CSS now)
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/axios@1.6.0/ https://cdn.jsdelivr.net/npm/jspdf@2.5.2/",
+    // Styles: self + Font Awesome CDN + Google Fonts
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/ https://fonts.googleapis.com",
     // Fonts
     "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com data:",
     // Images: self + data URIs + blob (for receipt viewer)
     "img-src 'self' data: blob: https://*.arcscan.app",
-    // Connections: self + Arc Testnet RPCs + ArcScan explorer
-    "connect-src 'self' https://rpc.testnet.arc.network https://rpc.blockdaemon.testnet.arc.network https://rpc.drpc.testnet.arc.network https://rpc.quicknode.testnet.arc.network wss://rpc.testnet.arc.network https://testnet.arcscan.app https://api.coingecko.com https://ethereum-sepolia-rpc.publicnode.com https://sepolia-rollup.arbitrum.io https://sepolia.base.org https://sepolia.optimism.io https://rpc-amoy.polygon.technology https://cdn.jsdelivr.net https://iris-api-sandbox.circle.com https://amoy.polygonscan.com",
+    // Connections: self + Arc Testnet RPCs + ArcScan explorer + Circle + Sepolia
+    "connect-src 'self' https://rpc.testnet.arc.network https://rpc.blockdaemon.testnet.arc.network https://rpc.drpc.testnet.arc.network https://rpc.quicknode.testnet.arc.network wss://rpc.testnet.arc.network https://testnet.arcscan.app https://api.coingecko.com https://ethereum-sepolia-rpc.publicnode.com https://sepolia-rollup.arbitrum.io https://sepolia.base.org https://sepolia.optimism.io https://iris-api-sandbox.circle.com https://api.circle.com https://sepolia.arbiscan.io https://sepolia.basescan.org https://sepolia-optimism.etherscan.io https://sepolia.etherscan.io",
     // Media
     "media-src 'none'",
     // Objects (Flash etc)
     "object-src 'none'",
-    // Frames — only self (wallet providers may need this)
-    "frame-src 'self'",
+    // Frames — only self + data: (for evidence PDF viewing)
+    "frame-src 'self' data:",
     // Workers
     "worker-src 'self' blob:",
     // Form actions — only self
