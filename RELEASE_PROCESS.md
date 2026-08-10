@@ -1,5 +1,11 @@
 # ExecDaat Release Process
 
+## Production Cloudflare Pages Project
+
+**Canonical project:** `execdaatapp-v2`
+**Production domains:** `execdaat.xyz` (primary) + `www.execdaat.xyz` (redirects to execdaat.xyz)
+**Branch:** `main`
+
 ## Pre-Release Checklist
 
 ```bash
@@ -55,19 +61,20 @@ npx wrangler pages deploy dist --project-name execdaatapp-v2 --branch staging
 
 ```bash
 npm run deploy
-# or:
-npx wrangler pages deploy dist --project-name execdaatplataform
+# or explicitly:
+npx wrangler pages deploy dist --project-name execdaatapp-v2 --branch main
 ```
 
 ### 6. Post-Deploy Verification
 
-- [ ] Production URL loads
+- [ ] https://execdaat.xyz loads
+- [ ] https://www.execdaat.xyz redirects to https://execdaat.xyz
 - [ ] Wallet connect/disconnect works
 - [ ] Treasury data loads
 - [ ] Bridge works
 - [ ] Swap works
 - [ ] Chat responds
-- [ ] Health check: `curl https://execdaatplataform.pages.dev/api/health`
+- [ ] Health check: `curl https://execdaat.xyz/api/status`
 
 ### 7. Monitor
 
@@ -79,8 +86,8 @@ npx wrangler pages deploy dist --project-name execdaatplataform
 
 ```bash
 # Cloudflare Pages
-npx wrangler pages deployment list --project-name execdaatplataform
-npx wrangler pages deployment rollback <prev-deploy-id> --project-name execdaatplataform
+npx wrangler pages deployment list --project-name execdaatapp-v2
+npx wrangler pages deployment rollback <prev-deploy-id> --project-name execdaatapp-v2
 ```
 
 ## Release Notes Template

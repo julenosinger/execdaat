@@ -6,7 +6,7 @@
     "build": "vite build",
     "build:vercel": "node scripts/build-vercel.mjs",
     "preview": "wrangler pages dev",
-    "deploy": "npm run build && wrangler pages deploy",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name execdaatapp-v2 --branch main",
     "deploy:vercel": "vercel --prod",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "security:scan": "node scripts/security-scan.cjs",

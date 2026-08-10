@@ -23,7 +23,7 @@ from pathlib import Path
 
 ACCOUNT_ID   = os.environ.get('CLOUDFLARE_ACCOUNT_ID', '')
 API_TOKEN    = os.environ.get('CLOUDFLARE_API_TOKEN', '')
-PROJECT_NAME = 'execdaatapp'
+PROJECT_NAME = 'execdaatapp-v2'
 DIST_DIR     = Path('/home/user/webapp/dist')
 
 if not ACCOUNT_ID or not API_TOKEN:

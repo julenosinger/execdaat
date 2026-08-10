@@ -16,7 +16,7 @@ import io, random, string
 
 ACCOUNT_ID   = os.environ['CLOUDFLARE_ACCOUNT_ID']
 API_TOKEN    = os.environ['CLOUDFLARE_API_TOKEN']
-PROJECT_NAME = 'execdaatapp'
+PROJECT_NAME = 'execdaatapp-v2'
 DIST_DIR     = Path('/home/user/webapp/dist')
 
 # ── Coletar arquivos ──────────────────────────────────────────────────────────

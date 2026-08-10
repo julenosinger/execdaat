@@ -32,13 +32,10 @@ app.use('*', securityMiddleware)
 
 // ─── CORS — restricted to known origins + localhost dev ───────────────────────
 const ALLOWED_ORIGINS = [
-  'https://arc-ai-agents.pages.dev',
-  'https://arc-ai-agents-618.pages.dev',
-  'https://arc-ai-agents-618-3v1.pages.dev',
-  'https://arc-ai-agents-v2.pages.dev',
-  'https://arc-ai-agents.com',
   'https://execdaatapp-v2.pages.dev',
   'https://execdaatplataform.pages.dev',
+  'https://execdaat.xyz',
+  'https://www.execdaat.xyz',
   'http://localhost:3000',
   'http://localhost:5173',
 ]
