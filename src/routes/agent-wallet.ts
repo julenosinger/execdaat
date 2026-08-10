@@ -1558,6 +1558,308 @@ agentWalletRouter.post('/link-agent', async (c) => {
   }
 })
 
+// ═══════════════════════════════════════════════════════════════
+//  AGENT TRANSACTIONS — Real on-chain via Arc RPC eth_getLogs
+// ═══════════════════════════════════════════════════════════════
+
+const USDC_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+
+interface AgentTransaction {
+  txHash: string
+  status: string
+  from: string
+  to: string
+  token: string
+  amount: string
+  blockNumber: number
+  timestamp: string | null
+  intentId: string | null
+  operation: string
+}
+
+agentWalletRouter.get('/transactions/:agentAddress', async (c) => {
+  try {
+    const agentAddress = c.req.param('agentAddress').toLowerCase()
+    if (!isValidAddr(agentAddress)) return c.json({ success: false, error: 'Invalid address' }, 400)
+    const limit = Math.min(parseInt(c.req.query('limit') || '20'), 50)
+    const cursor = c.req.query('cursor') || '0x0'
+
+    // Query Transfer events where agent wallet is sender OR receiver
+    const logs = await Promise.all([
+      // Outgoing: agentAddress is 'from' (indexed topic 1)
+      rpcCall('eth_getLogs', [{
+        address: USDC_ADDRESS,
+        topics: [USDC_TOPIC, '0x' + encAddr(agentAddress), null],
+        fromBlock: cursor,
+        toBlock: 'latest',
+      }]).catch(() => []),
+      // Incoming: agentAddress is 'to' (indexed topic 2)
+      rpcCall('eth_getLogs', [{
+        address: USDC_ADDRESS,
+        topics: [USDC_TOPIC, null, '0x' + encAddr(agentAddress)],
+        fromBlock: cursor,
+        toBlock: 'latest',
+      }]).catch(() => []),
+      // EURC outgoing
+      rpcCall('eth_getLogs', [{
+        address: EURC_ADDRESS,
+        topics: [USDC_TOPIC, '0x' + encAddr(agentAddress), null],
+        fromBlock: cursor,
+        toBlock: 'latest',
+      }]).catch(() => []),
+      // EURC incoming
+      rpcCall('eth_getLogs', [{
+        address: EURC_ADDRESS,
+        topics: [USDC_TOPIC, null, '0x' + encAddr(agentAddress)],
+        fromBlock: cursor,
+        toBlock: 'latest',
+      }]).catch(() => []),
+    ])
+
+    // Flatten and deduplicate by txHash
+    const txMap = new Map<string, any>()
+    for (const logArray of logs) {
+      if (!Array.isArray(logArray)) continue
+      for (const log of logArray) {
+        const txHash = log.transactionHash
+        if (!txMap.has(txHash)) {
+          txMap.set(txHash, log)
+        }
+      }
+    }
+
+    // Decode and sort
+    const transactions: AgentTransaction[] = []
+    for (const [, log] of txMap) {
+      const fromAddr = '0x' + (log.topics[1] || '').slice(26).toLowerCase()
+      const toAddr   = '0x' + (log.topics[2] || '').slice(26).toLowerCase()
+      const rawAmt   = BigInt(log.data || '0x0')
+      const token    = log.address.toLowerCase() === USDC_ADDRESS.toLowerCase() ? 'USDC' : 'EURC'
+      const decimals = 6n
+      const amount   = (Number(rawAmt) / 1e6).toString()
+      transactions.push({
+        txHash,
+        status: 'confirmed',
+        from: fromAddr,
+        to: toAddr,
+        token,
+        amount,
+        blockNumber: parseInt(log.blockNumber || '0', 16),
+        timestamp: null, // would need eth_getBlockByNumber for real timestamp
+        intentId: null,
+        operation: fromAddr === agentAddress ? 'send' : 'receive',
+      })
+    }
+
+    // Sort by blockNumber descending (most recent first)
+    transactions.sort((a, b) => b.blockNumber - a.blockNumber)
+
+    return c.json({
+      success: true,
+      agentAddress,
+      chainId: CHAIN_ID,
+      transactions: transactions.slice(0, limit),
+      total: transactions.length,
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════
+//  AGENT INTENTS — Durable persistence via Cloudflare Cache API
+// ═══════════════════════════════════════════════════════════════
+
+interface PersistedIntent {
+  id: string
+  agentAddress: string
+  walletId: string
+  ownerAddress: string
+  type: string
+  status: string
+  params: Record<string, any>
+  execution: { txHash: string; blockNumber: number; error: string }
+  createdAt: string
+  updatedAt: string
+  source: string
+}
+
+const INTENT_CACHE_PREFIX = 'agent-intent:'
+
+async function cacheGet(key: string): Promise<any> {
+  try {
+    const cache = caches.default
+    const url = `https://execdaat-worker.local/${key}`
+    const match = await cache.match(url)
+    if (match) {
+      const text = await match.text()
+      return JSON.parse(text)
+    }
+    return null
+  } catch { return null }
+}
+
+async function cachePut(key: string, data: any, ttlSeconds: number = 86400) {
+  try {
+    const cache = caches.default
+    const url = `https://execdaat-worker.local/${key}`
+    const res = new Response(JSON.stringify(data), {
+      headers: { 'Cache-Control': `max-age=${ttlSeconds}` }
+    })
+    await cache.put(url, res)
+  } catch { /* cache write failure — non-critical */ }
+}
+
+// GET /intents/:agentAddress
+agentWalletRouter.get('/intents/:agentAddress', async (c) => {
+  try {
+    const agentAddress = c.req.param('agentAddress').toLowerCase()
+    if (!isValidAddr(agentAddress)) return c.json({ success: false, error: 'Invalid address' }, 400)
+    const status = c.req.query('status') || ''
+    const limit = Math.min(parseInt(c.req.query('limit') || '50'), 100)
+
+    // Load intents for this agent from cache
+    const key = `${INTENT_CACHE_PREFIX}${agentAddress}`
+    let intents: PersistedIntent[] = (await cacheGet(key)) || []
+
+    if (status) {
+      intents = intents.filter(i => i.status === status)
+    }
+
+    return c.json({
+      success: true,
+      agentAddress,
+      intents: intents.slice(0, limit),
+      total: intents.length,
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
+})
+
+// POST /intents — Create or update an intent
+agentWalletRouter.post('/intents', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { id, agentAddress, walletId, ownerAddress, type, status, params, execution, source } = body
+    if (!agentAddress || !id) return c.json({ success: false, error: 'agentAddress and id required' }, 400)
+
+    const key = `${INTENT_CACHE_PREFIX}${agentAddress.toLowerCase()}`
+    let intents: PersistedIntent[] = (await cacheGet(key)) || []
+
+    const existingIdx = intents.findIndex(i => i.id === id)
+    const intent: PersistedIntent = {
+      id,
+      agentAddress: agentAddress.toLowerCase(),
+      walletId: walletId || '',
+      ownerAddress: (ownerAddress || '').toLowerCase(),
+      type: type || 'unknown',
+      status: status || 'draft',
+      params: params || {},
+      execution: execution || { txHash: '', blockNumber: 0, error: '' },
+      createdAt: body.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      source: source || 'api',
+    }
+
+    if (existingIdx >= 0) {
+      intents[existingIdx] = intent
+    } else {
+      intents.unshift(intent)
+      if (intents.length > 200) intents.length = 200
+    }
+
+    await cachePut(key, intents)
+    return c.json({ success: true, intent }, 201)
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
+})
+
+// PATCH /intents/:intentId — Update intent status
+agentWalletRouter.patch('/intents/:intentId', async (c) => {
+  try {
+    const intentId = c.req.param('intentId')
+    const body = await c.req.json()
+    const { agentAddress, status, execution } = body
+    if (!agentAddress) return c.json({ success: false, error: 'agentAddress required' }, 400)
+
+    const key = `${INTENT_CACHE_PREFIX}${agentAddress.toLowerCase()}`
+    let intents: PersistedIntent[] = (await cacheGet(key)) || []
+    const idx = intents.findIndex(i => i.id === intentId)
+    if (idx < 0) return c.json({ success: false, error: 'Intent not found' }, 404)
+
+    if (status) intents[idx].status = status
+    if (execution) Object.assign(intents[idx].execution, execution)
+    intents[idx].updatedAt = new Date().toISOString()
+
+    await cachePut(key, intents)
+    return c.json({ success: true, intent: intents[idx] })
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════
+//  AGENT AUDIT/OPERATIONS — Durable persistence via Cache API
+// ═══════════════════════════════════════════════════════════════
+
+const AUDIT_CACHE_PREFIX = 'agent-audit:'
+
+// GET /audit-ops/:agentAddress
+agentWalletRouter.get('/audit-ops/:agentAddress', async (c) => {
+  try {
+    const agentAddress = c.req.param('agentAddress').toLowerCase()
+    if (!isValidAddr(agentAddress)) return c.json({ success: false, error: 'Invalid address' }, 400)
+    const limit = Math.min(parseInt(c.req.query('limit') || '20'), 50)
+
+    const key = `${AUDIT_CACHE_PREFIX}${agentAddress}`
+    let entries = (await cacheGet(key)) || []
+
+    return c.json({
+      success: true,
+      agentAddress,
+      operations: entries.slice(0, limit),
+      total: entries.length,
+    })
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
+})
+
+// POST /audit-ops — Record an operation
+agentWalletRouter.post('/audit-ops', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { agentAddress, operation, intentId, status, txHash, amount, token, details } = body
+    if (!agentAddress || !operation) return c.json({ success: false, error: 'agentAddress and operation required' }, 400)
+
+    const key = `${AUDIT_CACHE_PREFIX}${agentAddress.toLowerCase()}`
+    let entries = (await cacheGet(key)) || []
+
+    const entry = {
+      id: 'op-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+      agentAddress: agentAddress.toLowerCase(),
+      operation,
+      intentId: intentId || null,
+      status: status || 'completed',
+      txHash: txHash || null,
+      amount: amount || null,
+      token: token || null,
+      details: details || null,
+      timestamp: new Date().toISOString(),
+    }
+
+    entries.unshift(entry)
+    if (entries.length > 500) entries.length = 500
+
+    await cachePut(key, entries)
+    return c.json({ success: true, entry }, 201)
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
+})
+
 // Decrypt and get signer for agent wallet (internal use)
 async function getAgentWalletSigner(ownerAddress: string): Promise<ethers.Wallet | null> {
   try {

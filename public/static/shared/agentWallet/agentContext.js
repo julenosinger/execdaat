@@ -11,12 +11,13 @@
   var D = window.ExecDaat = window.ExecDaat || {};
 
   var _ctx = {
-    wallet: null,        // { address, walletId, label, createdAt, agentId }
-    balances: null,      // { USDC: {raw,human}, EURC: {raw,human} }
-    intents: [],         // Intent[] from D.AgentIntents (if available)
+    wallet: null,
+    balances: null,
+    intents: [],
     pendingCount: 0,
     todayOpsCount: 0,
-    recentOps: [],       // latest operations from audit/execution
+    recentOps: [],
+    transactions: [],
     agentId: null,
     isAuthorized: false,
     lastRefresh: null,
@@ -133,12 +134,24 @@
     }
   }
 
+  // ── Refresh transactions from on-chain data ────────────────────────────────
+  async function refreshTransactions() {
+    if (!_ctx.wallet) { _ctx.transactions = []; return; }
+    try {
+      var r = await _apiGet('/api/agent-wallet/transactions/' + encodeURIComponent(_ctx.wallet.address) + '?limit=20');
+      if (r && r.success) {
+        _ctx.transactions = r.transactions || [];
+      }
+    } catch(e) { /* keep previous transactions */ }
+  }
+
   // ── Full refresh ───────────────────────────────────────────────────────────
   async function refreshAll() {
     await refreshWallet();
     await refreshBalances();
     refreshIntents();
     refreshRecentOps();
+    await refreshTransactions();
     _notify();
   }
 
@@ -328,6 +341,10 @@
   }
 
   // ── Expose ─────────────────────────────────────────────────────────────────
+  function _apiGet(path) {
+    return fetch(path).then(function(r) { return r.json(); }).catch(function() { return null; });
+  }
+
   D.AgentContext = {
     get context() { return _ctx; },
     getContext: getContext,
@@ -336,6 +353,7 @@
     refreshBalances: refreshBalances,
     refreshIntents: refreshIntents,
     refreshRecentOps: refreshRecentOps,
+    refreshTransactions: refreshTransactions,
     onChange: onChange,
     init: init,
     renderWalletCard: renderWalletCard,
