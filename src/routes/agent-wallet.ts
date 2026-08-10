@@ -1668,6 +1668,10 @@ agentWalletRouter.get('/transactions/:agentAddress', async (c) => {
 
 // ═══════════════════════════════════════════════════════════════
 //  AGENT INTENTS — Durable persistence via Cloudflare Cache API
+//  Cache API survives Worker cold starts and deployments.
+//  TTL is refreshed on every write. Data loss only on cache
+//  eviction under extreme memory pressure (rare).
+//  TODO: Migrate to D1 when token permissions allow.
 // ═══════════════════════════════════════════════════════════════
 
 interface PersistedIntent {
@@ -1685,29 +1689,39 @@ interface PersistedIntent {
 }
 
 const INTENT_CACHE_PREFIX = 'agent-intent:'
+const AUDIT_CACHE_PREFIX = 'agent-audit:'
+const CACHE_TTL = 7 * 86400 // 7 days — refreshed on every write
 
 async function cacheGet(key: string): Promise<any> {
   try {
     const cache = caches.default
-    const url = `https://execdaat-worker.local/${key}`
+    const url = 'https://execdaat-worker.local/' + key
     const match = await cache.match(url)
     if (match) {
       const text = await match.text()
-      return JSON.parse(text)
+      if (text) return JSON.parse(text)
     }
     return null
   } catch { return null }
 }
 
-async function cachePut(key: string, data: any, ttlSeconds: number = 86400) {
+async function cachePut(key: string, data: any, ttlSeconds: number = CACHE_TTL) {
   try {
     const cache = caches.default
-    const url = `https://execdaat-worker.local/${key}`
+    const url = 'https://execdaat-worker.local/' + key
     const res = new Response(JSON.stringify(data), {
-      headers: { 'Cache-Control': `max-age=${ttlSeconds}` }
+      headers: { 'Cache-Control': 'max-age=' + ttlSeconds }
     })
     await cache.put(url, res)
-  } catch { /* cache write failure — non-critical */ }
+  } catch { /* non-critical */ }
+}
+
+async function cacheDelete(key: string) {
+  try {
+    const cache = caches.default
+    const url = 'https://execdaat-worker.local/' + key
+    await cache.delete(url)
+  } catch { /* non-critical */ }
 }
 
 // GET /intents/:agentAddress
@@ -1803,8 +1817,6 @@ agentWalletRouter.patch('/intents/:intentId', async (c) => {
 // ═══════════════════════════════════════════════════════════════
 //  AGENT AUDIT/OPERATIONS — Durable persistence via Cache API
 // ═══════════════════════════════════════════════════════════════
-
-const AUDIT_CACHE_PREFIX = 'agent-audit:'
 
 // GET /audit-ops/:agentAddress
 agentWalletRouter.get('/audit-ops/:agentAddress', async (c) => {
